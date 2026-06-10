@@ -12,6 +12,9 @@ export class SchemaService {
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       const tables = await driver.getTables();
       return tables.map((name) => ({ name }));
     } finally {
@@ -32,11 +35,7 @@ export class SchemaService {
   }
 
   async switchSchema(connectionId: string, schema: string): Promise<void> {
-    const connection = await this.connectionService.findEntity(connectionId);
-    const driver = this.connectionService.getDriver(connection);
-    if (driver.setSchema) {
-      driver.setSchema(schema);
-    }
+    await this.connectionService.update(connectionId, { database: schema });
   }
 
   async getViews(connectionId: string, schema?: string): Promise<TableResponseDto[]> {
@@ -46,6 +45,9 @@ export class SchemaService {
     if (!driver.getViews) return [];
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       const views = await driver.getViews();
       return views.map((name) => ({ name }));
     } finally {
@@ -60,6 +62,9 @@ export class SchemaService {
     if (!driver.getProcedures) return [];
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       const procedures = await driver.getProcedures();
       return procedures.map((name) => ({ name }));
     } finally {
@@ -74,6 +79,9 @@ export class SchemaService {
     if (!driver.getTriggers) return [];
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       const triggers = await driver.getTriggers();
       return triggers.map((name) => ({ name }));
     } finally {
@@ -93,6 +101,9 @@ export class SchemaService {
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       await driver.executeQuery(sql);
     } finally {
       await driver.disconnect();
@@ -110,6 +121,9 @@ export class SchemaService {
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       return await driver.getDDL(name, type);
     } finally {
       await driver.disconnect();
@@ -128,6 +142,9 @@ export class SchemaService {
     if (!driver.getParameters) return [];
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       return await driver.getParameters(name, type);
     } finally {
       await driver.disconnect();
@@ -144,6 +161,9 @@ export class SchemaService {
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
+      if (schema && driver.setSchema) {
+        driver.setSchema(schema);
+      }
       const columns = await driver.getColumns(tableName);
       return columns.map((col: any) => ({
         name: col.COLUMN_NAME || col.column_name,

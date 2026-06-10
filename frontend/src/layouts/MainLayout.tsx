@@ -3,6 +3,7 @@ import { Database, LayoutGrid, Terminal, Settings, Activity, FileText, Globe, Sh
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { Environment } from '@/types/database'
+import { SchemaSelector } from '@/components/layout/SchemaSelector'
 
 export default function MainLayout() {
   const location = useLocation()
@@ -47,27 +48,30 @@ export default function MainLayout() {
         
         <div className="flex items-center gap-4">
           {activeConnection && (
-            <div className={cn(
-              "flex items-center gap-3 px-4 py-1.5 rounded-full border shadow-sm transition-all duration-300",
-              activeConnection.environment === Environment.PRODUCTION 
-                ? "bg-red-500/10 border-red-500/20 text-red-600 shadow-red-500/5" 
-                : activeConnection.environment === Environment.STAGING
-                ? "bg-orange-500/10 border-orange-500/20 text-orange-600"
-                : "bg-primary/5 border-primary/10 text-primary"
-            )}>
-              <div className="flex flex-col items-end">
-                <span className="text-[9px] font-black uppercase tracking-tighter leading-none opacity-80">
-                  {activeConnection.environment}
-                </span>
-                <span className="text-sm font-bold leading-tight truncate max-w-[180px]">
-                  {activeConnection.name}
-                </span>
-              </div>
+            <div className="flex items-center gap-4 border-r border-border pr-4 mr-2">
+              <SchemaSelector />
               <div className={cn(
-                "p-1.5 rounded-lg shadow-sm",
-                activeConnection.environment === Environment.PRODUCTION ? "bg-red-500 text-white" : "bg-primary text-primary-foreground"
+                "flex items-center gap-3 px-4 py-1.5 rounded-full border shadow-sm transition-all duration-300",
+                activeConnection.environment === Environment.PRODUCTION 
+                  ? "bg-red-500/10 border-red-500/20 text-red-600 shadow-red-500/5" 
+                  : activeConnection.environment === Environment.STAGING
+                  ? "bg-orange-500/10 border-orange-500/20 text-orange-600"
+                  : "bg-primary/5 border-primary/10 text-primary"
               )}>
-                {activeConnection.ssh ? <Shield className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+                <div className="flex flex-col items-end">
+                  <span className="text-[9px] font-black uppercase tracking-tighter leading-none opacity-80">
+                    {activeConnection.environment}
+                  </span>
+                  <span className="text-sm font-bold leading-tight truncate max-w-[180px]">
+                    {activeConnection.name}
+                  </span>
+                </div>
+                <div className={cn(
+                  "p-1.5 rounded-lg shadow-sm",
+                  activeConnection.environment === Environment.PRODUCTION ? "bg-red-500 text-white" : "bg-primary text-primary-foreground"
+                )}>
+                  {activeConnection.ssh ? <Shield className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+                </div>
               </div>
             </div>
           )}

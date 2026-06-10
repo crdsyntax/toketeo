@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
 import { PostgresDriver } from './drivers/postgres.driver';
@@ -18,6 +18,10 @@ export class ConnectionService {
   ) {}
 
   async create(dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
+    const connections = await this.repository.findAll();
+    if (connections.some((c) => c.name === dto.name)) {
+      throw new BadRequestException(`Connection with name "${dto.name}" already exists`);
+    }
     const connection = await this.repository.save(dto);
     return this.mapToResponseDto(connection);
   }
@@ -41,6 +45,21 @@ export class ConnectionService {
       throw new NotFoundException(`Connection with ID ${id} not found`);
     }
     return connection;
+  }
+
+  async update(id: string, dto: Partial<CreateConnectionDto>): Promise<ConnectionResponseDto> {
+    const connection = await this.findEntity(id);
+    
+    if (dto.name && dto.name !== connection.name) {
+      const connections = await this.repository.findAll();
+      if (connections.some((c) => c.name === dto.name)) {
+        throw new BadRequestException(`Connection with name "${dto.name}" already exists`);
+      }
+    }
+
+    Object.assign(connection, dto);
+    const updated = await this.repository.save(connection);
+    return this.mapToResponseDto(updated);
   }
 
   async remove(id: string): Promise<void> {

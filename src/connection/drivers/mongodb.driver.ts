@@ -48,6 +48,21 @@ export class MongoDbDriver implements DatabaseDriver {
     }
   }
 
+  async getSchemas(): Promise<string[]> {
+    if (!this.client) {
+      throw new Error('Driver not connected');
+    }
+    const adminDb = this.client.db().admin();
+    const { databases } = await adminDb.listDatabases();
+    return databases.map((db: any) => db.name);
+  }
+
+  setSchema(schema: string): void {
+    if (this.client) {
+      this.db = this.client.db(schema);
+    }
+  }
+
   async executeQuery<T>(command: string, params?: unknown[]): Promise<T> {
     if (!this.db) {
       throw new Error('Driver not connected');

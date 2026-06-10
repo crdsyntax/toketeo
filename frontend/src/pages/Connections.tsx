@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Link as LinkIcon, Database, Server, Globe, Edit2, Shield, Settings, Save } from 'lucide-react'
+import { Plus, Trash2, Link as LinkIcon, Database, Server, Globe, Edit2, Shield, Settings, Save, Loader2, X } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import type { Connection } from '@/types/database'
 import { DatabaseType, Environment } from '@/types/database'
@@ -23,11 +23,15 @@ export default function Connections() {
     queryFn: () => apiFetch<Connection[]>('/connections'),
   })
 
-  const createMutation = useMutation({
-    mutationFn: (newConn: any) => apiFetch<Connection>('/connections', {
-      method: 'POST',
-      body: JSON.stringify(newConn),
-    }),
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => {
+      const isEditing = !!editingConnection?.id
+      const url = isEditing ? `/connections/${editingConnection.id}` : '/connections'
+      return apiFetch<Connection>(url, {
+        method: isEditing ? 'PATCH' : 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] })
       handleCloseModal()
@@ -68,7 +72,7 @@ export default function Connections() {
       host: data.host,
       port: Number(data.port),
       user: data.user,
-      password: data.password,
+      password: data.savePassword === 'on' ? data.password : undefined,
       database: data.database,
     }
 
@@ -77,12 +81,12 @@ export default function Connections() {
         host: data.sshHost,
         port: Number(data.sshPort),
         user: data.sshUser,
-        password: data.sshPassword,
+        password: data.savePassword === 'on' ? data.sshPassword : undefined,
         privateKey: data.sshPrivateKey,
       }
     }
 
-    createMutation.mutate(payload)
+    saveMutation.mutate(payload)
   }
 
   const handleTest = (e: React.MouseEvent) => {
@@ -285,6 +289,11 @@ export default function Connections() {
                       <input name="password" type="password" placeholder="••••••••" className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50" />
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-2 py-2">
+                    <input type="checkbox" name="savePassword" id="savePassword" defaultChecked={true} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
+                    <label htmlFor="savePassword" className="text-sm font-bold">Remember credentials (Persistence)</label>
+                  </div>
                 </>
               ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
@@ -327,8 +336,8 @@ export default function Connections() {
                 <button type="button" onClick={handleTest} disabled={isTesting} className="flex-1 px-4 py-2 border border-primary/50 text-primary rounded-md text-sm font-bold hover:bg-primary/5 transition-colors disabled:opacity-50">
                   {isTesting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Test Connection'}
                 </button>
-                <button type="submit" disabled={createMutation.isPending} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <button type="submit" disabled={saveMutation.isPending} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+                  {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Connection
                 </button>
               </div>
@@ -340,8 +349,3 @@ export default function Connections() {
   )
 }
 
-function X(props: any) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-  )
-}

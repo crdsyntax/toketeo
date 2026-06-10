@@ -30,6 +30,10 @@ export class QueryService {
       onProgress?.('connecting');
       await driver.connect();
 
+      if (dto.schema && driver.setSchema) {
+        driver.setSchema(dto.schema);
+      }
+
       onProgress?.('executing');
       const rows = await driver.executeQuery<Record<string, unknown>[]>(
         dto.sql,

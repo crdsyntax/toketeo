@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Delete,
+  Patch,
   BadRequestException,
   HttpCode,
   HttpStatus,
@@ -40,6 +41,16 @@ export class ConnectionController {
   @ApiResponse({ status: 200, type: ConnectionResponseDto })
   async findOne(@Param('id') id: string): Promise<ConnectionResponseDto> {
     return this.connectionService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a database connection' })
+  @ApiResponse({ status: 200, type: ConnectionResponseDto })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateConnectionDto>,
+  ): Promise<ConnectionResponseDto> {
+    return this.connectionService.update(id, dto);
   }
 
   @Delete(':id')
