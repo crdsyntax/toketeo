@@ -13,14 +13,15 @@ export class MariaDbAuditRepository implements AuditRepository {
     await Promise.resolve();
   }
 
-  async findAll(): Promise<AuditEntity[]> {
+  async findAll(limit: number, offset: number): Promise<AuditEntity[]> {
     this.logger.warn(
-      'findAll audit logs requested but persistence is disabled',
+      `findAll audit logs requested (limit: ${limit}, offset: ${offset}) but persistence is disabled`,
     );
     return Promise.resolve([]);
   }
 
-  async findByUser(): Promise<AuditEntity[]> {
+  async findByUser(userId: string): Promise<AuditEntity[]> {
+    this.logger.log(`findByUser audit logs requested for ${userId}`);
     return Promise.resolve([]);
   }
 }

@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
-import * as dotenv from 'dotenv';
 import { ConnectionRepository } from './connection.repository.interface';
 import { ConnectionEntity } from '../entities/connection.entity';
 import { DatabaseType, SshConfigDto } from '../dto/create-connection.dto';

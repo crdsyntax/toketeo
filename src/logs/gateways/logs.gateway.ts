@@ -20,7 +20,7 @@ export class LogsGateway
   @WebSocketServer() server: Server;
   private logger: Logger = new Logger('LogsGateway');
 
-  afterInit(server: Server) {
+  afterInit() {
     this.logger.log('Logs Gateway Initialized');
   }
 

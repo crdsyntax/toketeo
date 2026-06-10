@@ -14,18 +14,24 @@ export class MariaDbQueryHistoryRepository implements QueryHistoryRepository {
   }
 
   async findByConnection(
-    _connectionId: string,
-    _limit: number,
-    _offset: number,
+    connectionId: string,
+    limit: number,
+    offset: number,
   ): Promise<QueryHistoryEntity[]> {
+    this.logger.log(
+      `findByConnection: ${connectionId}, limit: ${limit}, offset: ${offset}`,
+    );
     return Promise.resolve([]);
   }
 
   async findByUser(
-    _userId: string,
-    _limit: number,
-    _offset: number,
+    userId: string,
+    limit: number,
+    offset: number,
   ): Promise<QueryHistoryEntity[]> {
+    this.logger.log(
+      `findByUser: ${userId}, limit: ${limit}, offset: ${offset}`,
+    );
     return Promise.resolve([]);
   }
 }
