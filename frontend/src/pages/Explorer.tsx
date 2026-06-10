@@ -128,7 +128,7 @@ export default function Explorer() {
       const data = await apiFetch<{ ddl: string }>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`)
       let formatted = data.ddl
       try {
-        formatted = format(data.ddl, { language: 'mysql', uppercase: true })
+        formatted = format(data.ddl, { language: 'mysql' })
       } catch (e) {
         // ignore format error
       }

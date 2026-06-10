@@ -1,4 +1,3 @@
-import { TableResponseDto, ColumnResponseDto } from '@/schema/dto/schema-response.dto'
 import { Table, Layout, Code, RefreshCw, List, Table2, Play, AlertCircle, X, Loader2, ChevronLeft, ChevronRight as ChevronRightIcon, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Editor } from '@monaco-editor/react'
