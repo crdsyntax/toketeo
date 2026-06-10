@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ExecuteQueryDto {
@@ -8,6 +8,8 @@ export class ExecuteQueryDto {
   sql: string;
 
   @ApiProperty({ description: 'Query parameters', required: false })
+  @IsOptional()
+  @IsArray()
   params?: any[];
 }
 

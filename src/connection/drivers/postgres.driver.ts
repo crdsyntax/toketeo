@@ -54,9 +54,30 @@ export class PostgresDriver implements DatabaseDriver {
 
   async getTables(): Promise<string[]> {
     const rows = await this.executeQuery<{ table_name: string }[]>(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
     );
     return rows.map((row) => row.table_name);
+  }
+
+  async getViews(): Promise<string[]> {
+    const rows = await this.executeQuery<{ table_name: string }[]>(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'VIEW'",
+    );
+    return rows.map((row) => row.table_name);
+  }
+
+  async getProcedures(): Promise<string[]> {
+    const rows = await this.executeQuery<{ routine_name: string }[]>(
+      "SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'public' AND routine_type = 'PROCEDURE'",
+    );
+    return rows.map((row) => row.routine_name);
+  }
+
+  async getTriggers(): Promise<string[]> {
+    const rows = await this.executeQuery<{ trigger_name: string }[]>(
+      "SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = 'public'",
+    );
+    return rows.map((row) => row.trigger_name);
   }
 
   async getColumns(
@@ -67,13 +88,23 @@ export class PostgresDriver implements DatabaseDriver {
     return this.executeQuery<
       { column_name: string; data_type: string; is_nullable: string }[]
     >(
-      'SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = ?',
+      "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1",
       [table],
     );
   }
 
-  async getDDL(table: string): Promise<string> {
+  async getParameters(
+    _name: string,
+    _type: 'procedure' | 'function' | 'view',
+  ): Promise<any[]> {
+    return []; // Postgres implementation pending
+  }
+
+  async getDDL(
+    name: string,
+    type: 'table' | 'view' | 'procedure' | 'trigger' = 'table',
+  ): Promise<string> {
     // Basic placeholder for Postgres DDL
-    return Promise.resolve(`-- DDL for ${table} (Postgres support pending)`);
+    return Promise.resolve(`-- DDL for ${name} (${type}) (Postgres support pending)`);
   }
 }

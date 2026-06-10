@@ -63,10 +63,55 @@ export class MariaDbDriver implements DatabaseDriver {
 
   async getTables(): Promise<string[]> {
     const rows = await this.executeQuery<InfoSchemaTable[]>(
-      'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?',
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",
       [this.config.database],
     );
     return rows.map((row) => row.TABLE_NAME);
+  }
+
+  async getViews(): Promise<string[]> {
+    const rows = await this.executeQuery<InfoSchemaTable[]>(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'VIEW'",
+      [this.config.database],
+    );
+    return rows.map((row) => row.TABLE_NAME);
+  }
+
+  async getProcedures(): Promise<string[]> {
+    const rows = await this.executeQuery<{ ROUTINE_NAME: string }[]>(
+      "SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE'",
+      [this.config.database],
+    );
+    return rows.map((row) => row.ROUTINE_NAME);
+  }
+
+  async getTriggers(): Promise<string[]> {
+    const rows = await this.executeQuery<{ TRIGGER_NAME: string }[]>(
+      'SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?',
+      [this.config.database],
+    );
+    return rows.map((row) => row.TRIGGER_NAME);
+  }
+
+  async getParameters(
+    name: string,
+    type: 'procedure' | 'function' | 'view',
+  ): Promise<any[]> {
+    if (type === 'view') return []; // Views don't have parameters in standard SQL
+
+    const rows = await this.executeQuery<any[]>(
+      `SELECT PARAMETER_NAME, DATA_TYPE, PARAMETER_MODE 
+       FROM information_schema.PARAMETERS 
+       WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ?
+       ORDER BY ORDINAL_POSITION`,
+      [this.config.database, name],
+    );
+
+    return rows.map((row) => ({
+      name: row.PARAMETER_NAME,
+      type: row.DATA_TYPE,
+      mode: row.PARAMETER_MODE,
+    }));
   }
 
   async getColumns(table: string): Promise<InfoSchemaColumn[]> {
@@ -76,11 +121,39 @@ export class MariaDbDriver implements DatabaseDriver {
     );
   }
 
-  async getDDL(table: string): Promise<string> {
-    const rows = await this.executeQuery<{ 'Create Table': string }[]>(
-      `SHOW CREATE TABLE \`${table}\``,
-    );
-    return rows[0]['Create Table'];
+  async getDDL(
+    name: string,
+    type: 'table' | 'view' | 'procedure' | 'trigger' = 'table',
+  ): Promise<string> {
+    if (!this.connection) {
+      throw new Error('Driver not connected');
+    }
+
+    let sql = '';
+    let key = '';
+
+    switch (type) {
+      case 'view':
+        sql = `SHOW CREATE VIEW \`${name}\``;
+        key = 'Create View';
+        break;
+      case 'procedure':
+        sql = `SHOW CREATE PROCEDURE \`${name}\``;
+        key = 'Create Procedure';
+        break;
+      case 'trigger':
+        sql = `SHOW CREATE TRIGGER \`${name}\``;
+        key = 'SQL Original Statement';
+        break;
+      default:
+        sql = `SHOW CREATE TABLE \`${name}\``;
+        key = 'Create Table';
+    }
+
+    const rows = await this.executeQuery<any[]>(sql);
+    if (!rows || rows.length === 0) return '';
+    
+    return rows[0][key] || JSON.stringify(rows[0], null, 2);
   }
 
   async cancelQuery(): Promise<void> {

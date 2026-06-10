@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
 import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
 import { PostgresDriver } from './drivers/postgres.driver';
+import { MongoDbDriver } from './drivers/mongodb.driver';
 import { DatabaseDriver } from './interfaces/database-driver.interface';
 import type { ConnectionRepository } from './repositories/connection.repository.interface';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
@@ -88,6 +89,11 @@ export class ConnectionService {
           },
           sshConfig,
         );
+      case DatabaseType.MONGODB: {
+        const password = 'password' in dto ? dto.password : '';
+        const uri = `mongodb://${dto.user}:${password}@${dto.host}:${dto.port}`;
+        return new MongoDbDriver(uri, dto.database, sshConfig);
+      }
       default:
         throw new Error(`Unsupported database type: ${dto.type}`);
     }

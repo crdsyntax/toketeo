@@ -24,6 +24,79 @@ export class SchemaService {
     }
   }
 
+  async getViews(connectionId: string): Promise<TableResponseDto[]> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    const driver = this.connectionService.getDriver(connection);
+    if (!driver.getViews) return [];
+    try {
+      await driver.connect();
+      const views = await driver.getViews();
+      return views.map((name) => ({ name }));
+    } finally {
+      await driver.disconnect();
+    }
+  }
+
+  async getProcedures(connectionId: string): Promise<TableResponseDto[]> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    const driver = this.connectionService.getDriver(connection);
+    if (!driver.getProcedures) return [];
+    try {
+      await driver.connect();
+      const procedures = await driver.getProcedures();
+      return procedures.map((name) => ({ name }));
+    } finally {
+      await driver.disconnect();
+    }
+  }
+
+  async getTriggers(connectionId: string): Promise<TableResponseDto[]> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    const driver = this.connectionService.getDriver(connection);
+    if (!driver.getTriggers) return [];
+    try {
+      await driver.connect();
+      const triggers = await driver.getTriggers();
+      return triggers.map((name) => ({ name }));
+    } finally {
+      await driver.disconnect();
+    }
+  }
+
+  async getParameters(
+    connectionId: string,
+    name: string,
+    type: 'procedure' | 'function' | 'view',
+  ): Promise<any[]> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    const driver = this.connectionService.getDriver(connection);
+    if (!driver.getParameters) return [];
+    try {
+      await driver.connect();
+      return await driver.getParameters(name, type);
+    } finally {
+      await driver.disconnect();
+    }
+  }
+
+  async updateDDL(
+    connectionId: string,
+    name: string,
+    type: 'table' | 'view' | 'procedure' | 'trigger',
+    sql: string,
+  ): Promise<void> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    const driver = this.connectionService.getDriver(connection);
+    try {
+      await driver.connect();
+      // For views, procedures, triggers: we usually need to DROP and then CREATE or use CREATE OR REPLACE
+      // For simplicity, we execute the SQL provided, assuming it's the correct DROP/CREATE or ALTER
+      await driver.executeQuery(sql);
+    } finally {
+      await driver.disconnect();
+    }
+  }
+
   async getColumns(
     connectionId: string,
     tableName: string,
@@ -45,12 +118,16 @@ export class SchemaService {
     }
   }
 
-  async getDDL(connectionId: string, tableName: string): Promise<string> {
+  async getDDL(
+    connectionId: string,
+    name: string,
+    type: 'table' | 'view' | 'procedure' | 'trigger',
+  ): Promise<string> {
     const connection = await this.connectionService.findEntity(connectionId);
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
-      return await driver.getDDL(tableName);
+      return await driver.getDDL(name, type);
     } finally {
       await driver.disconnect();
     }
