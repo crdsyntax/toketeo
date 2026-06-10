@@ -11,40 +11,47 @@ export class SqliteAuditRepository implements AuditRepository {
   constructor(private readonly sqlite: SqliteService) {}
 
   async create(audit: Partial<AuditEntity>): Promise<void> {
-    const db = this.sqlite.getDb();
-    const stmt = db.prepare(`
-      INSERT INTO audit_logs (id, user_id, action, resource, resource_id, metadata)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      audit.id || randomUUID(),
-      audit.userId || 'system',
-      audit.action,
-      audit.resource,
-      audit.resourceId || null,
-      audit.metadata ? JSON.stringify(audit.metadata) : null,
-    );
+    const client = this.sqlite.getClient();
+    await client.execute({
+      sql: `
+        INSERT INTO audit_logs (id, user_id, action, resource, resource_id, metadata)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        audit.id || randomUUID(),
+        audit.userId || 'system',
+        audit.action || '',
+        audit.resource || '',
+        audit.resourceId || null,
+        audit.metadata ? JSON.stringify(audit.metadata) : null,
+      ]
+    });
   }
 
   async findAll(limit: number, offset: number): Promise<AuditEntity[]> {
-    const rows = this.sqlite.getDb().prepare(`
-      SELECT * FROM audit_logs 
-      ORDER BY timestamp DESC 
-      LIMIT ? OFFSET ?
-    `).all(limit, offset) as any[];
+    const rs = await this.sqlite.getClient().execute({
+      sql: `
+        SELECT * FROM audit_logs 
+        ORDER BY timestamp DESC 
+        LIMIT ? OFFSET ?
+      `,
+      args: [limit, offset]
+    });
 
-    return rows.map(this.mapToEntity);
+    return rs.rows.map(row => this.mapToEntity(row as any));
   }
 
   async findByUser(userId: string): Promise<AuditEntity[]> {
-    const rows = this.sqlite.getDb().prepare(`
-      SELECT * FROM audit_logs 
-      WHERE user_id = ? 
-      ORDER BY timestamp DESC
-    `).all(userId) as any[];
+    const rs = await this.sqlite.getClient().execute({
+      sql: `
+        SELECT * FROM audit_logs 
+        WHERE user_id = ? 
+        ORDER BY timestamp DESC
+      `,
+      args: [userId]
+    });
 
-    return rows.map(this.mapToEntity);
+    return rs.rows.map(row => this.mapToEntity(row as any));
   }
 
   private mapToEntity(row: any): AuditEntity {

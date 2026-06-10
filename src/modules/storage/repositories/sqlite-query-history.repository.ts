@@ -11,21 +11,22 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
   constructor(private readonly sqlite: SqliteService) {}
 
   async save(history: Partial<QueryHistoryEntity>): Promise<void> {
-    const db = this.sqlite.getDb();
-    const stmt = db.prepare(`
-      INSERT INTO query_history (id, connection_id, user_id, sql, execution_time, status, error_message)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      history.id || randomUUID(),
-      history.connectionId,
-      history.userId || 'system',
-      history.sql,
-      history.executionTime || 0,
-      history.status || 'SUCCESS',
-      history.errorMessage || null,
-    );
+    const client = this.sqlite.getClient();
+    await client.execute({
+      sql: `
+        INSERT INTO query_history (id, connection_id, user_id, sql, execution_time, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        history.id || randomUUID(),
+        history.connectionId || '',
+        history.userId || 'system',
+        history.sql || '',
+        history.executionTime || 0,
+        history.status || 'SUCCESS',
+        history.errorMessage || null,
+      ]
+    });
   }
 
   async findByConnection(
@@ -33,14 +34,17 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
     limit: number,
     offset: number,
   ): Promise<QueryHistoryEntity[]> {
-    const rows = this.sqlite.getDb().prepare(`
-      SELECT * FROM query_history 
-      WHERE connection_id = ? 
-      ORDER BY executed_at DESC 
-      LIMIT ? OFFSET ?
-    `).all(connectionId, limit, offset) as any[];
+    const rs = await this.sqlite.getClient().execute({
+      sql: `
+        SELECT * FROM query_history 
+        WHERE connection_id = ? 
+        ORDER BY executed_at DESC 
+        LIMIT ? OFFSET ?
+      `,
+      args: [connectionId, limit, offset]
+    });
 
-    return rows.map(this.mapToEntity);
+    return rs.rows.map(row => this.mapToEntity(row as any));
   }
 
   async findByUser(
@@ -48,14 +52,17 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
     limit: number,
     offset: number,
   ): Promise<QueryHistoryEntity[]> {
-    const rows = this.sqlite.getDb().prepare(`
-      SELECT * FROM query_history 
-      WHERE user_id = ? 
-      ORDER BY executed_at DESC 
-      LIMIT ? OFFSET ?
-    `).all(userId, limit, offset) as any[];
+    const rs = await this.sqlite.getClient().execute({
+      sql: `
+        SELECT * FROM query_history 
+        WHERE user_id = ? 
+        ORDER BY executed_at DESC 
+        LIMIT ? OFFSET ?
+      `,
+      args: [userId, limit, offset]
+    });
 
-    return rows.map(this.mapToEntity);
+    return rs.rows.map(row => this.mapToEntity(row as any));
   }
 
   private mapToEntity(row: any): QueryHistoryEntity {
@@ -64,7 +71,7 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
     entity.connectionId = row.connection_id;
     entity.userId = row.user_id;
     entity.sql = row.sql;
-    entity.executionTime = row.execution_time;
+    entity.executionTime = Number(row.execution_time);
     entity.status = row.status;
     entity.errorMessage = row.error_message || undefined;
     entity.executedAt = new Date(row.executed_at + 'Z');

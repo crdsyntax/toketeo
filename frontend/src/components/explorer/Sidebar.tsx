@@ -1,4 +1,4 @@
-import { DatabaseObject, QueryResult } from '@/types/database'
+import type { DatabaseObject, QueryResult, ExecutionStatus } from '@/types/database'
 import { Table, Layout, Code, RefreshCw, Search, RefreshCw as RefreshIcon, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,7 +15,7 @@ interface SidebarProps {
   setSelectedItem: (item: DatabaseObject) => void
   setPage: (page: number) => void
   setSocketResults: (res: QueryResult | null) => void
-  setExecutionStatus: (status: string) => void
+  setExecutionStatus: (status: ExecutionStatus) => void
   setExecutionError: (err: string | null) => void
   setParamsValues: (v: Record<string, string>) => void
   setActiveTab: (tab: 'columns' | 'data' | 'ddl') => void

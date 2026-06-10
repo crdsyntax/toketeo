@@ -8,21 +8,30 @@ export class SqliteSettingsRepository {
   constructor(private readonly sqlite: SqliteService) {}
 
   async set(key: string, value: string): Promise<void> {
-    const db = this.sqlite.getDb();
-    const stmt = db.prepare(`
-      INSERT INTO settings (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `);
-    stmt.run(key, value);
+    const client = this.sqlite.getClient();
+    await client.execute({
+      sql: `
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `,
+      args: [key, value]
+    });
   }
 
   async get(key: string): Promise<string | null> {
-    const row = this.sqlite.getDb().prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as any;
-    return row ? row.value : null;
+    const rs = await this.sqlite.getClient().execute({
+      sql: `SELECT value FROM settings WHERE key = ?`,
+      args: [key]
+    });
+    const row = rs.rows[0];
+    return row ? row.value as string : null;
   }
 
   async delete(key: string): Promise<void> {
-    this.sqlite.getDb().prepare('DELETE FROM settings WHERE key = ?').run(key);
+    await this.sqlite.getClient().execute({
+      sql: 'DELETE FROM settings WHERE key = ?',
+      args: [key]
+    });
   }
 }

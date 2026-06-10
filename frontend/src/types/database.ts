@@ -1,3 +1,10 @@
+export type ExecutionStatus = 'idle' | 'executing' | 'success' | 'error';
+
+export interface DatabaseObject {
+  name: string;
+  type: 'table' | 'view' | 'procedure' | 'trigger';
+}
+
 export enum DatabaseType {
   MARIADB = 'mariadb',
   POSTGRES = 'postgres',
@@ -54,11 +61,6 @@ export interface TableResponse {
   indexLength?: number;
   comment?: string;
   createTime?: string;
-}
-
-export interface DatabaseObject {
-  name: string;
-  type: 'table' | 'view' | 'procedure' | 'trigger';
 }
 
 export interface Connection {

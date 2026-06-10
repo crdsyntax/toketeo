@@ -2,7 +2,7 @@
   "name": "toketeo",
   "version": "0.0.1",
   "description": "Toketeo Database Client and Administration Panel",
-  "author": "crdsyntax",
+  "author": "crdsyntax <crdsyntax@example.com>",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -22,6 +22,8 @@
     "electron:pack": "nest build && cd frontend && bun run build && cd .. && electron-builder build --linux deb"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
+    "@libsql/linux-x64-gnu": "^0.5.29",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",
@@ -31,10 +33,10 @@
     "@nestjs/swagger": "^11.4.4",
     "@nestjs/websockets": "^11.1.26",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.10.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^17.4.2",
+    "libsql": "^0.5.29",
     "mongodb": "^7.3.0",
     "mysql2": "^3.22.5",
     "passport": "^0.7.0",
@@ -47,13 +49,13 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
     "@types/bcryptjs": "^3.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
@@ -63,6 +65,7 @@
     "@types/supertest": "^7.0.0",
     "electron": "^42.4.0",
     "electron-builder": "^26.15.2",
+    "electron-rebuild": "^3.2.9",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",

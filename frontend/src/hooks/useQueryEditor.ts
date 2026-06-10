@@ -1,9 +1,9 @@
+import type * as monaco from 'monaco-editor'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { Monaco } from '@monaco-editor/react'
-import { editor } from 'monaco-editor'
+import type { Monaco } from '@monaco-editor/react'
 import { useAppStore } from '@/store/useAppStore'
-import { DbValue, DbRow } from '@/types/database'
+import type { DbValue, DbRow } from '@/types/database'
 
 export function useQueryEditor() {
   const { 
@@ -176,13 +176,13 @@ export function useQueryEditor() {
     setEditingCell(null)
   }, [editingCell, activeTab, activeConnection, updateTabResults])
 
-  const handleEditorWillMount = useCallback((monaco: Monaco) => {
-    const languages = monaco.languages as typeof monaco.languages & { sqlProviderRegistered?: boolean };
+  const handleEditorWillMount = useCallback((monacoInstance: Monaco) => {
+    const languages = monacoInstance.languages as typeof monacoInstance.languages & { sqlProviderRegistered?: boolean };
     if (languages.sqlProviderRegistered) return;
     languages.sqlProviderRegistered = true;
 
-    monaco.languages.registerCompletionItemProvider('sql', {
-      provideCompletionItems: (model, position) => {
+    monacoInstance.languages.registerCompletionItemProvider('sql', {
+      provideCompletionItems: (model: monaco.editor.ITextModel, position: monaco.Position) => {
         const word = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,
@@ -190,36 +190,36 @@ export function useQueryEditor() {
           startColumn: word.startColumn,
           endColumn: word.endColumn,
         };
-        const suggestions: editor.ICompletionItem[] = [
+        const suggestions: monaco.languages.CompletionItem[] = [
           {
             label: 'SELECT',
-            kind: monaco.languages.CompletionItemKind.Snippet,
+            kind: 17, // CompletionItemKind.Snippet
             insertText: 'SELECT * FROM ${1:table_name} WHERE ${2:condition};',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            insertTextRules: 4, // CompletionItemInsertTextRule.InsertAsSnippet
             documentation: 'Basic SELECT statement',
             range: range,
           },
           {
             label: 'INSERT',
-            kind: monaco.languages.CompletionItemKind.Snippet,
+            kind: 17,
             insertText: 'INSERT INTO ${1:table_name} (${2:columns}) VALUES (${3:values});',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            insertTextRules: 4,
             documentation: 'Basic INSERT statement',
             range: range,
           },
           {
             label: 'UPDATE',
-            kind: monaco.languages.CompletionItemKind.Snippet,
+            kind: 17,
             insertText: 'UPDATE ${1:table_name} SET ${2:column} = ${3:value} WHERE ${4:condition};',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            insertTextRules: 4,
             documentation: 'Basic UPDATE statement',
             range: range,
           },
           {
             label: 'DELETE',
-            kind: monaco.languages.CompletionItemKind.Snippet,
+            kind: 17,
             insertText: 'DELETE FROM ${1:table_name} WHERE ${2:condition};',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            insertTextRules: 4,
             documentation: 'Basic DELETE statement',
             range: range,
           },
@@ -229,8 +229,8 @@ export function useQueryEditor() {
     });
   }, [])
 
-  const handleEditorDidMount = useCallback((editorInstance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
-    editorInstance.addCommand(monaco.KeyMod.Ctrl | monaco.KeyCode.Enter, handleExecute)
+  const handleEditorDidMount = useCallback((editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
+    editorInstance.addCommand(monacoInstance.KeyMod.Ctrl | monacoInstance.KeyCode.Enter, handleExecute)
   }, [handleExecute])
 
   const sortedRows = useMemo(() => {

@@ -1,7 +1,7 @@
 import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Tab } from '@/store/useAppStore'
-import { DbRow, DbValue } from '@/types/database'
+import type { Tab } from '@/store/useAppStore'
+import type { DbRow, DbValue } from '@/types/database'
 
 interface ResultsModalProps {
   showResultModal: boolean
@@ -124,7 +124,7 @@ export function ResultsModal({
                         <input 
                           autoFocus
                           className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-3 z-20"
-                          value={editingCell.value || ''}
+                          value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
                           onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSave();

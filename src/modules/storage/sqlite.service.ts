@@ -1,40 +1,41 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import Database from 'better-sqlite3';
+import { createClient, Client } from '@libsql/client';
 import * as path from 'path';
 import * as fs from 'fs';
 
 @Injectable()
 export class SqliteService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SqliteService.name);
-  private db: Database.Database;
+  private client: Client;
 
-  onModuleInit() {
-    this.initDatabase();
+  async onModuleInit() {
+    await this.initDatabase();
   }
 
   onModuleDestroy() {
-    if (this.db) {
-      this.db.close();
+    if (this.client) {
+      this.client.close();
       this.logger.log('SQLite database closed.');
     }
   }
 
-  private initDatabase() {
+  private async initDatabase() {
     const dataDir = path.resolve(process.cwd(), 'data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
     const dbPath = path.join(dataDir, 'app.db');
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
+    this.client = createClient({
+      url: `file:${dbPath}`,
+    });
 
     this.logger.log(`SQLite database initialized at ${dbPath}`);
-    this.createTables();
+    await this.createTables();
   }
 
-  private createTables() {
-    this.db.exec(`
+  private async createTables() {
+    await this.client.executeMultiple(`
       CREATE TABLE IF NOT EXISTS connections (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -86,7 +87,7 @@ export class SqliteService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('SQLite schema verified.');
   }
 
-  getDb(): Database.Database {
-    return this.db;
+  getClient(): Client {
+    return this.client;
   }
 }

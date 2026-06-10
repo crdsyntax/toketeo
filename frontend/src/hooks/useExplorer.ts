@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client'
 import { format } from 'sql-formatter'
 import { apiFetch } from '@/lib/api'
 import { useAppStore } from '@/store/useAppStore'
-import { DatabaseObject, ColumnResponse, QueryResult, DbValue, DbRow } from '@/types/database'
+import type { DatabaseObject, ColumnResponse, QueryResult, DbValue, DbRow } from '@/types/database'
 
 export interface TableInfo {
   name: string
@@ -116,7 +116,7 @@ export function useExplorer() {
       const data = await apiFetch<{ ddl: string }>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`)
       let formatted = data.ddl
       try {
-        formatted = format(data.ddl, { language: 'mysql', uppercase: true })
+        formatted = format(data.ddl, { language: 'mysql' })
       } catch (e) {
         // ignore format error
       }

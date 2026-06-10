@@ -1,5 +1,5 @@
 import { Editor } from '@monaco-editor/react'
-import { Play, Plus, X, AlertCircle, Clock, Table2, Download, Loader2, Square, ChevronDown, ChevronUp, Maximize2, ArrowUpDown, ArrowUp, ArrowDown, Check, ExternalLink, Minus, Copy, Save } from 'lucide-react'
+import { Play, Plus, X, AlertCircle, Clock, Table2, Download, Loader2, Square, ChevronDown, ChevronUp, Maximize2, ArrowUpDown, ArrowUp, ArrowDown, Check, ExternalLink, Minus, Copy, Save, Trash2, Layout } from 'lucide-react'
 import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { useQueryEditor } from '@/hooks/useQueryEditor'
@@ -186,7 +186,7 @@ export default function QueryEditor() {
                             <input 
                               autoFocus
                               className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-3 z-20"
-                              value={editingCell.value || ''}
+                              value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
                               onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleSave();
@@ -353,7 +353,7 @@ export default function QueryEditor() {
                             <input 
                               autoFocus
                               className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2 z-20"
-                              value={editingCell.value || ''}
+                              value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
                               onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleSave();

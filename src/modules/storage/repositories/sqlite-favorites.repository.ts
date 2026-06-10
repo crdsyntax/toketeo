@@ -16,14 +16,15 @@ export class SqliteFavoritesRepository {
   constructor(private readonly sqlite: SqliteService) {}
 
   async save(name: string, query: string): Promise<FavoriteEntity> {
-    const db = this.sqlite.getDb();
+    const client = this.sqlite.getClient();
     const id = randomUUID();
-    const stmt = db.prepare(`
-      INSERT INTO favorites (id, name, query)
-      VALUES (?, ?, ?)
-    `);
-
-    stmt.run(id, name, query);
+    await client.execute({
+      sql: `
+        INSERT INTO favorites (id, name, query)
+        VALUES (?, ?, ?)
+      `,
+      args: [id, name, query]
+    });
     
     return {
       id,
@@ -34,11 +35,11 @@ export class SqliteFavoritesRepository {
   }
 
   async findAll(): Promise<FavoriteEntity[]> {
-    const rows = this.sqlite.getDb().prepare(`
+    const rs = await this.sqlite.getClient().execute(`
       SELECT * FROM favorites ORDER BY created_at DESC
-    `).all() as any[];
+    `);
 
-    return rows.map((row) => ({
+    return rs.rows.map((row: any) => ({
       id: row.id,
       name: row.name,
       query: row.query,
@@ -47,6 +48,9 @@ export class SqliteFavoritesRepository {
   }
 
   async delete(id: string): Promise<void> {
-    this.sqlite.getDb().prepare('DELETE FROM favorites WHERE id = ?').run(id);
+    await this.sqlite.getClient().execute({
+      sql: 'DELETE FROM favorites WHERE id = ?',
+      args: [id]
+    });
   }
 }

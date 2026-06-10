@@ -1,7 +1,7 @@
 import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Tab } from '@/store/useAppStore'
-import { DbRow, DbValue } from '@/types/database'
+import type { Tab } from '@/store/useAppStore'
+import type { DbRow, DbValue } from '@/types/database'
 
 interface ResultsPanelProps {
   activeTab: Tab | null
@@ -118,7 +118,7 @@ export function ResultsPanel({
                           <input 
                             autoFocus
                             className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2 z-20"
-                            value={editingCell.value || ''}
+                            value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
                             onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSave();

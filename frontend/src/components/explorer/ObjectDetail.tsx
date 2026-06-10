@@ -1,8 +1,8 @@
-import { DatabaseObject, ColumnResponse, QueryResult } from '@/types/database'
+import type { DatabaseObject, ColumnResponse, QueryResult, ExecutionStatus } from '@/types/database'
 import { Table, Layout, Code, RefreshCw, List, Table2, Play, AlertCircle, X, Loader2, ChevronLeft, ChevronRight as ChevronRightIcon, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Editor } from '@monaco-editor/react'
-import { UseMutationResult } from '@tanstack/react-query'
+import type { UseMutationResult } from '@tanstack/react-query'
 
 interface ObjectDetailProps {
   selectedItem: DatabaseObject | null
@@ -11,7 +11,7 @@ interface ObjectDetailProps {
   columns?: ColumnResponse[]
   isLoadingColumns: boolean
   isLoadingData: boolean
-  executionStatus: string
+  executionStatus: ExecutionStatus
   executionError: string | null
   queryData: QueryResult | null
   pageSize: number
@@ -23,7 +23,7 @@ interface ObjectDetailProps {
   isLoadingDDL: boolean
   editableDdl: string
   setEditableDdl: (ddl: string) => void
-  updateDdlMutation: UseMutationResult<void, Error, string>
+  updateDdlMutation: UseMutationResult<unknown, Error, string>
 }
 
 export function ObjectDetail({ 
