@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { Connection } from '@/types/database'
+import type { Connection } from '@/types/database'
 
 interface Tab {
   id: string
