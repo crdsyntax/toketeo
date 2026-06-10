@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 import { UsersRepository } from './users.repository.interface';
-import { UserEntity } from '../entities/user.entity';
+import { UserEntity, UserRole } from '../entities/user.entity';
 import { withRetry } from '../../common/utils/retry';
 
 @Injectable()
@@ -61,8 +61,10 @@ export class MariaDbUsersRepository implements UsersRepository {
       username: dbUsers[0].User,
       email: `${dbUsers[0].User}@local`, // Email is not native to mysql.user
       passwordHash: '', // We don't retrieve passwords from mysql.user
-      role: 'USER',
+      role: UserRole.VIEWER,
       isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
   }
 
@@ -75,13 +77,15 @@ export class MariaDbUsersRepository implements UsersRepository {
       'Find all DB users',
     );
     const dbUsers = rows as { User: string; Host: string }[];
-    return dbUsers.map(u => ({
+    return dbUsers.map((u) => ({
       id: u.User,
       username: u.User,
       email: `${u.User}@local`,
       passwordHash: '',
-      role: 'USER',
+      role: UserRole.VIEWER,
       isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     }));
   }
 }

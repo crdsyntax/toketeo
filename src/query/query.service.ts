@@ -19,15 +19,20 @@ export class QueryService {
   async execute(
     connectionId: string,
     dto: ExecuteQueryDto,
+    onProgress?: (status: string) => void,
   ): Promise<QueryResponseDto> {
     const connection = await this.connectionService.findEntity(connectionId);
     const driver = this.connectionService.getDriver(connection);
     const start = Date.now();
 
     try {
+      onProgress?.('connecting');
       await driver.connect();
+
+      onProgress?.('executing');
       const rows = await driver.executeQuery<Record<string, unknown>[]>(
         dto.sql,
+        dto.params,
       );
       const executionTime = Date.now() - start;
 
@@ -76,6 +81,14 @@ export class QueryService {
       throw error;
     } finally {
       await driver.disconnect();
+    }
+  }
+
+  async cancel(connectionId: string): Promise<void> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    const driver = this.connectionService.getDriver(connection);
+    if (driver.cancelQuery) {
+      await driver.cancelQuery();
     }
   }
 }

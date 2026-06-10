@@ -14,7 +14,9 @@ import { Logger } from '@nestjs/common';
   },
   namespace: 'logs',
 })
-export class LogsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class LogsGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer() server: Server;
   private logger: Logger = new Logger('LogsGateway');
 
@@ -22,7 +24,7 @@ export class LogsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     this.logger.log('Logs Gateway Initialized');
   }
 
-  handleConnection(client: Socket, ...args: any[]) {
+  handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
   }
 
@@ -30,7 +32,7 @@ export class LogsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  broadcastLog(log: any) {
+  broadcastLog(log: unknown) {
     if (this.server) {
       this.server.emit('log', log);
     }

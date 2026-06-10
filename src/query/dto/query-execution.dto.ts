@@ -6,6 +6,9 @@ export class ExecuteQueryDto {
   @IsString()
   @IsNotEmpty()
   sql: string;
+
+  @ApiProperty({ description: 'Query parameters', required: false })
+  params?: any[];
 }
 
 export class QueryResponseDto {

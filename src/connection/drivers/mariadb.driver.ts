@@ -57,7 +57,7 @@ export class MariaDbDriver implements DatabaseDriver {
     if (!this.connection) {
       throw new Error('Driver not connected');
     }
-    const [rows] = await this.connection.execute(sql, params);
+    const [rows] = await this.connection.execute(sql, params as any);
     return rows as T;
   }
 
@@ -77,7 +77,19 @@ export class MariaDbDriver implements DatabaseDriver {
   }
 
   async getDDL(table: string): Promise<string> {
-    const rows = await this.executeQuery<{ 'Create Table': string }[]>(`SHOW CREATE TABLE \`${table}\``);
+    const rows = await this.executeQuery<{ 'Create Table': string }[]>(
+      `SHOW CREATE TABLE \`${table}\``,
+    );
     return rows[0]['Create Table'];
+  }
+
+  async cancelQuery(): Promise<void> {
+    if (this.connection) {
+      // mysql2/promise connection.destroy() is synchronous and immediately closes the socket,
+      // which is the most reliable way to stop a long-running query without KILL command.
+      this.connection.destroy();
+      this.connection = null;
+    }
+    return Promise.resolve();
   }
 }

@@ -5,10 +5,8 @@ export interface DatabaseDriver {
   getTables(): Promise<string[]>;
   getColumns(table: string): Promise<unknown[]>;
   getDDL(table: string): Promise<string>;
-}
-
-  // New abstraction methods
   getViews?(): Promise<string[]>;
   getProcedures?(): Promise<string[]>;
   getTriggers?(): Promise<string[]>;
+  cancelQuery?(): Promise<void>;
 }

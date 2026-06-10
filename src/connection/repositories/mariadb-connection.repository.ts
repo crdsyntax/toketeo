@@ -57,15 +57,16 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
     `;
 
     await withRetry(
-      () => this.getPool().execute(sql, [
-        id,
-        connection.host ?? 'localhost',
-        connection.database ?? '',
-        connection.user ?? 'root',
-        connection.password ?? '',
-        connection.port ?? 3306,
-        options,
-      ]),
+      () =>
+        this.getPool().execute(sql, [
+          id,
+          connection.host ?? 'localhost',
+          connection.database ?? '',
+          connection.user ?? 'root',
+          connection.password ?? '',
+          connection.port ?? 3306,
+          options,
+        ]),
       3,
       1000,
       'Save connection',
@@ -122,7 +123,9 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
       options = JSON.parse(row.Options || '{}') as typeof options;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Unknown error';
-      this.logger.error(`Failed to parse options for ${row.Server_name}: ${message}`);
+      this.logger.error(
+        `Failed to parse options for ${row.Server_name}: ${message}`,
+      );
     }
 
     return {

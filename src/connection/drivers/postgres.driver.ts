@@ -59,8 +59,14 @@ export class PostgresDriver implements DatabaseDriver {
     return rows.map((row) => row.table_name);
   }
 
-  async getColumns(table: string): Promise<{ column_name: string; data_type: string; is_nullable: string }[]> {
-    return this.executeQuery<{ column_name: string; data_type: string; is_nullable: string }[]>(
+  async getColumns(
+    table: string,
+  ): Promise<
+    { column_name: string; data_type: string; is_nullable: string }[]
+  > {
+    return this.executeQuery<
+      { column_name: string; data_type: string; is_nullable: string }[]
+    >(
       'SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = ?',
       [table],
     );
@@ -68,6 +74,6 @@ export class PostgresDriver implements DatabaseDriver {
 
   async getDDL(table: string): Promise<string> {
     // Basic placeholder for Postgres DDL
-    return `-- DDL for ${table} (Postgres support pending)`;
+    return Promise.resolve(`-- DDL for ${table} (Postgres support pending)`);
   }
 }

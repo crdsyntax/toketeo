@@ -17,10 +17,7 @@ export class AuditController {
   @Get()
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Get all audit logs' })
-  async getLogs(
-    @Query('limit') limit = 10,
-    @Query('offset') offset = 0,
-  ) {
+  async getLogs(@Query('limit') limit = 10, @Query('offset') offset = 0) {
     return this.auditService.getLogs(Number(limit), Number(offset));
   }
 
@@ -30,7 +27,10 @@ export class AuditController {
   async exportJson(@Res() res: Response) {
     const logs = await this.auditService.getLogs(1000, 0);
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.json');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=audit-logs.json',
+    );
     return res.send(JSON.stringify(logs, null, 2));
   }
 
@@ -40,10 +40,13 @@ export class AuditController {
   async exportCsv(@Res() res: Response) {
     const logs = await this.auditService.getLogs(1000, 0);
     const header = 'id,userId,action,resource,resourceId,timestamp\n';
-    const rows = logs.map(log => 
-      `${log.id},${log.userId},${log.action},${log.resource},${log.resourceId || ''},${log.timestamp.toISOString()}`
-    ).join('\n');
-    
+    const rows = logs
+      .map(
+        (log) =>
+          `${log.id},${log.userId},${log.action},${log.resource},${log.resourceId || ''},${log.timestamp.toISOString()}`,
+      )
+      .join('\n');
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.csv');
     return res.send(header + rows);
