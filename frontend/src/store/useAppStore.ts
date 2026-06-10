@@ -1,16 +1,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Connection } from '@/types/database'
+import type { Connection, QueryResult } from '@/types/database'
 
-interface Tab {
+export interface Tab {
   id: string
   name: string
   query: string
-  results?: {
-    columns: string[]
-    rows: Record<string, any>[]
-    executionTime: number
-  } | null
+  results?: QueryResult | null
   status?: 'idle' | 'executing' | 'success' | 'error'
   error?: string | null
 }

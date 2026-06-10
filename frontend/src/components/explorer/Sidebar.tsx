@@ -1,3 +1,4 @@
+import { DatabaseObject, QueryResult } from '@/types/database'
 import { Table, Layout, Code, RefreshCw, Search, RefreshCw as RefreshIcon, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -9,15 +10,15 @@ interface SidebarProps {
   isLoadingSidebar: boolean
   search: string
   setSearch: (s: string) => void
-  filteredItems: any[]
-  selectedItem: any
-  setSelectedItem: (item: any) => void
+  filteredItems: { name: string }[]
+  selectedItem: DatabaseObject | null
+  setSelectedItem: (item: DatabaseObject) => void
   setPage: (page: number) => void
-  setSocketResults: (res: any) => void
-  setExecutionStatus: (status: any) => void
-  setExecutionError: (err: any) => void
-  setParamsValues: (v: any) => void
-  setActiveTab: (tab: any) => void
+  setSocketResults: (res: QueryResult | null) => void
+  setExecutionStatus: (status: string) => void
+  setExecutionError: (err: string | null) => void
+  setParamsValues: (v: Record<string, string>) => void
+  setActiveTab: (tab: 'columns' | 'data' | 'ddl') => void
 }
 
 export function Sidebar({

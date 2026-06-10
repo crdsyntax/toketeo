@@ -1,28 +1,29 @@
-import { TableResponseDto, ColumnResponseDto } from '@/schema/dto/schema-response.dto'
+import { DatabaseObject, ColumnResponse, QueryResult } from '@/types/database'
 import { Table, Layout, Code, RefreshCw, List, Table2, Play, AlertCircle, X, Loader2, ChevronLeft, ChevronRight as ChevronRightIcon, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Editor } from '@monaco-editor/react'
+import { UseMutationResult } from '@tanstack/react-query'
 
 interface ObjectDetailProps {
-  selectedItem: { name: string, type: 'table' | 'view' | 'procedure' | 'trigger' } | null
+  selectedItem: DatabaseObject | null
   activeTab: 'columns' | 'data' | 'ddl'
   setActiveTab: (tab: 'columns' | 'data' | 'ddl') => void
-  columns?: any[]
+  columns?: ColumnResponse[]
   isLoadingColumns: boolean
   isLoadingData: boolean
   executionStatus: string
   executionError: string | null
-  queryData: any
+  queryData: QueryResult | null
   pageSize: number
   setPageSize: (size: number) => void
   page: number
-  setPage: (page: any) => void
+  setPage: (updater: (p: number) => number) => void
   handleExecute: () => void
   handleCancel: () => void
   isLoadingDDL: boolean
   editableDdl: string
   setEditableDdl: (ddl: string) => void
-  updateDdlMutation: any
+  updateDdlMutation: UseMutationResult<void, Error, string>
 }
 
 export function ObjectDetail({ 
@@ -127,12 +128,12 @@ export function ObjectDetail({
                   ) : queryData ? (
                     <table className="w-full text-left text-xs border-collapse">
                       <thead className="sticky top-0 bg-background border-b border-border z-10">
-                        <tr>{queryData.columns.map((col: any) => <th key={col} className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0">{col}</th>)}</tr>
+                        <tr>{queryData.columns.map((col) => <th key={col} className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0">{col}</th>)}</tr>
                       </thead>
                       <tbody>
-                        {queryData.rows.map((row: any, i: any) => (
+                        {queryData.rows.map((row, i) => (
                           <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
-                            {queryData.columns.map((col: any) => <td key={col} className="p-2 border-r border-border last:border-0 truncate max-w-[200px]">{row[col] === null ? <span className="text-muted-foreground italic text-[10px]">NULL</span> : String(row[col])}</td>)}
+                            {queryData.columns.map((col) => <td key={col} className="p-2 border-r border-border last:border-0 truncate max-w-[200px]">{row[col] === null ? <span className="text-muted-foreground italic text-[10px]">NULL</span> : String(row[col])}</td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -150,9 +151,9 @@ export function ObjectDetail({
                         <option value={10}>10</option><option value={50}>50</option><option value={100}>100</option>
                       </select>
                       <div className="flex items-center gap-1 ml-4">
-                        <button disabled={page === 0} onClick={() => setPage((p: any) => Math.max(0, p - 1))} className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                        <button disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
                         <span className="text-[10px] font-bold px-2">{page + 1}</span>
-                        <button disabled={queryData.rows.length < pageSize} onClick={() => setPage((p: any) => p + 1)} className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30"><ChevronRightIcon className="w-4 h-4" /></button>
+                        <button disabled={queryData.rows.length < pageSize} onClick={() => setPage((p) => p + 1)} className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30"><ChevronRightIcon className="w-4 h-4" /></button>
                       </div>
                     </div>
                   </div>
