@@ -1,13 +1,15 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Database, LayoutGrid, Terminal, Settings, Activity, FileText, Globe, Shield } from 'lucide-react'
+import { Database, LayoutGrid, Terminal, Settings, Activity, FileText, Globe, Shield, AlertTriangle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { Environment } from '@/types/database'
 import { SchemaSelector } from '@/components/layout/SchemaSelector'
+import { useSystemStatus } from '@/hooks/useSystemStatus'
 
 export default function MainLayout() {
   const location = useLocation()
   const activeConnection = useAppStore((state) => state.activeConnection)
+  const { mysqlError, clearMysqlError } = useSystemStatus()
 
   const navItems = [
     { name: 'Connections', icon: Database, path: '/' },
@@ -19,6 +21,19 @@ export default function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
+      {mysqlError && (
+        <div className="bg-destructive/15 text-destructive border-b border-destructive/20 px-4 py-2 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <p className="text-sm font-medium">
+              {mysqlError.message} <span className="opacity-80 text-xs ml-2">(Checked ports: {mysqlError.checkedPorts.join(', ')})</span>
+            </p>
+          </div>
+          <button onClick={clearMysqlError} className="p-1 hover:bg-destructive/10 rounded-md transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {/* Header */}
       <header className="h-16 border-b border-border bg-muted/20 backdrop-blur-md flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-8">

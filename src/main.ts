@@ -8,10 +8,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalLoggerService } from './logs/services/global-logger.service';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { initDatabase } from './database-init';
 
 async function bootstrap() {
-  await initDatabase();
 
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
