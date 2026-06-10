@@ -20,6 +20,7 @@ interface AppState {
   setTheme: (theme: 'light' | 'dark') => void
   activeConnection: Connection | null
   setActiveConnection: (connection: Connection | null) => void
+  setActiveConnectionDatabase: (database: string) => void
   tabs: Tab[]
   activeTabId: string | null
   addTab: () => void
@@ -41,6 +42,9 @@ export const useAppStore = create<AppState>()(
       setTheme: (theme) => set({ theme }),
       activeConnection: null,
       setActiveConnection: (connection) => set({ activeConnection: connection }),
+      setActiveConnectionDatabase: (database) => set((state) => ({
+        activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
+      })),
       tabs: [{ id: 'default', name: 'Query 1', query: 'SELECT * FROM tables LIMIT 10', status: 'idle' }],
       activeTabId: 'default',
       panels: { editor: true, results: true },

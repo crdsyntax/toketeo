@@ -11,6 +11,11 @@ export class ExecuteQueryDto {
   @IsOptional()
   @IsArray()
   params?: any[];
+
+  @ApiProperty({ description: 'Target schema/database', required: false })
+  @IsString()
+  @IsOptional()
+  schema?: string;
 }
 
 export class QueryResponseDto {

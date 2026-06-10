@@ -31,13 +31,20 @@ interface QueryResponse {
 }
 
 export default function Explorer() {
-  const activeConnection = useAppStore((state) => state.activeConnection)
+  const { activeConnection, setActiveConnectionDatabase } = useAppStore()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const [selectedItem, setSelectedItem] = useState<{ name: string, type: 'table' | 'view' | 'procedure' | 'trigger' } | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers'>('tables')
+  const [selectedItem, setSelectedItem] = useState<{ name: string, type: 'table' | 'view' | 'procedure' | 'trigger' | 'schema' } | null>(null)
+  const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers' | 'schemas'>('tables')
   const [activeTab, setActiveTab] = useState<'columns' | 'ddl' | 'data'>('columns')
+  const [currentSchema, setCurrentDatabase] = useState(activeConnection?.database || '')
   
+  useEffect(() => {
+    if (activeConnection?.database) {
+      setCurrentDatabase(activeConnection.database)
+    }
+  }, [activeConnection])
+
   // Pagination state
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(50)
@@ -84,39 +91,61 @@ export default function Explorer() {
   }, [])
 
   const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
-    queryKey: ['tables', activeConnection?.id],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/tables`),
+    queryKey: ['tables', activeConnection?.id, currentSchema],
+    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/tables?schema=${currentSchema}`),
     enabled: !!activeConnection,
   })
 
   const { data: views, isLoading: isLoadingViews, refetch: refetchViews } = useQuery({
-    queryKey: ['views', activeConnection?.id],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/views`),
+    queryKey: ['views', activeConnection?.id, currentSchema],
+    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/views?schema=${currentSchema}`),
     enabled: !!activeConnection,
   })
 
   const { data: procedures, isLoading: isLoadingProcedures, refetch: refetchProcedures } = useQuery({
-    queryKey: ['procedures', activeConnection?.id],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/procedures`),
+    queryKey: ['procedures', activeConnection?.id, currentSchema],
+    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/procedures?schema=${currentSchema}`),
     enabled: !!activeConnection,
   })
 
   const { data: triggers, isLoading: isLoadingTriggers, refetch: refetchTriggers } = useQuery({
-    queryKey: ['triggers', activeConnection?.id],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/triggers`),
+    queryKey: ['triggers', activeConnection?.id, currentSchema],
+    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/triggers?schema=${currentSchema}`),
     enabled: !!activeConnection,
   })
 
+  const { data: schemas, isLoading: isLoadingSchemas, refetch: refetchSchemas } = useQuery({
+    queryKey: ['schemas', activeConnection?.id],
+    queryFn: () => apiFetch<string[]>(`/connections/${activeConnection?.id}/schema/schemas`),
+    enabled: !!activeConnection,
+  })
+
+  const switchSchemaMutation = useMutation({
+    mutationFn: (schema: string) => apiFetch(`/connections/${activeConnection?.id}/schema/switch-schema`, {
+      method: 'POST',
+      body: JSON.stringify({ schema })
+    }),
+    onSuccess: (_, schema) => {
+      setActiveConnectionDatabase(schema)
+      queryClient.invalidateQueries({ queryKey: ['tables', activeConnection?.id] })
+      queryClient.invalidateQueries({ queryKey: ['views', activeConnection?.id] })
+      queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection?.id] })
+      queryClient.invalidateQueries({ queryKey: ['triggers', activeConnection?.id] })
+      setSelectedItem(null)
+      setSidebarTab('tables')
+    }
+  })
+
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
-    queryKey: ['columns', activeConnection?.id, selectedItem],
-    queryFn: () => apiFetch<ColumnInfo[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns`),
+    queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
+    queryFn: () => apiFetch<ColumnInfo[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns?schema=${currentSchema}`),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'table' || selectedItem.type === 'view'),
   })
 
   const { data: ddlData, isLoading: isLoadingDDL } = useQuery({
-    queryKey: ['ddl', activeConnection?.id, selectedItem],
+    queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
-      const data = await apiFetch<{ ddl: string }>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}`)
+      const data = await apiFetch<{ ddl: string }>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`)
       let formatted = data.ddl
       try {
         formatted = format(data.ddl, { language: 'mysql', uppercase: true })
@@ -130,13 +159,13 @@ export default function Explorer() {
   })
 
   const { data: parameters, isLoading: isLoadingParams } = useQuery({
-    queryKey: ['parameters', activeConnection?.id, selectedItem],
-    queryFn: () => apiFetch<ParameterInfo[]>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/parameters?type=${selectedItem?.type}`),
+    queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
+    queryFn: () => apiFetch<ParameterInfo[]>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/parameters?type=${selectedItem?.type}&schema=${currentSchema}`),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'procedure' || selectedItem.type === 'view'),
   })
 
   const updateDdlMutation = useMutation({
-    mutationFn: (sql: string) => apiFetch(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}`, {
+    mutationFn: (sql: string) => apiFetch(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`, {
       method: 'POST',
       body: JSON.stringify({ sql })
     }),
@@ -175,11 +204,11 @@ export default function Explorer() {
 
       socketRef.current.emit('execute-query', {
         connectionId: activeConnection.id,
-        dto: { sql, params },
+        dto: { sql, params, schema: currentSchema },
         tabId: 'explorer'
       })
     }
-  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues])
+  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema])
 
   useEffect(() => {
     if (selectedItem?.type === 'table' && activeTab === 'data' && executionStatus === 'idle') {
@@ -202,6 +231,7 @@ export default function Explorer() {
   const isLoadingData = executionStatus === 'executing'
 
   const getFilteredItems = () => {
+    if (sidebarTab === 'schemas') return schemas?.filter(s => s.toLowerCase().includes(search.toLowerCase())).map(s => ({ name: s }))
     const items = sidebarTab === 'tables' ? tables : 
                  sidebarTab === 'views' ? views : 
                  sidebarTab === 'procedures' ? procedures : triggers;
@@ -229,9 +259,10 @@ export default function Explorer() {
     else if (sidebarTab === 'views') refetchViews()
     else if (sidebarTab === 'procedures') refetchProcedures()
     else if (sidebarTab === 'triggers') refetchTriggers()
+    else if (sidebarTab === 'schemas') refetchSchemas()
   }
 
-  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers
+  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers || isLoadingSchemas
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-6 relative">
@@ -281,7 +312,6 @@ export default function Explorer() {
         </div>
       )}
 
-      {/* Object Explorer Sidebar */}
       <div className="w-80 flex border border-border rounded-xl bg-card overflow-hidden shrink-0">
         <div className="w-12 flex flex-col items-center py-4 gap-4 border-r border-border bg-muted/20">
           <button onClick={() => setSidebarTab('tables')} title="Tables" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'tables' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
@@ -296,14 +326,21 @@ export default function Explorer() {
           <button onClick={() => setSidebarTab('triggers')} title="Triggers" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'triggers' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
             <RefreshCw className="w-5 h-5" />
           </button>
+          <div className="flex-1" />
+          <button onClick={() => setSidebarTab('schemas')} title="Databases / Schemas" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'schemas' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
+            <Database className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
           <div className="p-4 border-b border-border space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold flex items-center gap-2 text-sm">
-                <Database className="w-4 h-4 text-primary" />
-                {sidebarTab.charAt(0).toUpperCase() + sidebarTab.slice(1)}
+              <h3 className="font-bold flex flex-col gap-0.5 text-xs">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest">{currentSchema}</span>
+                <div className="flex items-center gap-2">
+                  <Database className="w-3 h-3 text-primary" />
+                  {sidebarTab.charAt(0).toUpperCase() + sidebarTab.slice(1)}
+                </div>
               </h3>
               <button onClick={handleRefetch} className="p-1.5 hover:bg-muted rounded-md transition-colors">
                 <RefreshCw className={cn("w-3.5 h-3.5", isLoadingSidebar && "animate-spin")} />
@@ -324,6 +361,10 @@ export default function Explorer() {
                 <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Results ({filteredItems?.length || 0})</div>
                 {filteredItems?.map((item) => (
                   <button key={item.name} onClick={() => {
+                    if (sidebarTab === 'schemas') {
+                      switchSchemaMutation.mutate(item.name)
+                      return
+                    }
                     const type = sidebarTab === 'tables' ? 'table' : sidebarTab === 'views' ? 'view' : sidebarTab === 'procedures' ? 'procedure' : 'trigger';
                     setSelectedItem({ name: item.name, type })
                     setPage(0)
@@ -332,13 +373,17 @@ export default function Explorer() {
                     setExecutionError(null)
                     setParamsValues({})
                     setActiveTab(type === 'table' ? 'columns' : 'ddl')
-                  }} className={cn("w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-colors group text-left", selectedItem?.name === item.name ? "bg-primary/10 text-primary" : "hover:bg-muted")}>
+                  }} className={cn(
+                    "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-colors group text-left", 
+                    (selectedItem?.name === item.name || currentSchema === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                  )}>
                     {sidebarTab === 'tables' && <Table className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
                     {sidebarTab === 'views' && <Layout className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
                     {sidebarTab === 'procedures' && <Code className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
                     {sidebarTab === 'triggers' && <RefreshCw className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
+                    {sidebarTab === 'schemas' && <Database className={cn("w-3.5 h-3.5", currentSchema === item.name ? "text-primary" : "text-muted-foreground")} />}
                     <span className="truncate flex-1">{item.name}</span>
-                    <ChevronRight className={cn("w-3 h-3 transition-opacity", selectedItem?.name === item.name ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+                    <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name || currentSchema === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
                   </button>
                 ))}
               </div>

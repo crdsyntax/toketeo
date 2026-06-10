@@ -1,9 +1,10 @@
-import { DatabaseType, SshConfigDto } from '../dto/create-connection.dto';
+import { DatabaseType, SshConfigDto, Environment } from '../dto/create-connection.dto';
 
 export class ConnectionEntity {
   id: string;
   name: string;
   type: DatabaseType;
+  environment: Environment;
   host: string;
   port: number;
   user: string;

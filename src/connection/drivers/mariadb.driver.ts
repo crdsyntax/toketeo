@@ -16,11 +16,14 @@ export interface InfoSchemaColumn {
 export class MariaDbDriver implements DatabaseDriver {
   private connection: mysql.Connection | null = null;
   private tunnel: SshTunnel | null = null;
+  private currentDatabase: string;
 
   constructor(
     private readonly config: mysql.ConnectionOptions,
     private readonly sshConfig?: SshConfigDto,
-  ) {}
+  ) {
+    this.currentDatabase = config.database || '';
+  }
 
   async connect(): Promise<void> {
     let connectionConfig = { ...this.config };
@@ -64,15 +67,29 @@ export class MariaDbDriver implements DatabaseDriver {
   async getTables(): Promise<string[]> {
     const rows = await this.executeQuery<InfoSchemaTable[]>(
       "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",
-      [this.config.database],
+      [this.currentDatabase],
     );
     return rows.map((row) => row.TABLE_NAME);
+  }
+
+  async getSchemas(): Promise<string[]> {
+    const rows = await this.executeQuery<{ Database: string }[]>(
+      'SHOW DATABASES',
+    );
+    return rows.map((row) => row.Database);
+  }
+
+  setSchema(schema: string): void {
+    this.currentDatabase = schema;
+    if (this.connection) {
+      void this.connection.query(`USE \`${schema}\``);
+    }
   }
 
   async getViews(): Promise<string[]> {
     const rows = await this.executeQuery<InfoSchemaTable[]>(
       "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'VIEW'",
-      [this.config.database],
+      [this.currentDatabase],
     );
     return rows.map((row) => row.TABLE_NAME);
   }
@@ -80,7 +97,7 @@ export class MariaDbDriver implements DatabaseDriver {
   async getProcedures(): Promise<string[]> {
     const rows = await this.executeQuery<{ ROUTINE_NAME: string }[]>(
       "SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE'",
-      [this.config.database],
+      [this.currentDatabase],
     );
     return rows.map((row) => row.ROUTINE_NAME);
   }
@@ -88,7 +105,7 @@ export class MariaDbDriver implements DatabaseDriver {
   async getTriggers(): Promise<string[]> {
     const rows = await this.executeQuery<{ TRIGGER_NAME: string }[]>(
       'SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?',
-      [this.config.database],
+      [this.currentDatabase],
     );
     return rows.map((row) => row.TRIGGER_NAME);
   }
@@ -104,7 +121,7 @@ export class MariaDbDriver implements DatabaseDriver {
        FROM information_schema.PARAMETERS 
        WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ?
        ORDER BY ORDINAL_POSITION`,
-      [this.config.database, name],
+      [this.currentDatabase, name],
     );
 
     return rows.map((row) => ({
@@ -117,7 +134,7 @@ export class MariaDbDriver implements DatabaseDriver {
   async getColumns(table: string): Promise<InfoSchemaColumn[]> {
     return this.executeQuery<InfoSchemaColumn[]>(
       'SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
-      [this.config.database, table],
+      [this.currentDatabase, table],
     );
   }
 

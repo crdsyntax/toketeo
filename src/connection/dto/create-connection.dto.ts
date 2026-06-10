@@ -15,6 +15,13 @@ export enum DatabaseType {
   MONGODB = 'mongodb',
 }
 
+export enum Environment {
+  PRODUCTION = 'production',
+  STAGING = 'staging',
+  DEVELOPMENT = 'development',
+  LOCAL = 'local',
+}
+
 export class SshConfigDto {
   @ApiProperty()
   @IsString()
@@ -47,6 +54,10 @@ export class CreateConnectionDto {
   @ApiProperty({ enum: DatabaseType })
   @IsEnum(DatabaseType)
   type: DatabaseType;
+
+  @ApiProperty({ enum: Environment })
+  @IsEnum(Environment)
+  environment: Environment;
 
   @ApiProperty()
   @IsString()

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 import { ConnectionRepository } from './connection.repository.interface';
 import { ConnectionEntity } from '../entities/connection.entity';
-import { DatabaseType, SshConfigDto } from '../dto/create-connection.dto';
+import { DatabaseType, SshConfigDto, Environment } from '../dto/create-connection.dto';
 import { withRetry } from '../../common/utils/retry';
 
 interface DbRow {
@@ -40,6 +40,7 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
     const options = JSON.stringify({
       name: connection.name,
       type: connection.type,
+      environment: connection.environment,
       ssh: connection.ssh,
     });
 
@@ -117,7 +118,7 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
   }
 
   private mapRowToEntity(row: DbRow): ConnectionEntity {
-    let options: { name?: string; type?: string; ssh?: SshConfigDto } = {};
+    let options: { name?: string; type?: string; environment?: Environment; ssh?: SshConfigDto } = {};
     try {
       options = JSON.parse(row.Options || '{}') as typeof options;
     } catch (e: unknown) {
@@ -131,6 +132,7 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
       id: row.Server_name,
       name: options.name || row.Server_name,
       type: (options.type as DatabaseType) || DatabaseType.MARIADB,
+      environment: options.environment || Environment.DEVELOPMENT,
       host: row.Host,
       port: row.Port,
       user: row.Username,

@@ -4,6 +4,13 @@ export enum DatabaseType {
   MONGODB = 'mongodb',
 }
 
+export enum Environment {
+  PRODUCTION = 'production',
+  STAGING = 'staging',
+  DEVELOPMENT = 'development',
+  LOCAL = 'local',
+}
+
 export interface SshConfig {
   host: string
   port: number
@@ -16,6 +23,7 @@ export interface Connection {
   id: string
   name: string
   type: DatabaseType
+  environment: Environment
   host: string
   port: number
   user: string

@@ -22,6 +22,7 @@ export class QueryService {
     onProgress?: (status: string) => void,
   ): Promise<QueryResponseDto> {
     const connection = await this.connectionService.findEntity(connectionId);
+    if (dto.schema) connection.database = dto.schema;
     const driver = this.connectionService.getDriver(connection);
     const start = Date.now();
 

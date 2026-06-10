@@ -104,6 +104,7 @@ export class ConnectionService {
     dto.id = entity.id;
     dto.name = entity.name;
     dto.type = entity.type;
+    dto.environment = entity.environment;
     dto.host = entity.host;
     dto.port = entity.port;
     dto.user = entity.user;

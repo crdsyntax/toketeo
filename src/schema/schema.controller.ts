@@ -13,8 +13,28 @@ export class SchemaController {
   @ApiResponse({ status: 200, type: [TableResponseDto] })
   async getTables(
     @Param('connectionId') connectionId: string,
+    @Query('schema') schema?: string,
   ): Promise<TableResponseDto[]> {
-    return this.schemaService.getTables(connectionId);
+    return this.schemaService.getTables(connectionId, schema);
+  }
+
+  @Get('schemas')
+  @ApiOperation({ summary: 'List all schemas/databases in the connection' })
+  @ApiResponse({ status: 200, type: [String] })
+  async getSchemas(
+    @Param('connectionId') connectionId: string,
+  ): Promise<string[]> {
+    return this.schemaService.getSchemas(connectionId);
+  }
+
+  @Post('switch-schema')
+  @ApiOperation({ summary: 'Switch the active schema/database' })
+  @ApiResponse({ status: 200 })
+  async switchSchema(
+    @Param('connectionId') connectionId: string,
+    @Body('schema') schema: string,
+  ): Promise<void> {
+    return this.schemaService.switchSchema(connectionId, schema);
   }
 
   @Get('views')
@@ -22,8 +42,9 @@ export class SchemaController {
   @ApiResponse({ status: 200, type: [TableResponseDto] })
   async getViews(
     @Param('connectionId') connectionId: string,
+    @Query('schema') schema?: string,
   ): Promise<TableResponseDto[]> {
-    return this.schemaService.getViews(connectionId);
+    return this.schemaService.getViews(connectionId, schema);
   }
 
   @Get('procedures')
@@ -31,8 +52,9 @@ export class SchemaController {
   @ApiResponse({ status: 200, type: [TableResponseDto] })
   async getProcedures(
     @Param('connectionId') connectionId: string,
+    @Query('schema') schema?: string,
   ): Promise<TableResponseDto[]> {
-    return this.schemaService.getProcedures(connectionId);
+    return this.schemaService.getProcedures(connectionId, schema);
   }
 
   @Get('triggers')
@@ -40,8 +62,9 @@ export class SchemaController {
   @ApiResponse({ status: 200, type: [TableResponseDto] })
   async getTriggers(
     @Param('connectionId') connectionId: string,
+    @Query('schema') schema?: string,
   ): Promise<TableResponseDto[]> {
-    return this.schemaService.getTriggers(connectionId);
+    return this.schemaService.getTriggers(connectionId, schema);
   }
 
   @Get('tables/:tableName/columns')
@@ -50,8 +73,9 @@ export class SchemaController {
   async getColumns(
     @Param('connectionId') connectionId: string,
     @Param('tableName') tableName: string,
+    @Query('schema') schema?: string,
   ): Promise<ColumnResponseDto[]> {
-    return this.schemaService.getColumns(connectionId, tableName);
+    return this.schemaService.getColumns(connectionId, tableName, schema);
   }
 
   @Get('objects/:name/ddl')
@@ -62,8 +86,9 @@ export class SchemaController {
     @Param('connectionId') connectionId: string,
     @Param('name') name: string,
     @Query('type') type: 'table' | 'view' | 'procedure' | 'trigger' = 'table',
+    @Query('schema') schema?: string,
   ): Promise<{ ddl: string }> {
-    const ddl = await this.schemaService.getDDL(connectionId, name, type);
+    const ddl = await this.schemaService.getDDL(connectionId, name, type, schema);
     return { ddl };
   }
 
@@ -75,9 +100,10 @@ export class SchemaController {
     @Param('connectionId') connectionId: string,
     @Param('name') name: string,
     @Query('type') type: 'table' | 'view' | 'procedure' | 'trigger',
+    @Query('schema') schema: string,
     @Body('sql') sql: string,
   ): Promise<void> {
-    return this.schemaService.updateDDL(connectionId, name, type, sql);
+    return this.schemaService.updateDDL(connectionId, name, type, sql, schema);
   }
 
   @Get('objects/:name/parameters')
@@ -88,7 +114,8 @@ export class SchemaController {
     @Param('connectionId') connectionId: string,
     @Param('name') name: string,
     @Query('type') type: 'procedure' | 'function' | 'view',
+    @Query('schema') schema?: string,
   ): Promise<any[]> {
-    return this.schemaService.getParameters(connectionId, name, type);
+    return this.schemaService.getParameters(connectionId, name, type, schema);
   }
 }

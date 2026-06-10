@@ -3,6 +3,8 @@ export interface DatabaseDriver {
   disconnect(): Promise<void>;
   executeQuery<T>(sql: string, params?: unknown[]): Promise<T>;
   getTables(): Promise<string[]>;
+  getSchemas?(): Promise<string[]>;
+  setSchema?(schema: string): void;
   getColumns(table: string): Promise<unknown[]>;
   getDDL(name: string, type?: 'table' | 'view' | 'procedure' | 'trigger'): Promise<string>;
   getParameters?(name: string, type: 'procedure' | 'function' | 'view'): Promise<unknown[]>;
