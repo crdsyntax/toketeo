@@ -12,14 +12,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SchemaService = void 0;
 const common_1 = require("@nestjs/common");
 const connection_service_1 = require("../connection/connection.service");
-const mariadb_driver_1 = require("../connection/drivers/mariadb.driver");
 let SchemaService = class SchemaService {
     connectionService;
     constructor(connectionService) {
         this.connectionService = connectionService;
     }
     async getTables(connectionId) {
-        const driver = await this.getDriver(connectionId);
+        const connection = await this.connectionService.findOne(connectionId);
+        const driver = this.connectionService.getDriver(connection);
         try {
             await driver.connect();
             const tables = await driver.getTables();
@@ -30,10 +30,11 @@ let SchemaService = class SchemaService {
         }
     }
     async getColumns(connectionId, tableName) {
-        const driver = await this.getDriver(connectionId);
+        const connection = await this.connectionService.findOne(connectionId);
+        const driver = this.connectionService.getDriver(connection);
         try {
             await driver.connect();
-            const columns = await driver.getColumns(tableName);
+            const columns = (await driver.getColumns(tableName));
             return columns.map((col) => ({
                 name: col.COLUMN_NAME,
                 type: col.DATA_TYPE,
@@ -43,15 +44,6 @@ let SchemaService = class SchemaService {
         finally {
             await driver.disconnect();
         }
-    }
-    async getDriver(connectionId) {
-        const connection = await this.connectionService.findOne(connectionId);
-        return new mariadb_driver_1.MariaDbDriver({
-            host: connection.host,
-            port: connection.port,
-            user: connection.user,
-            database: connection.database,
-        });
     }
 };
 exports.SchemaService = SchemaService;

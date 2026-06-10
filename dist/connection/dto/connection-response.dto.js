@@ -20,6 +20,7 @@ class ConnectionResponseDto {
     port;
     user;
     database;
+    ssh;
     createdAt;
     updatedAt;
 }
@@ -52,6 +53,10 @@ __decorate([
     (0, swagger_1.ApiProperty)(),
     __metadata("design:type", String)
 ], ConnectionResponseDto.prototype, "database", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: create_connection_dto_1.SshConfigDto, required: false }),
+    __metadata("design:type", create_connection_dto_1.SshConfigDto)
+], ConnectionResponseDto.prototype, "ssh", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)(),
     __metadata("design:type", Date)

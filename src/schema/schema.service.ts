@@ -1,14 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { ConnectionService } from '../connection/connection.service';
-import { MariaDbDriver } from '../connection/drivers/mariadb.driver';
 import { TableResponseDto, ColumnResponseDto } from './dto/schema-response.dto';
+
+interface NormalizedColumn {
+  COLUMN_NAME: string;
+  DATA_TYPE: string;
+  IS_NULLABLE: string;
+}
 
 @Injectable()
 export class SchemaService {
   constructor(private readonly connectionService: ConnectionService) {}
 
   async getTables(connectionId: string): Promise<TableResponseDto[]> {
-    const driver = await this.getDriver(connectionId);
+    const connection = await this.connectionService.findOne(connectionId);
+    const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
       const tables = await driver.getTables();
@@ -22,10 +28,13 @@ export class SchemaService {
     connectionId: string,
     tableName: string,
   ): Promise<ColumnResponseDto[]> {
-    const driver = await this.getDriver(connectionId);
+    const connection = await this.connectionService.findOne(connectionId);
+    const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
-      const columns = await driver.getColumns(tableName);
+      const columns = (await driver.getColumns(
+        tableName,
+      )) as NormalizedColumn[];
       return columns.map((col) => ({
         name: col.COLUMN_NAME,
         type: col.DATA_TYPE,
@@ -36,13 +45,14 @@ export class SchemaService {
     }
   }
 
-  private async getDriver(connectionId: string): Promise<MariaDbDriver> {
+  async getDDL(connectionId: string, tableName: string): Promise<string> {
     const connection = await this.connectionService.findOne(connectionId);
-    return new MariaDbDriver({
-      host: connection.host,
-      port: connection.port,
-      user: connection.user,
-      database: connection.database,
-    });
+    const driver = this.connectionService.getDriver(connection);
+    try {
+      await driver.connect();
+      return await driver.getDDL(tableName);
+    } finally {
+      await driver.disconnect();
+    }
   }
 }

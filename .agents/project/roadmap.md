@@ -11,5 +11,10 @@
 - [ ] Audit logs.
 
 ## Phase 3: Multi-Driver
-- [ ] PostgreSQL support.
+- [x] PostgreSQL support.
 - [ ] MongoDB support.
+
+## Phase 4: Advanced Features
+- [ ] SSH Tunnels.
+- [ ] Query History persistence.
+- [ ] Audit log export (CSV/JSON).

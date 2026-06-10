@@ -35,19 +35,37 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MariaDbDriver = void 0;
 const mysql = __importStar(require("mysql2/promise"));
+const ssh_tunnel_1 = require("../utils/ssh-tunnel");
 class MariaDbDriver {
     config;
+    sshConfig;
     connection = null;
-    constructor(config) {
+    tunnel = null;
+    constructor(config, sshConfig) {
         this.config = config;
+        this.sshConfig = sshConfig;
     }
     async connect() {
-        this.connection = await mysql.createConnection(this.config);
+        let connectionConfig = { ...this.config };
+        if (this.sshConfig) {
+            this.tunnel = new ssh_tunnel_1.SshTunnel();
+            const { host, port } = await this.tunnel.create(this.sshConfig, this.config.host || 'localhost', this.config.port || 3306);
+            connectionConfig = {
+                ...connectionConfig,
+                host,
+                port,
+            };
+        }
+        this.connection = await mysql.createConnection(connectionConfig);
     }
     async disconnect() {
         if (this.connection) {
             await this.connection.end();
             this.connection = null;
+        }
+        if (this.tunnel) {
+            this.tunnel.close();
+            this.tunnel = null;
         }
     }
     async executeQuery(sql, params) {

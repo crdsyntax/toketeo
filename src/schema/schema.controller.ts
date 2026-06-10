@@ -26,4 +26,15 @@ export class SchemaController {
   ): Promise<ColumnResponseDto[]> {
     return this.schemaService.getColumns(connectionId, tableName);
   }
+
+  @Get('tables/:tableName/ddl')
+  @ApiOperation({ summary: 'Get the DDL (CREATE TABLE) of a table' })
+  @ApiResponse({ status: 200, type: String })
+  async getDDL(
+    @Param('connectionId') connectionId: string,
+    @Param('tableName') tableName: string,
+  ): Promise<{ ddl: string }> {
+    const ddl = await this.schemaService.getDDL(connectionId, tableName);
+    return { ddl };
+  }
 }

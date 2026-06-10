@@ -8,4 +8,5 @@ export declare class MariaDbConnectionRepository implements ConnectionRepository
     findAll(): Promise<ConnectionEntity[]>;
     findById(id: string): Promise<ConnectionEntity | null>;
     delete(id: string): Promise<void>;
+    private mapRowToEntity;
 }

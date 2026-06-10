@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --color-background: var(--bg);
+  --color-foreground: var(--text-h);
+
+  --color-primary: var(--accent);
+  --color-primary-foreground: #fff;
+
+  --color-secondary: var(--code-bg);
+  --color-secondary-foreground: var(--text-h);
+
+  --color-muted: var(--code-bg);
+  --color-muted-foreground: var(--text);
+
+  --color-accent: var(--accent-bg);
+  --color-accent-foreground: var(--accent);
+
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #fff;
+}
+
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --radius: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #09090b;
+    --border: #27272a;
+    --code-bg: #18181b;
+    --accent: #aa3bff;
+    --accent-bg: rgba(170, 59, 255, 0.15);
+    --accent-border: rgba(170, 59, 255, 0.5);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}

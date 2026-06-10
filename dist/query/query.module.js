@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const query_service_1 = require("./query.service");
 const query_controller_1 = require("./query.controller");
 const connection_module_1 = require("../connection/connection.module");
+const mariadb_query_history_repository_1 = require("./repositories/mariadb-query-history.repository");
 let QueryModule = class QueryModule {
 };
 exports.QueryModule = QueryModule;
@@ -18,7 +19,13 @@ exports.QueryModule = QueryModule = __decorate([
     (0, common_1.Module)({
         imports: [connection_module_1.ConnectionModule],
         controllers: [query_controller_1.QueryController],
-        providers: [query_service_1.QueryService],
+        providers: [
+            query_service_1.QueryService,
+            {
+                provide: 'QueryHistoryRepository',
+                useClass: mariadb_query_history_repository_1.MariaDbQueryHistoryRepository,
+            },
+        ],
     })
 ], QueryModule);
 //# sourceMappingURL=query.module.js.map

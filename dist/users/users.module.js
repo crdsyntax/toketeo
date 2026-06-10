@@ -8,10 +8,21 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsersModule = void 0;
 const common_1 = require("@nestjs/common");
+const users_service_1 = require("./users.service");
+const mariadb_users_repository_1 = require("./repositories/mariadb-users.repository");
 let UsersModule = class UsersModule {
 };
 exports.UsersModule = UsersModule;
 exports.UsersModule = UsersModule = __decorate([
-    (0, common_1.Module)({})
+    (0, common_1.Module)({
+        providers: [
+            users_service_1.UsersService,
+            {
+                provide: 'UsersRepository',
+                useClass: mariadb_users_repository_1.MariaDbUsersRepository,
+            },
+        ],
+        exports: [users_service_1.UsersService],
+    })
 ], UsersModule);
 //# sourceMappingURL=users.module.js.map

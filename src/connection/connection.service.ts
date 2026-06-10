@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
 import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
+import { PostgresDriver } from './drivers/postgres.driver';
 import { DatabaseDriver } from './interfaces/database-driver.interface';
 import type { ConnectionRepository } from './repositories/connection.repository.interface';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
@@ -51,16 +52,34 @@ export class ConnectionService {
     }
   }
 
-  private getDriver(dto: CreateConnectionDto): DatabaseDriver {
+  getDriver(
+    dto: CreateConnectionDto | ConnectionResponseDto | ConnectionEntity,
+  ): DatabaseDriver {
+    const sshConfig = 'ssh' in dto ? dto.ssh : undefined;
+
     switch (dto.type) {
       case DatabaseType.MARIADB:
-        return new MariaDbDriver({
-          host: dto.host,
-          port: dto.port,
-          user: dto.user,
-          password: dto.password,
-          database: dto.database,
-        });
+        return new MariaDbDriver(
+          {
+            host: dto.host,
+            port: dto.port,
+            user: dto.user,
+            password: 'password' in dto ? dto.password : undefined,
+            database: dto.database,
+          },
+          sshConfig,
+        );
+      case DatabaseType.POSTGRES:
+        return new PostgresDriver(
+          {
+            host: dto.host,
+            port: dto.port,
+            user: dto.user,
+            password: 'password' in dto ? dto.password : undefined,
+            database: dto.database,
+          },
+          sshConfig,
+        );
       default:
         throw new Error(`Unsupported database type: ${dto.type}`);
     }
@@ -75,6 +94,7 @@ export class ConnectionService {
     dto.port = entity.port;
     dto.user = entity.user;
     dto.database = entity.database;
+    dto.ssh = entity.ssh;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;
     return dto;

@@ -5,5 +5,4 @@ export declare class SchemaService {
     constructor(connectionService: ConnectionService);
     getTables(connectionId: string): Promise<TableResponseDto[]>;
     getColumns(connectionId: string, tableName: string): Promise<ColumnResponseDto[]>;
-    private getDriver;
 }

@@ -1,4 +1,4 @@
-import { DatabaseType } from './create-connection.dto';
+import { DatabaseType, SshConfigDto } from './create-connection.dto';
 export declare class ConnectionResponseDto {
     id: string;
     name: string;
@@ -7,6 +7,7 @@ export declare class ConnectionResponseDto {
     port: number;
     user: string;
     database: string;
+    ssh?: SshConfigDto;
     createdAt: Date;
     updatedAt: Date;
 }

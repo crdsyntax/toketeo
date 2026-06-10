@@ -17,6 +17,7 @@ exports.ConnectionService = void 0;
 const common_1 = require("@nestjs/common");
 const create_connection_dto_1 = require("./dto/create-connection.dto");
 const mariadb_driver_1 = require("./drivers/mariadb.driver");
+const postgres_driver_1 = require("./drivers/postgres.driver");
 const connection_response_dto_1 = require("./dto/connection-response.dto");
 let ConnectionService = ConnectionService_1 = class ConnectionService {
     repository;
@@ -57,15 +58,24 @@ let ConnectionService = ConnectionService_1 = class ConnectionService {
         }
     }
     getDriver(dto) {
+        const sshConfig = 'ssh' in dto ? dto.ssh : undefined;
         switch (dto.type) {
             case create_connection_dto_1.DatabaseType.MARIADB:
                 return new mariadb_driver_1.MariaDbDriver({
                     host: dto.host,
                     port: dto.port,
                     user: dto.user,
-                    password: dto.password,
+                    password: 'password' in dto ? dto.password : undefined,
                     database: dto.database,
-                });
+                }, sshConfig);
+            case create_connection_dto_1.DatabaseType.POSTGRES:
+                return new postgres_driver_1.PostgresDriver({
+                    host: dto.host,
+                    port: dto.port,
+                    user: dto.user,
+                    password: 'password' in dto ? dto.password : undefined,
+                    database: dto.database,
+                }, sshConfig);
             default:
                 throw new Error(`Unsupported database type: ${dto.type}`);
         }
@@ -79,6 +89,7 @@ let ConnectionService = ConnectionService_1 = class ConnectionService {
         dto.port = entity.port;
         dto.user = entity.user;
         dto.database = entity.database;
+        dto.ssh = entity.ssh;
         dto.createdAt = entity.createdAt;
         dto.updatedAt = entity.updatedAt;
         return dto;

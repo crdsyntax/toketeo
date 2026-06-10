@@ -3,6 +3,13 @@ export declare enum DatabaseType {
     POSTGRES = "postgres",
     MONGODB = "mongodb"
 }
+export declare class SshConfigDto {
+    host: string;
+    port: number;
+    user: string;
+    password?: string;
+    privateKey?: string;
+}
 export declare class CreateConnectionDto {
     name: string;
     type: DatabaseType;
@@ -11,4 +18,5 @@ export declare class CreateConnectionDto {
     user: string;
     password?: string;
     database: string;
+    ssh?: SshConfigDto;
 }

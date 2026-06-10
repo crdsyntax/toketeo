@@ -62,8 +62,8 @@ let MariaDbConnectionRepository = MariaDbConnectionRepository_1 = class MariaDbC
     async save(connection) {
         const id = connection.id || crypto.randomUUID();
         const sql = `
-      INSERT INTO connections (id, name, type, host, port, user, password, database)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO connections (id, name, type, host, port, user, password, database, ssh)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         name = VALUES(name),
         host = VALUES(host),
@@ -71,6 +71,7 @@ let MariaDbConnectionRepository = MariaDbConnectionRepository_1 = class MariaDbC
         user = VALUES(user),
         password = VALUES(password),
         database = VALUES(database),
+        ssh = VALUES(ssh),
         updatedAt = CURRENT_TIMESTAMP
     `;
         await this.pool.execute(sql, [
@@ -82,6 +83,7 @@ let MariaDbConnectionRepository = MariaDbConnectionRepository_1 = class MariaDbC
             connection.user ?? null,
             connection.password ?? null,
             connection.database ?? null,
+            connection.ssh ? JSON.stringify(connection.ssh) : null,
         ]);
         const result = await this.findById(id);
         if (!result) {
@@ -90,19 +92,39 @@ let MariaDbConnectionRepository = MariaDbConnectionRepository_1 = class MariaDbC
         return result;
     }
     async findAll() {
-        const sql = 'SELECT id, name, type, host, port, user, database, createdAt, updatedAt FROM connections';
+        const sql = 'SELECT id, name, type, host, port, user, database, ssh, createdAt, updatedAt FROM connections';
         const [rows] = await this.pool.execute(sql);
-        return rows;
+        return rows.map((row) => this.mapRowToEntity(row));
     }
     async findById(id) {
-        const sql = 'SELECT id, name, type, host, port, user, database, createdAt, updatedAt FROM connections WHERE id = ?';
+        const sql = 'SELECT id, name, type, host, port, user, database, ssh, createdAt, updatedAt FROM connections WHERE id = ?';
         const [rows] = await this.pool.execute(sql, [id]);
         const connections = rows;
-        return connections.length > 0 ? connections[0] : null;
+        if (connections.length === 0)
+            return null;
+        return this.mapRowToEntity(connections[0]);
     }
     async delete(id) {
         const sql = 'DELETE FROM connections WHERE id = ?';
         await this.pool.execute(sql, [id]);
+    }
+    mapRowToEntity(row) {
+        return {
+            id: row.id,
+            name: row.name,
+            type: row.type,
+            host: row.host,
+            port: row.port,
+            user: row.user,
+            database: row.database,
+            ssh: row.ssh
+                ? (typeof row.ssh === 'string'
+                    ? JSON.parse(row.ssh)
+                    : row.ssh)
+                : undefined,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+        };
     }
 };
 exports.MariaDbConnectionRepository = MariaDbConnectionRepository;

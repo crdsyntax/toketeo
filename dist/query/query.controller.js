@@ -17,6 +17,10 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const query_service_1 = require("./query.service");
 const query_execution_dto_1 = require("./dto/query-execution.dto");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const user_entity_1 = require("../users/entities/user.entity");
+const roles_guard_1 = require("../auth/guards/roles.guard");
+const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 let QueryController = class QueryController {
     queryService;
     constructor(queryService) {
@@ -29,6 +33,7 @@ let QueryController = class QueryController {
 exports.QueryController = QueryController;
 __decorate([
     (0, common_1.Post)('execute'),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.DEVELOPER),
     (0, swagger_1.ApiOperation)({ summary: 'Execute a raw SQL query' }),
     (0, swagger_1.ApiResponse)({ status: 200, type: query_execution_dto_1.QueryResponseDto }),
     __param(0, (0, common_1.Param)('connectionId')),
@@ -39,7 +44,9 @@ __decorate([
 ], QueryController.prototype, "execute", null);
 exports.QueryController = QueryController = __decorate([
     (0, swagger_1.ApiTags)('query'),
+    (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.Controller)('connections/:connectionId/query'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __metadata("design:paramtypes", [query_service_1.QueryService])
 ], QueryController);
 //# sourceMappingURL=query.controller.js.map

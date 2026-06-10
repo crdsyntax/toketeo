@@ -4,4 +4,7 @@ export interface DatabaseDriver {
     executeQuery<T>(sql: string, params?: any[]): Promise<T>;
     getTables(): Promise<string[]>;
     getColumns(table: string): Promise<any[]>;
+    getViews?(): Promise<string[]>;
+    getProcedures?(): Promise<string[]>;
+    getTriggers?(): Promise<string[]>;
 }

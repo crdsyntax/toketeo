@@ -10,6 +10,7 @@ class ConnectionEntity {
     user;
     password;
     database;
+    ssh;
     createdAt;
     updatedAt;
 }
