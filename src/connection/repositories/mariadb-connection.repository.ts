@@ -1,65 +1,75 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
+import * as dotenv from 'dotenv';
 import { ConnectionRepository } from './connection.repository.interface';
 import { ConnectionEntity } from '../entities/connection.entity';
 import { DatabaseType, SshConfigDto } from '../dto/create-connection.dto';
+import { withRetry } from '../../common/utils/retry';
 
 interface DbRow {
-  id: string;
-  name: string;
-  type: string;
-  host: string;
-  port: number;
-  user: string;
-  database: string;
-  ssh: string | null | Record<string, any>;
-  createdAt: Date;
-  updatedAt: Date;
+  Server_name: string;
+  Host: string;
+  Db: string;
+  Username: string;
+  Password?: string;
+  Port: number;
+  Wrapper: string;
+  Options: string; // JSON string in MariaDB for mysql.servers
 }
 
 @Injectable()
 export class MariaDbConnectionRepository implements ConnectionRepository {
   private readonly logger = new Logger(MariaDbConnectionRepository.name);
-  private pool: mysql.Pool;
+  private pool: mysql.Pool | null = null;
 
-  constructor() {
-    this.pool = mysql.createPool({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'toketeo',
-      waitForConnections: true,
-      connectionLimit: 10,
-    });
+  private getPool(): mysql.Pool {
+    if (!this.pool) {
+      this.pool = mysql.createPool({
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: 'mysql',
+        waitForConnections: true,
+        connectionLimit: 10,
+      });
+    }
+    return this.pool;
   }
 
   async save(connection: Partial<ConnectionEntity>): Promise<ConnectionEntity> {
     const id = connection.id || crypto.randomUUID();
+    const options = JSON.stringify({
+      name: connection.name,
+      type: connection.type,
+      ssh: connection.ssh,
+    });
+
     const sql = `
-      INSERT INTO connections (id, name, type, host, port, user, password, database, ssh)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO mysql.servers (Server_name, Host, Db, Username, Password, Port, Wrapper, Options)
+      VALUES (?, ?, ?, ?, ?, ?, 'mysql', ?)
       ON DUPLICATE KEY UPDATE
-        name = VALUES(name),
-        host = VALUES(host),
-        port = VALUES(port),
-        user = VALUES(user),
-        password = VALUES(password),
-        database = VALUES(database),
-        ssh = VALUES(ssh),
-        updatedAt = CURRENT_TIMESTAMP
+        Host = VALUES(Host),
+        Db = VALUES(Db),
+        Username = VALUES(Username),
+        Password = VALUES(Password),
+        Port = VALUES(Port),
+        Options = VALUES(Options)
     `;
 
-    await this.pool.execute(sql, [
-      id,
-      connection.name ?? null,
-      connection.type ?? null,
-      connection.host ?? null,
-      connection.port ?? null,
-      connection.user ?? null,
-      connection.password ?? null,
-      connection.database ?? null,
-      connection.ssh ? JSON.stringify(connection.ssh) : null,
-    ]);
+    await withRetry(
+      () => this.getPool().execute(sql, [
+        id,
+        connection.host ?? 'localhost',
+        connection.database ?? '',
+        connection.user ?? 'root',
+        connection.password ?? '',
+        connection.port ?? 3306,
+        options,
+      ]),
+      3,
+      1000,
+      'Save connection',
+    );
 
     const result = await this.findById(id);
     if (!result) {
@@ -70,15 +80,25 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
 
   async findAll(): Promise<ConnectionEntity[]> {
     const sql =
-      'SELECT id, name, type, host, port, user, database, ssh, createdAt, updatedAt FROM connections';
-    const [rows] = await this.pool.execute(sql);
+      'SELECT Server_name, Host, Db, Username, Password, Port, Wrapper, Options FROM mysql.servers';
+    const [rows] = await withRetry(
+      () => this.getPool().execute(sql),
+      3,
+      1000,
+      'Find all connections',
+    );
     return (rows as DbRow[]).map((row) => this.mapRowToEntity(row));
   }
 
   async findById(id: string): Promise<ConnectionEntity | null> {
     const sql =
-      'SELECT id, name, type, host, port, user, database, ssh, createdAt, updatedAt FROM connections WHERE id = ?';
-    const [rows] = await this.pool.execute(sql, [id]);
+      'SELECT Server_name, Host, Db, Username, Password, Port, Wrapper, Options FROM mysql.servers WHERE Server_name = ?';
+    const [rows] = await withRetry(
+      () => this.getPool().execute(sql, [id]),
+      3,
+      1000,
+      'Find connection by ID',
+    );
     const connections = rows as DbRow[];
     if (connections.length === 0) return null;
 
@@ -86,26 +106,37 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
   }
 
   async delete(id: string): Promise<void> {
-    const sql = 'DELETE FROM connections WHERE id = ?';
-    await this.pool.execute(sql, [id]);
+    const sql = 'DELETE FROM mysql.servers WHERE Server_name = ?';
+
+    await withRetry(
+      () => this.getPool().execute(sql, [id]),
+      3,
+      1000,
+      'Delete connection',
+    );
   }
 
   private mapRowToEntity(row: DbRow): ConnectionEntity {
+    let options: { name?: string; type?: string; ssh?: SshConfigDto } = {};
+    try {
+      options = JSON.parse(row.Options || '{}') as typeof options;
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      this.logger.error(`Failed to parse options for ${row.Server_name}: ${message}`);
+    }
+
     return {
-      id: row.id,
-      name: row.name,
-      type: row.type as DatabaseType,
-      host: row.host,
-      port: row.port,
-      user: row.user,
-      database: row.database,
-      ssh: row.ssh
-        ? ((typeof row.ssh === 'string'
-            ? JSON.parse(row.ssh)
-            : row.ssh) as SshConfigDto)
-        : undefined,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      id: row.Server_name,
+      name: options.name || row.Server_name,
+      type: (options.type as DatabaseType) || DatabaseType.MARIADB,
+      host: row.Host,
+      port: row.Port,
+      user: row.Username,
+      password: row.Password,
+      database: row.Db,
+      ssh: options.ssh,
+      createdAt: new Date(), // mysql.servers doesn't have timestamps
+      updatedAt: new Date(),
     };
   }
 }

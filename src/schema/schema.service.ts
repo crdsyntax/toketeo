@@ -13,7 +13,7 @@ export class SchemaService {
   constructor(private readonly connectionService: ConnectionService) {}
 
   async getTables(connectionId: string): Promise<TableResponseDto[]> {
-    const connection = await this.connectionService.findOne(connectionId);
+    const connection = await this.connectionService.findEntity(connectionId);
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
@@ -28,7 +28,7 @@ export class SchemaService {
     connectionId: string,
     tableName: string,
   ): Promise<ColumnResponseDto[]> {
-    const connection = await this.connectionService.findOne(connectionId);
+    const connection = await this.connectionService.findEntity(connectionId);
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();
@@ -46,7 +46,7 @@ export class SchemaService {
   }
 
   async getDDL(connectionId: string, tableName: string): Promise<string> {
-    const connection = await this.connectionService.findOne(connectionId);
+    const connection = await this.connectionService.findEntity(connectionId);
     const driver = this.connectionService.getDriver(connection);
     try {
       await driver.connect();

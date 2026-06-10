@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Database, LayoutGrid, Terminal, Settings, ChevronRight, Activity } from 'lucide-react'
+import { Database, LayoutGrid, Terminal, Settings, ChevronRight, Activity, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function MainLayout() {
@@ -9,7 +9,8 @@ export default function MainLayout() {
     { name: 'Connections', icon: Database, path: '/' },
     { name: 'Explorer', icon: LayoutGrid, path: '/explorer' },
     { name: 'Query Editor', icon: Terminal, path: '/query' },
-    { name: 'Audit', icon: Activity, path: '/audit' },
+    { name: 'Logs', icon: Activity, path: '/logs' },
+    { name: 'Audit', icon: FileText, path: '/audit' },
   ]
 
   return (

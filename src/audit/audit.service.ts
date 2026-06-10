@@ -14,7 +14,7 @@ export class AuditService {
     action: AuditAction,
     resource: string,
     resourceId?: string,
-    metadata?: Record<string, any>,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     await this.repository.create({
       userId,

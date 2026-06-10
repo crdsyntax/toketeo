@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 import { QueryHistoryRepository } from './query-history.repository.interface';
 import { QueryHistoryEntity } from '../entities/query-history.entity';
+import { withRetry } from '../../common/utils/retry';
 
 interface HistoryRow {
   id: string;
@@ -16,32 +17,13 @@ interface HistoryRow {
 
 @Injectable()
 export class MariaDbQueryHistoryRepository implements QueryHistoryRepository {
-  private pool: mysql.Pool;
+  private readonly logger = new Logger(MariaDbQueryHistoryRepository.name);
 
-  constructor() {
-    this.pool = mysql.createPool({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'toketeo',
-    });
-  }
+  constructor() {}
 
   async save(history: Partial<QueryHistoryEntity>): Promise<void> {
-    const sql = `
-      INSERT INTO query_history (id, connectionId, userId, \`sql\`, executionTime, status, errorMessage)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    const id = crypto.randomUUID();
-    await this.pool.execute(sql, [
-      id,
-      history.connectionId ?? null,
-      history.userId ?? null,
-      history.sql ?? null,
-      history.executionTime ?? 0,
-      history.status ?? 'SUCCESS',
-      history.errorMessage || null,
-    ]);
+    this.logger.log(`Query History: ${JSON.stringify(history)}`);
+    // Persistent storage disabled to avoid custom tables
   }
 
   async findByConnection(
@@ -49,10 +31,7 @@ export class MariaDbQueryHistoryRepository implements QueryHistoryRepository {
     limit: number,
     offset: number,
   ): Promise<QueryHistoryEntity[]> {
-    const sql =
-      'SELECT * FROM query_history WHERE connectionId = ? ORDER BY executedAt DESC LIMIT ? OFFSET ?';
-    const [rows] = await this.pool.execute(sql, [connectionId, limit, offset]);
-    return (rows as HistoryRow[]).map((row) => this.mapRowToEntity(row));
+    return [];
   }
 
   async findByUser(
@@ -60,10 +39,7 @@ export class MariaDbQueryHistoryRepository implements QueryHistoryRepository {
     limit: number,
     offset: number,
   ): Promise<QueryHistoryEntity[]> {
-    const sql =
-      'SELECT * FROM query_history WHERE userId = ? ORDER BY executedAt DESC LIMIT ? OFFSET ?';
-    const [rows] = await this.pool.execute(sql, [userId, limit, offset]);
-    return (rows as HistoryRow[]).map((row) => this.mapRowToEntity(row));
+    return [];
   }
 
   private mapRowToEntity(row: HistoryRow): QueryHistoryEntity {

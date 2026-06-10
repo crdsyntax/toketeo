@@ -20,7 +20,7 @@ export class QueryService {
     connectionId: string,
     dto: ExecuteQueryDto,
   ): Promise<QueryResponseDto> {
-    const connection = await this.connectionService.findOne(connectionId);
+    const connection = await this.connectionService.findEntity(connectionId);
     const driver = this.connectionService.getDriver(connection);
     const start = Date.now();
 

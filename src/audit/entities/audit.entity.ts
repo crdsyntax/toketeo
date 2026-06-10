@@ -12,6 +12,6 @@ export class AuditEntity {
   action: AuditAction;
   resource: string;
   resourceId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   timestamp: Date;
 }

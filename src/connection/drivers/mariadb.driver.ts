@@ -53,7 +53,7 @@ export class MariaDbDriver implements DatabaseDriver {
     }
   }
 
-  async executeQuery<T>(sql: string, params?: any[]): Promise<T> {
+  async executeQuery<T>(sql: string, params?: unknown[]): Promise<T> {
     if (!this.connection) {
       throw new Error('Driver not connected');
     }
@@ -77,7 +77,7 @@ export class MariaDbDriver implements DatabaseDriver {
   }
 
   async getDDL(table: string): Promise<string> {
-    const rows = await this.executeQuery<any[]>(`SHOW CREATE TABLE \`${table}\``);
+    const rows = await this.executeQuery<{ 'Create Table': string }[]>(`SHOW CREATE TABLE \`${table}\``);
     return rows[0]['Create Table'];
   }
 }

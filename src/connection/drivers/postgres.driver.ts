@@ -44,12 +44,12 @@ export class PostgresDriver implements DatabaseDriver {
     }
   }
 
-  async executeQuery<T>(sql: string, params?: any[]): Promise<T> {
+  async executeQuery<T>(sql: string, params?: unknown[]): Promise<T> {
     if (!this.client) {
       throw new Error('Driver not connected');
     }
-    const result = await this.client.query(sql, params);
-    return result.rows as T;
+    const res = await this.client.query(sql, params);
+    return res.rows as T;
   }
 
   async getTables(): Promise<string[]> {
@@ -59,9 +59,9 @@ export class PostgresDriver implements DatabaseDriver {
     return rows.map((row) => row.table_name);
   }
 
-  async getColumns(table: string): Promise<any[]> {
-    return this.executeQuery<any[]>(
-      "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1",
+  async getColumns(table: string): Promise<{ column_name: string; data_type: string; is_nullable: string }[]> {
+    return this.executeQuery<{ column_name: string; data_type: string; is_nullable: string }[]>(
+      'SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = ?',
       [table],
     );
   }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 import { UsersRepository } from './users.repository.interface';
 import { UserEntity } from '../entities/user.entity';
+import { withRetry } from '../../common/utils/retry';
 
 @Injectable()
 export class MariaDbUsersRepository implements UsersRepository {
@@ -13,48 +14,74 @@ export class MariaDbUsersRepository implements UsersRepository {
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
       password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'toketeo',
+      database: 'mysql',
       waitForConnections: true,
       connectionLimit: 10,
     });
   }
 
   async create(user: Partial<UserEntity>): Promise<UserEntity> {
-    const id = crypto.randomUUID();
-    const sql = `
-      INSERT INTO users (id, username, email, passwordHash, role, isActive)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    await this.pool.execute(sql, [
-      id,
-      user.username ?? null,
-      user.email ?? null,
-      user.passwordHash ?? null,
-      user.role ?? null,
-      user.isActive ? 1 : 0,
-    ]);
-    const result = await this.findById(id);
+    const username = user.username;
+    if (!username) throw new Error('Username is required');
+
+    // Using MariaDB/MySQL CREATE USER syntax
+    // We store the role as a DB role and use the passwordHash as the password
+    const sql = `CREATE USER IF NOT EXISTS ?@'%' IDENTIFIED BY ?`;
+    await withRetry(
+      () => this.pool.execute(sql, [username, user.passwordHash || '']),
+      3,
+      1000,
+      'Create DB user',
+    );
+
+    // If role is provided, we could try to GRANT it, but for now we just return the entity
+    const result = await this.findByUsername(username);
     if (!result) throw new Error('Failed to create user');
     return result;
   }
 
   async findById(id: string): Promise<UserEntity | null> {
-    const sql = 'SELECT * FROM users WHERE id = ?';
-    const [rows] = await this.pool.execute(sql, [id]);
-    const users = rows as UserEntity[];
-    return users.length > 0 ? users[0] : null;
+    // In mysql.user, there is no UUID 'id', so we use 'User' as the identifier
+    return this.findByUsername(id);
   }
 
   async findByUsername(username: string): Promise<UserEntity | null> {
-    const sql = 'SELECT * FROM users WHERE username = ?';
-    const [rows] = await this.pool.execute(sql, [username]);
-    const users = rows as UserEntity[];
-    return users.length > 0 ? users[0] : null;
+    const sql = 'SELECT User, Host FROM mysql.user WHERE User = ?';
+    const [rows] = await withRetry(
+      () => this.pool.execute(sql, [username]),
+      3,
+      1000,
+      'Find DB user',
+    );
+    const dbUsers = rows as { User: string; Host: string }[];
+    if (dbUsers.length === 0) return null;
+
+    return {
+      id: dbUsers[0].User,
+      username: dbUsers[0].User,
+      email: `${dbUsers[0].User}@local`, // Email is not native to mysql.user
+      passwordHash: '', // We don't retrieve passwords from mysql.user
+      role: 'USER',
+      isActive: true,
+    };
   }
 
   async findAll(): Promise<UserEntity[]> {
-    const sql = 'SELECT * FROM users';
-    const [rows] = await this.pool.execute(sql);
-    return rows as UserEntity[];
+    const sql = 'SELECT User, Host FROM mysql.user';
+    const [rows] = await withRetry(
+      () => this.pool.execute(sql),
+      3,
+      1000,
+      'Find all DB users',
+    );
+    const dbUsers = rows as { User: string; Host: string }[];
+    return dbUsers.map(u => ({
+      id: u.User,
+      username: u.User,
+      email: `${u.User}@local`,
+      passwordHash: '',
+      role: 'USER',
+      isActive: true,
+    }));
   }
 }

@@ -34,6 +34,14 @@ export class ConnectionService {
     return this.mapToResponseDto(connection);
   }
 
+  async findEntity(id: string): Promise<ConnectionEntity> {
+    const connection = await this.repository.findById(id);
+    if (!connection) {
+      throw new NotFoundException(`Connection with ID ${id} not found`);
+    }
+    return connection;
+  }
+
   async remove(id: string): Promise<void> {
     await this.findOne(id);
     await this.repository.delete(id);
