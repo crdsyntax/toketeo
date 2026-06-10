@@ -10,9 +10,12 @@ import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { ExportModule } from './export/export.module';
 import { LogsModule } from './logs/logs.module';
+import { SystemModule } from './system/system.module';
+import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
   imports: [
+    StorageModule,
     ConnectionModule,
     SchemaModule,
     QueryModule,
@@ -22,8 +25,10 @@ import { LogsModule } from './logs/logs.module';
     AuditModule,
     ExportModule,
     LogsModule,
+    SystemModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
+

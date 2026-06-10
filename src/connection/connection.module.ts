@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConnectionService } from './connection.service';
 import { ConnectionController } from './connection.controller';
-import { MariaDbConnectionRepository } from './repositories/mariadb-connection.repository';
+import { SqliteConnectionRepository } from '../modules/storage/repositories/sqlite-connection.repository';
 
 @Module({
   controllers: [ConnectionController],
@@ -9,7 +9,7 @@ import { MariaDbConnectionRepository } from './repositories/mariadb-connection.r
     ConnectionService,
     {
       provide: 'ConnectionRepository',
-      useClass: MariaDbConnectionRepository,
+      useClass: SqliteConnectionRepository,
     },
   ],
   exports: [ConnectionService],

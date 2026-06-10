@@ -96,6 +96,8 @@ export default function Connections() {
     const data = Object.fromEntries(formData.entries())
     
     const payload: any = {
+      name: data.name || 'Test Connection',
+      environment: data.environment || Environment.DEVELOPMENT,
       type: data.type,
       host: data.host,
       port: Number(data.port),
