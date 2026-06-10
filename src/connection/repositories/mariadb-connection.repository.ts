@@ -9,8 +9,6 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
   private pool: mysql.Pool;
 
   constructor() {
-    // Note: Connection details for the app's own DB should come from ConfigService
-    // For now, initializing with placeholders or environment variables
     this.pool = mysql.createPool({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
@@ -38,16 +36,20 @@ export class MariaDbConnectionRepository implements ConnectionRepository {
     
     await this.pool.execute(sql, [
       id,
-      connection.name,
-      connection.type,
-      connection.host,
-      connection.port,
-      connection.user,
-      connection.password,
-      connection.database,
+      connection.name ?? null,
+      connection.type ?? null,
+      connection.host ?? null,
+      connection.port ?? null,
+      connection.user ?? null,
+      connection.password ?? null,
+      connection.database ?? null,
     ]);
 
-    return this.findById(id) as Promise<ConnectionEntity>;
+    const result = await this.findById(id);
+    if (!result) {
+      throw new Error('Failed to retrieve saved connection');
+    }
+    return result;
   }
 
   async findAll(): Promise<ConnectionEntity[]> {

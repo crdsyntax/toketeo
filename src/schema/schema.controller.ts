@@ -11,7 +11,9 @@ export class SchemaController {
   @Get('tables')
   @ApiOperation({ summary: 'List all tables in the connection' })
   @ApiResponse({ status: 200, type: [TableResponseDto] })
-  async getTables(@Param('connectionId') connectionId: string): Promise<TableResponseDto[]> {
+  async getTables(
+    @Param('connectionId') connectionId: string,
+  ): Promise<TableResponseDto[]> {
     return this.schemaService.getTables(connectionId);
   }
 

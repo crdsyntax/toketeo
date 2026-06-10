@@ -11,7 +11,16 @@ import { AuditModule } from './audit/audit.module';
 import { ExportModule } from './export/export.module';
 
 @Module({
-  imports: [ConnectionModule, SchemaModule, QueryModule, ExplorerModule, UsersModule, AuthModule, AuditModule, ExportModule],
+  imports: [
+    ConnectionModule,
+    SchemaModule,
+    QueryModule,
+    ExplorerModule,
+    UsersModule,
+    AuthModule,
+    AuditModule,
+    ExportModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

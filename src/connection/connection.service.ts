@@ -2,8 +2,9 @@ import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
 import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
 import { DatabaseDriver } from './interfaces/database-driver.interface';
-import { ConnectionRepository } from './repositories/connection.repository.interface';
+import type { ConnectionRepository } from './repositories/connection.repository.interface';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
+import { ConnectionEntity } from './entities/connection.entity';
 
 @Injectable()
 export class ConnectionService {
@@ -43,8 +44,9 @@ export class ConnectionService {
       await driver.connect();
       await driver.disconnect();
       return true;
-    } catch (error) {
-      this.logger.error(`Connection failed: ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Connection failed: ${message}`);
       return false;
     }
   }
@@ -64,7 +66,7 @@ export class ConnectionService {
     }
   }
 
-  private mapToResponseDto(entity: any): ConnectionResponseDto {
+  private mapToResponseDto(entity: ConnectionEntity): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = entity.id;
     dto.name = entity.name;

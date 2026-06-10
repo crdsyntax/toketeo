@@ -1,4 +1,14 @@
-import { Controller, Post, Body, Get, Param, Delete, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  Delete,
+  BadRequestException,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConnectionService } from './connection.service';
 import { CreateConnectionDto } from './dto/create-connection.dto';
@@ -12,7 +22,9 @@ export class ConnectionController {
   @Post()
   @ApiOperation({ summary: 'Create a new database connection' })
   @ApiResponse({ status: 201, type: ConnectionResponseDto })
-  async create(@Body() dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
+  async create(
+    @Body() dto: CreateConnectionDto,
+  ): Promise<ConnectionResponseDto> {
     return this.connectionService.create(dto);
   }
 
