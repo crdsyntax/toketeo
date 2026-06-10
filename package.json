@@ -2,7 +2,7 @@
   "name": "toketeo",
   "version": "0.0.1",
   "description": "Toketeo Database Client and Administration Panel",
-  "author": "Bioonix <info@bioonix.com>",
+  "author": "crdsyntax",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -96,6 +96,7 @@
   "build": {
     "appId": "com.toketeo.app",
     "productName": "Toketeo",
+    "asar": false,
     "directories": {
       "output": "dist-electron"
     },
