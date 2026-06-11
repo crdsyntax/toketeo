@@ -110,12 +110,12 @@ export function ResultsPanel({
             <table className="w-full text-left text-xs border-collapse">
               <thead className="sticky top-0 bg-background border-b border-border z-10 shadow-sm">
                 <tr>
-                  {activeTab.results.columns.map(col => (
+                  {activeTab.results.columns.map((col: string) => (
                     <th key={col} onClick={() => requestSort(col)} className="p-2 font-bold bg-muted/50 border-r border-border cursor-pointer hover:bg-muted transition-colors">
                       <div className="flex items-center justify-between gap-1">
                         <span className="truncate">{col}</span>
                         {sortConfig?.key === col ? (
-                          sortConfig.direction === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-primary" /> : <ArrowDown className="w-2.5 h-2.5 text-primary" />
+                          sortConfig?.direction === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-primary" /> : <ArrowDown className="w-2.5 h-2.5 text-primary" />
                         ) : (
                           <ArrowUpDown className="w-2.5 h-2.5 opacity-20" />
                         )}
@@ -127,7 +127,7 @@ export function ResultsPanel({
               <tbody>
                 {sortedRows.map((row, i) => (
                   <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
-                    {activeTab.results!.columns.map(col => (
+                    {activeTab.results!.columns.map((col: string) => (
                       <td 
                         key={col} 
                         onDoubleClick={() => setEditingCell({ rowIndex: i, column: col, value: row[col] })} 

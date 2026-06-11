@@ -1,17 +1,17 @@
 import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Tab } from '@/store/useAppStore'
+import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
 
 interface ResultsModalProps {
-  showResultModal: boolean
-  activeTab: Tab | null
+  isOpen: boolean
+  activeTab: QueryTab | null
   modalRect: { x: number; y: number; w: number; h: number }
   isMaximized: boolean
   draggingRef: React.MutableRefObject<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>
   resizingRef: React.MutableRefObject<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>
-  handlePopout: () => void
-  setShowResultModal: (show: boolean) => void
+  handlePopout?: () => void
+  onClose: () => void
   toggleMaximize: () => void
   sortedRows: DbRow[]
   requestSort: (key: string) => void
@@ -23,11 +23,11 @@ interface ResultsModalProps {
 }
 
 export function ResultsModal({
-  showResultModal, activeTab, modalRect, isMaximized, draggingRef, resizingRef,
-  handlePopout, setShowResultModal, toggleMaximize, sortedRows, requestSort,
+  isOpen, activeTab, modalRect, isMaximized, draggingRef, resizingRef,
+  handlePopout, onClose, toggleMaximize, sortedRows, requestSort,
   sortConfig, setEditingCell, editingCell, handleSave, setModalRect
 }: ResultsModalProps) {
-  if (!showResultModal || !activeTab?.results) return null
+  if (!isOpen || !activeTab?.results) return null
 
   return (
     <div className="fixed inset-0 z-[100] bg-background p-4 overflow-hidden text-left">
@@ -61,7 +61,7 @@ export function ResultsModal({
 
           <div className="flex items-center h-full">
             <button 
-              onClick={handlePopout}
+              onClick={() => handlePopout?.()}
               className="h-full px-3 hover:bg-muted text-muted-foreground transition-colors"
               title="External window"
             >
@@ -69,7 +69,7 @@ export function ResultsModal({
             </button>
             <div className="w-[1px] h-4 bg-border mx-1" />
             <button 
-              onClick={() => setShowResultModal(false)}
+              onClick={() => onClose()}
               className="h-full px-3 hover:bg-muted text-muted-foreground transition-colors"
               title="Minimize"
             >
@@ -83,7 +83,7 @@ export function ResultsModal({
               {isMaximized ? <Copy className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
             <button 
-              onClick={() => setShowResultModal(false)} 
+              onClick={() => onClose()} 
               className="h-full px-4 hover:bg-destructive hover:text-destructive-foreground transition-colors"
               title="Close"
             >
@@ -95,7 +95,7 @@ export function ResultsModal({
           <table className="w-full text-left text-sm border-collapse">
             <thead className="sticky top-0 bg-background border-b border-border z-10">
               <tr>
-                {activeTab.results.columns.map((col) => (
+                {activeTab.results.columns.map((col: string) => (
                   <th 
                     key={col} 
                     onClick={() => requestSort(col)}
@@ -104,7 +104,7 @@ export function ResultsModal({
                     <div className="flex items-center justify-between gap-2">
                       {col}
                       {sortConfig?.key === col ? (
-                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                        sortConfig?.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                       ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
                     </div>
                   </th>
@@ -114,7 +114,7 @@ export function ResultsModal({
             <tbody>
               {sortedRows.map((row, i) => (
                 <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
-                  {activeTab.results!.columns.map((col) => (
+                  {activeTab.results!.columns.map((col: string) => (
                     <td 
                       key={col} 
                       onDoubleClick={() => setEditingCell({ rowIndex: i, column: col, value: row[col] })}

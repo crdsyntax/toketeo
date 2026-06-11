@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Connection, QueryResult } from '@/types/database'
+import type { Connection, QueryResult, DbValue } from '@/types/database'
 
-export interface Tab {
+export type { DbValue }
+export interface QueryTab {
   id: string
   name: string
   query: string
@@ -17,12 +18,12 @@ interface AppState {
   activeConnection: Connection | null
   setActiveConnection: (connection: Connection | null) => void
   setActiveConnectionDatabase: (database: string) => void
-  tabs: Tab[]
+  tabs: QueryTab[]
   activeTabId: string | null
   addTab: () => void
   removeTab: (id: string) => void
   updateTabQuery: (id: string, query: string) => void
-  updateTabResults: (id: string, updates: Partial<Pick<Tab, 'results' | 'status' | 'error'>>) => void
+  updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
   setActiveTabId: (id: string) => void
   panels: {
     editor: boolean

@@ -1,10 +1,10 @@
 import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Tab } from '@/store/useAppStore'
+import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
 
 interface ResultsPanelProps {
-  activeTab: Tab | null
+  activeTab: QueryTab | null
   panels: { editor: boolean; results: boolean }
   togglePanel: (panel: 'editor' | 'results') => void
   editingCell: { rowIndex: number; column: string; value: DbValue } | null
@@ -14,7 +14,7 @@ interface ResultsPanelProps {
   requestSort: (key: string) => void
   sortConfig: { key: string; direction: 'asc' | 'desc' } | null
   sortedRows: DbRow[]
-  updateTabResults: (tabId: string, updates: Partial<Tab>) => void
+  updateTabResults: (tabId: string, updates: Partial<QueryTab>) => void
 }
 
 export function ResultsPanel({
@@ -98,7 +98,7 @@ export function ResultsPanel({
                       <div className="flex items-center justify-between gap-1">
                         <span className="truncate">{col}</span>
                         {sortConfig?.key === col ? (
-                          sortConfig.direction === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-primary" /> : <ArrowDown className="w-2.5 h-2.5 text-primary" />
+                          sortConfig?.direction === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-primary" /> : <ArrowDown className="w-2.5 h-2.5 text-primary" />
                         ) : <ArrowUpDown className="w-2.5 h-2.5 opacity-20" />}
                       </div>
                     </th>

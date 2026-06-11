@@ -87,7 +87,8 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
     entity.userId = row.user_id;
     entity.sql = row.sql;
     entity.executionTime = Number(row.execution_time);
-    entity.status = row.status;
+    const status = row.status === 'SUCCESS' || row.status === 'ERROR' ? row.status : 'SUCCESS';
+    entity.status = status;
     entity.errorMessage = row.error_message || undefined;
     entity.executedAt = new Date(row.executed_at + 'Z');
     return entity;

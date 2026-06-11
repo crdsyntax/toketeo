@@ -4,11 +4,11 @@ import type { Monaco } from '@monaco-editor/react'
 import { ChevronUp, ChevronDown, Play, Loader2, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCallback } from 'react'
-import type { Tab } from '@/store/useAppStore'
+import type { QueryTab } from '@/store/useAppStore'
 import type { Connection } from '@/types/database'
 
 interface SqlEditorProps {
-  activeTab: Tab | null
+  activeTab: QueryTab | null
   panels: { editor: boolean; results: boolean }
   togglePanel: (panel: 'editor' | 'results') => void
   handleExecute: () => void

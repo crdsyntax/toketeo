@@ -26,7 +26,7 @@ export function useExplorer() {
   const [search, setSearch] = useState('')
   const [selectedItem, setSelectedItem] = useState<DatabaseObject | null>(null)
   const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers'>('tables')
-  const [activeTab, setActiveTab] = useState<'columns' | 'data' | 'ddl'>('columns')
+  const [activeTab, setActiveTab] = useState<'columns' | 'data' | 'ddl' | 'indexes' | 'foreign-keys' | 'constraints'>('columns')
   const currentSchema = activeConnection?.database || ''
 
   const [page, setPage] = useState(0)

@@ -69,7 +69,7 @@ export class MariaDbDriver implements DatabaseDriver {
     if (!this.connection) {
       throw new Error('Driver not connected');
     }
-    const [rows] = await this.connection.execute(sql, params);
+    const [rows] = await this.connection.execute(sql, params as mysql.RowDataPacket[]);
     return rows as T;
   }
 

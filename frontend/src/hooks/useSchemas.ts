@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
 import { useAppStore } from '@/store/useAppStore'
+import type { Connection } from '@/types/database'
 
 export function useSchemas() {
-  const { activeConnection, setActiveConnectionDatabase } = useAppStore()
+  const { activeConnection, setActiveConnection } = useAppStore()
   const queryClient = useQueryClient()
 
   const { data: schemas, isLoading } = useQuery({
