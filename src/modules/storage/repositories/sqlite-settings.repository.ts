@@ -15,23 +15,23 @@ export class SqliteSettingsRepository {
         VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `,
-      args: [key, value]
+      args: [key, value],
     });
   }
 
   async get(key: string): Promise<string | null> {
     const rs = await this.sqlite.getClient().execute({
       sql: `SELECT value FROM settings WHERE key = ?`,
-      args: [key]
+      args: [key],
     });
     const row = rs.rows[0];
-    return row ? row.value as string : null;
+    return row ? (row.value as string) : null;
   }
 
   async delete(key: string): Promise<void> {
     await this.sqlite.getClient().execute({
       sql: 'DELETE FROM settings WHERE key = ?',
-      args: [key]
+      args: [key],
     });
   }
 }

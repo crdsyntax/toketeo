@@ -36,9 +36,20 @@ export default function Explorer() {
     filteredItems,
     columns,
     isLoadingColumns,
+    indexes,
+    isLoadingIndexes,
+    foreignKeys,
+    isLoadingForeignKeys,
+    constraints,
+    isLoadingConstraints,
     isLoadingDDL,
     parameters,
     updateDdlMutation,
+    editColumnMutation,
+    dropColumnMutation,
+    dropIndexMutation,
+    dropForeignKeyMutation,
+    dropConstraintMutation,
     handleExecute,
     handleCancel,
     handleRefetch
@@ -67,7 +78,7 @@ export default function Explorer() {
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-6 relative">
       {showParamModal && (
-        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-left">
             <div className="p-4 border-b border-border bg-muted/20 flex justify-between items-center">
               <h4 className="font-bold flex items-center gap-2">
@@ -138,6 +149,12 @@ export default function Explorer() {
           setActiveTab={setActiveTab}
           columns={columns}
           isLoadingColumns={isLoadingColumns}
+          indexes={indexes}
+          isLoadingIndexes={isLoadingIndexes}
+          foreignKeys={foreignKeys}
+          isLoadingForeignKeys={isLoadingForeignKeys}
+          constraints={constraints}
+          isLoadingConstraints={isLoadingConstraints}
           isLoadingData={executionStatus === 'executing'}
           executionStatus={executionStatus}
           executionError={executionError}
@@ -152,6 +169,11 @@ export default function Explorer() {
           editableDdl={editableDdl}
           setEditableDdl={setEditableDdl}
           updateDdlMutation={updateDdlMutation}
+          editColumnMutation={editColumnMutation}
+          dropColumnMutation={dropColumnMutation}
+          dropIndexMutation={dropIndexMutation}
+          dropForeignKeyMutation={dropForeignKeyMutation}
+          dropConstraintMutation={dropConstraintMutation}
         />
       </div>
     </div>

@@ -13,13 +13,13 @@ export function useSchemas() {
   })
 
   const switchSchema = useMutation({
-    mutationFn: (schema: string) => apiFetch(`/connections/${activeConnection?.id}/schema/switch-schema`, {
+    mutationFn: (schema: string) => apiFetch<Connection>(`/connections/${activeConnection?.id}/schema/switch-schema`, {
       method: 'POST',
       body: JSON.stringify({ schema })
     }),
-    onSuccess: async (_, schema) => {
-      setActiveConnectionDatabase(schema)
-      await queryClient.invalidateQueries({ 
+    onSuccess: (updatedConnection) => {
+      setActiveConnection(updatedConnection)
+      queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey.includes(activeConnection?.id)
       })
     }

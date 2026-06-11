@@ -2,8 +2,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ConnectionRepository } from '../../../connection/repositories/connection.repository.interface';
 import { ConnectionEntity } from '../../../connection/entities/connection.entity';
-import { CreateConnectionDto, Environment, DatabaseType } from '../../../connection/dto/create-connection.dto';
+import {
+  CreateConnectionDto,
+  Environment,
+  DatabaseType,
+  SshConfigDto,
+} from '../../../connection/dto/create-connection.dto';
 import { SqliteService } from '../sqlite.service';
+
+interface ConnectionRow {
+  id: string;
+  name: string;
+  environment: string;
+  type: string;
+  host: string;
+  port: number;
+  database: string | null;
+  user: string;
+  password: string | null;
+  ssh: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 @Injectable()
 export class SqliteConnectionRepository implements ConnectionRepository {
@@ -12,17 +32,21 @@ export class SqliteConnectionRepository implements ConnectionRepository {
   constructor(private readonly sqlite: SqliteService) {}
 
   async findAll(): Promise<ConnectionEntity[]> {
-    const rs = await this.sqlite.getClient().execute('SELECT * FROM connections');
-    return rs.rows.map(row => this.mapToEntity(row as any));
+    const rs = await this.sqlite
+      .getClient()
+      .execute('SELECT * FROM connections');
+    return rs.rows.map((row) =>
+      this.mapToEntity(row as unknown as ConnectionRow),
+    );
   }
 
   async findById(id: string): Promise<ConnectionEntity | null> {
     const rs = await this.sqlite.getClient().execute({
       sql: 'SELECT * FROM connections WHERE id = ?',
-      args: [id]
+      args: [id],
     });
     const row = rs.rows[0];
-    return row ? this.mapToEntity(row as any) : null;
+    return row ? this.mapToEntity(row as unknown as ConnectionRow) : null;
   }
 
   async save(
@@ -32,9 +56,9 @@ export class SqliteConnectionRepository implements ConnectionRepository {
     const client = this.sqlite.getClient();
 
     if (isUpdate) {
-      const entity = data as ConnectionEntity;
+      const entity = data;
       entity.updatedAt = new Date();
-      
+
       await client.execute({
         sql: `
           UPDATE connections 
@@ -47,16 +71,16 @@ export class SqliteConnectionRepository implements ConnectionRepository {
           entity.type,
           entity.host,
           entity.port,
-          entity.database,
+          entity.database || null,
           entity.user,
           entity.password || null,
           entity.ssh ? JSON.stringify(entity.ssh) : null,
-          entity.id
-        ]
+          entity.id,
+        ],
       });
       return entity;
     } else {
-      const dto = data as CreateConnectionDto;
+      const dto = data;
       const newEntity = new ConnectionEntity();
       newEntity.id = randomUUID();
       newEntity.name = dto.name;
@@ -83,11 +107,11 @@ export class SqliteConnectionRepository implements ConnectionRepository {
           newEntity.type,
           newEntity.host,
           newEntity.port,
-          newEntity.database,
+          newEntity.database || null,
           newEntity.user,
           newEntity.password || null,
-          newEntity.ssh ? JSON.stringify(newEntity.ssh) : null
-        ]
+          newEntity.ssh ? JSON.stringify(newEntity.ssh) : null,
+        ],
       });
       return newEntity;
     }
@@ -96,11 +120,11 @@ export class SqliteConnectionRepository implements ConnectionRepository {
   async delete(id: string): Promise<void> {
     await this.sqlite.getClient().execute({
       sql: 'DELETE FROM connections WHERE id = ?',
-      args: [id]
+      args: [id],
     });
   }
 
-  private mapToEntity(row: any): ConnectionEntity {
+  private mapToEntity(row: ConnectionRow): ConnectionEntity {
     const entity = new ConnectionEntity();
     entity.id = row.id;
     entity.name = row.name;
@@ -108,11 +132,11 @@ export class SqliteConnectionRepository implements ConnectionRepository {
     entity.type = row.type as DatabaseType;
     entity.host = row.host;
     entity.port = Number(row.port);
-    entity.database = row.database;
+    entity.database = row.database || undefined;
     entity.user = row.user;
     entity.password = row.password || undefined;
-    entity.ssh = row.ssh ? JSON.parse(row.ssh) : undefined;
-    entity.createdAt = new Date(row.created_at + 'Z'); 
+    entity.ssh = row.ssh ? (JSON.parse(row.ssh) as SshConfigDto) : undefined;
+    entity.createdAt = new Date(row.created_at + 'Z');
     entity.updatedAt = new Date(row.updated_at + 'Z');
     return entity;
   }

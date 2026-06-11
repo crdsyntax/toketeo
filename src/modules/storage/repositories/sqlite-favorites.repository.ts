@@ -9,6 +9,13 @@ export interface FavoriteEntity {
   createdAt: Date;
 }
 
+interface FavoriteRow {
+  id: string;
+  name: string;
+  query: string;
+  created_at: string;
+}
+
 @Injectable()
 export class SqliteFavoritesRepository {
   private readonly logger = new Logger(SqliteFavoritesRepository.name);
@@ -23,9 +30,9 @@ export class SqliteFavoritesRepository {
         INSERT INTO favorites (id, name, query)
         VALUES (?, ?, ?)
       `,
-      args: [id, name, query]
+      args: [id, name, query],
     });
-    
+
     return {
       id,
       name,
@@ -39,18 +46,21 @@ export class SqliteFavoritesRepository {
       SELECT * FROM favorites ORDER BY created_at DESC
     `);
 
-    return rs.rows.map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      query: row.query,
-      createdAt: new Date(row.created_at + 'Z'),
-    }));
+    return rs.rows.map((row) => {
+      const r = row as unknown as FavoriteRow;
+      return {
+        id: r.id,
+        name: r.name,
+        query: r.query,
+        createdAt: new Date(r.created_at + 'Z'),
+      };
+    });
   }
 
   async delete(id: string): Promise<void> {
     await this.sqlite.getClient().execute({
       sql: 'DELETE FROM favorites WHERE id = ?',
-      args: [id]
+      args: [id],
     });
   }
 }

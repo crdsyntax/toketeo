@@ -22,11 +22,11 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: Conn
 
   return (
     <div className={cn(
-      "group relative border border-border bg-card p-5 rounded-xl hover:shadow-md transition-shadow overflow-hidden text-left",
+      "group relative border border-border bg-card p-5 rounded-none hover:shadow-md transition-shadow overflow-hidden text-left",
       connection.environment === Environment.PRODUCTION && "border-l-4 border-l-red-500"
     )}>
       <div className="flex items-start justify-between mb-4">
-        <div className="p-2 bg-primary/10 rounded-lg">
+        <div className="p-2 bg-primary/10 rounded-none">
           <Database className="w-6 h-6 text-primary" />
         </div>
         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -57,10 +57,12 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: Conn
           <Globe className="w-3.5 h-3.5" />
           <span>{connection.host}:{connection.port}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Server className="w-3.5 h-3.5" />
-          <span className="truncate">{connection.database}</span>
-        </div>
+        {connection.database && (
+          <div className="flex items-center gap-2">
+            <Server className="w-3.5 h-3.5" />
+            <span className="truncate">{connection.database}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2 pt-1">
           <div className="uppercase font-semibold text-[10px] tracking-wider bg-muted px-2 py-0.5 rounded">
             {connection.type}

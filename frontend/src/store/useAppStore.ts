@@ -29,6 +29,8 @@ interface AppState {
     results: boolean
   }
   togglePanel: (panel: 'editor' | 'results') => void
+  isSidebarOpen: boolean
+  toggleSidebar: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -47,6 +49,8 @@ export const useAppStore = create<AppState>()(
       togglePanel: (panel) => set((state) => ({
         panels: { ...state.panels, [panel]: !state.panels[panel] }
       })),
+      isSidebarOpen: true,
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       addTab: () => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {

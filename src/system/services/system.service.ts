@@ -8,7 +8,11 @@ interface MysqlStatus {
 
 const MYSQL_PORTS = [3306, 3307, 33060];
 
-function checkPort(host: string, port: number, timeoutMs: number): Promise<boolean> {
+function checkPort(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let resolved = false;

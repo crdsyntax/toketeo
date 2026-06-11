@@ -57,14 +57,14 @@ export default function LogViewer() {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsPaused(!isPaused)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-none border border-border hover:bg-muted transition-colors text-sm font-medium"
           >
             {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
             {isPaused ? 'Resume' : 'Pause'}
           </button>
           <button 
             onClick={() => setLogs([])}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors text-sm font-medium text-destructive"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-none border border-border hover:bg-muted transition-colors text-sm font-medium text-destructive"
           >
             <Trash2 className="w-4 h-4" />
             Clear
@@ -72,7 +72,7 @@ export default function LogViewer() {
         </div>
       </div>
 
-      <div className="flex-1 bg-[#09090b] border border-border rounded-xl overflow-hidden flex flex-col font-mono text-xs">
+      <div className="flex-1 bg-[#09090b] border border-border rounded-none overflow-hidden flex flex-col font-mono text-xs">
         <div className="bg-muted/30 px-4 py-2 border-b border-border flex items-center gap-2 text-muted-foreground">
           <Terminal className="w-4 h-4" />
           <span>Console Output</span>

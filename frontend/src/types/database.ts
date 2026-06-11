@@ -33,6 +33,8 @@ export interface QueryResult {
   columns: string[];
   rows: DbRow[];
   executionTime: number;
+  affectedRows?: number;
+  message?: string;
 }
 
 export interface TableColumn {
@@ -72,7 +74,7 @@ export interface Connection {
   port: number
   user: string
   password?: string
-  database: string
+  database?: string
   ssh?: SshConfig
   createdAt: string
   updatedAt: string

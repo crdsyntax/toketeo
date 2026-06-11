@@ -4,6 +4,7 @@ import { ExecuteQueryDto, QueryResponseDto } from './dto/query-execution.dto';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit.entity';
 import type { QueryHistoryRepository } from './repositories/query-history.repository.interface';
+import { QueryResultInfo } from '../connection/interfaces/database-driver.interface';
 
 @Injectable()
 export class QueryService {
@@ -35,15 +36,33 @@ export class QueryService {
       }
 
       onProgress?.('executing');
-      const rows = await driver.executeQuery<Record<string, unknown>[]>(
-        dto.sql,
-        dto.params,
-      );
+      const result = await driver.executeQuery<
+        QueryResultInfo | Record<string, unknown>[]
+      >(dto.sql, dto.params);
       const executionTime = Date.now() - start;
 
       let columns: string[] = [];
-      if (Array.isArray(rows) && rows.length > 0) {
-        columns = Object.keys(rows[0]);
+      let rows: any[] = [];
+      let affectedRows: number | undefined;
+      let message: string | undefined;
+
+      // Handle MariaDB/MySQL result format
+      if (
+        result &&
+        typeof result === 'object' &&
+        !Array.isArray(result) &&
+        'affectedRows' in result
+      ) {
+        const info = result;
+        affectedRows = info.affectedRows;
+        message = `Query OK, ${affectedRows ?? 0} rows affected`;
+      }
+      // Handle Postgres/Drivers returning array of rows
+      else if (Array.isArray(result)) {
+        rows = result;
+        if (rows.length > 0) {
+          columns = Object.keys(rows[0] as Record<string, unknown>);
+        }
       }
 
       // Persist history (Success)
@@ -66,8 +85,10 @@ export class QueryService {
 
       return {
         columns,
-        rows: Array.isArray(rows) ? rows : [rows],
+        rows,
         executionTime,
+        affectedRows,
+        message,
       };
     } catch (error: unknown) {
       const executionTime = Date.now() - start;

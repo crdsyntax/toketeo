@@ -76,9 +76,10 @@ export class CreateConnectionDto {
   @IsOptional()
   password?: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  database: string;
+  database?: string;
 
   @ApiProperty({ type: SshConfigDto, required: false })
   @IsOptional()

@@ -30,11 +30,11 @@ export function ResultsModal({
   if (!showResultModal || !activeTab?.results) return null
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm p-4 overflow-hidden text-left">
+    <div className="fixed inset-0 z-[100] bg-background p-4 overflow-hidden text-left">
       <div 
         className={cn(
           "bg-card border border-border shadow-2xl flex flex-col overflow-hidden absolute transition-all duration-200",
-          isMaximized ? "" : "rounded-xl"
+          isMaximized ? "" : "rounded-none"
         )}
         style={{ 
           top: `${modalRect.y}%`, 

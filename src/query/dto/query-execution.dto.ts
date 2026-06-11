@@ -27,4 +27,16 @@ export class QueryResponseDto {
 
   @ApiProperty({ description: 'Execution time in milliseconds' })
   executionTime: number;
+
+  @ApiProperty({
+    description: 'Number of rows affected by the query',
+    required: false,
+  })
+  affectedRows?: number;
+
+  @ApiProperty({
+    description: 'Informational message from the server',
+    required: false,
+  })
+  message?: string;
 }

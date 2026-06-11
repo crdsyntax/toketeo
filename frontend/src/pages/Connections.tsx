@@ -86,7 +86,7 @@ export default function Connections() {
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-none font-medium hover:opacity-90 transition-opacity"
         >
           <Plus className="w-4 h-4" />
           New Connection
@@ -96,7 +96,7 @@ export default function Connections() {
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-40 bg-muted animate-pulse rounded-lg" />
+            <div key={i} className="h-40 bg-muted animate-pulse rounded-none" />
           ))}
         </div>
       ) : (

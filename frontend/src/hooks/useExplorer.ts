@@ -27,14 +27,7 @@ export function useExplorer() {
   const [selectedItem, setSelectedItem] = useState<DatabaseObject | null>(null)
   const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers'>('tables')
   const [activeTab, setActiveTab] = useState<'columns' | 'data' | 'ddl'>('columns')
-  const [currentSchema, setCurrentSchema] = useState(activeConnection?.database || '')
-
-  useEffect(() => {
-    if (activeConnection?.database) {
-      setCurrentSchema(activeConnection.database)
-      setSelectedItem(null)
-    }
-  }, [activeConnection?.database])
+  const currentSchema = activeConnection?.database || ''
 
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(50)
@@ -47,6 +40,18 @@ export function useExplorer() {
   const [editableDdl, setEditableDdl] = useState('')
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
   const [showParamModal, setShowParamModal] = useState(false)
+
+  // Reset selection when connection or schema changes
+  useEffect(() => {
+    setSelectedItem(null)
+  }, [activeConnection?.id, currentSchema])
+
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['tables', activeConnection?.id] })
+    queryClient.invalidateQueries({ queryKey: ['views', activeConnection?.id] })
+    queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection?.id] })
+    queryClient.invalidateQueries({ queryKey: ['triggers', activeConnection?.id] })
+  }, [currentSchema, activeConnection?.id, queryClient])
 
   useEffect(() => {
     const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/queries`)
@@ -104,10 +109,35 @@ export function useExplorer() {
     enabled: !!activeConnection,
   })
 
+  const handleRefetch = useCallback(() => {
+    if (sidebarTab === 'tables') refetchTables()
+    else if (sidebarTab === 'views') refetchViews()
+    else if (sidebarTab === 'procedures') refetchProcedures()
+    else if (sidebarTab === 'triggers') refetchTriggers()
+  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers])
+
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
     queryFn: () => apiFetch<ColumnInfo[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns?schema=${currentSchema}`),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'table' || selectedItem.type === 'view'),
+  })
+
+  const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
+    queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema],
+    queryFn: () => apiFetch<any[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/indexes?schema=${currentSchema}`),
+    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
+  })
+
+  const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
+    queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema],
+    queryFn: () => apiFetch<any[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/foreign-keys?schema=${currentSchema}`),
+    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
+  })
+
+  const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
+    queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema],
+    queryFn: () => apiFetch<any[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/constraints?schema=${currentSchema}`),
+    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
   })
 
   const { data: ddlData, isLoading: isLoadingDDL } = useQuery({
@@ -140,6 +170,53 @@ export function useExplorer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection?.id, selectedItem] })
       handleRefetch()
+    }
+  })
+
+  const editColumnMutation = useMutation({
+    mutationFn: (sql: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns?schema=${currentSchema}`, {
+      method: 'POST',
+      body: JSON.stringify({ sql })
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
+      handleRefetch()
+    }
+  })
+
+  const dropColumnMutation = useMutation({
+    mutationFn: (columnName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns/${columnName}?schema=${currentSchema}`, {
+      method: 'DELETE'
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
+    }
+  })
+
+  const dropIndexMutation = useMutation({
+    mutationFn: (indexName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/indexes/${indexName}?schema=${currentSchema}`, {
+      method: 'DELETE'
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
+    }
+  })
+
+  const dropForeignKeyMutation = useMutation({
+    mutationFn: (constraintName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/foreign-keys/${constraintName}?schema=${currentSchema}`, {
+      method: 'DELETE'
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema] })
+    }
+  })
+
+  const dropConstraintMutation = useMutation({
+    mutationFn: (constraintName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/constraints/${constraintName}?schema=${currentSchema}`, {
+      method: 'DELETE'
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
@@ -189,13 +266,6 @@ export function useExplorer() {
     }
   }
 
-  const handleRefetch = () => {
-    if (sidebarTab === 'tables') refetchTables()
-    else if (sidebarTab === 'views') refetchViews()
-    else if (sidebarTab === 'procedures') refetchProcedures()
-    else if (sidebarTab === 'triggers') refetchTriggers()
-  }
-
   const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers
 
   const getFilteredItems = () => {
@@ -238,9 +308,20 @@ export function useExplorer() {
     filteredItems,
     columns,
     isLoadingColumns,
+    indexes,
+    isLoadingIndexes,
+    foreignKeys,
+    isLoadingForeignKeys,
+    constraints,
+    isLoadingConstraints,
     isLoadingDDL,
     parameters,
     updateDdlMutation,
+    editColumnMutation,
+    dropColumnMutation,
+    dropIndexMutation,
+    dropForeignKeyMutation,
+    dropConstraintMutation,
     handleExecute,
     handleCancel,
     handleRefetch

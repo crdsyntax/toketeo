@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+} from '@nestjs/common';
 import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
 import { PostgresDriver } from './drivers/postgres.driver';
@@ -20,7 +26,9 @@ export class ConnectionService {
   async create(dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
     const connections = await this.repository.findAll();
     if (connections.some((c) => c.name === dto.name)) {
-      throw new BadRequestException(`Connection with name "${dto.name}" already exists`);
+      throw new BadRequestException(
+        `Connection with name "${dto.name}" already exists`,
+      );
     }
     const connection = await this.repository.save(dto);
     return this.mapToResponseDto(connection);
@@ -47,13 +55,18 @@ export class ConnectionService {
     return connection;
   }
 
-  async update(id: string, dto: Partial<CreateConnectionDto>): Promise<ConnectionResponseDto> {
+  async update(
+    id: string,
+    dto: Partial<CreateConnectionDto>,
+  ): Promise<ConnectionResponseDto> {
     const connection = await this.findEntity(id);
-    
+
     if (dto.name && dto.name !== connection.name) {
       const connections = await this.repository.findAll();
       if (connections.some((c) => c.name === dto.name)) {
-        throw new BadRequestException(`Connection with name "${dto.name}" already exists`);
+        throw new BadRequestException(
+          `Connection with name "${dto.name}" already exists`,
+        );
       }
     }
 
@@ -111,10 +124,10 @@ export class ConnectionService {
       case DatabaseType.MONGODB: {
         const password = 'password' in dto ? dto.password : '';
         const uri = `mongodb://${dto.user}:${password}@${dto.host}:${dto.port}`;
-        return new MongoDbDriver(uri, dto.database, sshConfig);
+        return new MongoDbDriver(uri, dto.database || '', sshConfig);
       }
       default:
-        throw new Error(`Unsupported database type: ${dto.type}`);
+        throw new Error(`Unsupported database type: ${dto.type as string}`);
     }
   }
 
@@ -127,7 +140,7 @@ export class ConnectionService {
     dto.host = entity.host;
     dto.port = entity.port;
     dto.user = entity.user;
-    dto.database = entity.database;
+    dto.database = entity.database || '';
     dto.ssh = entity.ssh;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;

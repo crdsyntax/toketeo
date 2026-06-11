@@ -1,5 +1,13 @@
-import { MongoClient, Db } from 'mongodb';
-import { DatabaseDriver } from '../interfaces/database-driver.interface';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { MongoClient, Db, Document } from 'mongodb';
+import {
+  DatabaseDriver,
+  ColumnMetadata,
+  IndexMetadata,
+  ForeignKeyMetadata,
+  ConstraintMetadata,
+  ParameterMetadata,
+} from '../interfaces/database-driver.interface';
 import { SshConfigDto } from '../dto/create-connection.dto';
 import { SshTunnel } from '../utils/ssh-tunnel';
 
@@ -19,14 +27,13 @@ export class MongoDbDriver implements DatabaseDriver {
 
     if (this.sshConfig) {
       this.tunnel = new SshTunnel();
-      // Extract host and port from URI for tunnel
       const url = new URL(this.uri);
       const { host, port } = await this.tunnel.create(
         this.sshConfig,
         url.hostname,
         parseInt(url.port) || 27017,
       );
-      
+
       url.hostname = host;
       url.port = port.toString();
       finalUri = url.toString();
@@ -53,8 +60,8 @@ export class MongoDbDriver implements DatabaseDriver {
       throw new Error('Driver not connected');
     }
     const adminDb = this.client.db().admin();
-    const { databases } = await adminDb.listDatabases();
-    return databases.map((db: any) => db.name);
+    const result = await adminDb.listDatabases();
+    return result.databases.map((db) => db.name);
   }
 
   setSchema(schema: string): void {
@@ -68,18 +75,15 @@ export class MongoDbDriver implements DatabaseDriver {
       throw new Error('Driver not connected');
     }
 
-    // In MongoDB context, we expect command to be a JSON string representing a command
-    // or a specialized syntax for our application.
-    // For now, let's assume it's a JSON command for db.command()
     try {
-      const cmdObj = JSON.parse(command);
+      const cmdObj = JSON.parse(command) as Document;
       const result = await this.db.command(cmdObj);
-      return result as T;
-    } catch (e) {
-      // If it's not JSON, it might be a collection name for find
+      return result as unknown as T;
+    } catch {
       const collection = this.db.collection(command);
-      const result = await collection.find(params?.[0] || {}).toArray();
-      return result as T;
+      const filter = (params?.[0] as Document) || {};
+      const result = await collection.find(filter).toArray();
+      return result as unknown as T;
     }
   }
 
@@ -91,32 +95,43 @@ export class MongoDbDriver implements DatabaseDriver {
     return collections.map((col) => col.name);
   }
 
-  async getColumns(collectionName: string): Promise<unknown[]> {
+  async getColumns(collectionName: string): Promise<ColumnMetadata[]> {
     if (!this.db) {
       throw new Error('Driver not connected');
     }
-    // MongoDB is schema-less, but we can infer schema from the first document
     const collection = this.db.collection(collectionName);
     const doc = await collection.findOne();
     if (!doc) return [];
 
     return Object.keys(doc).map((key) => ({
-      COLUMN_NAME: key,
-      DATA_TYPE: typeof doc[key],
-      IS_NULLABLE: 'YES',
+      name: key,
+      type: typeof doc[key],
+      isNullable: true,
     }));
   }
 
+  async getIndexes(_: string): Promise<IndexMetadata[]> {
+    return Promise.resolve([]);
+  }
+
+  async getForeignKeys(_: string): Promise<ForeignKeyMetadata[]> {
+    return Promise.resolve([]);
+  }
+
+  async getConstraints(_: string): Promise<ConstraintMetadata[]> {
+    return Promise.resolve([]);
+  }
+
   async getParameters(
-    _name: string,
-    _type: 'procedure' | 'function' | 'view',
-  ): Promise<any[]> {
-    return [];
+    _1: string,
+    _2: 'procedure' | 'function' | 'view',
+  ): Promise<ParameterMetadata[]> {
+    return Promise.resolve([]);
   }
 
   async getDDL(
     name: string,
-    _type: 'table' | 'view' | 'procedure' | 'trigger' = 'table',
+    _: 'table' | 'view' | 'procedure' | 'trigger' = 'table',
   ): Promise<string> {
     if (!this.db) {
       throw new Error('Driver not connected');
@@ -126,7 +141,6 @@ export class MongoDbDriver implements DatabaseDriver {
   }
 
   async cancelQuery(): Promise<void> {
-    // MongoDB driver handles cancellation via AbortSignal or closing client
     if (this.client) {
       await this.client.close();
       this.client = null;

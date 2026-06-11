@@ -108,8 +108,24 @@ export function useQueryEditor() {
     }
   }, [updateTabResults])
 
-  const handleExecute = useCallback(() => {
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+
+  const checkDangerousQuery = useCallback((sql: string): boolean => {
+    const upperSql = sql.toUpperCase()
+    const hasUpdate = upperSql.includes('UPDATE')
+    const hasDelete = upperSql.includes('DELETE')
+    const hasWhere = upperSql.includes('WHERE')
+
+    if ((hasUpdate || hasDelete) && !hasWhere) {
+      return !window.confirm('Warning: This query contains an UPDATE or DELETE statement without a WHERE clause. Are you sure you want to proceed?')
+    }
+    return false
+  }, [])
+
+  const handleExecuteAll = useCallback(() => {
     if (activeTab?.query && activeConnection && socketRef.current) {
+      if (checkDangerousQuery(activeTab.query)) return
+
       const sql = activeTab.query.trim().endsWith(';') ? activeTab.query.trim() : `${activeTab.query.trim()};`
       
       updateTabResults(activeTab.id, { status: 'executing', error: null, results: null })
@@ -119,7 +135,47 @@ export function useQueryEditor() {
         tabId: activeTab.id
       })
     }
-  }, [activeTab, activeConnection, updateTabResults])
+  }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
+
+  const handleExecuteCurrent = useCallback(() => {
+    if (!editorRef.current || !activeTab || !activeConnection || !socketRef.current) return
+
+    const position = editorRef.current.getPosition()
+    if (!position) return
+
+    const fullText = editorRef.current.getValue()
+    const lines = fullText.split('\n')
+    
+    // Find the current statement based on semicolons
+    let startLine = position.lineNumber - 1
+    let endLine = position.lineNumber - 1
+    
+    // Simple logic: get the line if it has content, or find boundaries
+    // Professional approach: split by ; and find which block contains the cursor
+    // For now, let's just use the current line or current selection
+    const selection = editorRef.current.getSelection()
+    let sql = ''
+    
+    if (selection && !selection.isEmpty()) {
+      sql = editorRef.current.getModel()?.getValueInRange(selection) || ''
+    } else {
+      // Find boundaries by looking for semicolons
+      // This is a simplified version
+      sql = lines[position.lineNumber - 1].trim()
+      if (!sql) return
+    }
+
+    if (checkDangerousQuery(sql)) return
+
+    if (!sql.endsWith(';')) sql += ';'
+    
+    updateTabResults(activeTab.id, { status: 'executing', error: null, results: null })
+    socketRef.current.emit('execute-query', {
+      connectionId: activeConnection.id,
+      dto: { sql },
+      tabId: activeTab.id
+    })
+  }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
 
   const handleCancel = () => {
     if (activeTabId && socketRef.current && activeConnection) {
@@ -230,8 +286,9 @@ export function useQueryEditor() {
   }, [])
 
   const handleEditorDidMount = useCallback((editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
-    editorInstance.addCommand(monacoInstance.KeyMod.Ctrl | monacoInstance.KeyCode.Enter, handleExecute)
-  }, [handleExecute])
+    editorRef.current = editorInstance
+    editorInstance.addCommand(monacoInstance.KeyMod.Ctrl | monacoInstance.KeyCode.Enter, handleExecuteCurrent)
+  }, [handleExecuteCurrent])
 
   const sortedRows = useMemo(() => {
     if (!activeTab?.results?.rows) return []
@@ -267,6 +324,19 @@ export function useQueryEditor() {
     }
   }
 
+  const handleSaveScript = useCallback(() => {
+    if (!activeTab?.query) return
+    const blob = new Blob([activeTab.query], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab.name}.sql`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [activeTab])
+
   return {
     activeConnection,
     tabs,
@@ -295,9 +365,11 @@ export function useQueryEditor() {
     toggleMaximize,
     editingCell,
     setEditingCell,
-    handleExecute,
+    handleExecuteAll,
+    handleExecuteCurrent,
     handleCancel,
     handleSave,
+    handleSaveScript,
     handleEditorWillMount,
     handleEditorDidMount,
     draggingRef,

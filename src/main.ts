@@ -10,7 +10,6 @@ import { GlobalLoggerService } from './logs/services/global-logger.service';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
-
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });

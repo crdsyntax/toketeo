@@ -4,6 +4,16 @@ import { AuditRepository } from '../../../audit/repositories/audit.repository.in
 import { AuditEntity, AuditAction } from '../../../audit/entities/audit.entity';
 import { SqliteService } from '../sqlite.service';
 
+interface AuditLogRow {
+  id: string;
+  user_id: string;
+  action: string;
+  resource: string;
+  resource_id: string | null;
+  metadata: string | null;
+  timestamp: string;
+}
+
 @Injectable()
 export class SqliteAuditRepository implements AuditRepository {
   private readonly logger = new Logger(SqliteAuditRepository.name);
@@ -24,7 +34,7 @@ export class SqliteAuditRepository implements AuditRepository {
         audit.resource || '',
         audit.resourceId || null,
         audit.metadata ? JSON.stringify(audit.metadata) : null,
-      ]
+      ],
     });
   }
 
@@ -35,10 +45,12 @@ export class SqliteAuditRepository implements AuditRepository {
         ORDER BY timestamp DESC 
         LIMIT ? OFFSET ?
       `,
-      args: [limit, offset]
+      args: [limit, offset],
     });
 
-    return rs.rows.map(row => this.mapToEntity(row as any));
+    return rs.rows.map((row) =>
+      this.mapToEntity(row as unknown as AuditLogRow),
+    );
   }
 
   async findByUser(userId: string): Promise<AuditEntity[]> {
@@ -48,20 +60,24 @@ export class SqliteAuditRepository implements AuditRepository {
         WHERE user_id = ? 
         ORDER BY timestamp DESC
       `,
-      args: [userId]
+      args: [userId],
     });
 
-    return rs.rows.map(row => this.mapToEntity(row as any));
+    return rs.rows.map((row) =>
+      this.mapToEntity(row as unknown as AuditLogRow),
+    );
   }
 
-  private mapToEntity(row: any): AuditEntity {
+  private mapToEntity(row: AuditLogRow): AuditEntity {
     const entity = new AuditEntity();
     entity.id = row.id;
     entity.userId = row.user_id;
     entity.action = row.action as AuditAction;
     entity.resource = row.resource;
     entity.resourceId = row.resource_id || undefined;
-    entity.metadata = row.metadata ? JSON.parse(row.metadata) : undefined;
+    entity.metadata = row.metadata
+      ? (JSON.parse(row.metadata) as Record<string, unknown>)
+      : undefined;
     entity.timestamp = new Date(row.timestamp + 'Z');
     return entity;
   }

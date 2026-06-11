@@ -1,5 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { DatabaseType, SshConfigDto, Environment } from './create-connection.dto';
+import {
+  DatabaseType,
+  SshConfigDto,
+  Environment,
+} from './create-connection.dto';
 
 export class ConnectionResponseDto {
   @ApiProperty()

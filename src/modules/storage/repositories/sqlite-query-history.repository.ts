@@ -4,6 +4,17 @@ import { QueryHistoryRepository } from '../../../query/repositories/query-histor
 import { QueryHistoryEntity } from '../../../query/entities/query-history.entity';
 import { SqliteService } from '../sqlite.service';
 
+interface QueryHistoryRow {
+  id: string;
+  connection_id: string;
+  user_id: string;
+  sql: string;
+  execution_time: number;
+  status: string;
+  error_message: string | null;
+  executed_at: string;
+}
+
 @Injectable()
 export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
   private readonly logger = new Logger(SqliteQueryHistoryRepository.name);
@@ -25,7 +36,7 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
         history.executionTime || 0,
         history.status || 'SUCCESS',
         history.errorMessage || null,
-      ]
+      ],
     });
   }
 
@@ -41,10 +52,12 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
         ORDER BY executed_at DESC 
         LIMIT ? OFFSET ?
       `,
-      args: [connectionId, limit, offset]
+      args: [connectionId, limit, offset],
     });
 
-    return rs.rows.map(row => this.mapToEntity(row as any));
+    return rs.rows.map((row) =>
+      this.mapToEntity(row as unknown as QueryHistoryRow),
+    );
   }
 
   async findByUser(
@@ -59,13 +72,15 @@ export class SqliteQueryHistoryRepository implements QueryHistoryRepository {
         ORDER BY executed_at DESC 
         LIMIT ? OFFSET ?
       `,
-      args: [userId, limit, offset]
+      args: [userId, limit, offset],
     });
 
-    return rs.rows.map(row => this.mapToEntity(row as any));
+    return rs.rows.map((row) =>
+      this.mapToEntity(row as unknown as QueryHistoryRow),
+    );
   }
 
-  private mapToEntity(row: any): QueryHistoryEntity {
+  private mapToEntity(row: QueryHistoryRow): QueryHistoryEntity {
     const entity = new QueryHistoryEntity();
     entity.id = row.id;
     entity.connectionId = row.connection_id;

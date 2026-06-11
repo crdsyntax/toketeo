@@ -1,5 +1,12 @@
 import * as mysql from 'mysql2/promise';
-import { DatabaseDriver } from '../interfaces/database-driver.interface';
+import {
+  DatabaseDriver,
+  ColumnMetadata,
+  IndexMetadata,
+  ForeignKeyMetadata,
+  ConstraintMetadata,
+  ParameterMetadata,
+} from '../interfaces/database-driver.interface';
 import { SshConfigDto } from '../dto/create-connection.dto';
 import { SshTunnel } from '../utils/ssh-tunnel';
 
@@ -11,6 +18,8 @@ export interface InfoSchemaColumn {
   COLUMN_NAME: string;
   DATA_TYPE: string;
   IS_NULLABLE: string;
+  COLUMN_DEFAULT: string | null;
+  CHARACTER_MAXIMUM_LENGTH: number | null;
 }
 
 export class MariaDbDriver implements DatabaseDriver {
@@ -60,7 +69,7 @@ export class MariaDbDriver implements DatabaseDriver {
     if (!this.connection) {
       throw new Error('Driver not connected');
     }
-    const [rows] = await this.connection.execute(sql, params as any);
+    const [rows] = await this.connection.execute(sql, params);
     return rows as T;
   }
 
@@ -73,9 +82,8 @@ export class MariaDbDriver implements DatabaseDriver {
   }
 
   async getSchemas(): Promise<string[]> {
-    const rows = await this.executeQuery<{ Database: string }[]>(
-      'SHOW DATABASES',
-    );
+    const rows =
+      await this.executeQuery<{ Database: string }[]>('SHOW DATABASES');
     return rows.map((row) => row.Database);
   }
 
@@ -113,10 +121,16 @@ export class MariaDbDriver implements DatabaseDriver {
   async getParameters(
     name: string,
     type: 'procedure' | 'function' | 'view',
-  ): Promise<any[]> {
-    if (type === 'view') return []; // Views don't have parameters in standard SQL
+  ): Promise<ParameterMetadata[]> {
+    if (type === 'view') return [];
 
-    const rows = await this.executeQuery<any[]>(
+    const rows = await this.executeQuery<
+      {
+        PARAMETER_NAME: string;
+        DATA_TYPE: string;
+        PARAMETER_MODE: 'IN' | 'OUT' | 'INOUT';
+      }[]
+    >(
       `SELECT PARAMETER_NAME, DATA_TYPE, PARAMETER_MODE 
        FROM information_schema.PARAMETERS 
        WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ?
@@ -131,11 +145,80 @@ export class MariaDbDriver implements DatabaseDriver {
     }));
   }
 
-  async getColumns(table: string): Promise<InfoSchemaColumn[]> {
-    return this.executeQuery<InfoSchemaColumn[]>(
-      'SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+  async getColumns(table: string): Promise<ColumnMetadata[]> {
+    const rows = await this.executeQuery<InfoSchemaColumn[]>(
+      'SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
       [this.currentDatabase, table],
     );
+
+    return rows.map((row) => ({
+      name: row.COLUMN_NAME,
+      type: row.DATA_TYPE,
+      isNullable: row.IS_NULLABLE === 'YES',
+      defaultValue: row.COLUMN_DEFAULT || undefined,
+      maxLength: row.CHARACTER_MAXIMUM_LENGTH || undefined,
+    }));
+  }
+
+  async getIndexes(table: string): Promise<IndexMetadata[]> {
+    const rows = await this.executeQuery<
+      {
+        INDEX_NAME: string;
+        COLUMN_NAME: string;
+        NON_UNIQUE: number;
+      }[]
+    >(
+      'SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+      [this.currentDatabase, table],
+    );
+
+    return rows.map((row) => ({
+      name: row.INDEX_NAME,
+      column: row.COLUMN_NAME,
+      isUnique: row.NON_UNIQUE === 0,
+    }));
+  }
+
+  async getForeignKeys(table: string): Promise<ForeignKeyMetadata[]> {
+    const rows = await this.executeQuery<
+      {
+        CONSTRAINT_NAME: string;
+        COLUMN_NAME: string;
+        REFERENCED_TABLE_NAME: string;
+        REFERENCED_COLUMN_NAME: string;
+      }[]
+    >(
+      `SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME 
+       FROM information_schema.KEY_COLUMN_USAGE 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
+      [this.currentDatabase, table],
+    );
+
+    return rows.map((row) => ({
+      constraintName: row.CONSTRAINT_NAME,
+      columnName: row.COLUMN_NAME,
+      referencedTable: row.REFERENCED_TABLE_NAME,
+      referencedColumn: row.REFERENCED_COLUMN_NAME,
+    }));
+  }
+
+  async getConstraints(table: string): Promise<ConstraintMetadata[]> {
+    const rows = await this.executeQuery<
+      {
+        CONSTRAINT_NAME: string;
+        CONSTRAINT_TYPE: string;
+      }[]
+    >(
+      `SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE 
+       FROM information_schema.TABLE_CONSTRAINTS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+      [this.currentDatabase, table],
+    );
+
+    return rows.map((row) => ({
+      name: row.CONSTRAINT_NAME,
+      type: row.CONSTRAINT_TYPE,
+    }));
   }
 
   async getDDL(
@@ -167,16 +250,14 @@ export class MariaDbDriver implements DatabaseDriver {
         key = 'Create Table';
     }
 
-    const rows = await this.executeQuery<any[]>(sql);
+    const rows = await this.executeQuery<Record<string, string>[]>(sql);
     if (!rows || rows.length === 0) return '';
-    
+
     return rows[0][key] || JSON.stringify(rows[0], null, 2);
   }
 
   async cancelQuery(): Promise<void> {
     if (this.connection) {
-      // mysql2/promise connection.destroy() is synchronous and immediately closes the socket,
-      // which is the most reliable way to stop a long-running query without KILL command.
       this.connection.destroy();
       this.connection = null;
     }
