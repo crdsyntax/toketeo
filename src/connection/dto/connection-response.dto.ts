@@ -30,6 +30,15 @@ export class ConnectionResponseDto {
   @ApiProperty()
   database: string;
 
+  @ApiProperty({ required: false })
+  authSource?: string;
+
+  @ApiProperty({ required: false })
+  replicaSet?: string;
+
+  @ApiProperty({ required: false })
+  ssl?: string;
+
   @ApiProperty({ type: SshConfigDto, required: false })
   ssh?: SshConfigDto;
 

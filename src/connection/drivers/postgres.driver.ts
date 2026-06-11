@@ -148,18 +148,21 @@ export class PostgresDriver implements DatabaseDriver {
         index_name: string;
         column_name: string;
         is_unique: boolean;
+        index_type: string;
       }[]
     >(
       `SELECT
           i.relname as index_name,
           a.attname as column_name,
-          ix.indisunique as is_unique
+          ix.indisunique as is_unique,
+          am.amname as index_type
       FROM
           pg_class t,
           pg_class i,
           pg_index ix,
           pg_attribute a,
-          pg_namespace n
+          pg_namespace n,
+          pg_am am
       WHERE
           t.oid = ix.indrelid
           AND i.oid = ix.indexrelid
@@ -169,6 +172,7 @@ export class PostgresDriver implements DatabaseDriver {
           AND n.oid = t.relnamespace
           AND n.nspname = $1
           AND t.relname = $2
+          AND i.relam = am.oid
       ORDER BY
           t.relname,
           i.relname;`,
@@ -178,6 +182,8 @@ export class PostgresDriver implements DatabaseDriver {
       name: row.index_name,
       column: row.column_name,
       isUnique: row.is_unique,
+      type: row.index_type,
+      targetColumn: row.column_name,
     }));
   }
 

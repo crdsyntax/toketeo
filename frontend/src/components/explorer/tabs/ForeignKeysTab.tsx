@@ -1,8 +1,9 @@
 import { Trash2, Plus } from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
+import type { ForeignKeyResponse } from '@/types/database';
 
 interface ForeignKeysTabProps {
-  foreignKeys?: any[];
+  foreignKeys?: ForeignKeyResponse[];
   isLoading: boolean;
   onAdd: () => void;
   dropForeignKeyMutation: UseMutationResult<unknown, Error, string>;
@@ -60,7 +61,7 @@ export function ForeignKeysTab({
                   </td>
                   <td className="py-3 text-right">
                     <button
-                      onClick={() => dropForeignKeyMutation.mutate(fk.constraintName || fk.CONSTRAINT_NAME || fk.constraint_name)}
+                      onClick={() => dropForeignKeyMutation.mutate((fk.constraintName || fk.CONSTRAINT_NAME || fk.constraint_name) as string)}
                       className="text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

@@ -3,6 +3,9 @@ import type {
   ColumnResponse,
   QueryResult,
   ExecutionStatus,
+  IndexResponse,
+  ForeignKeyResponse,
+  ConstraintResponse,
 } from '@/types/database';
 import { Table, Layout, Code, RefreshCw, List, Table2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,11 +37,11 @@ interface ObjectDetailProps {
   ) => void;
   columns?: ColumnResponse[];
   isLoadingColumns: boolean;
-  indexes?: any[];
+  indexes?: IndexResponse[];
   isLoadingIndexes: boolean;
-  foreignKeys?: any[];
+  foreignKeys?: ForeignKeyResponse[];
   isLoadingForeignKeys: boolean;
-  constraints?: any[];
+  constraints?: ConstraintResponse[];
   isLoadingConstraints: boolean;
   isLoadingData: boolean;
   executionStatus: ExecutionStatus;
@@ -57,6 +60,7 @@ interface ObjectDetailProps {
   editColumnMutation: UseMutationResult<unknown, Error, string>;
   dropColumnMutation: UseMutationResult<unknown, Error, string>;
   dropIndexMutation: UseMutationResult<unknown, Error, string>;
+  renameIndexMutation: UseMutationResult<unknown, Error, { oldName: string; newName: string }>;
   dropForeignKeyMutation: UseMutationResult<unknown, Error, string>;
   dropConstraintMutation: UseMutationResult<unknown, Error, string>;
 }
@@ -90,6 +94,7 @@ export function ObjectDetail({
   editColumnMutation,
   dropColumnMutation,
   dropIndexMutation,
+  renameIndexMutation,
   dropForeignKeyMutation,
   dropConstraintMutation,
 }: ObjectDetailProps) {
@@ -247,6 +252,7 @@ export function ObjectDetail({
             isLoading={isLoadingIndexes}
             onAdd={() => handleAddObject('index')}
             dropIndexMutation={dropIndexMutation}
+            renameIndexMutation={renameIndexMutation}
           />
         )}
 

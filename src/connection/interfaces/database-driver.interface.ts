@@ -11,6 +11,7 @@ export interface IndexMetadata {
   column: string;
   isUnique: boolean;
   type?: string;
+  targetColumn?: string;
 }
 
 export interface ForeignKeyMetadata {

@@ -34,6 +34,12 @@ export class IndexResponseDto {
 
   @ApiProperty()
   isUnique: boolean;
+
+  @ApiProperty({ required: false })
+  type?: string;
+
+  @ApiProperty({ required: false })
+  targetColumn?: string;
 }
 
 export class ForeignKeyResponseDto {

@@ -15,6 +15,8 @@ export interface QueryTab {
 interface AppState {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
+  accessToken: string | null
+  setAccessToken: (token: string | null) => void
   activeConnection: Connection | null
   setActiveConnection: (connection: Connection | null) => void
   setActiveConnectionDatabase: (database: string) => void
@@ -39,6 +41,8 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
+      accessToken: null,
+      setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
       setActiveConnection: (connection) => set({ activeConnection: connection }),
       setActiveConnectionDatabase: (database) => set((state) => ({

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { io, Socket } from 'socket.io-client'
 import { format } from 'sql-formatter'
@@ -202,6 +202,17 @@ export function useExplorer() {
     }
   })
 
+  const renameIndexMutation = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) => 
+      apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/indexes/${oldName}/rename?schema=${currentSchema}`, {
+        method: 'POST',
+        body: JSON.stringify({ newName })
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
+    }
+  })
+
   const dropForeignKeyMutation = useMutation({
     mutationFn: (constraintName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/foreign-keys/${constraintName}?schema=${currentSchema}`, {
       method: 'DELETE'
@@ -268,14 +279,22 @@ export function useExplorer() {
 
   const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers
 
-  const getFilteredItems = () => {
-    const items = sidebarTab === 'tables' ? tables : 
-                 sidebarTab === 'views' ? views : 
-                 sidebarTab === 'procedures' ? procedures : triggers;
-    return items?.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
-  }
+  const filteredItems = useMemo(() => {
+    const items =
+      sidebarTab === 'tables'
+        ? tables
+        : sidebarTab === 'views'
+          ? views
+          : sidebarTab === 'procedures'
+            ? procedures
+            : triggers;
 
-  const filteredItems = getFilteredItems()
+    if (!items) return [];
+
+    return items.filter((t) =>
+      (t.name || '').toLowerCase().includes(search.toLowerCase()),
+    );
+  }, [sidebarTab, tables, views, procedures, triggers, search]);
 
   return {
     activeConnection,
@@ -320,6 +339,7 @@ export function useExplorer() {
     editColumnMutation,
     dropColumnMutation,
     dropIndexMutation,
+    renameIndexMutation,
     dropForeignKeyMutation,
     dropConstraintMutation,
     handleExecute,

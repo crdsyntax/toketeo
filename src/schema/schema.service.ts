@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConnectionService } from '../connection/connection.service';
-import { TableResponseDto, ColumnResponseDto } from './dto/schema-response.dto';
+import {
+  TableResponseDto,
+  ColumnResponseDto,
+  IndexResponseDto,
+} from './dto/schema-response.dto';
 import { ConnectionResponseDto } from '../connection/dto/connection-response.dto';
 import { DatabaseType } from '../connection/dto/create-connection.dto';
 import {
@@ -206,7 +210,7 @@ export class SchemaService {
     connectionId: string,
     tableName: string,
     schema?: string,
-  ): Promise<IndexMetadata[]> {
+  ): Promise<IndexResponseDto[]> {
     const connection = await this.connectionService.findEntity(connectionId);
     if (schema) connection.database = schema;
     const driver = this.connectionService.getDriver(connection);
@@ -216,7 +220,14 @@ export class SchemaService {
       if (schema && driver.setSchema) {
         driver.setSchema(schema);
       }
-      return await driver.getIndexes(tableName);
+      const indexes = await driver.getIndexes(tableName);
+      return indexes.map((idx) => ({
+        name: idx.name,
+        column: idx.column,
+        isUnique: idx.isUnique,
+        type: idx.type,
+        targetColumn: idx.targetColumn,
+      }));
     } finally {
       await driver.disconnect();
     }
@@ -294,6 +305,31 @@ export class SchemaService {
     let sql = `ALTER TABLE \`${tableName}\` DROP INDEX \`${indexName}\``;
     if (connection.type === DatabaseType.POSTGRES) {
       sql = `DROP INDEX "${indexName}"`;
+    }
+
+    try {
+      await driver.connect();
+      if (schema && driver.setSchema) driver.setSchema(schema);
+      await driver.executeQuery(sql);
+    } finally {
+      await driver.disconnect();
+    }
+  }
+
+  async renameIndex(
+    connectionId: string,
+    tableName: string,
+    oldIndexName: string,
+    newIndexName: string,
+    schema?: string,
+  ): Promise<void> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    if (schema) connection.database = schema;
+    const driver = this.connectionService.getDriver(connection);
+
+    let sql = `ALTER TABLE \`${tableName}\` RENAME INDEX \`${oldIndexName}\` TO \`${newIndexName}\``;
+    if (connection.type === DatabaseType.POSTGRES) {
+      sql = `ALTER INDEX "${oldIndexName}" RENAME TO "${newIndexName}"`;
     }
 
     try {

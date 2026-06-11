@@ -230,6 +230,25 @@ export class SchemaController {
     );
   }
 
+  @Post('tables/:tableName/indexes/:indexName/rename')
+  @ApiOperation({ summary: 'Rename an index in a table' })
+  @ApiResponse({ status: 200 })
+  async renameIndex(
+    @Param('connectionId') connectionId: string,
+    @Param('tableName') tableName: string,
+    @Param('indexName') indexName: string,
+    @Body('newName') newName: string,
+    @Query('schema') schema?: string,
+  ): Promise<void> {
+    return this.schemaService.renameIndex(
+      connectionId,
+      tableName,
+      indexName,
+      newName,
+      schema,
+    );
+  }
+
   @Delete('tables/:tableName/foreign-keys/:constraintName')
   @ApiOperation({ summary: 'Drop a foreign key from a table' })
   @ApiResponse({ status: 200 })

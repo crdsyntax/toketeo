@@ -69,7 +69,10 @@ export class MariaDbDriver implements DatabaseDriver {
     if (!this.connection) {
       throw new Error('Driver not connected');
     }
-    const [rows] = await this.connection.execute(sql, params as mysql.RowDataPacket[]);
+    const [rows] = await this.connection.execute(
+      sql,
+      params as mysql.RowDataPacket[],
+    );
     return rows as T;
   }
 
@@ -166,9 +169,10 @@ export class MariaDbDriver implements DatabaseDriver {
         INDEX_NAME: string;
         COLUMN_NAME: string;
         NON_UNIQUE: number;
+        INDEX_TYPE: string;
       }[]
     >(
-      'SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+      'SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY SEQ_IN_INDEX',
       [this.currentDatabase, table],
     );
 
@@ -176,6 +180,8 @@ export class MariaDbDriver implements DatabaseDriver {
       name: row.INDEX_NAME,
       column: row.COLUMN_NAME,
       isUnique: row.NON_UNIQUE === 0,
+      type: row.INDEX_TYPE,
+      targetColumn: row.COLUMN_NAME,
     }));
   }
 

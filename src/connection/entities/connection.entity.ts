@@ -14,6 +14,9 @@ export class ConnectionEntity {
   user: string;
   password?: string;
   database?: string;
+  authSource?: string;
+  replicaSet?: string;
+  ssl?: string;
   ssh?: SshConfigDto;
   createdAt: Date;
   updatedAt: Date;

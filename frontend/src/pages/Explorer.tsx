@@ -48,6 +48,7 @@ export default function Explorer() {
     editColumnMutation,
     dropColumnMutation,
     dropIndexMutation,
+    renameIndexMutation,
     dropForeignKeyMutation,
     dropConstraintMutation,
     handleExecute,
@@ -172,6 +173,7 @@ export default function Explorer() {
           editColumnMutation={editColumnMutation}
           dropColumnMutation={dropColumnMutation}
           dropIndexMutation={dropIndexMutation}
+          renameIndexMutation={renameIndexMutation}
           dropForeignKeyMutation={dropForeignKeyMutation}
           dropConstraintMutation={dropConstraintMutation}
         />

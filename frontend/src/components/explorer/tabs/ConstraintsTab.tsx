@@ -1,8 +1,9 @@
 import { Trash2, Plus } from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
+import type { ConstraintResponse } from '@/types/database';
 
 interface ConstraintsTabProps {
-  constraints?: any[];
+  constraints?: ConstraintResponse[];
   isLoading: boolean;
   onAdd: () => void;
   dropConstraintMutation: UseMutationResult<unknown, Error, string>;
@@ -52,7 +53,7 @@ export function ConstraintsTab({
                   </td>
                   <td className="py-3 text-right">
                     <button
-                      onClick={() => dropConstraintMutation.mutate(con.name || con.CONSTRAINT_NAME || con.constraint_name)}
+                      onClick={() => dropConstraintMutation.mutate((con.name || con.CONSTRAINT_NAME || con.constraint_name) as string)}
                       className="text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

@@ -80,7 +80,14 @@ export class ConnectionService {
     await this.repository.delete(id);
   }
 
-  async testConnection(dto: CreateConnectionDto): Promise<boolean> {
+  async testConnectionById(id: string): Promise<boolean> {
+    const connection = await this.findEntity(id);
+    return this.testConnection(connection);
+  }
+
+  async testConnection(
+    dto: CreateConnectionDto | ConnectionEntity,
+  ): Promise<boolean> {
     const driver = this.getDriver(dto);
     try {
       await driver.connect();
@@ -123,7 +130,19 @@ export class ConnectionService {
         );
       case DatabaseType.MONGODB: {
         const password = 'password' in dto ? dto.password : '';
-        const uri = `mongodb://${dto.user}:${password}@${dto.host}:${dto.port}`;
+        const db = dto.database || 'admin';
+        let uri = `mongodb://${dto.user}:${password}@${dto.host}:${dto.port}/${db}`;
+
+        const options: string[] = [];
+        if (dto.authSource) options.push(`authSource=${dto.authSource}`);
+        if (dto.replicaSet) options.push(`replicaSet=${dto.replicaSet}`);
+        if (dto.ssl && dto.ssl !== 'false')
+          options.push(`ssl=${dto.ssl === 'true' ? 'true' : dto.ssl}`);
+
+        if (options.length > 0) {
+          uri += `?${options.join('&')}`;
+        }
+
         return new MongoDbDriver(uri, dto.database || '', sshConfig);
       }
       default:
@@ -141,6 +160,9 @@ export class ConnectionService {
     dto.port = entity.port;
     dto.user = entity.user;
     dto.database = entity.database || '';
+    dto.authSource = entity.authSource;
+    dto.replicaSet = entity.replicaSet;
+    dto.ssl = entity.ssl;
     dto.ssh = entity.ssh;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;

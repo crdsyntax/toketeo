@@ -51,6 +51,9 @@ export class SqliteService implements OnModuleInit, OnModuleDestroy {
         database TEXT NOT NULL,
         user TEXT NOT NULL,
         password TEXT,
+        auth_source TEXT,
+        replica_set TEXT,
+        ssl TEXT,
         ssh TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

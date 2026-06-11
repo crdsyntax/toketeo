@@ -20,6 +20,9 @@ interface ConnectionRow {
   database: string | null;
   user: string;
   password: string | null;
+  auth_source: string | null;
+  replica_set: string | null;
+  ssl: string | null;
   ssh: string | null;
   created_at: string;
   updated_at: string;
@@ -62,7 +65,8 @@ export class SqliteConnectionRepository implements ConnectionRepository {
       await client.execute({
         sql: `
           UPDATE connections 
-          SET name = ?, environment = ?, type = ?, host = ?, port = ?, database = ?, user = ?, password = ?, ssh = ?, updated_at = CURRENT_TIMESTAMP
+          SET name = ?, environment = ?, type = ?, host = ?, port = ?, database = ?, user = ?, password = ?, 
+              auth_source = ?, replica_set = ?, ssl = ?, ssh = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `,
         args: [
@@ -74,6 +78,9 @@ export class SqliteConnectionRepository implements ConnectionRepository {
           entity.database || null,
           entity.user,
           entity.password || null,
+          entity.authSource || null,
+          entity.replicaSet || null,
+          entity.ssl || null,
           entity.ssh ? JSON.stringify(entity.ssh) : null,
           entity.id,
         ],
@@ -91,14 +98,17 @@ export class SqliteConnectionRepository implements ConnectionRepository {
       newEntity.database = dto.database;
       newEntity.user = dto.user;
       newEntity.password = dto.password;
+      newEntity.authSource = dto.authSource;
+      newEntity.replicaSet = dto.replicaSet;
+      newEntity.ssl = dto.ssl;
       newEntity.ssh = dto.ssh;
       newEntity.createdAt = new Date();
       newEntity.updatedAt = new Date();
 
       await client.execute({
         sql: `
-          INSERT INTO connections (id, name, environment, type, host, port, database, user, password, ssh)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO connections (id, name, environment, type, host, port, database, user, password, auth_source, replica_set, ssl, ssh)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           newEntity.id,
@@ -110,6 +120,9 @@ export class SqliteConnectionRepository implements ConnectionRepository {
           newEntity.database || null,
           newEntity.user,
           newEntity.password || null,
+          newEntity.authSource || null,
+          newEntity.replicaSet || null,
+          newEntity.ssl || null,
           newEntity.ssh ? JSON.stringify(newEntity.ssh) : null,
         ],
       });
@@ -135,6 +148,9 @@ export class SqliteConnectionRepository implements ConnectionRepository {
     entity.database = row.database || undefined;
     entity.user = row.user;
     entity.password = row.password || undefined;
+    entity.authSource = row.auth_source || undefined;
+    entity.replicaSet = row.replica_set || undefined;
+    entity.ssl = row.ssl || undefined;
     entity.ssh = row.ssh ? (JSON.parse(row.ssh) as SshConfigDto) : undefined;
     entity.createdAt = new Date(row.created_at + 'Z');
     entity.updatedAt = new Date(row.updated_at + 'Z');
