@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 interface QueryMenusProps {
   showContextMenu: { x: number, y: number, tabId: string } | null;
   removeTab: (id: string) => void;
-  setShowContextMenu: (show: any) => void;
+  setShowContextMenu: (show: { x: number, y: number, tabId: string } | null) => void;
   showLayoutMenu: boolean;
   setShowLayoutMenu: (show: boolean) => void;
   panels: { editor: boolean, results: boolean };

@@ -26,6 +26,7 @@ interface AppState {
   removeTab: (id: string) => void
   updateTabQuery: (id: string, query: string) => void
   updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
+  clearTabResults: (id: string) => void
   setActiveTabId: (id: string) => void
   panels: {
     editor: boolean
@@ -76,10 +77,22 @@ export const useAppStore = create<AppState>()(
       updateTabResults: (id, updates) => set((state) => ({
         tabs: state.tabs.map((t) => t.id === id ? { ...t, ...updates } : t),
       })),
+      clearTabResults: (id) => set((state) => ({
+        tabs: state.tabs.map((t) => t.id === id ? { ...t, results: null, status: 'idle', error: null } : t),
+      })),
       setActiveTabId: (id) => set({ activeTabId: id }),
     }),
     {
       name: 'toketeo-app-storage',
+      partialize: (state) => ({
+        theme: state.theme,
+        accessToken: state.accessToken,
+        activeConnection: state.activeConnection,
+        tabs: state.tabs.map(tab => ({ ...tab, results: null })),
+        activeTabId: state.activeTabId,
+        panels: state.panels,
+        isSidebarOpen: state.isSidebarOpen,
+      }),
     },
   ),
 )

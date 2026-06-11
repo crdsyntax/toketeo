@@ -57,14 +57,14 @@ export default function LogViewer() {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsPaused(!isPaused)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-none border border-border hover:bg-muted transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors text-sm font-medium"
           >
             {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
             {isPaused ? 'Resume' : 'Pause'}
           </button>
           <button 
             onClick={() => setLogs([])}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-none border border-border hover:bg-muted transition-colors text-sm font-medium text-destructive"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors text-sm font-medium text-destructive"
           >
             <Trash2 className="w-4 h-4" />
             Clear
@@ -72,19 +72,25 @@ export default function LogViewer() {
         </div>
       </div>
 
-      <div className="flex-1 bg-[#09090b] border border-border rounded-none overflow-hidden flex flex-col font-mono text-xs">
-        <div className="bg-muted/30 px-4 py-2 border-b border-border flex items-center gap-2 text-muted-foreground">
-          <Terminal className="w-4 h-4" />
-          <span>Console Output</span>
+      <div className="flex-1 bg-[#09090b] border border-border rounded-md overflow-hidden flex flex-col font-mono text-xs shadow-inner">
+        <div className="bg-muted/30 px-4 py-2 border-b border-border flex items-center justify-between text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4 h-4" />
+            <span className="uppercase tracking-widest font-bold text-[10px]">Console Output</span>
+          </div>
+          <span className="text-[10px]">{logs.length} entries</span>
         </div>
         
         <div 
           ref={scrollRef}
-          className="flex-1 overflow-auto p-4 space-y-1"
+          className="flex-1 overflow-auto p-4 space-y-0"
         >
           {logs.length === 0 && (
-            <div className="text-muted-foreground italic h-full flex items-center justify-center">
-              Processing...
+            <div className="text-muted-foreground italic h-full flex flex-col items-center justify-center gap-4">
+              <div className="w-12 h-12 rounded-full border-2 border-dashed border-border flex items-center justify-center animate-spin-slow">
+                <Terminal className="w-6 h-6 opacity-20" />
+              </div>
+              <p className="animate-pulse uppercase tracking-widest text-[10px] font-bold">Listening for system events...</p>
             </div>
           )}
           {logs.map((log, i) => (

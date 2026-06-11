@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 import type { Monaco } from '@monaco-editor/react'
 import { useAppStore } from '@/store/useAppStore'
+import { queryService } from '@/services/query.service'
 import type { DbValue, DbRow } from '@/types/database'
 
 export function useQueryEditor() {
@@ -15,6 +16,7 @@ export function useQueryEditor() {
     updateTabQuery, 
     setActiveTabId, 
     updateTabResults, 
+    clearTabResults,
     panels, 
     togglePanel 
   } = useAppStore()
@@ -77,17 +79,39 @@ export function useQueryEditor() {
       updateTabResults(data.tabId, { status: 'executing' })
     })
 
-    socket.on('query-result', (data: { tabId: string, columns: string[], rows: DbRow[], executionTime: number, isSilent?: boolean }) => {
-      const { tabId, columns, rows, executionTime, isSilent } = data
+    socket.on('query-result', (data: { 
+      tabId: string, 
+      columns: string[], 
+      rows: DbRow[], 
+      executionTime: number, 
+      isSilent?: boolean,
+      page?: number,
+      pageSize?: number,
+      hasMore?: boolean
+    }) => {
+      const { tabId, columns, rows, executionTime, isSilent, page, pageSize, hasMore } = data
       if (isSilent) {
         updateTabResults(tabId, { status: 'success', error: null })
         return
       }
-      updateTabResults(tabId, {
-        status: 'success',
-        results: { columns, rows, executionTime },
-        error: null
-      })
+
+      // We use a functional update to get the latest state and append rows if needed
+      useAppStore.setState((state) => {
+        const tab = state.tabs.find(t => t.id === tabId);
+        if (!tab) return state;
+
+        const isContinuation = tab.results && tab.status === 'executing' && tab.results.page !== undefined && page !== undefined && page > 1;
+        const newRows = isContinuation ? [...(tab.results?.rows || []), ...rows] : rows;
+
+        return {
+          tabs: state.tabs.map(t => t.id === tabId ? {
+            ...t,
+            status: hasMore ? 'executing' : 'success',
+            results: { columns, rows: newRows, executionTime, page, pageSize, hasMore },
+            error: null
+          } : t)
+        }
+      });
     })
 
     socket.on('query-error', (data: { tabId: string, message: string, isSilent?: boolean }) => {
@@ -122,60 +146,127 @@ export function useQueryEditor() {
     return false
   }, [])
 
-  const handleExecuteAll = useCallback(() => {
-    if (activeTab?.query && activeConnection && socketRef.current) {
+  const handleExecuteAll = useCallback(async (page = 1) => {
+    if (activeTab?.query && activeConnection) {
       if (checkDangerousQuery(activeTab.query)) return
 
       const sql = activeTab.query.trim().endsWith(';') ? activeTab.query.trim() : `${activeTab.query.trim()};`
       
-      updateTabResults(activeTab.id, { status: 'executing', error: null, results: null })
-      socketRef.current.emit('execute-query', {
-        connectionId: activeConnection.id,
-        dto: { sql },
-        tabId: activeTab.id
-      })
+      const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
+      const limitMatch = sql.match(/\bLIMIT\b\s+(\d+)/i);
+      const limit = limitMatch ? parseInt(limitMatch[1], 10) : 0;
+      
+      // A query is "large" if it's a SELECT with a limit > 10000 or no limit (which we default to 1000, so it's simple)
+      // Actually, if it has NO limit, we add 1000, so it's simple.
+      // If it has a limit > 10000, we consider it large and use WebSocket streaming.
+      const isLarge = isSelect && limit > 10000;
+
+      updateTabResults(activeTab.id, { status: 'executing', error: null, results: page === 1 ? null : activeTab.results })
+
+      if (isLarge && socketRef.current) {
+        socketRef.current.emit('execute-query', {
+          connectionId: activeConnection.id,
+          dto: { sql, page, pageSize: 1000 },
+          tabId: activeTab.id
+        })
+      } else {
+        try {
+          const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
+          updateTabResults(activeTab.id, {
+            status: 'success',
+            results: result,
+            error: null
+          })
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          updateTabResults(activeTab.id, {
+            status: 'error',
+            error: message
+          })
+        }
+      }
     }
   }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
 
-  const handleExecuteCurrent = useCallback(() => {
-    if (!editorRef.current || !activeTab || !activeConnection || !socketRef.current) return
+  const handleExecuteCurrent = useCallback(async (page = 1) => {
+    if (!editorRef.current || !activeTab || !activeConnection) return
 
     const position = editorRef.current.getPosition()
     if (!position) return
 
     const fullText = editorRef.current.getValue()
-    const lines = fullText.split('\n')
-    
-    // Find the current statement based on semicolons
-    let startLine = position.lineNumber - 1
-    let endLine = position.lineNumber - 1
-    
-    // Simple logic: get the line if it has content, or find boundaries
-    // Professional approach: split by ; and find which block contains the cursor
-    // For now, let's just use the current line or current selection
     const selection = editorRef.current.getSelection()
     let sql = ''
     
     if (selection && !selection.isEmpty()) {
       sql = editorRef.current.getModel()?.getValueInRange(selection) || ''
     } else {
-      // Find boundaries by looking for semicolons
-      // This is a simplified version
-      sql = lines[position.lineNumber - 1].trim()
-      if (!sql) return
+      // Improved logic: Find the SQL block bounded by semicolons or file start/end
+      const lines = fullText.split('\n')
+      const cursorLine = position.lineNumber - 1
+      
+      let startIdx = 0
+      for (let i = cursorLine; i >= 0; i--) {
+        if (lines[i].includes(';') && i < cursorLine) {
+          startIdx = i + 1
+          break
+        }
+      }
+      
+      let endIdx = lines.length - 1
+      for (let i = cursorLine; i < lines.length; i++) {
+        if (lines[i].includes(';')) {
+          endIdx = i
+          break
+        }
+      }
+      
+      sql = lines.slice(startIdx, endIdx + 1).join('\n').trim()
     }
 
+    if (!sql) return
     if (checkDangerousQuery(sql)) return
-
     if (!sql.endsWith(';')) sql += ';'
+
+    const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
+    const limitMatch = sql.match(/\bLIMIT\b\s+(\d+)/i);
+    const limit = limitMatch ? parseInt(limitMatch[1], 10) : 0;
+    const isLarge = isSelect && limit > 10000;
     
-    updateTabResults(activeTab.id, { status: 'executing', error: null, results: null })
-    socketRef.current.emit('execute-query', {
-      connectionId: activeConnection.id,
-      dto: { sql },
-      tabId: activeTab.id
-    })
+    updateTabResults(activeTab.id, { status: 'executing', error: null, results: page === 1 ? null : activeTab.results })
+    
+    if (isLarge && socketRef.current) {
+      socketRef.current.emit('execute-query', {
+        connectionId: activeConnection.id,
+        dto: { sql, page, pageSize: 1000 },
+        tabId: activeTab.id
+      })
+    } else {
+      try {
+        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
+        updateTabResults(activeTab.id, {
+          status: 'success',
+          results: result,
+          error: null
+        })
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        updateTabResults(activeTab.id, {
+          status: 'error',
+          error: message
+        })
+      }
+    }
   }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
+
+  // Use refs to avoid stale closures in Monaco addCommand
+  const executeCurrentRef = useRef(handleExecuteCurrent)
+  const executeAllRef = useRef(handleExecuteAll)
+  
+  useEffect(() => {
+    executeCurrentRef.current = handleExecuteCurrent
+    executeAllRef.current = handleExecuteAll
+  }, [handleExecuteCurrent, handleExecuteAll])
 
   const handleCancel = () => {
     if (activeTabId && socketRef.current && activeConnection) {
@@ -287,8 +378,17 @@ export function useQueryEditor() {
 
   const handleEditorDidMount = useCallback((editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
     editorRef.current = editorInstance
-    editorInstance.addCommand(monacoInstance.KeyMod.Ctrl | monacoInstance.KeyCode.Enter, handleExecuteCurrent)
-  }, [handleExecuteCurrent])
+    
+    // Ctrl/Cmd + Enter: Execute Current Statement (or selection)
+    editorInstance.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, () => {
+      executeCurrentRef.current()
+    })
+
+    // F5: Execute All (Legacy SQL editor behavior)
+    editorInstance.addCommand(monacoInstance.KeyCode.F5, () => {
+      executeAllRef.current()
+    })
+  }, [])
 
   const sortedRows = useMemo(() => {
     if (!activeTab?.results?.rows) return []
@@ -325,17 +425,31 @@ export function useQueryEditor() {
   }
 
   const handleSaveScript = useCallback(() => {
-    if (!activeTab?.query) return
-    const blob = new Blob([activeTab.query], { type: 'text/plain' })
+    const state = useAppStore.getState();
+    const currentTab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
+    const content = editorRef.current ? editorRef.current.getValue() : currentTab?.query;
+    
+    if (content === undefined || content === null) return;
+    
+    const blob = new Blob([content], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab.name}.sql`
+    a.download = `${currentTab?.name || 'query'}.sql`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }, [activeTab])
+  }, []) // No dependencies
+
+  const saveScriptRef = useRef(handleSaveScript)
+  useEffect(() => {
+    saveScriptRef.current = handleSaveScript
+  }, [handleSaveScript])
+
+  const handlePageChange = useCallback((page: number) => {
+    handleExecuteAll(page)
+  }, [handleExecuteAll])
 
   return {
     activeConnection,
@@ -372,6 +486,8 @@ export function useQueryEditor() {
     handleSaveScript,
     handleEditorWillMount,
     handleEditorDidMount,
+    handlePageChange,
+    clearTabResults,
     draggingRef,
     resizingRef
   }

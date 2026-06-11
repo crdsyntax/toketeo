@@ -24,7 +24,7 @@ export function DdlTab({
         <button
           onClick={() => updateDdlMutation.mutate(editableDdl)}
           disabled={updateDdlMutation.isPending}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-[10px] font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 py-1 rounded-md text-[10px] font-bold hover:bg-secondary/80 transition-colors disabled:opacity-50"
         >
           {updateDdlMutation.isPending ? (
             <Loader2 className="w-2.5 h-2.5 animate-spin" />

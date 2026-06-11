@@ -11,7 +11,7 @@
   --color-foreground: var(--text-h);
 
   --color-primary: var(--accent);
-  --color-primary-foreground: #fff;
+  --color-primary-foreground: var(--bg);
 
   --color-secondary: var(--code-bg);
   --color-secondary-foreground: var(--text-h);
@@ -32,10 +32,10 @@
   --bg: #121212;
   --border: #2d2d2d;
   --code-bg: #1a1a1a;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.05);
-  --accent-border: rgba(170, 59, 255, 0.3);
-  --radius: 0px;
+  --accent: #ffffff;
+  --accent-bg: rgba(255, 255, 255, 0.05);
+  --accent-border: rgba(255, 255, 255, 0.3);
+  --radius: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,9 +45,10 @@
     --bg: #121212;
     --border: #2d2d2d;
     --code-bg: #1a1a1a;
-    --accent: #aa3bff;
-    --accent-bg: rgba(170, 59, 255, 0.05);
-    --accent-border: rgba(170, 59, 255, 0.3);
+    --accent: #ffffff;
+    --accent-bg: rgba(255, 255, 255, 0.05);
+    --accent-border: rgba(255, 255, 255, 0.3);
+    --radius: 6px;
   }
 }
 
@@ -60,6 +61,12 @@
     font-family: var(--font-mono);
     font-size: 13px;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  button {
+    @apply transition-all active:scale-95 cursor-pointer;
+  }
+  button:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
   }
 }
 

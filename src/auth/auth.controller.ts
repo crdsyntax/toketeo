@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { UserRole } from '../users/entities/user.entity';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -25,7 +26,11 @@ export class AuthController {
     if (body.username === 'root' || body.username === 'admin') {
       // Automatic bypass for local dev/admin if password is not strictly required yet
       // In a real scenario, we would use validateUser
-      user = { username: body.username, id: body.username, role: 'admin' };
+      user = {
+        username: body.username,
+        id: body.username,
+        role: UserRole.ADMIN,
+      };
     } else {
       user = await this.authService.validateUser(
         body.username,

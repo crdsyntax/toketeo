@@ -37,17 +37,17 @@ export function IndexesTab({
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-w-0">
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex justify-end">
         <button 
           onClick={onAdd}
-          className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary hover:bg-primary/20 px-3 py-1 rounded transition-colors"
+          className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1 rounded transition-colors"
         >
           <Plus className="w-3 h-3" />
           Add Index
         </button>
       </div>
-      <div className="p-4">
+      <div className="p-4 overflow-x-auto">
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
@@ -55,15 +55,15 @@ export function IndexesTab({
             ))}
           </div>
         ) : (
-          <table className="w-full text-left text-sm border-collapse">
+          <table className="w-full text-left text-sm border-collapse min-w-[600px]">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                <th className="pb-2 font-medium">Index Name</th>
-                <th className="pb-2 font-medium">Source Column</th>
-                <th className="pb-2 font-medium">Dest Column</th>
-                <th className="pb-2 font-medium">Type</th>
-                <th className="pb-2 font-medium">Unique</th>
-                <th className="pb-2 font-medium text-right">Actions</th>
+                <th className="pb-2 px-2 font-medium">Index Name</th>
+                <th className="pb-2 px-2 font-medium">Source Column</th>
+                <th className="pb-2 px-2 font-medium">Dest Column</th>
+                <th className="pb-2 px-2 font-medium">Type</th>
+                <th className="pb-2 px-2 font-medium">Unique</th>
+                <th className="pb-2 px-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -76,7 +76,7 @@ export function IndexesTab({
 
                 return (
                   <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                    <td className="py-3">
+                    <td className="py-3 px-2">
                       {editingIndex === name ? (
                         <div className="flex items-center gap-2">
                           <input
@@ -99,7 +99,7 @@ export function IndexesTab({
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 group">
-                          <span>{name}</span>
+                          <span className="truncate max-w-[150px]" title={name}>{name}</span>
                           <button 
                             onClick={() => handleStartEdit(name)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all"
@@ -109,17 +109,17 @@ export function IndexesTab({
                         </div>
                       )}
                     </td>
-                    <td className="py-3">{column}</td>
-                    <td className="py-3 text-muted-foreground italic">{destColumn}</td>
-                    <td className="py-3 text-xs uppercase tracking-tight">{type}</td>
-                    <td className="py-3">
+                    <td className="py-3 px-2 truncate max-w-[120px]" title={column}>{column}</td>
+                    <td className="py-3 px-2 text-muted-foreground italic truncate max-w-[120px]" title={destColumn}>{destColumn}</td>
+                    <td className="py-3 px-2 text-xs uppercase tracking-tight">{type}</td>
+                    <td className="py-3 px-2">
                       {isUnique ? (
                         <span className="text-primary font-medium">Yes</span>
                       ) : (
                         <span className="text-muted-foreground">No</span>
                       )}
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-3 px-2 text-right">
                       <button
                         onClick={() => dropIndexMutation.mutate(name)}
                         className="text-muted-foreground hover:text-destructive transition-colors"

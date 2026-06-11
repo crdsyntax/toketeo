@@ -1,4 +1,4 @@
-import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
@@ -19,13 +19,15 @@ interface ResultsModalProps {
   setEditingCell: (cell: { rowIndex: number; column: string; value: DbValue } | null) => void
   editingCell: { rowIndex: number; column: string; value: DbValue } | null
   handleSave: () => void
+  handlePageChange: (page: number) => void
+  clearResults: () => void
   setModalRect: (rect: { x: number; y: number; w: number; h: number }) => void
 }
 
 export function ResultsModal({
   isOpen, activeTab, modalRect, isMaximized, draggingRef, resizingRef,
   handlePopout, onClose, toggleMaximize, sortedRows, requestSort,
-  sortConfig, setEditingCell, editingCell, handleSave, setModalRect
+  sortConfig, setEditingCell, editingCell, handleSave, handlePageChange, clearResults, setModalRect
 }: ResultsModalProps) {
   if (!isOpen || !activeTab?.results) return null
 
@@ -57,6 +59,36 @@ export function ResultsModal({
             <span className="text-xs font-bold truncate max-w-[200px]">
               {activeTab.name} - Results
             </span>
+            
+            {activeTab.results.page !== undefined && (
+              <div className="flex items-center gap-1 border-l border-border pl-4 ml-2">
+                <button 
+                  disabled={activeTab.results.page <= 1 || activeTab.status === 'executing'}
+                  onClick={() => handlePageChange(activeTab.results!.page! - 1)}
+                  className="p-1 hover:bg-muted rounded disabled:opacity-30"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] font-mono font-bold mx-1">
+                  PAGE {activeTab.results.page}
+                </span>
+                <button 
+                  disabled={!activeTab.results.hasMore || activeTab.status === 'executing'}
+                  onClick={() => handlePageChange(activeTab.results!.page! + 1)}
+                  className="p-1 hover:bg-muted rounded disabled:opacity-30"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-4 ml-4 border-l border-border pl-4">
+               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                Rows: <span className="font-bold text-foreground">{activeTab.results.rows.length}</span>
+              </div>
+               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className="font-bold text-foreground">{activeTab.results.executionTime}ms</span>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center h-full">
@@ -66,6 +98,13 @@ export function ResultsModal({
               title="External window"
             >
               <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={clearResults}
+              className="h-full px-3 hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
+              title="Clear Results"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
             <div className="w-[1px] h-4 bg-border mx-1" />
             <button 

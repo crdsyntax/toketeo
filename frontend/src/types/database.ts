@@ -37,6 +37,9 @@ export interface QueryResult {
   executionTime: number;
   affectedRows?: number;
   message?: string;
+  page?: number;
+  pageSize?: number;
+  hasMore?: boolean;
 }
 
 export interface TableColumn {
@@ -108,6 +111,12 @@ export interface ConstraintResponse {
   constraint_name?: string;
   CONSTRAINT_TYPE?: string;
   constraint_type?: string;
+}
+
+export interface ParameterResponse {
+  name: string;
+  type: string;
+  mode: 'IN' | 'OUT' | 'INOUT';
 }
 
 export interface Connection {

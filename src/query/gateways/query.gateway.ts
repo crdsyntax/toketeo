@@ -46,9 +46,18 @@ export class QueryGateway {
         },
       });
 
-      const result = await this.queryService.execute(
+      await this.queryService.executeStream(
         connectionId,
         dto,
+        (result) => {
+          if (isAborted) return;
+          this.server.to(client.id).emit('query-result', {
+            tabId,
+            status: 'success',
+            ...result,
+            isSilent,
+          });
+        },
         (status) => {
           if (isAborted) return;
           this.server.to(client.id).emit('query-progress', {
@@ -65,13 +74,6 @@ export class QueryGateway {
           tabId,
           status: 'error',
           message: 'Query cancelled by user',
-          isSilent,
-        });
-      } else {
-        this.server.to(client.id).emit('query-result', {
-          tabId,
-          status: 'success',
-          ...result,
           isSilent,
         });
       }

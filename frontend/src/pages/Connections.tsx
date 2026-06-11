@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
-import { apiFetch } from '@/lib/api'
+import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 import { useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
@@ -19,17 +19,15 @@ export default function Connections() {
 
   const { data: connections, isLoading } = useQuery({
     queryKey: ['connections'],
-    queryFn: () => apiFetch<Connection[]>('/connections'),
+    queryFn: () => connectionService.getAll(),
   })
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateConnectionDto) => {
-      const isEditing = !!editingConnection?.id
-      const url = isEditing ? `/connections/${editingConnection.id}` : '/connections'
-      return apiFetch<Connection>(url, {
-        method: isEditing ? 'PATCH' : 'POST',
-        body: JSON.stringify(payload),
-      })
+      if (editingConnection?.id) {
+        return connectionService.update(editingConnection.id, payload)
+      }
+      return connectionService.create(payload)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] })
@@ -38,7 +36,7 @@ export default function Connections() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiFetch(`/connections/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => connectionService.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connections'] }),
   })
 
@@ -55,10 +53,7 @@ export default function Connections() {
   const handleTest = (payload: CreateConnectionDto) => {
     setIsTesting(true)
     setTestMessage(null)
-    apiFetch('/connections/test', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }).then(() => {
+    connectionService.test(payload).then(() => {
       setTestMessage({ type: 'success', text: 'Processing completed successfully' })
     }).catch((err: Error) => {
       setTestMessage({ type: 'error', text: err.message || 'Operation failed' })
@@ -86,7 +81,7 @@ export default function Connections() {
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-none font-medium hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
         >
           <Plus className="w-4 h-4" />
           New Connection
@@ -96,7 +91,7 @@ export default function Connections() {
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-40 bg-muted animate-pulse rounded-none" />
+            <div key={i} className="h-40 bg-muted animate-pulse rounded-md" />
           ))}
         </div>
       ) : (

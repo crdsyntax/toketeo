@@ -7,7 +7,8 @@ import { SchemaSelector } from '@/components/layout/SchemaSelector'
 import { useSystemStatus } from '@/hooks/useSystemStatus'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiFetch } from '@/lib/api'
+import { connectionService } from '@/services/connection.service'
+import { getApiUrl } from '@/lib/api'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 import { useState } from 'react'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
@@ -20,7 +21,7 @@ export default function MainLayout() {
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
-    queryFn: () => apiFetch<Connection[]>('/connections'),
+    queryFn: () => connectionService.getAll(),
   })
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -30,12 +31,10 @@ export default function MainLayout() {
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateConnectionDto) => {
-      const isEditing = !!editingConnection?.id
-      const url = isEditing ? `/connections/${editingConnection.id}` : '/connections'
-      return apiFetch<Connection>(url, {
-        method: isEditing ? 'PATCH' : 'POST',
-        body: JSON.stringify(payload),
-      })
+      if (editingConnection?.id) {
+        return connectionService.update(editingConnection.id, payload)
+      }
+      return connectionService.create(payload)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] })
@@ -47,10 +46,7 @@ export default function MainLayout() {
   const handleTest = (payload: CreateConnectionDto) => {
     setIsTesting(true)
     setTestMessage(null)
-    apiFetch('/connections/test', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }).then(() => {
+    connectionService.test(payload).then(() => {
       setTestMessage({ type: 'success', text: 'Processing completed successfully' })
     }).catch((err: Error) => {
       setTestMessage({ type: 'error', text: err.message || 'Operation failed' })
@@ -80,7 +76,7 @@ export default function MainLayout() {
       {/* ... (Error handling) ... */}
       <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
-          <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-none text-muted-foreground">
+          <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-md text-muted-foreground">
             {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
           </button>
           <div className="flex items-center gap-2">
@@ -93,7 +89,7 @@ export default function MainLayout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 transition-all text-sm font-medium",
+                  "flex items-center gap-2 px-3 py-2 transition-all text-sm font-medium rounded-md",
                   location.pathname === item.path 
                     ? "bg-primary/10 text-primary border-b-2 border-primary" 
                     : "hover:bg-muted text-muted-foreground hover:text-foreground"

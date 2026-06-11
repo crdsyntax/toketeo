@@ -76,6 +76,38 @@ export class MariaDbDriver implements DatabaseDriver {
     return rows as T;
   }
 
+  async *executeQueryStream(
+    sql: string,
+    params?: unknown[],
+  ): AsyncIterableIterator<Record<string, unknown>> {
+    if (!this.connection) {
+      throw new Error('Driver not connected');
+    }
+
+    // Accessing the underlying non-promise connection to use .stream()
+    // Using a more constrained type than any for the underlying driver interface.
+    const stream = (
+      this.connection as mysql.Connection & {
+        connection: {
+          query: (
+            sql: string,
+            params?: unknown[],
+          ) => {
+            stream: (opts: {
+              objectMode: boolean;
+            }) => AsyncIterable<Record<string, unknown>>;
+          };
+        };
+      }
+    ).connection
+      .query(sql, params)
+      .stream({ objectMode: true });
+
+    for await (const row of stream) {
+      yield row;
+    }
+  }
+
   async getTables(): Promise<string[]> {
     const rows = await this.executeQuery<InfoSchemaTable[]>(
       "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",

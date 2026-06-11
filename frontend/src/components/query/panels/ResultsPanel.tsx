@@ -1,19 +1,22 @@
-import { ChevronUp, ChevronDown, Table2, Clock, Save, Maximize2, Download, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2 } from 'lucide-react';
+import { ChevronUp, ChevronDown, Table2, Clock, Save, Maximize2, Download, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryTab, DbValue } from '@/store/useAppStore';
+import type { DbRow } from '@/types/database';
 
 interface ResultsPanelProps {
   activeTab: QueryTab;
   isVisible: boolean;
   onToggle: () => void;
-  updateTabResults: (id: string, results: any) => void;
+  updateTabResults: (id: string, results: Partial<QueryTab>) => void;
   handleSave: () => void;
   setShowResultModal: (show: boolean) => void;
   sortConfig: { key: string, direction: 'asc' | 'desc' } | null;
   requestSort: (key: string) => void;
-  sortedRows: any[];
+  sortedRows: DbRow[];
   editingCell: { rowIndex: number; column: string; value: DbValue } | null;
   setEditingCell: (cell: { rowIndex: number; column: string; value: DbValue } | null) => void;
+  handlePageChange: (page: number) => void;
+  clearResults: () => void;
 }
 
 export function ResultsPanel({
@@ -28,6 +31,8 @@ export function ResultsPanel({
   sortedRows,
   editingCell,
   setEditingCell,
+  handlePageChange,
+  clearResults,
 }: ResultsPanelProps) {
   return (
     <div className={cn("border border-border rounded-none bg-card flex flex-col overflow-hidden transition-all duration-300", isVisible ? "flex-1 min-h-[150px]" : "h-10 shrink-0")}>
@@ -43,9 +48,33 @@ export function ResultsPanel({
         </div>
         {activeTab.results && isVisible && (
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            {activeTab.results.page !== undefined && (
+              <div className="flex items-center gap-1 border-r border-border pr-4 mr-2">
+                <button 
+                  disabled={activeTab.results.page <= 1 || activeTab.status === 'executing'}
+                  onClick={() => handlePageChange(activeTab.results!.page! - 1)}
+                  className="p-1 hover:bg-muted rounded disabled:opacity-30"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] font-mono font-bold mx-1">
+                  PAGE {activeTab.results.page}
+                </span>
+                <button 
+                  disabled={!activeTab.results.hasMore || activeTab.status === 'executing'}
+                  onClick={() => handlePageChange(activeTab.results!.page! + 1)}
+                  className="p-1 hover:bg-muted rounded disabled:opacity-30"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground border-r border-border pr-4 mr-2">
               <Clock className="w-3 h-3" />
               {activeTab.results.executionTime}ms
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              Rows: <span className="font-bold text-foreground">{activeTab.results.rows.length}</span>
             </div>
             <div className="flex items-center gap-2 ml-4 border-l border-border pl-4">
               {editingCell && (
@@ -63,6 +92,14 @@ export function ResultsPanel({
               >
                 <Maximize2 className="w-3 h-3" />
                 Full Screen
+              </button>
+              <button 
+                onClick={clearResults}
+                className="text-[10px] font-bold text-muted-foreground hover:text-destructive flex items-center gap-1 mr-2"
+                title="Clear Results"
+              >
+                <Trash2 className="w-3 h-3" />
+                Clear
               </button>
               <button className="text-[10px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1">
                 <Download className="w-3 h-3" />

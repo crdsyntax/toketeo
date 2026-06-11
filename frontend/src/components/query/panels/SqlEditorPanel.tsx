@@ -34,7 +34,7 @@ export function SqlEditorPanel({
           </button>
           <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SQL Editor</span>
           <span className="text-[10px] text-primary/70 font-bold ml-4 border border-primary/20 px-2 py-0.5 rounded bg-primary/5 uppercase">
-            Press Ctrl + Enter to run selection/line
+            Press Ctrl/Cmd + Enter to run selection/line
           </span>
         </div>
         <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest px-3 border-l border-border">

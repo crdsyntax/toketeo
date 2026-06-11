@@ -27,6 +27,27 @@ export class QueryService {
     const driver = this.connectionService.getDriver(connection);
     const start = Date.now();
 
+    const page = dto.page || 1;
+    const pageSize = dto.pageSize || 1000;
+    let sql = dto.sql.trim();
+    const params = [...(dto.params || [])];
+
+    const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
+    const hasLimit = /\bLIMIT\b\s+\d+/i.test(sql);
+    let appliedPagination = false;
+
+    if (isSelect && !hasLimit) {
+      const offset = (page - 1) * pageSize;
+      if (sql.endsWith(';')) {
+        sql = sql.slice(0, -1).trim();
+      }
+      sql = `${sql} LIMIT ${Number(pageSize) + 1} OFFSET ${Number(offset)}`;
+      appliedPagination = true;
+      this.logger.log(
+        `Applied automatic pagination: LIMIT ${pageSize + 1} OFFSET ${offset}`,
+      );
+    }
+
     try {
       onProgress?.('connecting');
       await driver.connect();
@@ -38,13 +59,14 @@ export class QueryService {
       onProgress?.('executing');
       const result = await driver.executeQuery<
         QueryResultInfo | Record<string, unknown>[]
-      >(dto.sql, dto.params);
+      >(sql, params);
       const executionTime = Date.now() - start;
 
       let columns: string[] = [];
-      let rows: any[] = [];
+      let rows: Record<string, unknown>[] = [];
       let affectedRows: number | undefined;
       let message: string | undefined;
+      let hasMore = false;
 
       // Handle MariaDB/MySQL result format
       if (
@@ -60,8 +82,16 @@ export class QueryService {
       // Handle Postgres/Drivers returning array of rows
       else if (Array.isArray(result)) {
         rows = result;
+
+        if (appliedPagination) {
+          if (rows.length > pageSize) {
+            hasMore = true;
+            rows = rows.slice(0, pageSize);
+          }
+        }
+
         if (rows.length > 0) {
-          columns = Object.keys(rows[0] as Record<string, unknown>);
+          columns = Object.keys(rows[0]);
         }
       }
 
@@ -69,7 +99,7 @@ export class QueryService {
       void this.historyRepository.save({
         connectionId,
         userId: 'system',
-        sql: dto.sql,
+        sql: dto.sql, // Log original SQL
         executionTime,
         status: 'SUCCESS',
       });
@@ -89,6 +119,9 @@ export class QueryService {
         executionTime,
         affectedRows,
         message,
+        page: appliedPagination ? page : undefined,
+        pageSize: appliedPagination ? pageSize : undefined,
+        hasMore: appliedPagination ? hasMore : undefined,
       };
     } catch (error: unknown) {
       const executionTime = Date.now() - start;
@@ -115,6 +148,102 @@ export class QueryService {
     const driver = this.connectionService.getDriver(connection);
     if (driver.cancelQuery) {
       await driver.cancelQuery();
+    }
+  }
+
+  async executeStream(
+    connectionId: string,
+    dto: ExecuteQueryDto,
+    onResult: (data: Partial<QueryResponseDto>) => void,
+    onProgress?: (status: string) => void,
+  ): Promise<void> {
+    const connection = await this.connectionService.findEntity(connectionId);
+    if (dto.schema) connection.database = dto.schema;
+    const driver = this.connectionService.getDriver(connection);
+    const start = Date.now();
+
+    const pageSize = dto.pageSize || 1000;
+    const sql = dto.sql.trim();
+    const params = dto.params || [];
+
+    try {
+      onProgress?.('connecting');
+      await driver.connect();
+
+      if (dto.schema && driver.setSchema) {
+        driver.setSchema(dto.schema);
+      }
+
+      onProgress?.('executing');
+
+      if (!driver.executeQueryStream) {
+        // Fallback to regular execute if stream not supported
+        const result = await this.execute(connectionId, dto, onProgress);
+        onResult(result);
+        return;
+      }
+
+      const stream = await driver.executeQueryStream(sql, params);
+      let chunk: Record<string, unknown>[] = [];
+      let totalRows = 0;
+      let columns: string[] = [];
+
+      for await (const row of stream) {
+        if (totalRows === 0) {
+          columns = Object.keys(row);
+        }
+        chunk.push(row);
+        totalRows++;
+
+        if (chunk.length >= pageSize) {
+          onResult({
+            columns,
+            rows: chunk,
+            page: Math.floor(totalRows / pageSize),
+            pageSize,
+            hasMore: true,
+          });
+          chunk = [];
+        }
+      }
+
+      const executionTime = Date.now() - start;
+
+      // Final chunk
+      onResult({
+        columns,
+        rows: chunk,
+        executionTime,
+        page: Math.ceil(totalRows / pageSize) || 1,
+        pageSize,
+        hasMore: false,
+      });
+
+      // Persist history (Success)
+      void this.historyRepository.save({
+        connectionId,
+        userId: 'system',
+        sql: dto.sql,
+        executionTime,
+        status: 'SUCCESS',
+      });
+    } catch (error: unknown) {
+      const executionTime = Date.now() - start;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+
+      // Persist history (Error)
+      void this.historyRepository.save({
+        connectionId,
+        userId: 'system',
+        sql: dto.sql,
+        executionTime,
+        status: 'ERROR',
+        errorMessage: message,
+      });
+
+      throw error;
+    } finally {
+      await driver.disconnect();
     }
   }
 }

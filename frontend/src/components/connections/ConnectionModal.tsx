@@ -88,7 +88,7 @@ export function ConnectionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="bg-card border border-border shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] rounded-none overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className="bg-card border border-border shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] rounded-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="p-6 border-b border-border bg-muted/20 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2 text-left text-foreground">
@@ -97,7 +97,7 @@ export function ConnectionModal({
             </h2>
             <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mt-1 text-left">Configure your database access</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-none transition-colors">
+          <button onClick={onClose} className="p-2 hover:bg-muted rounded-md transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -130,7 +130,7 @@ export function ConnectionModal({
                 <div className="space-y-2 text-left">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Display Name</label>
                   <input 
-                    className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all"
+                    className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="Production Cluster"
@@ -139,7 +139,7 @@ export function ConnectionModal({
                 <div className="space-y-2 text-left">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Environment</label>
                   <select
-                    className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all appearance-none"
+                    className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all appearance-none"
                     value={form.environment}
                     onChange={(e) => setForm({ ...form, environment: e.target.value as Environment })}
                   >
@@ -153,7 +153,7 @@ export function ConnectionModal({
               <div className="space-y-2 text-left">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Database Engine</label>
                 <select
-                  className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all appearance-none"
+                  className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all appearance-none"
                   value={form.type}
                   onChange={(e) => {
                     const type = e.target.value as DatabaseType
@@ -173,7 +173,7 @@ export function ConnectionModal({
                   <div className="relative">
                     <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <input 
-                      className="w-full bg-muted/50 border border-border rounded-none pl-10 pr-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                      className="w-full bg-muted/50 border border-border rounded-md pl-10 pr-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                       value={form.host}
                       onChange={(e) => setForm({ ...form, host: e.target.value })}
                       placeholder="localhost"
@@ -184,7 +184,7 @@ export function ConnectionModal({
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Port</label>
                   <input 
                     type="number"
-                    className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                    className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                     value={form.port}
                     onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 0 })}
                   />
@@ -195,7 +195,7 @@ export function ConnectionModal({
                 <div className="space-y-2 text-left">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Username</label>
                   <input 
-                    className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                    className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                     value={form.user}
                     onChange={(e) => setForm({ ...form, user: e.target.value })}
                     placeholder="root"
@@ -207,7 +207,7 @@ export function ConnectionModal({
                     <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <input 
                       type="password"
-                      className="w-full bg-muted/50 border border-border rounded-none pl-10 pr-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                      className="w-full bg-muted/50 border border-border rounded-md pl-10 pr-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                       value={form.password}
                       onChange={(e) => setForm({ ...form, password: e.target.value })}
                       placeholder="••••••••"
@@ -219,7 +219,7 @@ export function ConnectionModal({
               <div className="space-y-2 text-left">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Default Database / Schema</label>
                 <input 
-                  className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                  className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                   value={form.database}
                   onChange={(e) => setForm({ ...form, database: e.target.value })}
                   placeholder="my_app_db"
@@ -227,7 +227,7 @@ export function ConnectionModal({
               </div>
 
               {form.type === DatabaseType.MONGODB && (
-                <div className="p-4 border border-primary/20 bg-primary/5 space-y-4 animate-in fade-in duration-300">
+                <div className="p-4 border border-primary/20 bg-primary/5 space-y-4 animate-in fade-in duration-300 rounded-md">
                   <h4 className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2">
                     <Database className="w-3 h-3" />
                     MongoDB Specific Options
@@ -236,7 +236,7 @@ export function ConnectionModal({
                     <div className="space-y-1 text-left">
                       <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Auth Source</label>
                       <input 
-                        className="w-full bg-background border border-border rounded-none px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.authSource}
                         onChange={(e) => setForm({ ...form, authSource: e.target.value })}
                         placeholder="admin"
@@ -245,7 +245,7 @@ export function ConnectionModal({
                     <div className="space-y-1 text-left">
                       <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Replica Set</label>
                       <input 
-                        className="w-full bg-background border border-border rounded-none px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.replicaSet}
                         onChange={(e) => setForm({ ...form, replicaSet: e.target.value })}
                       />
@@ -254,7 +254,7 @@ export function ConnectionModal({
                   <div className="space-y-1 text-left">
                     <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">SSL / TLS</label>
                     <select
-                      className="w-full bg-background border border-border rounded-none px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:outline-none appearance-none"
+                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:outline-none appearance-none"
                       value={form.ssl}
                       onChange={(e) => setForm({ ...form, ssl: e.target.value })}
                     >
@@ -269,7 +269,7 @@ export function ConnectionModal({
             </>
           ) : (
             <div className="space-y-6 animate-in slide-in-from-right-2 duration-300">
-              <div className="flex items-center justify-between p-4 bg-muted/30 border border-border">
+              <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-md">
                 <div className="flex items-center gap-3">
                   <Terminal className="w-5 h-5 text-primary" />
                   <div>
@@ -285,8 +285,8 @@ export function ConnectionModal({
                   )}
                 >
                   <div className={cn(
-                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform",
-                    form.ssh ? "left-7" : "left-1"
+                    "absolute top-1 w-4 h-4 rounded-full transition-transform",
+                    form.ssh ? "left-7 bg-background" : "left-1 bg-white"
                   )} />
                 </button>
               </div>
@@ -297,7 +297,7 @@ export function ConnectionModal({
                     <div className="col-span-3 space-y-2 text-left">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SSH Host</label>
                       <input 
-                        className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.ssh.host}
                         onChange={(e) => updateSsh({ host: e.target.value })}
                         placeholder="jump.example.com"
@@ -307,7 +307,7 @@ export function ConnectionModal({
                       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SSH Port</label>
                       <input 
                         type="number"
-                        className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.ssh.port}
                         onChange={(e) => updateSsh({ port: parseInt(e.target.value) || 22 })}
                       />
@@ -318,7 +318,7 @@ export function ConnectionModal({
                     <div className="space-y-2 text-left">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SSH User</label>
                       <input 
-                        className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.ssh.user}
                         onChange={(e) => updateSsh({ user: e.target.value })}
                         placeholder="ubuntu"
@@ -328,7 +328,7 @@ export function ConnectionModal({
                       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SSH Password (Optional)</label>
                       <input 
                         type="password"
-                        className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.ssh.password || ''}
                         onChange={(e) => updateSsh({ password: e.target.value })}
                         placeholder="••••••••"
@@ -339,7 +339,7 @@ export function ConnectionModal({
                   <div className="space-y-2 text-left">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Private Key (Optional)</label>
                     <textarea 
-                      className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-xs font-mono h-32 focus:ring-1 focus:ring-primary focus:outline-none resize-none"
+                      className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-xs font-mono h-32 focus:ring-1 focus:ring-primary focus:outline-none resize-none"
                       value={form.ssh.privateKey || ''}
                       onChange={(e) => updateSsh({ privateKey: e.target.value })}
                       placeholder="-----BEGIN RSA PRIVATE KEY-----"
@@ -351,7 +351,7 @@ export function ConnectionModal({
                       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Passphrase (Optional)</label>
                       <input 
                         type="password"
-                        className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.ssh.passphrase || ''}
                         onChange={(e) => updateSsh({ passphrase: e.target.value })}
                       />
@@ -359,7 +359,7 @@ export function ConnectionModal({
                     <div className="space-y-2 text-left">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Key Path (Optional)</label>
                       <input 
-                        className="w-full bg-muted/50 border border-border rounded-none px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                        className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:outline-none"
                         value={form.ssh.keyPath || ''}
                         onChange={(e) => updateSsh({ keyPath: e.target.value })}
                         placeholder="~/.ssh/id_rsa"
@@ -389,7 +389,7 @@ export function ConnectionModal({
             <button 
               onClick={() => onSave(form)}
               disabled={isSaving}
-              className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 rounded-none text-xs font-bold hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
+              className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 rounded-md text-xs font-bold hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
             >
               {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
               {editingConnection ? 'Save Changes' : 'Create Connection'}
@@ -399,7 +399,7 @@ export function ConnectionModal({
 
         {testMessage && (
           <div className={cn(
-            "mx-6 mb-6 p-3 border flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-none",
+            "mx-6 mb-6 p-3 border flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-md",
             testMessage.type === 'success' ? "bg-green-500/10 border-green-500/20 text-green-600" : "bg-destructive/10 border-destructive/20 text-destructive"
           )}>
             {testMessage.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
@@ -411,7 +411,7 @@ export function ConnectionModal({
   )
 }
 
-function RefreshCw(props: any) {
+function RefreshCw(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

@@ -4,7 +4,8 @@ import type { Connection } from '@/types/database'
 import { Environment } from '@/types/database'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiFetch } from '@/lib/api'
+import { connectionService } from '@/services/connection.service'
+import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
 
@@ -24,16 +25,13 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
 
   const { data: schemas = [] } = useQuery({
     queryKey: ['schemas', expandedConnId],
-    queryFn: () => apiFetch<string[]>(`/connections/${expandedConnId}/schema/schemas`),
+    queryFn: () => schemaService.getSchemas(expandedConnId!),
     enabled: !!expandedConnId,
   })
 
   const switchSchemaMutation = useMutation({
-    mutationFn: ({ connectionId, schema }: { connectionId: string, schema: string }) => 
-      apiFetch<Connection>(`/connections/${connectionId}/schema/switch-schema`, {
-        method: 'POST',
-        body: JSON.stringify({ schema })
-      }),
+    mutationFn: ({ connectionId, schema }: { connectionId: string, schema: string }) =>
+      schemaService.switchSchema(connectionId, schema),
     onSuccess: (updatedConnection) => {
       setActiveConnection(updatedConnection)
       queryClient.invalidateQueries({ queryKey: ['schemas'] })

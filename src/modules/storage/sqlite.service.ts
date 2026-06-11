@@ -51,10 +51,6 @@ export class SqliteService implements OnModuleInit, OnModuleDestroy {
         database TEXT NOT NULL,
         user TEXT NOT NULL,
         password TEXT,
-        auth_source TEXT,
-        replica_set TEXT,
-        ssl TEXT,
-        ssh TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -92,6 +88,32 @@ export class SqliteService implements OnModuleInit, OnModuleDestroy {
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migrations: Add missing columns if they don't exist
+    const columns = await this.client.execute('PRAGMA table_info(connections)');
+    const columnNames = columns.rows.map((r) => r.name as string);
+
+    if (!columnNames.includes('auth_source')) {
+      await this.client.execute(
+        'ALTER TABLE connections ADD COLUMN auth_source TEXT',
+      );
+      this.logger.log('Added auth_source column to connections table');
+    }
+    if (!columnNames.includes('replica_set')) {
+      await this.client.execute(
+        'ALTER TABLE connections ADD COLUMN replica_set TEXT',
+      );
+      this.logger.log('Added replica_set column to connections table');
+    }
+    if (!columnNames.includes('ssl')) {
+      await this.client.execute('ALTER TABLE connections ADD COLUMN ssl TEXT');
+      this.logger.log('Added ssl column to connections table');
+    }
+    if (!columnNames.includes('ssh')) {
+      await this.client.execute('ALTER TABLE connections ADD COLUMN ssh TEXT');
+      this.logger.log('Added ssh column to connections table');
+    }
+
     this.logger.log('SQLite schema verified.');
   }
 

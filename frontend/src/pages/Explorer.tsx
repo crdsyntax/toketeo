@@ -1,4 +1,4 @@
-import { Search, Code, Play, X, AlertCircle } from 'lucide-react'
+import { Code, Play, X, AlertCircle } from 'lucide-react'
 import { Sidebar } from '@/components/explorer/Sidebar'
 import { ObjectDetail } from '@/components/explorer/ObjectDetail'
 import { useExplorer } from '@/hooks/useExplorer'
@@ -32,6 +32,8 @@ export default function Explorer() {
     setParamsValues,
     showParamModal,
     setShowParamModal,
+    isSidebarCollapsed,
+    setIsSidebarCollapsed,
     isLoadingSidebar,
     filteredItems,
     columns,
@@ -51,16 +53,27 @@ export default function Explorer() {
     renameIndexMutation,
     dropForeignKeyMutation,
     dropConstraintMutation,
+    updateCell,
     handleExecute,
     handleCancel,
     handleRefetch
   } = useExplorer()
 
   useEffect(() => {
-    if (selectedItem?.type === 'table' && activeTab === 'data' && executionStatus === 'idle') {
+    // Only auto-execute if we are on the data tab and the status is idle
+    // Changing page or pageSize will manually trigger execution via their setters if needed, 
+    // or we can let this effect handle it by resetting status to idle when those change.
+    if ((selectedItem?.type === 'table' || selectedItem?.type === 'view') && activeTab === 'data' && executionStatus === 'idle') {
       handleExecute()
     }
   }, [selectedItem, activeTab, executionStatus, handleExecute])
+
+  // Reset status to idle when pagination changes to allow the effect above to re-run
+  useEffect(() => {
+    if (activeTab === 'data') {
+      setExecutionStatus('idle')
+    }
+  }, [page, pageSize, activeTab, setExecutionStatus])
 
   if (!activeConnection) {
     return (
@@ -107,7 +120,7 @@ export default function Explorer() {
               <div className="pt-4 flex gap-3">
                 <button 
                   onClick={() => setShowParamModal(false)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-bold hover:bg-muted transition-colors"
+                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-bold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                 >
                   Cancel
                 </button>
@@ -141,6 +154,8 @@ export default function Explorer() {
         setExecutionError={setExecutionError}
         setParamsValues={setParamsValues}
         setActiveTab={setActiveTab}
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
       <div className="flex-1 border border-border rounded-xl bg-card flex flex-col overflow-hidden">
@@ -166,6 +181,7 @@ export default function Explorer() {
           setPage={setPage}
           handleExecute={handleExecute}
           handleCancel={handleCancel}
+          updateCell={updateCell}
           isLoadingDDL={isLoadingDDL}
           editableDdl={editableDdl}
           setEditableDdl={setEditableDdl}

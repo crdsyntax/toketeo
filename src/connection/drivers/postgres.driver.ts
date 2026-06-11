@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Client, ClientConfig } from 'pg';
+import QueryStream from 'pg-query-stream';
 import {
   DatabaseDriver,
   ColumnMetadata,
@@ -71,6 +72,21 @@ export class PostgresDriver implements DatabaseDriver {
       affectedRows: res.rowCount ?? 0,
       fields: res.fields,
     } as unknown as T;
+  }
+
+  async *executeQueryStream(
+    sql: string,
+    params?: unknown[],
+  ): AsyncIterableIterator<Record<string, unknown>> {
+    if (!this.client) {
+      throw new Error('Driver not connected');
+    }
+
+    const stream = this.client.query(new QueryStream(sql, params));
+
+    for await (const row of stream) {
+      yield row as Record<string, unknown>;
+    }
   }
 
   async getSchemas(): Promise<string[]> {

@@ -34,16 +34,20 @@ export interface ParameterMetadata {
 }
 
 export interface QueryResultInfo {
-  rows?: any[];
+  rows?: Record<string, unknown>[];
   affectedRows?: number;
   insertId?: number | string;
-  fields?: any[];
+  fields?: unknown[];
 }
 
 export interface DatabaseDriver {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   executeQuery<T>(sql: string, params?: unknown[]): Promise<T>;
+  executeQueryStream?(
+    sql: string,
+    params?: unknown[],
+  ): AsyncIterableIterator<Record<string, unknown>>;
   getTables(): Promise<string[]>;
   getSchemas?(): Promise<string[]>;
   setSchema?(schema: string): void;

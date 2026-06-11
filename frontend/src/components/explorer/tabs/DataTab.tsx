@@ -1,5 +1,6 @@
-import { Loader2, AlertCircle, ChevronLeft, ChevronRight as ChevronRightIcon, Layout, Code, Play } from 'lucide-react';
-import type { QueryResult, ExecutionStatus, DatabaseObject } from '@/types/database';
+import { Loader2, AlertCircle, ChevronLeft, ChevronRight as ChevronRightIcon, Layout, Code, Play, Check, X } from 'lucide-react';
+import { useState } from 'react';
+import type { QueryResult, ExecutionStatus, DatabaseObject, DbRow, DbValue } from '@/types/database';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -13,6 +14,7 @@ interface DataTabProps {
   setPage: (updater: (p: number) => number) => void;
   handleExecute: () => void;
   handleCancel: () => void;
+  updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
 }
 
 export function DataTab({
@@ -27,7 +29,23 @@ export function DataTab({
   setPage,
   handleExecute,
   handleCancel,
+  updateCell,
 }: DataTabProps) {
+  const [editingCell, setEditingCell] = useState<{ rowIndex: number, column: string } | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+
+  const handleStartEdit = (rowIndex: number, column: string, value: DbValue) => {
+    if (selectedItem.type !== 'table') return; // Only tables are editable for now
+    setEditingCell({ rowIndex, column });
+    setEditValue(value === null ? '' : String(value));
+  };
+
+  const handleSaveEdit = (row: DbRow) => {
+    if (!editingCell) return;
+    updateCell(row, editingCell.column, editValue);
+    setEditingCell(null);
+  };
+
   if ((selectedItem.type === 'view' || selectedItem.type === 'procedure') && executionStatus === 'idle') {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
@@ -57,7 +75,7 @@ export function DataTab({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 min-w-0">
       {executionStatus === 'error' && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
@@ -70,13 +88,13 @@ export function DataTab({
             <div className="flex items-center gap-2 text-primary animate-pulse mb-4">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-xs font-bold uppercase tracking-widest">
-                Executing via WebSocket...
+                Loading data...
               </span>
               <button
                 onClick={handleCancel}
                 className="ml-auto bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1 rounded text-[10px] font-bold hover:bg-destructive/20 transition-colors"
               >
-                Stop
+                Cancel
               </button>
             </div>
             {[1, 2, 3, 4, 5].map((i) => (
@@ -84,35 +102,65 @@ export function DataTab({
             ))}
           </div>
         ) : queryData ? (
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="sticky top-0 bg-background border-b border-border z-10">
-              <tr>
-                {queryData.columns.map((col) => (
-                  <th
-                    key={col}
-                    className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0"
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {queryData.rows.map((row, i) => (
-                <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
+          <div className="min-w-full inline-block align-middle">
+            <table className="min-w-full text-left text-xs border-collapse table-auto">
+              <thead className="sticky top-0 bg-background border-b border-border z-10">
+                <tr>
                   {queryData.columns.map((col) => (
-                    <td key={col} className="p-2 border-r border-border last:border-0 truncate max-w-[200px]">
-                      {row[col] === null ? (
-                        <span className="text-muted-foreground italic text-[10px]">NULL</span>
-                      ) : (
-                        String(row[col])
-                      )}
-                    </td>
+                    <th
+                      key={col}
+                      className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0 max-w-[200px]"
+                      title={col}
+                    >
+                      {col}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {queryData.rows.map((row, i) => (
+                  <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
+                    {queryData.columns.map((col) => (
+                      <td 
+                        key={col} 
+                        className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text group relative"
+                        onDoubleClick={() => handleStartEdit(i, col, row[col])}
+                        title={row[col] !== null ? String(row[col]) : 'NULL'}
+                      >
+                        {editingCell?.rowIndex === i && editingCell?.column === col ? (
+                          <div className="flex items-center gap-1 bg-background">
+                            <input
+                              autoFocus
+                              className="w-full bg-muted border border-border px-1 py-0.5 rounded outline-none"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEdit(row);
+                                if (e.key === 'Escape') setEditingCell(null);
+                              }}
+                            />
+                            <button onClick={() => handleSaveEdit(row)} className="text-primary"><Check className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setEditingCell(null)} className="text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+                          </div>
+                        ) : (
+                          <>
+                            {row[col] === null ? (
+                              <span className="text-muted-foreground italic text-[10px]">NULL</span>
+                            ) : (
+                              String(row[col])
+                            )}
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-background/80 px-1 rounded text-[8px] text-muted-foreground pointer-events-none">
+                              Double-click to edit
+                            </div>
+                          </>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           executionStatus === 'success' && (
             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic">
@@ -121,7 +169,7 @@ export function DataTab({
           )
         )}
       </div>
-      {queryData && (
+      {queryData && (selectedItem.type === 'table' || selectedItem.type === 'view') && (
         <div className="p-3 border-t border-border flex items-center justify-between bg-muted/10">
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <span>

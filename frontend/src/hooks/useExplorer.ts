@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { io, Socket } from 'socket.io-client'
 import { format } from 'sql-formatter'
-import { apiFetch } from '@/lib/api'
+import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
-import type { DatabaseObject, ColumnResponse, QueryResult, DbValue, DbRow } from '@/types/database'
+import type { DatabaseObject, QueryResult, DbValue, DbRow } from '@/types/database'
 
 export interface TableInfo {
   name: string
@@ -12,7 +12,12 @@ export interface TableInfo {
   type: string
 }
 
-export interface ColumnInfo extends ColumnResponse {}
+export interface ColumnInfo {
+  name: string;
+  type: string;
+  isNullable: boolean;
+  isPrimaryKey?: boolean;
+}
 
 export interface ParameterInfo {
   name: string
@@ -40,11 +45,18 @@ export function useExplorer() {
   const [editableDdl, setEditableDdl] = useState('')
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
   const [showParamModal, setShowParamModal] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Reset selection when connection or schema changes
   useEffect(() => {
     setSelectedItem(null)
+    setIsSidebarCollapsed(false)
   }, [activeConnection?.id, currentSchema])
+
+  const handleSelectItem = useCallback((item: DatabaseObject) => {
+    setSelectedItem(item)
+    setIsSidebarCollapsed(true)
+  }, [])
 
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ['tables', activeConnection?.id] })
@@ -52,6 +64,11 @@ export function useExplorer() {
     queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection?.id] })
     queryClient.invalidateQueries({ queryKey: ['triggers', activeConnection?.id] })
   }, [currentSchema, activeConnection?.id, queryClient])
+
+  // Reset page when pageSize changes
+  useEffect(() => {
+    setPage(0)
+  }, [pageSize])
 
   useEffect(() => {
     const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/queries`)
@@ -61,12 +78,15 @@ export function useExplorer() {
       setExecutionStatus('executing')
     })
 
-    socket.on('query-result', (data: { tabId: string, columns: string[], rows: DbRow[], executionTime: number }) => {
+    socket.on('query-result', (data: { tabId: string, columns: string[], rows: DbRow[], executionTime: number, page?: number, pageSize?: number, hasMore?: boolean }) => {
       if (data.tabId === 'explorer') {
         setSocketResults({
           columns: data.columns,
           rows: data.rows,
-          executionTime: data.executionTime
+          executionTime: data.executionTime,
+          page: data.page,
+          pageSize: data.pageSize,
+          hasMore: data.hasMore
         })
         setExecutionStatus('success')
         setExecutionError(null)
@@ -87,25 +107,25 @@ export function useExplorer() {
 
   const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/tables?schema=${currentSchema}`),
+    queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
   })
 
   const { data: views, isLoading: isLoadingViews, refetch: refetchViews } = useQuery({
     queryKey: ['views', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/views?schema=${currentSchema}`),
+    queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
   })
 
   const { data: procedures, isLoading: isLoadingProcedures, refetch: refetchProcedures } = useQuery({
     queryKey: ['procedures', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/procedures?schema=${currentSchema}`),
+    queryFn: () => schemaService.getProcedures(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
   })
 
   const { data: triggers, isLoading: isLoadingTriggers, refetch: refetchTriggers } = useQuery({
     queryKey: ['triggers', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/triggers?schema=${currentSchema}`),
+    queryFn: () => schemaService.getTriggers(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
   })
 
@@ -118,35 +138,35 @@ export function useExplorer() {
 
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<ColumnInfo[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns?schema=${currentSchema}`),
+    queryFn: () => schemaService.getColumns(activeConnection!.id, selectedItem!.name, currentSchema),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'table' || selectedItem.type === 'view'),
   })
 
   const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
     queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<any[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/indexes?schema=${currentSchema}`),
+    queryFn: () => schemaService.getIndexes(activeConnection!.id, selectedItem!.name, currentSchema),
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
   })
 
   const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
     queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<any[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/foreign-keys?schema=${currentSchema}`),
+    queryFn: () => schemaService.getForeignKeys(activeConnection!.id, selectedItem!.name, currentSchema),
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
   })
 
   const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
     queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<any[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/constraints?schema=${currentSchema}`),
+    queryFn: () => schemaService.getConstraints(activeConnection!.id, selectedItem!.name, currentSchema),
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
   })
 
   const { data: ddlData, isLoading: isLoadingDDL } = useQuery({
     queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
-      const data = await apiFetch<{ ddl: string }>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`)
-      let formatted = data.ddl
+      const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema)
+      let formatted = ddl
       try {
-        formatted = format(data.ddl, { language: 'mysql' })
+        formatted = format(ddl, { language: 'mysql' })
       } catch (e) {
         // ignore format error
       }
@@ -158,15 +178,12 @@ export function useExplorer() {
 
   const { data: parameters } = useQuery({
     queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<ParameterInfo[]>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/parameters?type=${selectedItem?.type}&schema=${currentSchema}`),
+    queryFn: () => schemaService.getParameters(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'procedure' || selectedItem.type === 'view'),
   })
 
   const updateDdlMutation = useMutation({
-    mutationFn: (sql: string) => apiFetch(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`, {
-      method: 'POST',
-      body: JSON.stringify({ sql })
-    }),
+    mutationFn: (sql: string) => schemaService.updateDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, sql, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection?.id, selectedItem] })
       handleRefetch()
@@ -174,10 +191,7 @@ export function useExplorer() {
   })
 
   const editColumnMutation = useMutation({
-    mutationFn: (sql: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns?schema=${currentSchema}`, {
-      method: 'POST',
-      body: JSON.stringify({ sql })
-    }),
+    mutationFn: (sql: string) => schemaService.editColumn(activeConnection!.id, selectedItem!.name, sql, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
       handleRefetch()
@@ -185,18 +199,14 @@ export function useExplorer() {
   })
 
   const dropColumnMutation = useMutation({
-    mutationFn: (columnName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns/${columnName}?schema=${currentSchema}`, {
-      method: 'DELETE'
-    }),
+    mutationFn: (columnName: string) => schemaService.dropColumn(activeConnection!.id, selectedItem!.name, columnName, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
   const dropIndexMutation = useMutation({
-    mutationFn: (indexName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/indexes/${indexName}?schema=${currentSchema}`, {
-      method: 'DELETE'
-    }),
+    mutationFn: (indexName: string) => schemaService.dropIndex(activeConnection!.id, selectedItem!.name, indexName, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
     }
@@ -204,32 +214,67 @@ export function useExplorer() {
 
   const renameIndexMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) => 
-      apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/indexes/${oldName}/rename?schema=${currentSchema}`, {
-        method: 'POST',
-        body: JSON.stringify({ newName })
-      }),
+      schemaService.renameIndex(activeConnection!.id, selectedItem!.name, oldName, newName, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
   const dropForeignKeyMutation = useMutation({
-    mutationFn: (constraintName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/foreign-keys/${constraintName}?schema=${currentSchema}`, {
-      method: 'DELETE'
-    }),
+    mutationFn: (constraintName: string) => schemaService.dropForeignKey(activeConnection!.id, selectedItem!.name, constraintName, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
   const dropConstraintMutation = useMutation({
-    mutationFn: (constraintName: string) => apiFetch(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/constraints/${constraintName}?schema=${currentSchema}`, {
-      method: 'DELETE'
-    }),
+    mutationFn: (constraintName: string) => schemaService.dropConstraint(activeConnection!.id, selectedItem!.name, constraintName, currentSchema),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
+
+  const updateCell = useCallback((row: DbRow, column: string, newValue: DbValue) => {
+    if (!selectedItem || !activeConnection || !socketRef.current) return
+
+    // Try to find a primary key for a safe UPDATE
+    // If no PK, we'll use all columns in WHERE (risky but common in simple DB tools)
+    const pk = columns?.find(c => c.isPrimaryKey)?.name
+    let sql = ''
+    const params: DbValue[] = []
+
+    if (pk) {
+      sql = `UPDATE \`${selectedItem.name}\` SET \`${column}\` = ? WHERE \`${pk}\` = ?;`
+      params.push(newValue, row[pk])
+    } else {
+      const whereClauses = Object.keys(row)
+        .filter(k => row[k] !== undefined)
+        .map(k => `\`${k}\` ${row[k] === null ? 'IS NULL' : '= ?'}`)
+        .join(' AND ')
+      
+      sql = `UPDATE \`${selectedItem.name}\` SET \`${column}\` = ? WHERE ${whereClauses};`
+      params.push(newValue)
+      Object.keys(row).forEach(k => {
+        if (row[k] !== null && row[k] !== undefined) params.push(row[k])
+      })
+    }
+
+    socketRef.current.emit('execute-query', {
+      connectionId: activeConnection.id,
+      dto: { sql, params, schema: currentSchema },
+      tabId: 'explorer',
+      isSilent: true // We don't want to clear the whole table view for a single update
+    })
+
+    // Optimistic update
+    setSocketResults(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        rows: prev.rows.map(r => r === row ? { ...r, [column]: newValue } : r)
+      }
+    })
+  }, [selectedItem, activeConnection, columns, currentSchema])
 
   const handleExecute = useCallback((useParams: boolean = false) => {
     if (selectedItem && activeConnection && socketRef.current) {
@@ -301,7 +346,9 @@ export function useExplorer() {
     search,
     setSearch,
     selectedItem,
-    setSelectedItem,
+    setSelectedItem: handleSelectItem,
+    isSidebarCollapsed,
+    setIsSidebarCollapsed,
     sidebarTab,
     setSidebarTab,
     activeTab,
@@ -342,6 +389,7 @@ export function useExplorer() {
     renameIndexMutation,
     dropForeignKeyMutation,
     dropConstraintMutation,
+    updateCell,
     handleExecute,
     handleCancel,
     handleRefetch

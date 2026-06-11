@@ -22,11 +22,11 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: Conn
 
   return (
     <div className={cn(
-      "group relative border border-border bg-card p-5 rounded-none hover:shadow-md transition-shadow overflow-hidden text-left",
+      "group relative border border-border bg-card p-5 rounded-md hover:shadow-md transition-shadow overflow-hidden text-left",
       connection.environment === Environment.PRODUCTION && "border-l-4 border-l-red-500"
     )}>
       <div className="flex items-start justify-between mb-4">
-        <div className="p-2 bg-primary/10 rounded-none">
+        <div className="p-2 bg-primary/10 rounded-md">
           <Database className="w-6 h-6 text-primary" />
         </div>
         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

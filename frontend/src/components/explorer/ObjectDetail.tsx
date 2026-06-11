@@ -6,8 +6,10 @@ import type {
   IndexResponse,
   ForeignKeyResponse,
   ConstraintResponse,
+  DbRow,
+  DbValue,
 } from '@/types/database';
-import { Table, Layout, Code, RefreshCw, List, Table2 } from 'lucide-react';
+import { Table2, Eye, Terminal, Zap, List, Table, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ColumnsTab } from './tabs/ColumnsTab';
@@ -53,6 +55,7 @@ interface ObjectDetailProps {
   setPage: (updater: (p: number) => number) => void;
   handleExecute: () => void;
   handleCancel: () => void;
+  updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
   isLoadingDDL: boolean;
   editableDdl: string;
   setEditableDdl: (ddl: string) => void;
@@ -87,6 +90,7 @@ export function ObjectDetail({
   setPage,
   handleExecute,
   handleCancel,
+  updateCell,
   isLoadingDDL,
   editableDdl,
   setEditableDdl,
@@ -109,7 +113,7 @@ export function ObjectDetail({
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
         <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mb-4">
-          <Layout className="w-8 h-8 text-muted-foreground" />
+          <Database className="w-8 h-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-medium">Object Detail</h3>
         <p className="text-sm text-muted-foreground max-w-xs">
@@ -125,16 +129,16 @@ export function ObjectDetail({
         <div className="flex items-center gap-3">
           <div className="p-2 bg-background border border-border rounded-none">
             {selectedItem.type === 'table' && (
-              <Table className="w-5 h-5 text-primary" />
+              <Table2 className="w-5 h-5 text-primary" />
             )}
             {selectedItem.type === 'view' && (
-              <Layout className="w-5 h-5 text-primary" />
+              <Eye className="w-5 h-5 text-primary" />
             )}
             {selectedItem.type === 'procedure' && (
-              <Code className="w-5 h-5 text-primary" />
+              <Terminal className="w-5 h-5 text-primary" />
             )}
             {selectedItem.type === 'trigger' && (
-              <RefreshCw className="w-5 h-5 text-primary" />
+              <Zap className="w-5 h-5 text-primary" />
             )}
           </div>
           <div>
@@ -213,7 +217,7 @@ export function ObjectDetail({
                     : 'hover:bg-background/50',
                 )}
               >
-                <Table2 className="w-3.5 h-3.5" />
+                <Table className="w-3.5 h-3.5" />
                 {selectedItem.type === 'procedure' ? 'Execution' : 'Data'}
               </button>
             </>
@@ -227,7 +231,7 @@ export function ObjectDetail({
                 : 'hover:bg-background/50',
             )}
           >
-            <Code className="w-3.5 h-3.5" />
+            <Terminal className="w-3.5 h-3.5" />
             Definition
           </button>
         </div>
@@ -290,6 +294,7 @@ export function ObjectDetail({
               setPage={setPage}
               handleExecute={handleExecute}
               handleCancel={handleCancel}
+              updateCell={updateCell}
             />
           )}
 

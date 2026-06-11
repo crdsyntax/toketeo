@@ -6,6 +6,7 @@ import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
+import { useAppStore } from '@/store/useAppStore';
 import { useEffect } from 'react';
 
 export default function QueryEditor() {
@@ -42,6 +43,8 @@ export default function QueryEditor() {
     handleSaveScript,
     handleEditorWillMount,
     handleEditorDidMount,
+    handlePageChange,
+    clearTabResults,
     draggingRef,
     resizingRef,
     setModalRect
@@ -69,11 +72,12 @@ export default function QueryEditor() {
     setShowContextMenu({ x: e.clientX, y: e.clientY, tabId })
   }
 
-  const handleFileImport = (content: string, _fileName: string) => {
-    addTab();
-    if (activeTabId) {
-      updateTabQuery(activeTabId, content);
-    }
+  const handleFileImport = (content: string, fileName: string) => {
+    const id = Math.random().toString(36).substring(7)
+    useAppStore.setState((state) => ({
+      tabs: [...state.tabs, { id, name: fileName.replace(/\.sql$/i, ''), query: content, status: 'idle' }],
+      activeTabId: id,
+    }))
   };
 
   if (!activeConnection) {
@@ -117,6 +121,8 @@ export default function QueryEditor() {
         editingCell={editingCell}
         setEditingCell={setEditingCell}
         handleSave={handleSave}
+        handlePageChange={handlePageChange}
+        clearResults={() => clearTabResults(activeTab.id)}
         draggingRef={draggingRef}
         resizingRef={resizingRef}
       />
@@ -162,6 +168,8 @@ export default function QueryEditor() {
         sortedRows={sortedRows}
         editingCell={editingCell}
         setEditingCell={setEditingCell}
+        handlePageChange={handlePageChange}
+        clearResults={() => clearTabResults(activeTab.id)}
       />
     </div>
   )
