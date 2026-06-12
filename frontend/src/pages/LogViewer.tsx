@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { Terminal, Trash2, Pause, Play } from 'lucide-react'
 import { LogEntryItem } from '@/components/logs/LogEntryItem'
+import { getApiUrl } from '@/lib/api'
 
 interface LogEntry {
   level: string
@@ -10,8 +11,6 @@ interface LogEntry {
   stack?: string
   timestamp: string
 }
-
-const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000/logs'
 
 export default function LogViewer() {
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -26,7 +25,7 @@ export default function LogViewer() {
   }, [isPaused])
 
   useEffect(() => {
-    const socket = io(SOCKET_URL)
+    const socket = io(getApiUrl('/logs'))
     socketRef.current = socket
 
     socket.on('log', (log: LogEntry) => {

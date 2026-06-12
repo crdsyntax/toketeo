@@ -25,7 +25,10 @@ export class SqliteService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async initDatabase() {
-    const dataDir = path.resolve(process.cwd(), 'data');
+    const dataDir = process.env.TOKETEO_DATA_PATH 
+      ? path.resolve(process.env.TOKETEO_DATA_PATH)
+      : path.resolve(process.cwd(), 'data');
+
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }

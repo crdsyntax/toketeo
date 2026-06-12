@@ -1,7 +1,20 @@
 import axios from 'axios'
 import { useAppStore } from '@/store/useAppStore'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const getDynamicApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  
+  // Try to get port from Electron preload
+  // @ts-ignore
+  const electronPort = window.toketeoAPI?.getBackendPort()
+  if (electronPort) {
+    return `http://localhost:${electronPort}`
+  }
+  
+  return 'http://localhost:3000'
+}
+
+const API_URL = getDynamicApiUrl()
 
 export const apiClient = axios.create({
   baseURL: API_URL,

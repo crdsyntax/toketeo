@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client'
 import { format } from 'sql-formatter'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
+import { getApiUrl } from '@/lib/api'
 import type { DatabaseObject, QueryResult, DbValue, DbRow } from '@/types/database'
 
 export interface TableInfo {
@@ -71,7 +72,7 @@ export function useExplorer() {
   }, [pageSize])
 
   useEffect(() => {
-    const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/queries`)
+    const socket = io(getApiUrl('/queries'))
     socketRef.current = socket
 
     socket.on('query-progress', () => {

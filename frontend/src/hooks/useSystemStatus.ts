@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { io } from 'socket.io-client'
-
-const SYSTEM_WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000'
+import { getApiUrl } from '@/lib/api'
 
 interface MysqlUnavailablePayload {
   message: string
@@ -13,7 +12,7 @@ export function useSystemStatus() {
 
   useEffect(() => {
     // The namespace is '/system' based on the gateway
-    const socket = io(`${SYSTEM_WS_URL}/system`)
+    const socket = io(getApiUrl('/system'))
 
     socket.on('connect', () => {
       console.log('Connected to system status socket')

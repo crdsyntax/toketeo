@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client'
 import type { Monaco } from '@monaco-editor/react'
 import { useAppStore } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
+import { getApiUrl } from '@/lib/api'
 import type { DbValue, DbRow } from '@/types/database'
 
 export function useQueryEditor() {
@@ -72,7 +73,7 @@ export function useQueryEditor() {
   }, [])
 
   useEffect(() => {
-    const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/queries`)
+    const socket = io(getApiUrl('/queries'))
     socketRef.current = socket
 
     socket.on('query-progress', (data: { tabId: string; status: string; message: string; isSilent?: boolean }) => {

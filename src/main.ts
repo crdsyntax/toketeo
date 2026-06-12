@@ -1,6 +1,12 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+// En entornos empaquetados, buscamos el .env relativo al ejecutable o al directorio de la app
+const envPath = process.env.ELECTRON_RUN_AS_NODE === '1'
+  ? path.join(__dirname, '..', '.env')
+  : path.join(process.cwd(), '.env');
+
+dotenv.config({ path: envPath });
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';

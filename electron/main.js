@@ -36,35 +36,72 @@ function isPortInUse(port) {
   });
 }
 
+let backendPort = 3000;
+
 async function startBackend() {
   const envVars = loadEnv();
-  const backendPort = parseInt(envVars.PORT || '3000', 10);
-  const inUse = await isPortInUse(backendPort);
-
-  if (inUse) {
-    console.log(`Port ${backendPort} already in use — skipping NestJS backend spawn.`);
-    return;
+  backendPort = parseInt(envVars.PORT || '3000', 10);
+  
+  // En producción (paquetizado), forzamos el inicio a menos que estemos seguros del puerto
+  if (app.isPackaged) {
+    console.log(`Production mode: Starting backend on port ${backendPort}`);
+  } else {
+    const inUse = await isPortInUse(backendPort);
+    if (inUse) {
+      console.log(`Port ${backendPort} already in use — skipping NestJS backend spawn.`);
+      return;
+    }
   }
 
   const backendPath = path.resolve(__dirname, '../dist/main.js');
-  console.log('Starting NestJS backend from:', backendPath);
+  const userDataPath = app.getPath('userData');
+  const dataPath = path.join(userDataPath, 'data');
+  const logsPath = path.join(userDataPath, 'logs');
+  
+  if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath, { recursive: true });
+  if (!fs.existsSync(logsPath)) fs.mkdirSync(logsPath, { recursive: true });
+
+  const logFile = path.join(logsPath, 'backend.log');
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+  const msgInit = `--- Backend Startup: ${new Date().toISOString()} ---\n` +
+                  `Backend Path: ${backendPath}\n` +
+                  `Data Path: ${dataPath}\n` +
+                  `Is Packaged: ${app.isPackaged}\n`;
+  logStream.write(msgInit);
 
   backendProcess = fork(backendPath, [], {
-    cwd: path.resolve(__dirname, '..'),
+    cwd: path.dirname(backendPath), // Importante: cwd al directorio del dist/main.js
     env: {
       ...process.env,
       ...envVars,
+      TOKETEO_DATA_PATH: dataPath,
       NODE_ENV: app.isPackaged ? 'production' : 'development',
+      ELECTRON_RUN_AS_NODE: '1',
     },
-    silent: false,
+    stdio: ['inherit', 'pipe', 'pipe', 'ipc'],
+  });
+
+  backendProcess.stdout.on('data', (data) => {
+    const msg = `[Backend]: ${data}`;
+    console.log(msg);
+    logStream.write(`${new Date().toISOString()} ${msg}\n`);
+  });
+
+  backendProcess.stderr.on('data', (data) => {
+    const msg = `[Backend Error]: ${data}`;
+    console.error(msg);
+    logStream.write(`${new Date().toISOString()} ${msg}\n`);
   });
 
   backendProcess.on('error', (err) => {
     console.error('Failed to start NestJS backend:', err);
+    logStream.write(`${new Date().toISOString()} [Critical]: Failed to start backend: ${err.message}\n`);
   });
 
   backendProcess.on('exit', (code, signal) => {
     console.log(`NestJS backend exited with code ${code} and signal ${signal}`);
+    logStream.write(`${new Date().toISOString()} [Info]: Backend exited with code ${code}\n`);
   });
 }
 
@@ -107,6 +144,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: [`--backend-port=${backendPort}`]
     },
   });
 
