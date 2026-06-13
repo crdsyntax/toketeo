@@ -21,13 +21,13 @@ interface ResultsModalProps {
   handleSave: () => void
   handlePageChange: (page: number) => void
   clearResults: () => void
-  setModalRect: (rect: { x: number; y: number; w: number; h: number }) => void
+  isInteracting: boolean
 }
 
 export function ResultsModal({
   isOpen, activeTab, modalRect, isMaximized, draggingRef, resizingRef,
   handlePopout, onClose, toggleMaximize, sortedRows, requestSort,
-  sortConfig, setEditingCell, editingCell, handleSave, handlePageChange, clearResults, setModalRect
+  sortConfig, setEditingCell, editingCell, handleSave, handlePageChange, clearResults, isInteracting
 }: ResultsModalProps) {
   if (!isOpen || !activeTab?.results) return null
 
@@ -43,7 +43,7 @@ export function ResultsModal({
           left: `${modalRect.x}%`, 
           width: `${modalRect.w}%`, 
           height: `${modalRect.h}%`,
-          transition: draggingRef.current || resizingRef.current ? 'none' : undefined
+          transition: isInteracting ? 'none' : undefined
         }}
       >
         <div 
@@ -172,9 +172,17 @@ export function ResultsModal({
                           className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-3 z-20"
                           value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
                           onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSave();
-                            if (e.key === 'Escape') setEditingCell(null);
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSave();
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setEditingCell(null);
+                            }
                           }}
                         />
                       ) : (

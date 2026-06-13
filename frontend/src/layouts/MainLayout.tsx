@@ -50,8 +50,13 @@ export default function MainLayout() {
     })
   }
 
-  const handleConnect = (conn: Connection) => {
-    setActiveConnection(conn)
+  const handleConnect = async (conn: Connection) => {
+    try {
+      await connectionService.connect(conn)
+      setActiveConnection(conn)
+    } catch (error: unknown) {
+      console.error('Failed to connect to database:', error)
+    }
   }
 
   const handleEdit = (conn: Connection) => {
@@ -68,7 +73,6 @@ export default function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
-      {/* ... (Error handling) ... */}
       <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
           <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-md text-muted-foreground">
@@ -99,8 +103,6 @@ export default function MainLayout() {
             ))}
           </nav>
         </div>
-        
-        {/* ... (Header Right) ... */}
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -119,6 +121,7 @@ export default function MainLayout() {
       </div>
 
       <ConnectionModal 
+        key={editingConnection?.id || 'new'}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={saveMutation.mutate}

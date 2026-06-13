@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Download, RefreshCw, Search, Shield, Clock, User, Activity } from 'lucide-react'
+import { Download, RefreshCw, Search, Clock, User, Activity } from 'lucide-react'
 import { getApiUrl } from '@/lib/api'
 import { auditService } from '@/services/audit.service'
-import { type AuditEntry, AuditAction } from '@/types/audit'
+import { AuditAction } from '@/types/audit'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 

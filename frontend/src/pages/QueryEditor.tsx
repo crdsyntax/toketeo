@@ -6,8 +6,7 @@ import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
-import { useAppStore } from '@/store/useAppStore';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export default function QueryEditor() {
   const {
@@ -16,11 +15,13 @@ export default function QueryEditor() {
     activeTabId,
     activeTab,
     addTab,
+    openTab,
     removeTab,
     updateTabQuery,
     setActiveTabId,
     updateTabResults,
     panels,
+    setEditorHeight,
     togglePanel,
     showContextMenu,
     setShowContextMenu,
@@ -32,12 +33,12 @@ export default function QueryEditor() {
     requestSort,
     sortedRows,
     modalRect,
+    setModalRect,
     isMaximized,
     toggleMaximize,
     editingCell,
     setEditingCell,
     handleExecuteAll,
-    handleExecuteCurrent,
     handleCancel,
     handleSave,
     handleSaveScript,
@@ -45,10 +46,36 @@ export default function QueryEditor() {
     handleEditorDidMount,
     handlePageChange,
     clearTabResults,
+    isInteracting,
     draggingRef,
     resizingRef,
-    setModalRect
   } = useQueryEditor()
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const splitterRef = useRef({ isDragging: false })
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (splitterRef.current.isDragging && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect()
+        const relativeY = e.clientY - rect.top
+        const newHeight = (relativeY / rect.height) * 100
+        
+        if (newHeight > 10 && newHeight < 90) {
+          setEditorHeight(newHeight)
+        }
+      }
+    }
+    const handleMouseUp = () => {
+      splitterRef.current.isDragging = false
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [setEditorHeight])
 
   useEffect(() => {
     const handleClick = () => setShowContextMenu(null)
@@ -73,11 +100,7 @@ export default function QueryEditor() {
   }
 
   const handleFileImport = (content: string, fileName: string) => {
-    const id = Math.random().toString(36).substring(7)
-    useAppStore.setState((state) => ({
-      tabs: [...state.tabs, { id, name: fileName.replace(/\.sql$/i, ''), query: content, status: 'idle' }],
-      activeTabId: id,
-    }))
+    openTab(fileName, content)
   };
 
   if (!activeConnection) {
@@ -95,7 +118,7 @@ export default function QueryEditor() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-2 relative">
+    <div className="flex flex-col h-[calc(100vh-8rem)] gap-0 relative overflow-hidden">
       <EditorToolbar 
         onNew={addTab}
         onOpen={handleFileImport}
@@ -123,6 +146,7 @@ export default function QueryEditor() {
         handleSave={handleSave}
         handlePageChange={handlePageChange}
         clearResults={() => clearTabResults(activeTab.id)}
+        isInteracting={isInteracting}
         draggingRef={draggingRef}
         resizingRef={resizingRef}
       />
@@ -145,32 +169,47 @@ export default function QueryEditor() {
         onContextMenu={onContextMenu}
       />
 
-      <SqlEditorPanel 
-        activeTab={activeTab}
-        isVisible={panels.editor}
-        onToggle={() => togglePanel('editor')}
-        updateTabQuery={updateTabQuery}
-        handleEditorWillMount={handleEditorWillMount}
-        handleEditorDidMount={handleEditorDidMount}
-        connectionName={activeConnection.name}
-        connectionType={activeConnection.type}
-      />
+      <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {panels.editor && (
+          <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px]">
+            <SqlEditorPanel 
+              activeTab={activeTab}
+              onToggle={() => togglePanel('editor')}
+              updateTabQuery={updateTabQuery}
+              handleEditorWillMount={handleEditorWillMount}
+              handleEditorDidMount={handleEditorDidMount}
+              connectionName={activeConnection.name}
+              connectionType={activeConnection.type}
+            />
+          </div>
+        )}
 
-      <ResultsPanel 
-        activeTab={activeTab}
-        isVisible={panels.results}
-        onToggle={() => togglePanel('results')}
-        updateTabResults={updateTabResults}
-        handleSave={handleSave}
-        setShowResultModal={setShowResultModal}
-        sortConfig={sortConfig}
-        requestSort={requestSort}
-        sortedRows={sortedRows}
-        editingCell={editingCell}
-        setEditingCell={setEditingCell}
-        handlePageChange={handlePageChange}
-        clearResults={() => clearTabResults(activeTab.id)}
-      />
+        {panels.editor && panels.results && (
+          <div 
+            className="h-1 w-full cursor-row-resize bg-border hover:bg-primary transition-colors shrink-0 z-50"
+            onMouseDown={() => { splitterRef.current.isDragging = true }}
+          />
+        )}
+
+        {panels.results && (
+          <div className="flex-1 min-h-[100px]">
+            <ResultsPanel 
+              activeTab={activeTab}
+              onToggle={() => togglePanel('results')}
+              updateTabResults={updateTabResults}
+              handleSave={handleSave}
+              setShowResultModal={setShowResultModal}
+              sortConfig={sortConfig}
+              requestSort={requestSort}
+              sortedRows={sortedRows}
+              editingCell={editingCell}
+              setEditingCell={setEditingCell}
+              handlePageChange={handlePageChange}
+              clearResults={() => clearTabResults(activeTab.id)}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

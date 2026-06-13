@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function downloadCSV(data: any[], columns: string[], fileName: string) {
+export function downloadCSV(data: Record<string, unknown>[], columns: string[], fileName: string) {
   if (!data.length) return;
 
   const csvRows = [];

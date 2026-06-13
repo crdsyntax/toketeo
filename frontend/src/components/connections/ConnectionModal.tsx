@@ -1,8 +1,8 @@
-import { X, Shield, Loader2, Save, Database, Globe, ChevronDown, Check, AlertTriangle, Key, Terminal, Server } from 'lucide-react'
+import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 interface ConnectionModalProps {
   isOpen: boolean
@@ -15,27 +15,27 @@ interface ConnectionModalProps {
   testMessage: { type: 'success' | 'error', text: string } | null
 }
 
+const INITIAL_FORM: CreateConnectionDto = {
+  name: '',
+  type: DatabaseType.MARIADB,
+  environment: Environment.DEVELOPMENT,
+  host: 'localhost',
+  port: 3306,
+  user: 'root',
+  password: '',
+  database: '',
+  authSource: '',
+  replicaSet: '',
+  ssl: 'false',
+}
+
 export function ConnectionModal({
   isOpen, onClose, onSave, onTest, editingConnection, isSaving, isTesting, testMessage
 }: ConnectionModalProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'ssh'>('general')
-  const [form, setForm] = useState<CreateConnectionDto>({
-    name: '',
-    type: DatabaseType.MARIADB,
-    environment: Environment.DEVELOPMENT,
-    host: 'localhost',
-    port: 3306,
-    user: 'root',
-    password: '',
-    database: '',
-    authSource: '',
-    replicaSet: '',
-    ssl: 'false',
-  })
-
-  useEffect(() => {
+  const [form, setForm] = useState<CreateConnectionDto>(() => {
     if (editingConnection) {
-      setForm({
+      return {
         name: editingConnection.name,
         type: editingConnection.type,
         environment: editingConnection.environment,
@@ -48,24 +48,20 @@ export function ConnectionModal({
         replicaSet: editingConnection.replicaSet || '',
         ssl: editingConnection.ssl || 'false',
         ssh: editingConnection.ssh,
-      })
-    } else {
-      setForm({
-        name: '',
-        type: DatabaseType.MARIADB,
-        environment: Environment.DEVELOPMENT,
-        host: 'localhost',
-        port: 3306,
-        user: 'root',
-        password: '',
-        database: '',
-        authSource: '',
-        replicaSet: '',
-        ssl: 'false',
-      })
+      }
     }
-    setActiveTab('general')
-  }, [editingConnection, isOpen])
+    return INITIAL_FORM
+  })
+
+  // We still need to reset if the modal opens for "New Connection" after being closed
+  // But wait, if we use a key, we don't need this.
+  // However, "isOpen" changing might not trigger a remount if key is same.
+  // Actually, if we use key={editingConnection?.id || 'new'}, then switching from one edit to another, 
+  // or from edit to new, WILL remount.
+  // Only closing and reopening for the SAME thing (e.g. edit same connection) won't remount.
+  // But usually closing a modal and reopening it should reset it.
+  
+  if (!isOpen) return null
 
   const updateSsh = (updates: Partial<SshConfig>) => {
     setForm(prev => ({

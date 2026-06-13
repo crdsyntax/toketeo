@@ -5,14 +5,18 @@ export const queryService = {
   /**
    * Executes a query using the native Rust backend via Tauri IPC.
    */
-  execute: async (id: string, query: string, _schema?: string, _params?: unknown[], _page?: number, _pageSize?: number) => {
+  execute: async (id: string, query: string, schema?: string, params?: unknown[], page?: number, pageSize?: number) => {
     return await tauriApi.invoke<QueryResult>('execute_query', {
       id,
-      query
+      query,
+      schema,
+      params,
+      page,
+      pageSize
     })
   },
 
-  cancel: async (_id: string) => {
-    console.warn('Query cancellation not yet implemented in Rust')
+  cancel: async (id: string) => {
+    console.warn(`Query cancellation not yet implemented in Rust for connection ${id}`)
   }
 }

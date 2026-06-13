@@ -6,17 +6,14 @@ export const connectionService = {
    * Fetches all saved connections from the local Rust storage.
    */
   getAll: async (): Promise<Connection[]> => {
-    const configs = await tauriApi.invoke<any[]>('get_connections')
-    return configs.map(config => ({
-        ...config,
-        type: config.type,
-        ssh: config.ssh
-    })) as Connection[]
+    return await tauriApi.invoke<Connection[]>('get_connections')
   },
 
-  getOne: async (_id: string): Promise<Connection> => {
+  getOne: async (id: string): Promise<Connection> => {
     const all = await connectionService.getAll()
-    return all.find(c => c.id === _id) as Connection
+    const found = all.find(c => c.id === id)
+    if (!found) throw new Error(`Connection ${id} not found`)
+    return found
   },
 
   /**

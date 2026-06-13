@@ -32,4 +32,5 @@ pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<serde_json::Value>,
     pub execution_time_ms: u64,
+    pub primary_keys: Option<Vec<String>>,
 }

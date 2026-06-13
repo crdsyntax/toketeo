@@ -1,186 +1,144 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { io, Socket } from 'socket.io-client'
 import { format } from 'sql-formatter'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
-import { getApiUrl } from '@/lib/api'
+import { tauriApi } from '@/lib/api'
 import type { DatabaseObject, QueryResult, DbValue, DbRow } from '@/types/database'
-
-export interface TableInfo {
-  name: string
-  schema?: string
-  type: string
-}
-
-export interface ColumnInfo {
-  name: string;
-  type: string;
-  isNullable: boolean;
-  isPrimaryKey?: boolean;
-}
-
-export interface ParameterInfo {
-  name: string
-  type: string
-  mode: 'IN' | 'OUT' | 'INOUT'
-}
+import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType } from '@/types/database'
 
 export function useExplorer() {
-  const { activeConnection } = useAppStore()
+  const { activeConnection, explorer, setExplorerState } = useAppStore()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [selectedItem, setSelectedItem] = useState<DatabaseObject | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers'>('tables')
-  const [activeTab, setActiveTab] = useState<'columns' | 'data' | 'ddl' | 'indexes' | 'foreign-keys' | 'constraints'>('columns')
+
+  const { search, selectedItem, sidebarTab, activeTab, executionStatus, executionError, socketResults } = explorer
+  const setSearch = useCallback((s: string) => setExplorerState({ search: s }), [setExplorerState])
+  const setSelectedItem = useCallback((item: DatabaseObject | null) => setExplorerState({ selectedItem: item }), [setExplorerState])
+  const setSidebarTab = useCallback((tab: SidebarTab) => setExplorerState({ sidebarTab: tab }), [setExplorerState])
+  const setActiveTab = useCallback((tab: ExplorerTab) => setExplorerState({ activeTab: tab }), [setExplorerState])
+  const setExecutionStatus = useCallback((status: ExecutionStatus) => setExplorerState({ executionStatus: status }), [setExplorerState])
+  const setExecutionError = useCallback((error: string | null) => setExplorerState({ executionError: error }), [setExplorerState])
+  const setSocketResults = useCallback((results: QueryResult | null) => setExplorerState({ socketResults: results }), [setExplorerState])
+
   const currentSchema = activeConnection?.database || ''
 
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(50)
-  
-  const socketRef = useRef<Socket | null>(null)
-  const [executionStatus, setExecutionStatus] = useState<'idle' | 'executing' | 'success' | 'error'>('idle')
-  const [executionError, setExecutionError] = useState<string | null>(null)
-  const [socketResults, setSocketResults] = useState<QueryResult | null>(null)
+
+  const handleSetPageSize = useCallback((size: number) => {
+    setPageSize(size)
+    setPage(0)
+  }, [])
   
   const [editableDdl, setEditableDdl] = useState('')
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
   const [showParamModal, setShowParamModal] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
-  // Reset selection when connection or schema changes
+  // Track previous connection to detect real changes
+  const prevConnIdRef = useRef<string | null>(null)
+
+  // Reset selection ONLY when connection ID changes
   useEffect(() => {
-    setSelectedItem(null)
-    setIsSidebarCollapsed(false)
-  }, [activeConnection?.id, currentSchema])
+    if (activeConnection?.id && activeConnection.id !== prevConnIdRef.current) {
+      setSelectedItem(null)
+      setIsSidebarCollapsed(false)
+      prevConnIdRef.current = activeConnection.id
+    }
+  }, [activeConnection?.id, setSelectedItem])
 
   const handleSelectItem = useCallback((item: DatabaseObject) => {
     setSelectedItem(item)
     setIsSidebarCollapsed(true)
-  }, [])
-
-  useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ['tables', activeConnection?.id] })
-    queryClient.invalidateQueries({ queryKey: ['views', activeConnection?.id] })
-    queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection?.id] })
-    queryClient.invalidateQueries({ queryKey: ['triggers', activeConnection?.id] })
-  }, [currentSchema, activeConnection?.id, queryClient])
-
-  // Reset page when pageSize changes
-  useEffect(() => {
-    setPage(0)
-  }, [pageSize])
-
-  useEffect(() => {
-    const socket = io(getApiUrl('/queries'))
-    socketRef.current = socket
-
-    socket.on('query-progress', () => {
-      setExecutionStatus('executing')
-    })
-
-    socket.on('query-result', (data: { tabId: string, columns: string[], rows: DbRow[], executionTime: number, page?: number, pageSize?: number, hasMore?: boolean }) => {
-      if (data.tabId === 'explorer') {
-        setSocketResults({
-          columns: data.columns,
-          rows: data.rows,
-          executionTime: data.executionTime,
-          page: data.page,
-          pageSize: data.pageSize,
-          hasMore: data.hasMore
-        })
-        setExecutionStatus('success')
-        setExecutionError(null)
-      }
-    })
-
-    socket.on('query-error', (data: { tabId: string, message: string }) => {
-      if (data.tabId === 'explorer') {
-        setExecutionStatus('error')
-        setExecutionError(data.message)
-      }
-    })
-
-    return () => {
-      socket.disconnect()
-    }
-  }, [])
+  }, [setSelectedItem])
 
   const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
     queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
   })
 
   const { data: views, isLoading: isLoadingViews, refetch: refetchViews } = useQuery({
     queryKey: ['views', activeConnection?.id, currentSchema],
     queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: procedures, isLoading: isLoadingProcedures, refetch: refetchProcedures } = useQuery({
     queryKey: ['procedures', activeConnection?.id, currentSchema],
     queryFn: () => schemaService.getProcedures(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: triggers, isLoading: isLoadingTriggers, refetch: refetchTriggers } = useQuery({
     queryKey: ['triggers', activeConnection?.id, currentSchema],
     queryFn: () => schemaService.getTriggers(activeConnection!.id, currentSchema),
     enabled: !!activeConnection,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const { data: functions, isLoading: isLoadingFunctions, refetch: refetchFunctions } = useQuery({
+    queryKey: ['functions', activeConnection?.id, currentSchema],
+    queryFn: () => schemaService.getFunctions(activeConnection!.id, currentSchema),
+    enabled: !!activeConnection,
+    staleTime: 5 * 60 * 1000,
   })
 
   const handleRefetch = useCallback(() => {
-    if (sidebarTab === 'tables') refetchTables()
-    else if (sidebarTab === 'views') refetchViews()
-    else if (sidebarTab === 'procedures') refetchProcedures()
-    else if (sidebarTab === 'triggers') refetchTriggers()
-  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers])
+    if (sidebarTab === SidebarTab.TABLES) refetchTables()
+    else if (sidebarTab === SidebarTab.VIEWS) refetchViews()
+    else if (sidebarTab === SidebarTab.PROCEDURES) refetchProcedures()
+    else if (sidebarTab === SidebarTab.TRIGGERS) refetchTriggers()
+    else if (sidebarTab === SidebarTab.FUNCTIONS) refetchFunctions()
+  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers, refetchFunctions])
 
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
     queryFn: () => schemaService.getColumns(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'table' || selectedItem.type === 'view'),
+    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === DatabaseObjectType.TABLE || selectedItem.type === DatabaseObjectType.VIEW),
   })
 
   const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
     queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema],
     queryFn: () => schemaService.getIndexes(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
+    enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
   const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
     queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema],
     queryFn: () => schemaService.getForeignKeys(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
+    enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
   const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
     queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema],
     queryFn: () => schemaService.getConstraints(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
+    enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
-  const { data: ddlData, isLoading: isLoadingDDL } = useQuery({
+  const { isLoading: isLoadingDDL } = useQuery({
     queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
       const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema)
       let formatted = ddl
       try {
         formatted = format(ddl, { language: 'mysql' })
-      } catch (e) {
+      } catch {
         // ignore format error
       }
       setEditableDdl(formatted)
       return { ddl: formatted }
     },
-    enabled: !!activeConnection && !!selectedItem && activeTab === 'ddl',
+    enabled: !!activeConnection && !!selectedItem && activeTab === ExplorerTab.DDL,
   })
 
   const { data: parameters } = useQuery({
     queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
     queryFn: () => schemaService.getParameters(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'procedure' || selectedItem.type === 'view'),
+    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === DatabaseObjectType.PROCEDURE || selectedItem.type === DatabaseObjectType.VIEW),
   })
 
   const updateDdlMutation = useMutation({
@@ -236,36 +194,47 @@ export function useExplorer() {
   })
 
   const updateCell = useCallback((row: DbRow, column: string, newValue: DbValue) => {
-    if (!selectedItem || !activeConnection || !socketRef.current) return
+    if (!selectedItem || !activeConnection) return
+
+    // Qualify table name with schema if available
+    const tableName = currentSchema 
+      ? `\`${currentSchema.replace(/`/g, "``")}\`.\`${selectedItem.name.replace(/`/g, "``")}\``
+      : `\`${selectedItem.name.replace(/`/g, "``")}\``;
 
     // Try to find a primary key for a safe UPDATE
-    // If no PK, we'll use all columns in WHERE (risky but common in simple DB tools)
     const pk = columns?.find(c => c.isPrimaryKey)?.name
-    let sql = ''
+    let sqlTemplate: string
     const params: DbValue[] = []
 
     if (pk) {
-      sql = `UPDATE \`${selectedItem.name}\` SET \`${column}\` = ? WHERE \`${pk}\` = ?;`
+      sqlTemplate = `UPDATE ${tableName} SET \`${column.replace(/`/g, "``")}\` = ? WHERE \`${pk.replace(/`/g, "``")}\` = ?;`
       params.push(newValue, row[pk])
     } else {
       const whereClauses = Object.keys(row)
         .filter(k => row[k] !== undefined)
-        .map(k => `\`${k}\` ${row[k] === null ? 'IS NULL' : '= ?'}`)
+        .map(k => `\`${k.replace(/`/g, "``")}\` ${row[k] === null ? 'IS NULL' : '= ?'}`)
         .join(' AND ')
       
-      sql = `UPDATE \`${selectedItem.name}\` SET \`${column}\` = ? WHERE ${whereClauses};`
+      sqlTemplate = `UPDATE ${tableName} SET \`${column.replace(/`/g, "``")}\` = ? WHERE ${whereClauses};`
       params.push(newValue)
       Object.keys(row).forEach(k => {
         if (row[k] !== null && row[k] !== undefined) params.push(row[k])
       })
     }
 
-    socketRef.current.emit('execute-query', {
-      connectionId: activeConnection.id,
-      dto: { sql, params, schema: currentSchema },
-      tabId: 'explorer',
-      isSilent: true // We don't want to clear the whole table view for a single update
-    })
+    const finalSql = sqlTemplate.replace(/\?/g, () => {
+      const val = params.shift();
+      if (val === null || val === undefined) return 'NULL';
+      if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+      return String(val);
+    });
+
+    tauriApi.invoke('execute_query', {
+      id: activeConnection.id,
+      query: finalSql
+    }).catch(err => {
+      console.error('Failed to update cell:', err);
+    });
 
     // Optimistic update
     setSocketResults(prev => {
@@ -275,72 +244,64 @@ export function useExplorer() {
         rows: prev.rows.map(r => r === row ? { ...r, [column]: newValue } : r)
       }
     })
-  }, [selectedItem, activeConnection, columns, currentSchema])
+  }, [selectedItem, activeConnection, columns, currentSchema, setSocketResults])
 
-  const handleExecute = useCallback((useParams: boolean = false) => {
-    if (selectedItem && activeConnection && socketRef.current) {
+  const handleExecute = useCallback(async (useParams: boolean = false) => {
+    if (selectedItem && activeConnection) {
       if (!useParams && parameters && parameters.length > 0) {
         setShowParamModal(true)
         return
       }
 
-      let sql = ''
-      const params: DbValue[] = []
-
-      if (selectedItem.type === 'view' || selectedItem.type === 'table') {
-        sql = `SELECT * FROM \`${selectedItem.name}\` LIMIT ${pageSize} OFFSET ${page * pageSize};`
-      } else if (selectedItem.type === 'procedure') {
-        const placeholders = parameters?.map(p => {
-          params.push(paramValues[p.name] || null)
-          return '?'
-        }).join(', ') || ''
-        sql = `CALL \`${selectedItem.name}\`(${placeholders});`
-      }
-
-      if (!sql) return
-
-      setExecutionStatus('executing')
+      setExecutionStatus(ExecutionStatus.EXECUTING)
       setExecutionError(null)
       setSocketResults(null)
       setShowParamModal(false)
 
-      socketRef.current.emit('execute-query', {
-        connectionId: activeConnection.id,
-        dto: { sql, params, schema: currentSchema },
-        tabId: 'explorer'
-      })
+      try {
+        const result = await schemaService.executeExplorer({
+          connectionId: activeConnection.id,
+          database: currentSchema,
+          name: selectedItem.name,
+          objectType: selectedItem.type,
+          page: page + 1, // Rust side might expect 1-based paging
+          pageSize: pageSize,
+          params: useParams ? paramValues : undefined
+        })
+        
+        setSocketResults(result)
+        setExecutionStatus(ExecutionStatus.SUCCESS)
+      } catch (err: unknown) {
+        setExecutionStatus(ExecutionStatus.ERROR)
+        const errorMessage = err instanceof Error ? err.message : 'Failed to execute query'
+        setExecutionError(errorMessage)
+      }
     }
-  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema])
+  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema, setExecutionStatus, setExecutionError, setSocketResults])
 
-  const handleCancel = () => {
-    if (socketRef.current && activeConnection) {
-      socketRef.current.emit('cancel-query', { 
-        tabId: 'explorer',
-        connectionId: activeConnection.id 
-      })
-      setExecutionStatus('error')
-      setExecutionError('Query cancelled by user')
-    }
-  }
+  const handleCancel = useCallback(() => {
+    setExecutionStatus(ExecutionStatus.ERROR)
+    setExecutionError('Query cancelled by user')
+  }, [setExecutionStatus, setExecutionError])
 
-  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers
+  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers || isLoadingFunctions
 
   const filteredItems = useMemo(() => {
-    const items =
-      sidebarTab === 'tables'
-        ? tables
-        : sidebarTab === 'views'
-          ? views
-          : sidebarTab === 'procedures'
-            ? procedures
-            : triggers;
+    let items: { name: string }[] | undefined;
+    switch (sidebarTab) {
+      case SidebarTab.TABLES: items = tables; break;
+      case SidebarTab.VIEWS: items = views; break;
+      case SidebarTab.PROCEDURES: items = procedures; break;
+      case SidebarTab.TRIGGERS: items = triggers; break;
+      case SidebarTab.FUNCTIONS: items = functions; break;
+    }
 
     if (!items) return [];
 
     return items.filter((t) =>
       (t.name || '').toLowerCase().includes(search.toLowerCase()),
     );
-  }, [sidebarTab, tables, views, procedures, triggers, search]);
+  }, [sidebarTab, tables, views, procedures, triggers, functions, search]);
 
   return {
     activeConnection,
@@ -358,7 +319,7 @@ export function useExplorer() {
     page,
     setPage,
     pageSize,
-    setPageSize,
+    setPageSize: handleSetPageSize,
     executionStatus,
     executionError,
     socketResults,

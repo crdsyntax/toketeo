@@ -102,57 +102,108 @@ pub async fn get_tables(
 }
 
 #[tauri::command]
+pub async fn get_views(
+    id: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_views(schema).await
+}
+
+#[tauri::command]
+pub async fn get_procedures(
+    id: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_procedures(schema).await
+}
+
+#[tauri::command]
+pub async fn get_triggers(
+    id: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_triggers(schema).await
+}
+
+#[tauri::command]
+pub async fn get_functions(
+    id: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_functions(schema).await
+}
+
+#[tauri::command]
 pub async fn get_columns(
-    _id: String,
-    _table: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
-    Ok(vec![]) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_columns(&table, schema).await
 }
 
 #[tauri::command]
 pub async fn get_indexes(
-    _id: String,
-    _table: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
-    Ok(vec![]) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_indexes(&table, schema).await
 }
 
 #[tauri::command]
 pub async fn get_foreign_keys(
-    _id: String,
-    _table: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
-    Ok(vec![]) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_foreign_keys(&table, schema).await
 }
 
 #[tauri::command]
 pub async fn get_constraints(
-    _id: String,
-    _table: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
-    Ok(vec![]) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_constraints(&table, schema).await
 }
 
 #[tauri::command]
 pub async fn get_ddl(
-    _id: String,
-    _name: String,
-    _type: String,
-    _state: State<'_, AppState>,
+    id: String,
+    name: String,
+    object_type: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<String> {
-    Ok("".into()) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_ddl(&name, &object_type, schema).await
 }
 
 #[tauri::command]
 pub async fn update_ddl(
     _id: String,
     _name: String,
-    _type: String,
+    _object_type: String,
     _sql: String,
+    _schema: Option<String>,
     _state: State<'_, AppState>,
 ) -> AppResult<()> {
     Ok(()) // TODO
@@ -160,12 +211,14 @@ pub async fn update_ddl(
 
 #[tauri::command]
 pub async fn get_parameters(
-    _id: String,
-    _name: String,
-    _type: String,
-    _state: State<'_, AppState>,
+    id: String,
+    name: String,
+    object_type: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
-    Ok(vec![]) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.fetch_parameters(&name, &object_type, schema).await
 }
 
 #[tauri::command]
@@ -227,6 +280,40 @@ pub async fn drop_constraint(
     _state: State<'_, AppState>,
 ) -> AppResult<()> {
     Ok(()) // TODO
+}
+
+#[tauri::command]
+pub async fn execute_explorer(
+    id: String,
+    _database: Option<String>,
+    name: String,
+    object_type: String,
+    page: u32,
+    page_size: u32,
+    _params: Option<serde_json::Value>,
+    state: State<'_, AppState>,
+) -> AppResult<QueryResult> {
+    let driver = state.get_connection(&id).await?;
+    
+    let full_name = if let Some(schema) = _database {
+        format!("`{}`.`{}`", schema.replace('`', "``"), name.replace('`', "``"))
+    } else {
+        format!("`{}`", name.replace('`', "``"))
+    };
+
+    let query = match object_type.to_lowercase().as_str() {
+        "table" | "view" => {
+            let offset = (page - 1) * page_size;
+            format!("SELECT * FROM {} LIMIT {} OFFSET {}", full_name, page_size, offset)
+        },
+        "procedure" => {
+            // Very basic procedure execution
+            format!("CALL {}()", full_name) // This needs param handling
+        },
+        _ => return Err(AppError::Internal("Unsupported object type for data execution".into())),
+    };
+
+    driver.execute(&query).await
 }
 
 #[tauri::command]

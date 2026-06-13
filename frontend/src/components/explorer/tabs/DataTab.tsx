@@ -46,6 +46,18 @@ export function DataTab({
     setEditingCell(null);
   };
 
+  const onInputKeyDown = (e: React.KeyboardEvent, row: DbRow) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSaveEdit(row);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setEditingCell(null);
+    }
+  };
+
   if ((selectedItem.type === 'view' || selectedItem.type === 'procedure') && executionStatus === 'idle') {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
@@ -128,19 +140,28 @@ export function DataTab({
                         title={row[col] !== null ? String(row[col]) : 'NULL'}
                       >
                         {editingCell?.rowIndex === i && editingCell?.column === col ? (
-                          <div className="flex items-center gap-1 bg-background">
+                          <div className="flex items-center gap-1 bg-background" onClick={(e) => e.stopPropagation()}>
                             <input
                               autoFocus
                               className="w-full bg-muted border border-border px-1 py-0.5 rounded outline-none"
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSaveEdit(row);
-                                if (e.key === 'Escape') setEditingCell(null);
-                              }}
+                              onKeyDown={(e) => onInputKeyDown(e, row)}
                             />
-                            <button onClick={() => handleSaveEdit(row)} className="text-primary"><Check className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setEditingCell(null)} className="text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleSaveEdit(row); }} 
+                              className="text-primary hover:text-primary/80 transition-colors"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setEditingCell(null); }} 
+                              className="text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         ) : (
                           <>

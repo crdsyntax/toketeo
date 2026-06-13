@@ -1,5 +1,4 @@
 import { Trash2, Layout, Table2, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface QueryMenusProps {
   showContextMenu: { x: number, y: number, tabId: string } | null;

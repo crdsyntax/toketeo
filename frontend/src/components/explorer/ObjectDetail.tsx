@@ -2,14 +2,14 @@ import type {
   DatabaseObject,
   ColumnResponse,
   QueryResult,
-  ExecutionStatus,
   IndexResponse,
   ForeignKeyResponse,
   ConstraintResponse,
   DbRow,
   DbValue,
 } from '@/types/database';
-import { Table2, Eye, Terminal, Zap, List, Table, Database } from 'lucide-react';
+import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database';
+import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ColumnsTab } from './tabs/ColumnsTab';
@@ -21,22 +21,8 @@ import { DdlTab } from './tabs/DdlTab';
 
 interface ObjectDetailProps {
   selectedItem: DatabaseObject | null;
-  activeTab:
-    | 'columns'
-    | 'data'
-    | 'ddl'
-    | 'indexes'
-    | 'foreign-keys'
-    | 'constraints';
-  setActiveTab: (
-    tab:
-      | 'columns'
-      | 'data'
-      | 'ddl'
-      | 'indexes'
-      | 'foreign-keys'
-      | 'constraints',
-  ) => void;
+  activeTab: ExplorerTab;
+  setActiveTab: (tab: ExplorerTab) => void;
   columns?: ColumnResponse[];
   isLoadingColumns: boolean;
   indexes?: IndexResponse[];
@@ -103,7 +89,7 @@ export function ObjectDetail({
   dropConstraintMutation,
 }: ObjectDetailProps) {
   const handleAddObject = (type: string) => {
-    setActiveTab('ddl');
+    setActiveTab(ExplorerTab.DDL);
     setEditableDdl(
       `-- Add new ${type} to ${selectedItem?.name}\nALTER TABLE \`${selectedItem?.name}\` ADD ...`,
     );
@@ -128,17 +114,20 @@ export function ObjectDetail({
       <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-background border border-border rounded-none">
-            {selectedItem.type === 'table' && (
+            {selectedItem.type === DatabaseObjectType.TABLE && (
               <Table2 className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === 'view' && (
+            {selectedItem.type === DatabaseObjectType.VIEW && (
               <Eye className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === 'procedure' && (
+            {selectedItem.type === DatabaseObjectType.PROCEDURE && (
               <Terminal className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === 'trigger' && (
+            {selectedItem.type === DatabaseObjectType.TRIGGER && (
               <Zap className="w-5 h-5 text-primary" />
+            )}
+            {selectedItem.type === DatabaseObjectType.FUNCTION && (
+              <Binary className="w-5 h-5 text-primary" />
             )}
           </div>
           <div>
@@ -149,17 +138,17 @@ export function ObjectDetail({
           </div>
         </div>
         <div className="flex bg-muted p-1 rounded-none">
-          {(selectedItem.type === 'table' ||
-            selectedItem.type === 'view' ||
-            selectedItem.type === 'procedure') && (
+          {(selectedItem.type === DatabaseObjectType.TABLE ||
+            selectedItem.type === DatabaseObjectType.VIEW ||
+            selectedItem.type === DatabaseObjectType.PROCEDURE) && (
             <>
-              {(selectedItem.type === 'table' ||
-                selectedItem.type === 'view') && (
+              {(selectedItem.type === DatabaseObjectType.TABLE ||
+                selectedItem.type === DatabaseObjectType.VIEW) && (
                 <button
-                  onClick={() => setActiveTab('columns')}
+                  onClick={() => setActiveTab(ExplorerTab.COLUMNS)}
                   className={cn(
                     'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                    activeTab === 'columns'
+                    activeTab === ExplorerTab.COLUMNS
                       ? 'bg-background shadow-sm'
                       : 'hover:bg-background/50',
                   )}
@@ -168,13 +157,13 @@ export function ObjectDetail({
                   Columns
                 </button>
               )}
-              {selectedItem.type === 'table' && (
+              {selectedItem.type === DatabaseObjectType.TABLE && (
                 <>
                   <button
-                    onClick={() => setActiveTab('indexes')}
+                    onClick={() => setActiveTab(ExplorerTab.INDEXES)}
                     className={cn(
                       'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                      activeTab === 'indexes'
+                      activeTab === ExplorerTab.INDEXES
                         ? 'bg-background shadow-sm'
                         : 'hover:bg-background/50',
                     )}
@@ -183,10 +172,10 @@ export function ObjectDetail({
                     Indexes
                   </button>
                   <button
-                    onClick={() => setActiveTab('foreign-keys')}
+                    onClick={() => setActiveTab(ExplorerTab.FOREIGN_KEYS)}
                     className={cn(
                       'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                      activeTab === 'foreign-keys'
+                      activeTab === ExplorerTab.FOREIGN_KEYS
                         ? 'bg-background shadow-sm'
                         : 'hover:bg-background/50',
                     )}
@@ -195,10 +184,10 @@ export function ObjectDetail({
                     FKs
                   </button>
                   <button
-                    onClick={() => setActiveTab('constraints')}
+                    onClick={() => setActiveTab(ExplorerTab.CONSTRAINTS)}
                     className={cn(
                       'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                      activeTab === 'constraints'
+                      activeTab === ExplorerTab.CONSTRAINTS
                         ? 'bg-background shadow-sm'
                         : 'hover:bg-background/50',
                     )}
@@ -209,24 +198,24 @@ export function ObjectDetail({
                 </>
               )}
               <button
-                onClick={() => setActiveTab('data')}
+                onClick={() => setActiveTab(ExplorerTab.DATA)}
                 className={cn(
                   'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                  activeTab === 'data'
+                  activeTab === ExplorerTab.DATA
                     ? 'bg-background shadow-sm'
                     : 'hover:bg-background/50',
                 )}
               >
                 <Table className="w-3.5 h-3.5" />
-                {selectedItem.type === 'procedure' ? 'Execution' : 'Data'}
+                {selectedItem.type === DatabaseObjectType.PROCEDURE ? 'Execution' : 'Data'}
               </button>
             </>
           )}
           <button
-            onClick={() => setActiveTab('ddl')}
+            onClick={() => setActiveTab(ExplorerTab.DDL)}
             className={cn(
               'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-              activeTab === 'ddl'
+              activeTab === ExplorerTab.DDL
                 ? 'bg-background shadow-sm'
                 : 'hover:bg-background/50',
             )}
@@ -238,8 +227,8 @@ export function ObjectDetail({
       </div>
 
       <div className="flex-1 overflow-auto flex flex-col">
-        {activeTab === 'columns' &&
-          (selectedItem.type === 'table' || selectedItem.type === 'view') && (
+        {activeTab === ExplorerTab.COLUMNS &&
+          (selectedItem.type === DatabaseObjectType.TABLE || selectedItem.type === DatabaseObjectType.VIEW) && (
             <ColumnsTab
               tableName={selectedItem.name}
               columns={columns}
@@ -250,7 +239,7 @@ export function ObjectDetail({
             />
           )}
 
-        {activeTab === 'indexes' && selectedItem.type === 'table' && (
+        {activeTab === ExplorerTab.INDEXES && selectedItem.type === DatabaseObjectType.TABLE && (
           <IndexesTab
             indexes={indexes}
             isLoading={isLoadingIndexes}
@@ -260,7 +249,7 @@ export function ObjectDetail({
           />
         )}
 
-        {activeTab === 'foreign-keys' && selectedItem.type === 'table' && (
+        {activeTab === ExplorerTab.FOREIGN_KEYS && selectedItem.type === DatabaseObjectType.TABLE && (
           <ForeignKeysTab
             foreignKeys={foreignKeys}
             isLoading={isLoadingForeignKeys}
@@ -269,7 +258,7 @@ export function ObjectDetail({
           />
         )}
 
-        {activeTab === 'constraints' && selectedItem.type === 'table' && (
+        {activeTab === ExplorerTab.CONSTRAINTS && selectedItem.type === DatabaseObjectType.TABLE && (
           <ConstraintsTab
             constraints={constraints}
             isLoading={isLoadingConstraints}
@@ -278,10 +267,10 @@ export function ObjectDetail({
           />
         )}
 
-        {activeTab === 'data' &&
-          (selectedItem.type === 'table' ||
-            selectedItem.type === 'view' ||
-            selectedItem.type === 'procedure') && (
+        {activeTab === ExplorerTab.DATA &&
+          (selectedItem.type === DatabaseObjectType.TABLE ||
+            selectedItem.type === DatabaseObjectType.VIEW ||
+            selectedItem.type === DatabaseObjectType.PROCEDURE) && (
             <DataTab
               selectedItem={selectedItem}
               isLoading={isLoadingData}
@@ -298,7 +287,7 @@ export function ObjectDetail({
             />
           )}
 
-        {activeTab === 'ddl' && (
+        {activeTab === ExplorerTab.DDL && (
           <DdlTab
             isLoading={isLoadingDDL}
             editableDdl={editableDdl}

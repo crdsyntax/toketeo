@@ -1,11 +1,13 @@
 import type * as monaco from 'monaco-editor'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { io, Socket } from 'socket.io-client'
 import type { Monaco } from '@monaco-editor/react'
 import { useAppStore } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
-import { getApiUrl } from '@/lib/api'
-import type { DbValue, DbRow } from '@/types/database'
+import { tauriApi } from '@/lib/api'
+import type { DbValue } from '@/types/database'
+import { ExecutionStatus } from '@/types/database'
+
+const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
 export function useQueryEditor() {
   const { 
@@ -13,17 +15,18 @@ export function useQueryEditor() {
     tabs, 
     activeTabId, 
     addTab, 
+    openTab,
     removeTab, 
     updateTabQuery, 
     setActiveTabId, 
     updateTabResults, 
     clearTabResults,
     panels, 
+    setEditorHeight,
     togglePanel 
   } = useAppStore()
   
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
-  const socketRef = useRef<Socket | null>(null)
   
   const [showContextMenu, setShowContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
@@ -33,6 +36,7 @@ export function useQueryEditor() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevRect, setPrevRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
+  const [isInteracting, setIsInteracting] = useState(false)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -41,6 +45,7 @@ export function useQueryEditor() {
     const handleMouseMove = (e: MouseEvent) => {
       const dragging = draggingRef.current
       if (dragging) {
+        setIsInteracting(true)
         const deltaX = ((e.clientX - dragging.startX) / window.innerWidth) * 100
         const deltaY = ((e.clientY - dragging.startY) / window.innerHeight) * 100
         setModalRect(prev => ({
@@ -51,6 +56,7 @@ export function useQueryEditor() {
       }
       const resizing = resizingRef.current
       if (resizing) {
+        setIsInteracting(true)
         const deltaX = ((e.clientX - resizing.startX) / window.innerWidth) * 100
         const deltaY = ((e.clientY - resizing.startY) / window.innerHeight) * 100
         setModalRect(prev => ({
@@ -63,6 +69,7 @@ export function useQueryEditor() {
     const handleMouseUp = () => {
       draggingRef.current = null
       resizingRef.current = null
+      setIsInteracting(false)
     }
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
@@ -71,67 +78,6 @@ export function useQueryEditor() {
       window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [])
-
-  useEffect(() => {
-    const socket = io(getApiUrl('/queries'))
-    socketRef.current = socket
-
-    socket.on('query-progress', (data: { tabId: string; status: string; message: string; isSilent?: boolean }) => {
-      updateTabResults(data.tabId, { status: 'executing' })
-    })
-
-    socket.on('query-result', (data: { 
-      tabId: string, 
-      columns: string[], 
-      rows: DbRow[], 
-      executionTime: number, 
-      isSilent?: boolean,
-      page?: number,
-      pageSize?: number,
-      hasMore?: boolean
-    }) => {
-      const { tabId, columns, rows, executionTime, isSilent, page, pageSize, hasMore } = data
-      if (isSilent) {
-        updateTabResults(tabId, { status: 'success', error: null })
-        return
-      }
-
-      // We use a functional update to get the latest state and append rows if needed
-      useAppStore.setState((state) => {
-        const tab = state.tabs.find(t => t.id === tabId);
-        if (!tab) return state;
-
-        const isContinuation = tab.results && tab.status === 'executing' && tab.results.page !== undefined && page !== undefined && page > 1;
-        const newRows = isContinuation ? [...(tab.results?.rows || []), ...rows] : rows;
-
-        return {
-          tabs: state.tabs.map(t => t.id === tabId ? {
-            ...t,
-            status: hasMore ? 'executing' : 'success',
-            results: { columns, rows: newRows, executionTime, page, pageSize, hasMore },
-            error: null
-          } : t)
-        }
-      });
-    })
-
-    socket.on('query-error', (data: { tabId: string, message: string, isSilent?: boolean }) => {
-      const { tabId, message, isSilent } = data
-      if (isSilent) {
-        updateTabResults(tabId, { status: 'error', error: message })
-        return
-      }
-      updateTabResults(tabId, {
-        status: 'error',
-        error: message,
-        results: null
-      })
-    })
-
-    return () => {
-      socket.disconnect()
-    }
-  }, [updateTabResults])
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 
@@ -153,38 +99,21 @@ export function useQueryEditor() {
 
       const sql = activeTab.query.trim().endsWith(';') ? activeTab.query.trim() : `${activeTab.query.trim()};`
       
-      const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
-      const limitMatch = sql.match(/\bLIMIT\b\s+(\d+)/i);
-      const limit = limitMatch ? parseInt(limitMatch[1], 10) : 0;
-      
-      // A query is "large" if it's a SELECT with a limit > 10000 or no limit (which we default to 1000, so it's simple)
-      // Actually, if it has NO limit, we add 1000, so it's simple.
-      // If it has a limit > 10000, we consider it large and use WebSocket streaming.
-      const isLarge = isSelect && limit > 10000;
+      updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
-      updateTabResults(activeTab.id, { status: 'executing', error: null, results: page === 1 ? null : activeTab.results })
-
-      if (isLarge && socketRef.current) {
-        socketRef.current.emit('execute-query', {
-          connectionId: activeConnection.id,
-          dto: { sql, page, pageSize: 1000 },
-          tabId: activeTab.id
+      try {
+        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
+        updateTabResults(activeTab.id, {
+          status: ExecutionStatus.SUCCESS,
+          results: result,
+          error: null
         })
-      } else {
-        try {
-          const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
-          updateTabResults(activeTab.id, {
-            status: 'success',
-            results: result,
-            error: null
-          })
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          updateTabResults(activeTab.id, {
-            status: 'error',
-            error: message
-          })
-        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        updateTabResults(activeTab.id, {
+          status: ExecutionStatus.ERROR,
+          error: message
+        })
       }
     }
   }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
@@ -197,10 +126,10 @@ export function useQueryEditor() {
 
     const fullText = editorRef.current.getValue()
     const selection = editorRef.current.getSelection()
-    let sql = ''
+    let sqlSnippet: string
     
     if (selection && !selection.isEmpty()) {
-      sql = editorRef.current.getModel()?.getValueInRange(selection) || ''
+      sqlSnippet = editorRef.current.getModel()?.getValueInRange(selection) || ''
     } else {
       // Improved logic: Find the SQL block bounded by semicolons or file start/end
       const lines = fullText.split('\n')
@@ -222,41 +151,28 @@ export function useQueryEditor() {
         }
       }
       
-      sql = lines.slice(startIdx, endIdx + 1).join('\n').trim()
+      sqlSnippet = lines.slice(startIdx, endIdx + 1).join('\n').trim()
     }
 
-    if (!sql) return
-    if (checkDangerousQuery(sql)) return
-    if (!sql.endsWith(';')) sql += ';'
+    if (!sqlSnippet) return
+    if (checkDangerousQuery(sqlSnippet)) return
+    if (!sqlSnippet.endsWith(';')) sqlSnippet += ';'
 
-    const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
-    const limitMatch = sql.match(/\bLIMIT\b\s+(\d+)/i);
-    const limit = limitMatch ? parseInt(limitMatch[1], 10) : 0;
-    const isLarge = isSelect && limit > 10000;
+    updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     
-    updateTabResults(activeTab.id, { status: 'executing', error: null, results: page === 1 ? null : activeTab.results })
-    
-    if (isLarge && socketRef.current) {
-      socketRef.current.emit('execute-query', {
-        connectionId: activeConnection.id,
-        dto: { sql, page, pageSize: 1000 },
-        tabId: activeTab.id
+    try {
+      const result = await queryService.execute(activeConnection.id, sqlSnippet, activeConnection.database, undefined, page, 1000);
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.SUCCESS,
+        results: result,
+        error: null
       })
-    } else {
-      try {
-        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
-        updateTabResults(activeTab.id, {
-          status: 'success',
-          results: result,
-          error: null
-        })
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        updateTabResults(activeTab.id, {
-          status: 'error',
-          error: message
-        })
-      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: message
+      })
     }
   }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
 
@@ -269,57 +185,99 @@ export function useQueryEditor() {
     executeAllRef.current = handleExecuteAll
   }, [handleExecuteCurrent, handleExecuteAll])
 
-  const handleCancel = () => {
-    if (activeTabId && socketRef.current && activeConnection) {
+  const handleCancel = useCallback(() => {
+    if (activeTabId && activeConnection) {
       updateTabResults(activeTabId, { 
-        status: 'error', 
+        status: ExecutionStatus.ERROR, 
         error: 'Query cancelled by user',
         results: null 
       })
-      socketRef.current.emit('cancel-query', { 
-        tabId: activeTabId,
-        connectionId: activeConnection.id 
-      })
+      queryService.cancel(activeConnection.id)
     }
-  }
+  }, [activeTabId, activeConnection, updateTabResults])
 
-  const handleSave = useCallback(() => {
-    if (!editingCell || !activeTab?.results || !activeConnection || !socketRef.current) return
+  const handleSave = useCallback(async () => {
+    if (!editingCell || !activeTab?.results || !activeConnection) return
 
     const { rowIndex, column, value: newValue } = editingCell
     const row = activeTab.results.rows[rowIndex]
-    const idColumn = activeTab.results.columns.find(c => c.toLowerCase() === 'id')
-    const idValue = idColumn ? row[idColumn] : null
+    
+    // Use primary_keys metadata from backend if available, fallback to 'id'
+    const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0 
+      ? activeTab.results.primary_keys 
+      : activeTab.results.columns.filter(c => c.toLowerCase() === 'id')
 
-    const tableNameMatch = activeTab.query.match(/FROM\s+([a-zA-Z0-9_\.`"\[\]]+)/i)
-    const tableName = tableNameMatch ? tableNameMatch[1].replace(/[`"\[\]]/g, '') : null
-
-    if (!tableName || !idColumn || idValue === undefined || idValue === null) {
+    if (pkColumns.length === 0) {
       updateTabResults(activeTab.id, { 
-        status: 'error', 
-        error: `Cannot update: ${!tableName ? 'Table not found' : 'ID column not found/null'}.` 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Primary key (or ID column) not found in result set.' 
       })
       setEditingCell(null)
       return
     }
 
-    const updateSql = `UPDATE ${tableName} SET ${column} = ? WHERE ${idColumn} = ?;`
+    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+    let tableName = tableNameMatch ? tableNameMatch[1] : null
+
+    if (!tableName) {
+      updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Table name not found in query.' 
+      })
+      setEditingCell(null)
+      return
+    }
+
+    // Ensure tableName is escaped properly if it isn't
+    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
+        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
+    }
+
+    // Build WHERE clause using all PK columns
+    const whereClauses = pkColumns.map((pk: string) => `\`${pk.replace(/`/g, "``")}\` = ?`).join(' AND ')
+    const pkValues = pkColumns.map((pk: string) => row[pk])
+
+    if (pkValues.some((v: DbValue) => v === null || v === undefined)) {
+       updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Primary key value is null or undefined.' 
+      })
+      setEditingCell(null)
+      return
+    }
+
+    const updateSqlTemplate = `UPDATE ${tableName} SET \`${column.replace(/`/g, "``")}\` = ? WHERE ${whereClauses};`
+    const params = [newValue, ...pkValues]
+
+    const finalSql = updateSqlTemplate.replace(/\?/g, () => {
+      const val = params.shift();
+      if (val === null || val === undefined) return 'NULL';
+      if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+      return String(val);
+    });
 
     const updatedRows = [...activeTab.results.rows]
     updatedRows[rowIndex] = { ...updatedRows[rowIndex], [column]: newValue }
     
     updateTabResults(activeTab.id, { 
       results: { ...activeTab.results, rows: updatedRows },
-      status: 'executing',
+      status: ExecutionStatus.EXECUTING,
       error: null
     })
 
-    socketRef.current.emit('execute-query', {
-      connectionId: activeConnection.id,
-      dto: { sql: updateSql, params: [newValue, idValue] },
-      tabId: activeTab.id,
-      isSilent: true
-    })
+    try {
+        await tauriApi.invoke('execute_query', {
+            id: activeConnection.id,
+            query: finalSql
+        })
+        updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
+    } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to update record'
+        updateTabResults(activeTab.id, { 
+            status: ExecutionStatus.ERROR, 
+            error: errorMessage 
+        })
+    }
     
     setEditingCell(null)
   }, [editingCell, activeTab, activeConnection, updateTabResults])
@@ -392,10 +350,11 @@ export function useQueryEditor() {
   }, [])
 
   const sortedRows = useMemo(() => {
-    if (!activeTab?.results?.rows) return []
-    if (!sortConfig) return activeTab.results.rows
+    const rows = activeTab?.results?.rows;
+    if (!rows) return []
+    if (!sortConfig) return rows
 
-    return [...activeTab.results.rows].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const aVal = a[sortConfig.key]
       const bVal = b[sortConfig.key]
       if (aVal === null || aVal === undefined) return 1
@@ -428,9 +387,11 @@ export function useQueryEditor() {
   const handleSaveScript = useCallback(() => {
     const state = useAppStore.getState();
     const currentTab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
+    
+    // Always prioritize editor content if available
     const content = editorRef.current ? editorRef.current.getValue() : currentTab?.query;
     
-    if (content === undefined || content === null) return;
+    if (!content) return;
     
     const blob = new Blob([content], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
@@ -458,11 +419,13 @@ export function useQueryEditor() {
     activeTabId,
     activeTab,
     addTab,
+    openTab,
     removeTab,
     updateTabQuery,
     setActiveTabId,
     updateTabResults,
     panels,
+    setEditorHeight,
     togglePanel,
     showContextMenu,
     setShowContextMenu,
@@ -489,6 +452,7 @@ export function useQueryEditor() {
     handleEditorDidMount,
     handlePageChange,
     clearTabResults,
+    isInteracting,
     draggingRef,
     resizingRef
   }

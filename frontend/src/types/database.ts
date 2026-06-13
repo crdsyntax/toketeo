@@ -1,8 +1,38 @@
-export type ExecutionStatus = 'idle' | 'executing' | 'success' | 'error';
+export enum ExecutionStatus {
+  IDLE = 'idle',
+  EXECUTING = 'executing',
+  SUCCESS = 'success',
+  ERROR = 'error',
+}
+
+export enum DatabaseObjectType {
+  TABLE = 'table',
+  VIEW = 'view',
+  PROCEDURE = 'procedure',
+  TRIGGER = 'trigger',
+  FUNCTION = 'function',
+}
 
 export interface DatabaseObject {
   name: string;
-  type: 'table' | 'view' | 'procedure' | 'trigger';
+  type: DatabaseObjectType;
+}
+
+export enum ExplorerTab {
+  COLUMNS = 'columns',
+  DATA = 'data',
+  DDL = 'ddl',
+  INDEXES = 'indexes',
+  FOREIGN_KEYS = 'foreign-keys',
+  CONSTRAINTS = 'constraints',
+}
+
+export enum SidebarTab {
+  TABLES = 'tables',
+  VIEWS = 'views',
+  PROCEDURES = 'procedures',
+  TRIGGERS = 'triggers',
+  FUNCTIONS = 'functions',
 }
 
 export enum DatabaseType {
@@ -41,6 +71,7 @@ export interface QueryResult {
   page?: number;
   pageSize?: number;
   hasMore?: boolean;
+  primary_keys?: string[];
 }
 
 export interface TableColumn {

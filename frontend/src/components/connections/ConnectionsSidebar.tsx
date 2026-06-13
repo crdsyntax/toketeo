@@ -1,10 +1,8 @@
 import { Database, Plus, Edit2, Globe, Shield, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection } from '@/types/database'
-import { Environment } from '@/types/database'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { connectionService } from '@/services/connection.service'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
@@ -12,7 +10,7 @@ import { useNavigate } from 'react-router-dom'
 interface ConnectionsSidebarProps {
   connections: Connection[]
   activeConnection: Connection | null
-  onConnect: (conn: Connection) => void
+  onConnect: (conn: Connection) => Promise<void> | void
   onEdit: (conn: Connection) => void
   onNew: () => void
 }
@@ -20,24 +18,32 @@ interface ConnectionsSidebarProps {
 export function ConnectionsSidebar({ connections, activeConnection, onConnect, onEdit, onNew }: ConnectionsSidebarProps) {
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
   const queryClient = useQueryClient()
-  const setActiveConnection = useAppStore(state => state.setActiveConnection)
+  const { setActiveConnectionDatabase } = useAppStore()
   const navigate = useNavigate()
 
   const { data: schemas = [] } = useQuery({
     queryKey: ['schemas', expandedConnId],
     queryFn: () => schemaService.getSchemas(expandedConnId!),
     enabled: !!expandedConnId,
+    staleTime: 5 * 60 * 1000,
   })
 
   const switchSchemaMutation = useMutation({
     mutationFn: ({ connectionId, schema }: { connectionId: string, schema: string }) =>
       schemaService.switchSchema(connectionId, schema),
-    onSuccess: (updatedConnection) => {
-      setActiveConnection(updatedConnection)
+    onSuccess: (_, { schema }) => {
+      setActiveConnectionDatabase(schema)
       queryClient.invalidateQueries({ queryKey: ['schemas'] })
       navigate('/explorer')
     }
   })
+
+  const handleSchemaDoubleClick = async (conn: Connection, schema: string) => {
+    if (activeConnection?.id !== conn.id) {
+      await onConnect(conn)
+    }
+    switchSchemaMutation.mutate({ connectionId: conn.id, schema })
+  }
 
   return (
     <div className="w-72 border-r border-border bg-card flex flex-col h-full">
@@ -86,7 +92,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                 {schemas.map((s, index) => (
                   <div 
                     key={s} 
-                    onDoubleClick={() => switchSchemaMutation.mutate({ connectionId: conn.id, schema: s })}
+                    onDoubleClick={() => handleSchemaDoubleClick(conn, s)}
                     className={cn(
                       "text-xs p-1.5 cursor-pointer relative flex items-center hover:bg-muted",
                       index === schemas.length - 1 ? "before:absolute before:left-[-1px] before:top-[-5px] before:h-[15px] before:w-[1px] before:bg-border" : "before:absolute before:left-[-1px] before:top-[-5px] before:h-full before:w-[1px] before:bg-border",

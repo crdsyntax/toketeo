@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Connection, QueryResult, DbValue } from '@/types/database'
+import type { Connection, QueryResult, DbValue, DatabaseObject } from '@/types/database'
+import { ExecutionStatus, SidebarTab, ExplorerTab } from '@/types/database'
 
 export type { DbValue }
 export interface QueryTab {
@@ -8,7 +9,7 @@ export interface QueryTab {
   name: string
   query: string
   results?: QueryResult | null
-  status?: 'idle' | 'executing' | 'success' | 'error'
+  status?: ExecutionStatus
   error?: string | null
 }
 
@@ -23,6 +24,7 @@ interface AppState {
   tabs: QueryTab[]
   activeTabId: string | null
   addTab: () => void
+  openTab: (name: string, query: string) => void
   removeTab: (id: string) => void
   updateTabQuery: (id: string, query: string) => void
   updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
@@ -31,10 +33,22 @@ interface AppState {
   panels: {
     editor: boolean
     results: boolean
+    editorHeight: number // percentage
   }
+  setEditorHeight: (height: number) => void
   togglePanel: (panel: 'editor' | 'results') => void
   isSidebarOpen: boolean
   toggleSidebar: () => void
+  explorer: {
+    selectedItem: DatabaseObject | null
+    sidebarTab: SidebarTab
+    activeTab: ExplorerTab
+    search: string
+    executionStatus: ExecutionStatus
+    executionError: string | null
+    socketResults: QueryResult | null
+  }
+  setExplorerState: (state: Partial<AppState['explorer']>) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -49,26 +63,49 @@ export const useAppStore = create<AppState>()(
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
       })),
-      tabs: [{ id: 'default', name: 'Query 1', query: 'SELECT * FROM tables LIMIT 10', status: 'idle' }],
+      tabs: [{ id: 'default', name: 'Query 1', query: 'SELECT * FROM tables LIMIT 10', status: ExecutionStatus.IDLE }],
       activeTabId: 'default',
-      panels: { editor: true, results: true },
+      panels: { editor: true, results: true, editorHeight: 60 },
+      setEditorHeight: (editorHeight) => set((state) => ({
+        panels: { ...state.panels, editorHeight }
+      })),
       togglePanel: (panel) => set((state) => ({
         panels: { ...state.panels, [panel]: !state.panels[panel] }
       })),
       isSidebarOpen: true,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      explorer: {
+        selectedItem: null,
+        sidebarTab: SidebarTab.TABLES,
+        activeTab: ExplorerTab.COLUMNS,
+        search: '',
+        executionStatus: ExecutionStatus.IDLE,
+        executionError: null,
+        socketResults: null
+      },
+      setExplorerState: (explorerState) => set((state) => ({
+        explorer: { ...state.explorer, ...explorerState }
+      })),
       addTab: () => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {
-          tabs: [...state.tabs, { id, name: `Query ${state.tabs.length + 1}`, query: '', status: 'idle' }],
+          tabs: [...state.tabs, { id, name: `Query ${state.tabs.length + 1}`, query: '', status: ExecutionStatus.IDLE }],
+          activeTabId: id,
+        }
+      }),
+      openTab: (name, query) => set((state) => {
+        const id = Math.random().toString(36).substring(7)
+        return {
+          tabs: [...state.tabs, { id, name: name.replace(/\.sql$/i, ''), query, status: ExecutionStatus.IDLE }],
           activeTabId: id,
         }
       }),
       removeTab: (id) => set((state) => {
         const newTabs = state.tabs.filter((t) => t.id !== id)
+        const defaultTab: QueryTab = { id: 'default', name: 'Query 1', query: '', status: ExecutionStatus.IDLE }
         return {
-          tabs: newTabs.length ? newTabs : [{ id: 'default', name: 'Query 1', query: '', status: 'idle' }],
-          activeTabId: state.activeTabId === id ? (newTabs[0]?.id || 'default') : state.activeTabId,
+          tabs: newTabs.length ? newTabs : [defaultTab],
+          activeTabId: state.activeTabId === id ? (newTabs[0]?.id || defaultTab.id) : state.activeTabId,
         }
       }),
       updateTabQuery: (id, query) => set((state) => ({
@@ -78,7 +115,7 @@ export const useAppStore = create<AppState>()(
         tabs: state.tabs.map((t) => t.id === id ? { ...t, ...updates } : t),
       })),
       clearTabResults: (id) => set((state) => ({
-        tabs: state.tabs.map((t) => t.id === id ? { ...t, results: null, status: 'idle', error: null } : t),
+        tabs: state.tabs.map((t) => t.id === id ? { ...t, results: null, status: ExecutionStatus.IDLE, error: null } : t),
       })),
       setActiveTabId: (id) => set({ activeTabId: id }),
     }),
@@ -92,6 +129,15 @@ export const useAppStore = create<AppState>()(
         activeTabId: state.activeTabId,
         panels: state.panels,
         isSidebarOpen: state.isSidebarOpen,
+        explorer: {
+          selectedItem: state.explorer.selectedItem,
+          sidebarTab: state.explorer.sidebarTab,
+          activeTab: state.explorer.activeTab,
+          search: state.explorer.search,
+          executionStatus: state.explorer.executionStatus,
+          executionError: state.explorer.executionError,
+          // socketResults is NOT persisted
+        },
       }),
     },
   ),
