@@ -13,6 +13,7 @@ export enum DatabaseType {
   MARIADB = 'mariadb',
   POSTGRES = 'postgres',
   MONGODB = 'mongodb',
+  SQLSERVER = 'sqlserver',
 }
 
 export enum Environment {
@@ -44,6 +45,16 @@ export class SshConfigDto {
   @IsString()
   @IsOptional()
   privateKey?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  passphrase?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  keyPath?: string;
 }
 
 export class CreateConnectionDto {
@@ -76,9 +87,25 @@ export class CreateConnectionDto {
   @IsOptional()
   password?: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  database: string;
+  database?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  authSource?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  replicaSet?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEnum(['true', 'false', 'prefer', 'require'])
+  ssl?: string;
 
   @ApiProperty({ type: SshConfigDto, required: false })
   @IsOptional()

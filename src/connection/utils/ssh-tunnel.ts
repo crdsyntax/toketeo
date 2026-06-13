@@ -1,5 +1,6 @@
 import { Client as SshClient } from 'ssh2';
 import * as net from 'net';
+import * as fs from 'fs';
 import { SshConfigDto } from '../dto/create-connection.dto';
 
 export class SshTunnel {
@@ -44,14 +45,31 @@ export class SshTunnel {
         this.server.on('error', reject);
       });
 
-      this.sshClient.on('error', reject);
+      this.sshClient.on('error', (err) => {
+        this.close();
+        reject(err);
+      });
+
+      let privateKey: string | Buffer | undefined = sshConfig.privateKey;
+      if (!privateKey && sshConfig.keyPath) {
+        try {
+          privateKey = fs.readFileSync(sshConfig.keyPath);
+        } catch (error) {
+          return reject(
+            new Error(
+              `Failed to read SSH private key from ${sshConfig.keyPath}`,
+            ),
+          );
+        }
+      }
 
       this.sshClient.connect({
         host: sshConfig.host,
         port: sshConfig.port,
         username: sshConfig.user,
         password: sshConfig.password,
-        privateKey: sshConfig.privateKey,
+        privateKey,
+        passphrase: sshConfig.passphrase,
       });
     });
   }

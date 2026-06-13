@@ -1,7 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import { AuditController } from './audit.controller';
-import { MariaDbAuditRepository } from './repositories/mariadb-audit.repository';
+import { SqliteAuditRepository } from '../modules/storage/repositories/sqlite-audit.repository';
 
 @Global()
 @Module({
@@ -10,7 +10,7 @@ import { MariaDbAuditRepository } from './repositories/mariadb-audit.repository'
     AuditService,
     {
       provide: 'AuditRepository',
-      useClass: MariaDbAuditRepository,
+      useClass: SqliteAuditRepository,
     },
   ],
   exports: [AuditService],

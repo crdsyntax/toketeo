@@ -1,16 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Connection } from '@/types/database'
+import type { Connection, QueryResult, DbValue } from '@/types/database'
 
-interface Tab {
+export type { DbValue }
+export interface QueryTab {
   id: string
   name: string
   query: string
-  results?: {
-    columns: string[]
-    rows: Record<string, any>[]
-    executionTime: number
-  } | null
+  results?: QueryResult | null
   status?: 'idle' | 'executing' | 'success' | 'error'
   error?: string | null
 }
@@ -18,21 +15,26 @@ interface Tab {
 interface AppState {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
+  accessToken: string | null
+  setAccessToken: (token: string | null) => void
   activeConnection: Connection | null
   setActiveConnection: (connection: Connection | null) => void
   setActiveConnectionDatabase: (database: string) => void
-  tabs: Tab[]
+  tabs: QueryTab[]
   activeTabId: string | null
   addTab: () => void
   removeTab: (id: string) => void
   updateTabQuery: (id: string, query: string) => void
-  updateTabResults: (id: string, updates: Partial<Pick<Tab, 'results' | 'status' | 'error'>>) => void
+  updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
+  clearTabResults: (id: string) => void
   setActiveTabId: (id: string) => void
   panels: {
     editor: boolean
     results: boolean
   }
   togglePanel: (panel: 'editor' | 'results') => void
+  isSidebarOpen: boolean
+  toggleSidebar: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -40,6 +42,8 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
+      accessToken: null,
+      setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
       setActiveConnection: (connection) => set({ activeConnection: connection }),
       setActiveConnectionDatabase: (database) => set((state) => ({
@@ -51,6 +55,8 @@ export const useAppStore = create<AppState>()(
       togglePanel: (panel) => set((state) => ({
         panels: { ...state.panels, [panel]: !state.panels[panel] }
       })),
+      isSidebarOpen: true,
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       addTab: () => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {
@@ -71,10 +77,22 @@ export const useAppStore = create<AppState>()(
       updateTabResults: (id, updates) => set((state) => ({
         tabs: state.tabs.map((t) => t.id === id ? { ...t, ...updates } : t),
       })),
+      clearTabResults: (id) => set((state) => ({
+        tabs: state.tabs.map((t) => t.id === id ? { ...t, results: null, status: 'idle', error: null } : t),
+      })),
       setActiveTabId: (id) => set({ activeTabId: id }),
     }),
     {
       name: 'toketeo-app-storage',
+      partialize: (state) => ({
+        theme: state.theme,
+        accessToken: state.accessToken,
+        activeConnection: state.activeConnection,
+        tabs: state.tabs.map(tab => ({ ...tab, results: null })),
+        activeTabId: state.activeTabId,
+        panels: state.panels,
+        isSidebarOpen: state.isSidebarOpen,
+      }),
     },
   ),
 )

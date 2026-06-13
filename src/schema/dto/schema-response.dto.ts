@@ -24,3 +24,53 @@ export class ColumnResponseDto {
   @ApiProperty({ required: false })
   defaultValue?: string;
 }
+
+export class IndexResponseDto {
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty()
+  column: string;
+
+  @ApiProperty()
+  isUnique: boolean;
+
+  @ApiProperty({ required: false })
+  type?: string;
+
+  @ApiProperty({ required: false })
+  targetColumn?: string;
+}
+
+export class ForeignKeyResponseDto {
+  @ApiProperty()
+  constraintName: string;
+
+  @ApiProperty()
+  columnName: string;
+
+  @ApiProperty()
+  referencedTable: string;
+
+  @ApiProperty()
+  referencedColumn: string;
+}
+
+export class ConstraintResponseDto {
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty()
+  type: string;
+}
+
+export class ParameterResponseDto {
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty()
+  type: string;
+
+  @ApiProperty({ enum: ['IN', 'OUT', 'INOUT'] })
+  mode: 'IN' | 'OUT' | 'INOUT';
+}

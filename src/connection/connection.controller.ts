@@ -61,6 +61,17 @@ export class ConnectionController {
     return this.connectionService.remove(id);
   }
 
+  @Post(':id/test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Test an existing database connection' })
+  async testExistingConnection(@Param('id') id: string) {
+    const isConnected = await this.connectionService.testConnectionById(id);
+    if (!isConnected) {
+      throw new BadRequestException('Could not connect to the database');
+    }
+    return { message: 'Connection successful' };
+  }
+
   @Post('test')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Test a database connection before saving' })

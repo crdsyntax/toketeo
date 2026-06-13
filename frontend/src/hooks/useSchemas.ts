@@ -1,25 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiFetch } from '@/lib/api'
+import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 
 export function useSchemas() {
-  const { activeConnection, setActiveConnectionDatabase } = useAppStore()
+  const { activeConnection, setActiveConnection } = useAppStore()
   const queryClient = useQueryClient()
 
   const { data: schemas, isLoading } = useQuery({
     queryKey: ['schemas', activeConnection?.id],
-    queryFn: () => apiFetch<string[]>(`/connections/${activeConnection?.id}/schema/schemas`),
+    queryFn: () => schemaService.getSchemas(activeConnection!.id),
     enabled: !!activeConnection,
   })
 
   const switchSchema = useMutation({
-    mutationFn: (schema: string) => apiFetch(`/connections/${activeConnection?.id}/schema/switch-schema`, {
-      method: 'POST',
-      body: JSON.stringify({ schema })
-    }),
-    onSuccess: async (_, schema) => {
-      setActiveConnectionDatabase(schema)
-      await queryClient.invalidateQueries({ 
+    mutationFn: (schema: string) => schemaService.switchSchema(activeConnection!.id, schema),
+    onSuccess: (updatedConnection) => {
+      setActiveConnection(updatedConnection)
+      queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey.includes(activeConnection?.id)
       })
     }

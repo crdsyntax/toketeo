@@ -1,4 +1,5 @@
-import { Table, Layout, Code, RefreshCw, Search, RefreshCw as RefreshIcon, ChevronRight } from 'lucide-react'
+import type { DatabaseObject, QueryResult, ExecutionStatus } from '@/types/database'
+import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -9,37 +10,50 @@ interface SidebarProps {
   isLoadingSidebar: boolean
   search: string
   setSearch: (s: string) => void
-  filteredItems: any[]
-  selectedItem: any
-  setSelectedItem: (item: any) => void
+  filteredItems: { name: string }[]
+  selectedItem: DatabaseObject | null
+  setSelectedItem: (item: DatabaseObject) => void
   setPage: (page: number) => void
-  setSocketResults: (res: any) => void
-  setExecutionStatus: (status: any) => void
-  setExecutionError: (err: any) => void
-  setParamsValues: (v: any) => void
-  setActiveTab: (tab: any) => void
+  setSocketResults: (res: QueryResult | null) => void
+  setExecutionStatus: (status: ExecutionStatus) => void
+  setExecutionError: (err: string | null) => void
+  setParamsValues: (v: Record<string, string>) => void
+  setActiveTab: (tab: 'columns' | 'data' | 'ddl') => void
+  isCollapsed?: boolean
+  onToggle?: () => void
 }
 
 export function Sidebar({
   sidebarTab, setSidebarTab, currentSchema, handleRefetch, isLoadingSidebar,
   search, setSearch, filteredItems, selectedItem, setSelectedItem,
   setPage, setSocketResults, setExecutionStatus, setExecutionError,
-  setParamsValues, setActiveTab
+  setParamsValues, setActiveTab, isCollapsed, onToggle
 }: SidebarProps) {
   return (
-    <div className="w-80 flex border border-border rounded-xl bg-card overflow-hidden shrink-0">
+    <div className={cn(
+      "flex border border-border rounded-none bg-card overflow-hidden shrink-0 transition-all duration-300",
+      isCollapsed ? "w-12" : "w-80"
+    )}>
       <div className="w-12 flex flex-col items-center py-4 gap-4 border-r border-border bg-muted/20">
-        <button onClick={() => setSidebarTab('tables')} title="Tables" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'tables' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Table className="w-5 h-5" />
+        <button 
+          onClick={onToggle}
+          className="p-2 hover:bg-muted text-muted-foreground mb-2 transition-colors"
+          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          <ChevronRight className={cn("w-5 h-5 transition-transform", !isCollapsed && "rotate-180")} />
         </button>
-        <button onClick={() => setSidebarTab('views')} title="Views" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'views' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Layout className="w-5 h-5" />
+        <div className="w-full h-px bg-border/50 mb-2" />
+        <button onClick={() => { setSidebarTab('tables'); if(isCollapsed && onToggle) onToggle(); }} title="Tables" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'tables' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
+          <Table2 className="w-5 h-5" />
         </button>
-        <button onClick={() => setSidebarTab('procedures')} title="Procedures" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'procedures' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Code className="w-5 h-5" />
+        <button onClick={() => { setSidebarTab('views'); if(isCollapsed && onToggle) onToggle(); }} title="Views" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'views' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
+          <Eye className="w-5 h-5" />
         </button>
-        <button onClick={() => setSidebarTab('triggers')} title="Triggers" className={cn("p-2 rounded-lg transition-colors", sidebarTab === 'triggers' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <RefreshCw className="w-5 h-5" />
+        <button onClick={() => { setSidebarTab('procedures'); if(isCollapsed && onToggle) onToggle(); }} title="Procedures" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'procedures' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
+          <Terminal className="w-5 h-5" />
+        </button>
+        <button onClick={() => { setSidebarTab('triggers'); if(isCollapsed && onToggle) onToggle(); }} title="Triggers" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'triggers' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
+          <Zap className="w-5 h-5" />
         </button>
       </div>
 
@@ -49,26 +63,26 @@ export function Sidebar({
             <h3 className="font-bold flex flex-col gap-0.5 text-xs text-left">
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest truncate max-w-[140px]">{currentSchema}</span>
               <div className="flex items-center gap-2">
-                {sidebarTab === 'tables' && <Table className="w-3 h-3 text-primary" />}
-                {sidebarTab === 'views' && <Layout className="w-3 h-3 text-primary" />}
-                {sidebarTab === 'procedures' && <Code className="w-3 h-3 text-primary" />}
-                {sidebarTab === 'triggers' && <RefreshCw className="w-3 h-3 text-primary" />}
+                {sidebarTab === 'tables' && <Table2 className="w-3 h-3 text-primary" />}
+                {sidebarTab === 'views' && <Eye className="w-3 h-3 text-primary" />}
+                {sidebarTab === 'procedures' && <Terminal className="w-3 h-3 text-primary" />}
+                {sidebarTab === 'triggers' && <Zap className="w-3 h-3 text-primary" />}
                 <span className="capitalize">{sidebarTab}</span>
               </div>
             </h3>
-            <button onClick={handleRefetch} className="p-1.5 hover:bg-muted rounded-md transition-colors">
+            <button onClick={handleRefetch} className="p-1.5 hover:bg-muted rounded-none transition-colors">
               <RefreshIcon className={cn("w-3.5 h-3.5", isLoadingSidebar && "animate-spin")} />
             </button>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${sidebarTab}...`} className="w-full bg-muted/50 border border-border rounded-md pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${sidebarTab}...`} className="w-full bg-muted/50 border border-border rounded-none pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
           </div>
         </div>
         <div className="flex-1 overflow-auto p-2 text-left">
           {isLoadingSidebar ? (
             <div className="space-y-2 p-2">
-              {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-8 bg-muted animate-pulse rounded" />)}
+              {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-8 bg-muted animate-pulse rounded-none" />)}
             </div>
           ) : (
             <div className="space-y-1">
@@ -84,13 +98,13 @@ export function Sidebar({
                   setParamsValues({})
                   setActiveTab(type === 'table' ? 'columns' : 'ddl')
                 }} className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-colors group text-left", 
+                  "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
                   (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
                 )}>
-                  {sidebarTab === 'tables' && <Table className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  {sidebarTab === 'views' && <Layout className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  {sidebarTab === 'procedures' && <Code className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  {sidebarTab === 'triggers' && <RefreshCw className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
+                  {sidebarTab === 'tables' && <Table2 className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
+                  {sidebarTab === 'views' && <Eye className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
+                  {sidebarTab === 'procedures' && <Terminal className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
+                  {sidebarTab === 'triggers' && <Zap className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
                   <span className="truncate flex-1">{item.name}</span>
                   <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
                 </button>

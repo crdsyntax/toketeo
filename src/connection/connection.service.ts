@@ -1,8 +1,15 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+} from '@nestjs/common';
 import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
 import { PostgresDriver } from './drivers/postgres.driver';
 import { MongoDbDriver } from './drivers/mongodb.driver';
+import { SqlServerDriver } from './drivers/sqlserver.driver';
 import { DatabaseDriver } from './interfaces/database-driver.interface';
 import type { ConnectionRepository } from './repositories/connection.repository.interface';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
@@ -20,7 +27,9 @@ export class ConnectionService {
   async create(dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
     const connections = await this.repository.findAll();
     if (connections.some((c) => c.name === dto.name)) {
-      throw new BadRequestException(`Connection with name "${dto.name}" already exists`);
+      throw new BadRequestException(
+        `Connection with name "${dto.name}" already exists`,
+      );
     }
     const connection = await this.repository.save(dto);
     return this.mapToResponseDto(connection);
@@ -47,13 +56,18 @@ export class ConnectionService {
     return connection;
   }
 
-  async update(id: string, dto: Partial<CreateConnectionDto>): Promise<ConnectionResponseDto> {
+  async update(
+    id: string,
+    dto: Partial<CreateConnectionDto>,
+  ): Promise<ConnectionResponseDto> {
     const connection = await this.findEntity(id);
-    
+
     if (dto.name && dto.name !== connection.name) {
       const connections = await this.repository.findAll();
       if (connections.some((c) => c.name === dto.name)) {
-        throw new BadRequestException(`Connection with name "${dto.name}" already exists`);
+        throw new BadRequestException(
+          `Connection with name "${dto.name}" already exists`,
+        );
       }
     }
 
@@ -67,7 +81,14 @@ export class ConnectionService {
     await this.repository.delete(id);
   }
 
-  async testConnection(dto: CreateConnectionDto): Promise<boolean> {
+  async testConnectionById(id: string): Promise<boolean> {
+    const connection = await this.findEntity(id);
+    return this.testConnection(connection);
+  }
+
+  async testConnection(
+    dto: CreateConnectionDto | ConnectionEntity,
+  ): Promise<boolean> {
     const driver = this.getDriver(dto);
     try {
       await driver.connect();
@@ -110,11 +131,38 @@ export class ConnectionService {
         );
       case DatabaseType.MONGODB: {
         const password = 'password' in dto ? dto.password : '';
-        const uri = `mongodb://${dto.user}:${password}@${dto.host}:${dto.port}`;
-        return new MongoDbDriver(uri, dto.database, sshConfig);
+        const db = dto.database || 'admin';
+        let uri = `mongodb://${dto.user}:${password}@${dto.host}:${dto.port}/${db}`;
+
+        const options: string[] = [];
+        if (dto.authSource) options.push(`authSource=${dto.authSource}`);
+        if (dto.replicaSet) options.push(`replicaSet=${dto.replicaSet}`);
+        if (dto.ssl && dto.ssl !== 'false')
+          options.push(`ssl=${dto.ssl === 'true' ? 'true' : dto.ssl}`);
+
+        if (options.length > 0) {
+          uri += `?${options.join('&')}`;
+        }
+
+        return new MongoDbDriver(uri, dto.database || '', sshConfig);
       }
+      case DatabaseType.SQLSERVER:
+        return new SqlServerDriver(
+          {
+            server: dto.host,
+            port: dto.port,
+            user: dto.user,
+            password: 'password' in dto ? dto.password : undefined,
+            database: dto.database,
+            options: {
+              encrypt: true,
+              trustServerCertificate: true,
+            },
+          },
+          sshConfig,
+        );
       default:
-        throw new Error(`Unsupported database type: ${dto.type}`);
+        throw new Error(`Unsupported database type: ${dto.type as string}`);
     }
   }
 
@@ -127,7 +175,10 @@ export class ConnectionService {
     dto.host = entity.host;
     dto.port = entity.port;
     dto.user = entity.user;
-    dto.database = entity.database;
+    dto.database = entity.database || '';
+    dto.authSource = entity.authSource;
+    dto.replicaSet = entity.replicaSet;
+    dto.ssl = entity.ssl;
     dto.ssh = entity.ssh;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;

@@ -1,220 +1,79 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, Database, Table, ChevronRight, RefreshCw, AlertCircle, Code, List, Layout, Table2, ChevronLeft, ChevronRight as ChevronRightIcon, Play, Square, Loader2, Save, X } from 'lucide-react'
-import { apiFetch } from '@/lib/api'
-import { useAppStore } from '@/store/useAppStore'
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { cn } from '@/lib/utils'
-import { io, Socket } from 'socket.io-client'
-import { format } from 'sql-formatter'
+import { Code, Play, X, AlertCircle } from 'lucide-react'
 import { Sidebar } from '@/components/explorer/Sidebar'
 import { ObjectDetail } from '@/components/explorer/ObjectDetail'
-
-interface TableInfo {
-  name: string
-}
-
-interface ColumnInfo {
-  name: string
-  type: string
-  isNullable: boolean
-}
-
-interface ParameterInfo {
-  name: string
-  type: string
-  mode: 'IN' | 'OUT' | 'INOUT'
-}
-
-interface QueryResponse {
-  columns: string[]
-  rows: Record<string, any>[]
-  executionTime: number
-}
+import { useExplorer } from '@/hooks/useExplorer'
+import { useEffect } from 'react'
 
 export default function Explorer() {
-  const { activeConnection } = useAppStore()
-  const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [selectedItem, setSelectedItem] = useState<{ name: string, type: 'table' | 'view' | 'procedure' | 'trigger' } | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers'>('tables')
-  const [activeTab, setActiveTab] = useState<'columns' | 'data' | 'ddl'>('columns')
-  const [currentSchema, setCurrentSchema] = useState(activeConnection?.database || '')
+  const {
+    activeConnection,
+    search,
+    setSearch,
+    selectedItem,
+    setSelectedItem,
+    sidebarTab,
+    setSidebarTab,
+    activeTab,
+    setActiveTab,
+    currentSchema,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    executionStatus,
+    executionError,
+    socketResults,
+    setSocketResults,
+    setExecutionStatus,
+    setExecutionError,
+    editableDdl,
+    setEditableDdl,
+    paramValues,
+    setParamsValues,
+    showParamModal,
+    setShowParamModal,
+    isSidebarCollapsed,
+    setIsSidebarCollapsed,
+    isLoadingSidebar,
+    filteredItems,
+    columns,
+    isLoadingColumns,
+    indexes,
+    isLoadingIndexes,
+    foreignKeys,
+    isLoadingForeignKeys,
+    constraints,
+    isLoadingConstraints,
+    isLoadingDDL,
+    parameters,
+    updateDdlMutation,
+    editColumnMutation,
+    dropColumnMutation,
+    dropIndexMutation,
+    renameIndexMutation,
+    dropForeignKeyMutation,
+    dropConstraintMutation,
+    updateCell,
+    handleExecute,
+    handleCancel,
+    handleRefetch
+  } = useExplorer()
 
   useEffect(() => {
-    if (activeConnection?.database) {
-      setCurrentSchema(activeConnection.database)
-      setSelectedItem(null)
-    }
-  }, [activeConnection?.database])
-  
-  // Pagination state
-  const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(50)
-  
-  const socketRef = useRef<Socket | null>(null)
-  const [executionStatus, setExecutionStatus] = useState<'idle' | 'executing' | 'success' | 'error'>('idle')
-  const [executionError, setExecutionError] = useState<string | null>(null)
-  const [socketResults, setSocketResults] = useState<QueryResponse | null>(null)
-  
-  const [editableDdl, setEditableDdl] = useState('')
-  const [paramValues, setParamsValues] = useState<Record<string, string>>({})
-  const [showParamModal, setShowParamModal] = useState(false)
-
-  useEffect(() => {
-    const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/queries`)
-    socketRef.current = socket
-
-    socket.on('query-progress', () => {
-      setExecutionStatus('executing')
-    })
-
-    socket.on('query-result', (data: any) => {
-      if (data.tabId === 'explorer') {
-        setSocketResults({
-          columns: data.columns,
-          rows: data.rows,
-          executionTime: data.executionTime
-        })
-        setExecutionStatus('success')
-        setExecutionError(null)
-      }
-    })
-
-    socket.on('query-error', (data: any) => {
-      if (data.tabId === 'explorer') {
-        setExecutionStatus('error')
-        setExecutionError(data.message)
-      }
-    })
-
-    return () => {
-      socket.disconnect()
-    }
-  }, [])
-
-  const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
-    queryKey: ['tables', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/tables?schema=${currentSchema}`),
-    enabled: !!activeConnection,
-  })
-
-  const { data: views, isLoading: isLoadingViews, refetch: refetchViews } = useQuery({
-    queryKey: ['views', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/views?schema=${currentSchema}`),
-    enabled: !!activeConnection,
-  })
-
-  const { data: procedures, isLoading: isLoadingProcedures, refetch: refetchProcedures } = useQuery({
-    queryKey: ['procedures', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/procedures?schema=${currentSchema}`),
-    enabled: !!activeConnection,
-  })
-
-  const { data: triggers, isLoading: isLoadingTriggers, refetch: refetchTriggers } = useQuery({
-    queryKey: ['triggers', activeConnection?.id, currentSchema],
-    queryFn: () => apiFetch<TableInfo[]>(`/connections/${activeConnection?.id}/schema/triggers?schema=${currentSchema}`),
-    enabled: !!activeConnection,
-  })
-
-  const { data: columns, isLoading: isLoadingColumns } = useQuery({
-    queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<ColumnInfo[]>(`/connections/${activeConnection?.id}/schema/tables/${selectedItem?.name}/columns?schema=${currentSchema}`),
-    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'table' || selectedItem.type === 'view'),
-  })
-
-  const { data: ddlData, isLoading: isLoadingDDL } = useQuery({
-    queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: async () => {
-      const data = await apiFetch<{ ddl: string }>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`)
-      let formatted = data.ddl
-      try {
-        formatted = format(data.ddl, { language: 'mysql', uppercase: true })
-      } catch (e) {
-        // ignore format error
-      }
-      setEditableDdl(formatted)
-      return { ddl: formatted }
-    },
-    enabled: !!activeConnection && !!selectedItem && activeTab === 'ddl',
-  })
-
-  const { data: parameters } = useQuery({
-    queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => apiFetch<ParameterInfo[]>(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/parameters?type=${selectedItem?.type}&schema=${currentSchema}`),
-    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'procedure' || selectedItem.type === 'view'),
-  })
-
-  const updateDdlMutation = useMutation({
-    mutationFn: (sql: string) => apiFetch(`/connections/${activeConnection?.id}/schema/objects/${selectedItem?.name}/ddl?type=${selectedItem?.type}&schema=${currentSchema}`, {
-      method: 'POST',
-      body: JSON.stringify({ sql })
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection?.id, selectedItem] })
-      handleRefetch()
-    }
-  })
-
-  const handleExecute = useCallback((useParams: boolean = false) => {
-    if (selectedItem && activeConnection && socketRef.current) {
-      if (!useParams && parameters && parameters.length > 0) {
-        setShowParamModal(true)
-        return
-      }
-
-      let sql = ''
-      const params: any[] = []
-
-      if (selectedItem.type === 'view' || selectedItem.type === 'table') {
-        sql = `SELECT * FROM \`${selectedItem.name}\` LIMIT ${pageSize} OFFSET ${page * pageSize};`
-      } else if (selectedItem.type === 'procedure') {
-        const placeholders = parameters?.map(p => {
-          params.push(paramValues[p.name] || null)
-          return '?'
-        }).join(', ') || ''
-        sql = `CALL \`${selectedItem.name}\`(${placeholders});`
-      }
-
-      if (!sql) return
-
-      setExecutionStatus('executing')
-      setExecutionError(null)
-      setSocketResults(null)
-      setShowParamModal(false)
-
-      socketRef.current.emit('execute-query', {
-        connectionId: activeConnection.id,
-        dto: { sql, params, schema: currentSchema },
-        tabId: 'explorer'
-      })
-    }
-  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema])
-
-  useEffect(() => {
-    if (selectedItem?.type === 'table' && activeTab === 'data' && executionStatus === 'idle') {
+    // Only auto-execute if we are on the data tab and the status is idle
+    // Changing page or pageSize will manually trigger execution via their setters if needed, 
+    // or we can let this effect handle it by resetting status to idle when those change.
+    if ((selectedItem?.type === 'table' || selectedItem?.type === 'view') && activeTab === 'data' && executionStatus === 'idle') {
       handleExecute()
     }
   }, [selectedItem, activeTab, executionStatus, handleExecute])
 
-  const handleCancel = () => {
-    if (socketRef.current && activeConnection) {
-      socketRef.current.emit('cancel-query', { 
-        tabId: 'explorer',
-        connectionId: activeConnection.id 
-      })
-      setExecutionStatus('error')
-      setExecutionError('Query cancelled by user')
+  // Reset status to idle when pagination changes to allow the effect above to re-run
+  useEffect(() => {
+    if (activeTab === 'data') {
+      setExecutionStatus('idle')
     }
-  }
-
-  const getFilteredItems = () => {
-    const items = sidebarTab === 'tables' ? tables : 
-                 sidebarTab === 'views' ? views : 
-                 sidebarTab === 'procedures' ? procedures : triggers;
-    return items?.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
-  }
-
-  const filteredItems = getFilteredItems()
+  }, [page, pageSize, activeTab, setExecutionStatus])
 
   if (!activeConnection) {
     return (
@@ -230,19 +89,10 @@ export default function Explorer() {
     )
   }
 
-  const handleRefetch = () => {
-    if (sidebarTab === 'tables') refetchTables()
-    else if (sidebarTab === 'views') refetchViews()
-    else if (sidebarTab === 'procedures') refetchProcedures()
-    else if (sidebarTab === 'triggers') refetchTriggers()
-  }
-
-  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers
-
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-6 relative">
       {showParamModal && (
-        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-left">
             <div className="p-4 border-b border-border bg-muted/20 flex justify-between items-center">
               <h4 className="font-bold flex items-center gap-2">
@@ -270,7 +120,7 @@ export default function Explorer() {
               <div className="pt-4 flex gap-3">
                 <button 
                   onClick={() => setShowParamModal(false)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-bold hover:bg-muted transition-colors"
+                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-bold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                 >
                   Cancel
                 </button>
@@ -304,6 +154,8 @@ export default function Explorer() {
         setExecutionError={setExecutionError}
         setParamsValues={setParamsValues}
         setActiveTab={setActiveTab}
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
       <div className="flex-1 border border-border rounded-xl bg-card flex flex-col overflow-hidden">
@@ -313,6 +165,12 @@ export default function Explorer() {
           setActiveTab={setActiveTab}
           columns={columns}
           isLoadingColumns={isLoadingColumns}
+          indexes={indexes}
+          isLoadingIndexes={isLoadingIndexes}
+          foreignKeys={foreignKeys}
+          isLoadingForeignKeys={isLoadingForeignKeys}
+          constraints={constraints}
+          isLoadingConstraints={isLoadingConstraints}
           isLoadingData={executionStatus === 'executing'}
           executionStatus={executionStatus}
           executionError={executionError}
@@ -323,10 +181,17 @@ export default function Explorer() {
           setPage={setPage}
           handleExecute={handleExecute}
           handleCancel={handleCancel}
+          updateCell={updateCell}
           isLoadingDDL={isLoadingDDL}
           editableDdl={editableDdl}
           setEditableDdl={setEditableDdl}
           updateDdlMutation={updateDdlMutation}
+          editColumnMutation={editColumnMutation}
+          dropColumnMutation={dropColumnMutation}
+          dropIndexMutation={dropIndexMutation}
+          renameIndexMutation={renameIndexMutation}
+          dropForeignKeyMutation={dropForeignKeyMutation}
+          dropConstraintMutation={dropConstraintMutation}
         />
       </div>
     </div>
