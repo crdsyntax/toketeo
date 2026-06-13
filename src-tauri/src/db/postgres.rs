@@ -55,10 +55,22 @@ impl DbDriver for PostgresDriver {
         })
     }
 
-    async fn fetch_tables(&self) -> AppResult<Vec<String>> {
+    async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
         let rows = sqlx::query(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog')"
         )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|r| r.get(0)).collect())
+    }
+
+    async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+        let schema_name = schema.unwrap_or_else(|| "public".to_string());
+        let rows = sqlx::query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'"
+        )
+        .bind(schema_name)
         .fetch_all(&self.pool)
         .await?;
 

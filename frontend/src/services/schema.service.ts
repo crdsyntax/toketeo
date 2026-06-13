@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api'
+import { tauriApi } from '@/lib/api'
 import type { 
   TableResponse, 
   ColumnResponse, 
@@ -6,129 +6,88 @@ import type {
   ForeignKeyResponse, 
   ConstraintResponse,
   ParameterResponse,
-  Connection
 } from '@/types/database'
 
 export const schemaService = {
-  getSchemas: async (connectionId: string) => {
-    const response = await apiClient.get<string[]>(`/connections/${connectionId}/schema/schemas`)
-    return response.data
+  getSchemas: async (id: string) => {
+    return await tauriApi.invoke<string[]>('get_schemas', { id })
   },
 
-  getTables: async (connectionId: string, schema?: string) => {
-    const response = await apiClient.get<TableResponse[]>(`/connections/${connectionId}/schema/tables`, {
-      params: { schema }
-    })
-    return response.data
+  getTables: async (id: string, schema?: string) => {
+    const names = await tauriApi.invoke<string[]>('get_tables', { id, schema })
+    return names.map(name => ({
+      name,
+      type: 'table'
+    })) as TableResponse[]
   },
 
-  getViews: async (connectionId: string, schema?: string) => {
-    const response = await apiClient.get<TableResponse[]>(`/connections/${connectionId}/schema/views`, {
-      params: { schema }
-    })
-    return response.data
+  getViews: async (id: string, _schema?: string) => {
+    return [] as TableResponse[] // TODO: Implement get_views in Rust
   },
 
-  getProcedures: async (connectionId: string, schema?: string) => {
-    const response = await apiClient.get<TableResponse[]>(`/connections/${connectionId}/schema/procedures`, {
-      params: { schema }
-    })
-    return response.data
+  getProcedures: async (id: string, _schema?: string) => {
+    return [] as TableResponse[] // TODO: Implement get_procedures in Rust
   },
 
-  getTriggers: async (connectionId: string, schema?: string) => {
-    const response = await apiClient.get<TableResponse[]>(`/connections/${connectionId}/schema/triggers`, {
-      params: { schema }
-    })
-    return response.data
+  getTriggers: async (id: string, _schema?: string) => {
+    return [] as TableResponse[] // TODO: Implement get_triggers in Rust
   },
 
-  getColumns: async (connectionId: string, table: string, schema?: string) => {
-    const response = await apiClient.get<ColumnResponse[]>(`/connections/${connectionId}/schema/tables/${table}/columns`, {
-      params: { schema }
-    })
-    return response.data
+  getColumns: async (id: string, table: string, _schema?: string) => {
+    // This might need a new command in Rust
+    return await tauriApi.invoke<ColumnResponse[]>('get_columns', { id, table })
   },
 
-  getIndexes: async (connectionId: string, table: string, schema?: string) => {
-    const response = await apiClient.get<IndexResponse[]>(`/connections/${connectionId}/schema/tables/${table}/indexes`, {
-      params: { schema }
-    })
-    return response.data
+  getIndexes: async (id: string, table: string, _schema?: string) => {
+    return await tauriApi.invoke<IndexResponse[]>('get_indexes', { id, table })
   },
 
-  getForeignKeys: async (connectionId: string, table: string, schema?: string) => {
-    const response = await apiClient.get<ForeignKeyResponse[]>(`/connections/${connectionId}/schema/tables/${table}/foreign-keys`, {
-      params: { schema }
-    })
-    return response.data
+  getForeignKeys: async (id: string, table: string, _schema?: string) => {
+    return await tauriApi.invoke<ForeignKeyResponse[]>('get_foreign_keys', { id, table })
   },
 
-  getConstraints: async (connectionId: string, table: string, schema?: string) => {
-    const response = await apiClient.get<ConstraintResponse[]>(`/connections/${connectionId}/schema/tables/${table}/constraints`, {
-      params: { schema }
-    })
-    return response.data
+  getConstraints: async (id: string, table: string, _schema?: string) => {
+    return await tauriApi.invoke<ConstraintResponse[]>('get_constraints', { id, table })
   },
 
-  getDDL: async (connectionId: string, name: string, type: string, schema?: string) => {
-    const response = await apiClient.get<{ ddl: string }>(`/connections/${connectionId}/schema/objects/${name}/ddl`, {
-      params: { type, schema }
-    })
-    return response.data.ddl
+  getDDL: async (id: string, name: string, type: string, _schema?: string) => {
+    return await tauriApi.invoke<string>('get_ddl', { id, name, type })
   },
 
-  updateDDL: async (connectionId: string, name: string, type: string, sql: string, schema?: string) => {
-    await apiClient.post(`/connections/${connectionId}/schema/objects/${name}/ddl`, { sql }, {
-      params: { type, schema }
-    })
+  updateDDL: async (id: string, name: string, type: string, sql: string, _schema?: string) => {
+    await tauriApi.invoke<void>('update_ddl', { id, name, type, sql })
   },
 
-  getParameters: async (connectionId: string, name: string, type: string, schema?: string) => {
-    const response = await apiClient.get<ParameterResponse[]>(`/connections/${connectionId}/schema/objects/${name}/parameters`, {
-      params: { type, schema }
-    })
-    return response.data
+  getParameters: async (id: string, name: string, type: string, _schema?: string) => {
+    return await tauriApi.invoke<ParameterResponse[]>('get_parameters', { id, name, type })
   },
 
-  editColumn: async (connectionId: string, table: string, sql: string, schema?: string) => {
-    await apiClient.post(`/connections/${connectionId}/schema/tables/${table}/columns`, { sql }, {
-      params: { schema }
-    })
+  editColumn: async (id: string, table: string, sql: string, _schema?: string) => {
+    await tauriApi.invoke<void>('edit_column', { id, table, sql })
   },
 
-  dropColumn: async (connectionId: string, table: string, column: string, schema?: string) => {
-    await apiClient.delete(`/connections/${connectionId}/schema/tables/${table}/columns/${column}`, {
-      params: { schema }
-    })
+  dropColumn: async (id: string, table: string, column: string, _schema?: string) => {
+    await tauriApi.invoke<void>('drop_column', { id, table, column })
   },
 
-  dropIndex: async (connectionId: string, table: string, index: string, schema?: string) => {
-    await apiClient.delete(`/connections/${connectionId}/schema/tables/${table}/indexes/${index}`, {
-      params: { schema }
-    })
+  dropIndex: async (id: string, table: string, index: string, _schema?: string) => {
+    await tauriApi.invoke<void>('drop_index', { id, table, index })
   },
 
-  renameIndex: async (connectionId: string, table: string, oldName: string, newName: string, schema?: string) => {
-    await apiClient.post(`/connections/${connectionId}/schema/tables/${table}/indexes/${oldName}/rename`, { newName }, {
-      params: { schema }
-    })
+  renameIndex: async (id: string, table: string, oldName: string, newName: string, _schema?: string) => {
+    await tauriApi.invoke<void>('rename_index', { id, table, oldName, newName })
   },
 
-  dropForeignKey: async (connectionId: string, table: string, constraint: string, schema?: string) => {
-    await apiClient.delete(`/connections/${connectionId}/schema/tables/${table}/foreign-keys/${constraint}`, {
-      params: { schema }
-    })
+  dropForeignKey: async (id: string, table: string, constraint: string, _schema?: string) => {
+    await tauriApi.invoke<void>('drop_foreign_key', { id, table, constraint })
   },
 
-  dropConstraint: async (connectionId: string, table: string, constraint: string, schema?: string) => {
-    await apiClient.delete(`/connections/${connectionId}/schema/tables/${table}/constraints/${constraint}`, {
-      params: { schema }
-    })
+  dropConstraint: async (id: string, table: string, constraint: string, _schema?: string) => {
+    await tauriApi.invoke<void>('drop_constraint', { id, table, constraint })
   },
 
-  switchSchema: async (connectionId: string, schema: string) => {
-    const response = await apiClient.post<Connection>(`/connections/${connectionId}/schema/switch-schema`, { schema })
-    return response.data
+  switchSchema: async (id: string, schema: string) => {
+    // Rust side might need to handle switching the default database in the pool
+    return await tauriApi.invoke<any>('switch_schema', { id, schema })
   }
 }

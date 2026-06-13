@@ -53,10 +53,25 @@ impl DbDriver for MySqlDriver {
         })
     }
 
-    async fn fetch_tables(&self) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SHOW TABLES")
+    async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
+        let rows = sqlx::query("SHOW DATABASES")
             .fetch_all(&self.pool)
             .await?;
+
+        Ok(rows.iter().map(|r| r.get(0)).collect())
+    }
+
+    async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+        let rows = if let Some(schema_name) = schema {
+            sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = ?")
+                .bind(schema_name)
+                .fetch_all(&self.pool)
+                .await?
+        } else {
+            sqlx::query("SHOW TABLES")
+                .fetch_all(&self.pool)
+                .await?
+        };
 
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }

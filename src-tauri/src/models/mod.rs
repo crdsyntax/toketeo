@@ -6,12 +6,15 @@ use crate::db::DbType;
 pub struct DbConnectionConfig {
     pub id: Option<Uuid>,
     pub name: String,
+    pub environment: String,
+    #[serde(rename = "type")]
     pub db_type: DbType,
     pub host: String,
     pub port: u16,
     pub user: String,
     pub password: Option<String>,
     pub database: Option<String>,
+    #[serde(rename = "ssh")]
     pub ssh_tunnel: Option<SshConfig>,
 }
 
