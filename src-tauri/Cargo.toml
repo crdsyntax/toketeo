@@ -1,0 +1,33 @@
+[package]
+name = "toketeo"
+version = "0.1.0"
+description = "Toketeo Database Client and Administration Panel"
+authors = ["crdsyntax"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "toketeo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.2", features = ["devtools"] }
+tauri-plugin-shell = "2"
+tauri-plugin-log = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.43.0", features = ["full"] }
+sqlx = { version = "0.8.3", features = [ "runtime-tokio-rustls", "mysql", "postgres", "sqlite", "chrono" ] }
+mongodb = "3.2.1"
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+ssh2 = "0.9.4"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+thiserror = "2.0.11"
+chrono = { version = "0.4.39", features = ["serde"] }
+validator = { version = "0.19.0", features = ["derive"] }
+uuid = { version = "1.13.1", features = ["v4", "serde"] }
+async-trait = "0.1.86"

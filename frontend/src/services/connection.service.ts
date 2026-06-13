@@ -1,33 +1,36 @@
-import { apiClient } from '@/lib/api'
+import { tauriApi } from '@/lib/api'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 
 export const connectionService = {
-  getAll: async () => {
-    const response = await apiClient.get<Connection[]>('/connections')
-    return response.data
+  getAll: async (): Promise<Connection[]> => {
+    return [] 
   },
 
-  getOne: async (id: string) => {
-    const response = await apiClient.get<Connection>(`/connections/${id}`)
-    return response.data
+  getOne: async (_id: string): Promise<Connection> => {
+    return {} as Connection
   },
 
-  create: async (data: CreateConnectionDto) => {
-    const response = await apiClient.post<Connection>('/connections', data)
-    return response.data
+  create: async (config: CreateConnectionDto) => {
+    await tauriApi.invoke<string>('connect', { config })
   },
 
-  update: async (id: string, data: Partial<CreateConnectionDto>) => {
-    const response = await apiClient.patch<Connection>(`/connections/${id}`, data)
-    return response.data
+  update: async (id: string, config: Partial<CreateConnectionDto>) => {
+    await tauriApi.invoke<void>('connect', { config: { id, ...config } })
   },
 
   delete: async (id: string) => {
-    await apiClient.delete(`/connections/${id}`)
+    await tauriApi.invoke<void>('disconnect', { id })
   },
 
-  test: async (data: CreateConnectionDto) => {
-    const response = await apiClient.post('/connections/test', data)
-    return response.data
+  connect: async (config: CreateConnectionDto) => {
+    return await tauriApi.invoke<string>('connect', { config })
+  },
+
+  disconnect: async (id: string) => {
+    return await tauriApi.invoke<void>('disconnect', { id })
+  },
+
+  test: async (config: CreateConnectionDto) => {
+    return await tauriApi.invoke<string>('connect', { config })
   }
 }

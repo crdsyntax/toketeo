@@ -1,20 +1,18 @@
-import { apiClient } from '@/lib/api'
+import { tauriApi } from '@/lib/api'
 import type { QueryResult } from '@/types/database'
 
 export const queryService = {
-  execute: async (connectionId: string, sql: string, schema?: string, params?: unknown[], page?: number, pageSize?: number) => {
-    const response = await apiClient.post<QueryResult>(`/connections/${connectionId}/query/execute`, {
-      sql,
-      schema,
-      params,
-      page,
-      pageSize
+  /**
+   * Executes a query using the native Rust backend via Tauri IPC.
+   */
+  execute: async (id: string, query: string, _schema?: string, _params?: unknown[], _page?: number, _pageSize?: number) => {
+    return await tauriApi.invoke<QueryResult>('execute_query', {
+      id,
+      query
     })
-    return response.data
   },
 
-  cancel: async (connectionId: string) => {
-    // Note: Cancel endpoint might need verification on backend path if it exists
-    await apiClient.post(`/connections/${connectionId}/query/cancel`)
+  cancel: async (_id: string) => {
+    console.warn('Query cancellation not yet implemented in Rust')
   }
 }
