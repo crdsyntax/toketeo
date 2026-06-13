@@ -1,98 +1,122 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🔱 TOKETEO - Database Administration Panel
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Toketeo es un cliente de bases de datos multiplataforma y panel de administración avanzado construido con **NestJS**, **React** y **Electron**. Está diseñado para ofrecer una experiencia fluida, segura y eficiente en la gestión de múltiples motores de bases de datos.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+![Toketeo Logo](./frontend/public/logo.svg)
 
-## Description
+## ✨ Características Principales
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+-   **Soporte Multi-motor**: MariaDB, MySQL, PostgreSQL, MongoDB y SQL Server.
+-   **Túneles SSH**: Conexión segura a bases de datos remotas mediante saltos SSH integrados.
+-   **Editor SQL Avanzado**: Basado en Monaco Editor (VS Code) con resaltado de sintaxis, autocompletado y múltiples pestañas.
+-   **Explorador de Objetos**: Visualización detallada de tablas, vistas, columnas, índices, claves foráneas y DDL.
+-   **Exportación**: Descarga de resultados en formato CSV.
+-   **Logs en Tiempo Real**: Visualización de eventos del servidor mediante WebSockets.
+-   **Auditoría**: Registro automático de acciones de usuario y ejecuciones de consultas.
+-   **Multiplataforma**: Instaladores nativos para Linux (.deb) y Windows (.zip portable).
 
-## Project setup
+---
 
+## 🛠️ Arquitectura Técnica
+
+### Backend (NestJS)
+
+El backend sigue una arquitectura modular y escalable, utilizando el runtime **Bun** para máxima velocidad.
+
+#### Módulos Core:
+-   **`connection`**: Gestiona las conexiones y el ciclo de vida de los drivers. Implementa un sistema de fábricas para instanciar el driver adecuado según el tipo de BD.
+-   **`query`**: Ejecución de consultas asíncronas. Utiliza WebSockets (Socket.io) para manejar consultas pesadas sin bloquear la interfaz.
+-   **`schema`**: Extracción de metadatos y generación de DDL.
+-   **`auth`**: Seguridad basada en **JWT**. Incluye un flujo de login automático para el entorno de escritorio.
+-   **`storage`**: Capa de persistencia local utilizando **SQLite** (vía `@libsql/client`) para guardar conexiones, historial y favoritos.
+-   **`logs`**: Sistema de logging global que emite eventos en tiempo real hacia el frontend.
+
+### Frontend (React + Zustand)
+
+Interfaz moderna y reactiva construida con **Tailwind CSS**.
+
+-   **Estado Global**: Gestionado con **Zustand**, permitiendo una persistencia selectiva en el almacenamiento local.
+-   **Hooks Personalizados**:
+    -   `useQueryEditor`: Lógica compleja para la gestión de pestañas, ejecución de SQL y manejo de resultados.
+    -   `useExplorer`: Orquestación de la navegación por el esquema de la base de datos.
+-   **Componentes**: Librería de componentes propia optimizada para una estética "Admin Dashboard" profesional.
+
+---
+
+## 🔐 Seguridad y Autenticación
+
+Toketeo utiliza un sistema de **JWT (JSON Web Tokens)**. En la versión de escritorio, se ha implementado un `AuthProvider` que realiza un login automático silencioso al iniciar la aplicación, garantizando que todas las peticiones a la API estén firmadas sin requerir intervención manual del usuario local.
+
+---
+
+## 🚀 Instalación y Desarrollo
+
+### Requisitos
+-   [Bun](https://bun.sh/) (Runtime de JavaScript recomendado)
+
+### Pasos
+1.  **Clonar el repositorio**:
+    ```bash
+    git clone https://github.com/crdsyntax/toketeo.git
+    cd toketeo
+    ```
+2.  **Configurar variables de entorno**:
+    Crea un archivo `.env` en la raíz (usa como base el ejemplo):
+    ```env
+    PORT=3000
+    JWT_SECRET=tu-secreto-seguro
+    ```
+3.  **Instalar dependencias**:
+    ```bash
+    bun install
+    cd frontend && bun install && cd ..
+    ```
+4.  **Ejecutar en modo desarrollo**:
+    ```bash
+    bun run electron:dev
+    ```
+
+---
+
+## 📦 Compilación y Empaquetado
+
+Toketeo utiliza `electron-builder` para generar binarios de producción.
+
+### Linux (.deb)
 ```bash
-$ npm install
+bun run electron:pack
+```
+El instalador se generará en `dist-electron/`.
+
+### Windows (.zip portable)
+```bash
+bun run electron:pack:win
+```
+El archivo comprimido se generará en `dist-electron/`.
+
+---
+
+## 📁 Estructura del Proyecto
+
+```text
+toketeo/
+├── electron/          # Código del proceso principal de Electron
+├── frontend/          # Aplicación React (Vite)
+│   ├── src/
+│   │   ├── components/ # Componentes UI reutilizables
+│   │   ├── hooks/      # Lógica de negocio en React
+│   │   ├── store/      # Estado global (Zustand)
+│   │   └── types/      # Definiciones de TypeScript
+├── src/               # Backend NestJS
+│   ├── connection/    # Drivers y gestión de BD
+│   ├── query/         # Ejecución de SQL y Gateways
+│   ├── modules/       # Capa de almacenamiento local
+│   └── main.ts        # Punto de entrada del servidor
+├── package.json       # Scripts y dependencias
+└── README.md          # Esta documentación
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## ✒️ Autor
+**crdsyntax** - *Desarrollo Integral* - [GitHub](https://github.com/crdsyntax)
