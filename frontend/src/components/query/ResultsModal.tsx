@@ -1,5 +1,5 @@
-import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, Trash2, Download } from 'lucide-react'
+import { cn, downloadCSV } from '@/lib/utils'
 import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
 
@@ -98,6 +98,13 @@ export function ResultsModal({
               title="External window"
             >
               <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => downloadCSV(sortedRows, activeTab.results!.columns, `${activeTab.name}-results.csv`)}
+              className="h-full px-3 hover:bg-muted text-muted-foreground transition-colors"
+              title="Export CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
             </button>
             <button 
               onClick={clearResults}

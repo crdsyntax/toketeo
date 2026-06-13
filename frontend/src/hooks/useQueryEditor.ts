@@ -147,7 +147,7 @@ export function useQueryEditor() {
     return false
   }, [])
 
-  const handleExecuteAll = useCallback(async (page = 1) => {
+  const handleExecuteAll = useCallback(async (page: number = 1) => {
     if (activeTab?.query && activeConnection) {
       if (checkDangerousQuery(activeTab.query)) return
 

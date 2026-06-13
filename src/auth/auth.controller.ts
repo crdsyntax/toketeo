@@ -20,12 +20,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Login and get JWT token' })
   @ApiResponse({ status: 200, description: 'Success' })
   async login(@Body() body: { username: string; password?: string }) {
+    console.log(`[Auth]: Login attempt for user: ${body.username}`);
     // For now, we allow login without password for the default local user
     // or validate if a password is provided
     let user;
     if (body.username === 'root' || body.username === 'admin') {
       // Automatic bypass for local dev/admin if password is not strictly required yet
-      // In a real scenario, we would use validateUser
       user = {
         username: body.username,
         id: body.username,

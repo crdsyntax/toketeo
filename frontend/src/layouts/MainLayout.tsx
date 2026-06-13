@@ -1,14 +1,10 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Database, LayoutGrid, Terminal, Settings, Activity, FileText, Globe, Shield, AlertTriangle, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutGrid, Terminal, Activity, FileText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
-import { Environment } from '@/types/database'
-import { SchemaSelector } from '@/components/layout/SchemaSelector'
-import { useSystemStatus } from '@/hooks/useSystemStatus'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
-import { getApiUrl } from '@/lib/api'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 import { useState } from 'react'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
@@ -17,7 +13,6 @@ export default function MainLayout() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
-  const { mysqlError, clearMysqlError } = useSystemStatus()
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
@@ -79,9 +74,12 @@ export default function MainLayout() {
           <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-md text-muted-foreground">
             {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
           </button>
-          <div className="flex items-center gap-2">
-            <Database className="w-6 h-6 text-primary" />
-            <span className="font-bold text-xl tracking-tight">Toketeo</span>
+          <div className="flex items-center gap-4">
+            <img 
+              src="./logo.svg" 
+              alt="Toketeo Logo" 
+              className="w-50 h-50 object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]" 
+            />
           </div>
           <nav className="flex items-center ml-4">
             {navItems.map((item) => (

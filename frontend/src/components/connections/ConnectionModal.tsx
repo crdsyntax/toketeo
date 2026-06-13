@@ -157,13 +157,17 @@ export function ConnectionModal({
                   value={form.type}
                   onChange={(e) => {
                     const type = e.target.value as DatabaseType
-                    const defaultPort = type === DatabaseType.POSTGRES ? 5432 : type === DatabaseType.MONGODB ? 27017 : 3306
+                    const defaultPort = 
+                      type === DatabaseType.POSTGRES ? 5432 : 
+                      type === DatabaseType.MONGODB ? 27017 : 
+                      type === DatabaseType.SQLSERVER ? 1433 : 3306
                     setForm({ ...form, type, port: defaultPort })
                   }}
                 >
                   <option value={DatabaseType.MARIADB}>MariaDB / MySQL</option>
                   <option value={DatabaseType.POSTGRES}>PostgreSQL</option>
                   <option value={DatabaseType.MONGODB}>MongoDB</option>
+                  <option value={DatabaseType.SQLSERVER}>SQL Server (MSSQL)</option>
                 </select>
               </div>
 

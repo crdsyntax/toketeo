@@ -13,6 +13,7 @@ export enum DatabaseType {
   MARIADB = 'mariadb',
   POSTGRES = 'postgres',
   MONGODB = 'mongodb',
+  SQLSERVER = 'sqlserver',
 }
 
 export enum Environment {

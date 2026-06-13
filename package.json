@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "electron:dev": "electron .",
-    "electron:pack": "nest build && cd frontend && bun run build && cd .. && electron-builder build --linux deb"
+    "electron:pack": "nest build && cd frontend && bun run build && cd .. && electron-builder build --linux deb",
+    "electron:pack:win": "nest build && cd frontend && bun run build && cd .. && electron-builder build --win zip"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
@@ -38,6 +39,7 @@
     "dotenv": "^17.4.2",
     "libsql": "^0.5.29",
     "mongodb": "^7.3.0",
+    "mssql": "^12.5.5",
     "mysql2": "^3.22.5",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -58,6 +60,7 @@
     "@types/bcryptjs": "^3.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/mssql": "^12.3.0",
     "@types/node": "^24.0.0",
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.20.0",
@@ -117,6 +120,11 @@
         "deb"
       ],
       "category": "Development"
+    },
+    "win": {
+      "target": [
+        "zip"
+      ]
     }
   }
 }

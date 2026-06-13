@@ -9,6 +9,7 @@ import { CreateConnectionDto, DatabaseType } from './dto/create-connection.dto';
 import { MariaDbDriver } from './drivers/mariadb.driver';
 import { PostgresDriver } from './drivers/postgres.driver';
 import { MongoDbDriver } from './drivers/mongodb.driver';
+import { SqlServerDriver } from './drivers/sqlserver.driver';
 import { DatabaseDriver } from './interfaces/database-driver.interface';
 import type { ConnectionRepository } from './repositories/connection.repository.interface';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
@@ -145,6 +146,21 @@ export class ConnectionService {
 
         return new MongoDbDriver(uri, dto.database || '', sshConfig);
       }
+      case DatabaseType.SQLSERVER:
+        return new SqlServerDriver(
+          {
+            server: dto.host,
+            port: dto.port,
+            user: dto.user,
+            password: 'password' in dto ? dto.password : undefined,
+            database: dto.database,
+            options: {
+              encrypt: true,
+              trustServerCertificate: true,
+            },
+          },
+          sshConfig,
+        );
       default:
         throw new Error(`Unsupported database type: ${dto.type as string}`);
     }

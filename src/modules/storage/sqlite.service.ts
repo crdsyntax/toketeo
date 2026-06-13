@@ -51,7 +51,7 @@ export class SqliteService implements OnModuleInit, OnModuleDestroy {
         type TEXT NOT NULL,
         host TEXT NOT NULL,
         port INTEGER NOT NULL,
-        database TEXT NOT NULL,
+        database TEXT,
         user TEXT NOT NULL,
         password TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

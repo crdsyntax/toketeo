@@ -1,5 +1,5 @@
 import { ChevronUp, ChevronDown, Table2, Clock, Save, Maximize2, Download, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, downloadCSV } from '@/lib/utils';
 import type { QueryTab, DbValue } from '@/store/useAppStore';
 import type { DbRow } from '@/types/database';
 
@@ -101,7 +101,10 @@ export function ResultsPanel({
                 <Trash2 className="w-3 h-3" />
                 Clear
               </button>
-              <button className="text-[10px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <button 
+                onClick={() => downloadCSV(sortedRows, activeTab.results!.columns, `${activeTab.name}-results.csv`)}
+                className="text-[10px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
                 <Download className="w-3 h-3" />
                 CSV
               </button>

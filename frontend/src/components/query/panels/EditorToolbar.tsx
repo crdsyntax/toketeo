@@ -81,7 +81,7 @@ export function EditorToolbar({
         <div className="w-[1px] h-4 bg-border mx-2" />
 
         <button 
-          onClick={onExecute} 
+          onClick={() => onExecute()} 
           disabled={isExecuting} 
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-1.5 rounded-none text-xs font-bold hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
           title="Execute the entire script (Run All)"
