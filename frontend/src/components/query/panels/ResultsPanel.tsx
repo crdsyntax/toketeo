@@ -69,7 +69,7 @@ export function ResultsPanel({
             )}
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground border-r border-border pr-4 mr-2">
               <Clock className="w-3 h-3" />
-              {activeTab.results.executionTime}ms
+              {activeTab.results.executionTimeMs ?? activeTab.results.executionTime ?? 0}ms
             </div>
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
               Rows: <span className="font-bold text-foreground">{activeTab.results.rows.length}</span>

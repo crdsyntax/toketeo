@@ -11,7 +11,7 @@ import { ConnectionModal } from '@/components/connections/ConnectionModal'
 export default function Connections() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const setActiveConnection = useAppStore((state) => state.setActiveConnection)
+  const { activeConnection, isBackendConnected, setActiveConnection } = useAppStore()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
@@ -81,7 +81,7 @@ export default function Connections() {
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2.5 rounded-none text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none border-2 border-primary"
         >
           <Plus className="w-4 h-4" />
           New Connection
@@ -100,6 +100,8 @@ export default function Connections() {
             <ConnectionCard 
               key={conn.id} 
               connection={conn} 
+              isActive={activeConnection?.id === conn.id}
+              isConnected={activeConnection?.id === conn.id && isBackendConnected}
               onEdit={handleEdit}
               onDelete={(id) => deleteMutation.mutate(id)}
               onConnect={handleConnect}

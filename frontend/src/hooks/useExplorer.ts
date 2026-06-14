@@ -35,6 +35,20 @@ export function useExplorer() {
   const [showParamModal, setShowParamModal] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
+  // Track previous schema to detect changes
+  const prevSchemaRef = useRef<string>(currentSchema)
+
+  // Reset selection and results when schema changes
+  useEffect(() => {
+    if (currentSchema !== prevSchemaRef.current) {
+      setSelectedItem(null)
+      setSocketResults(null)
+      setExecutionStatus(ExecutionStatus.IDLE)
+      setExecutionError(null)
+      prevSchemaRef.current = currentSchema
+    }
+  }, [currentSchema, setSelectedItem, setSocketResults, setExecutionStatus, setExecutionError])
+
   // Track previous connection to detect real changes
   const prevConnIdRef = useRef<string | null>(null)
 
@@ -48,81 +62,98 @@ export function useExplorer() {
   }, [activeConnection?.id, setSelectedItem])
 
   const handleSelectItem = useCallback((item: DatabaseObject) => {
+    // Reset data state for new object selection
+    setSocketResults(null)
+    setExecutionStatus(ExecutionStatus.IDLE)
+    setExecutionError(null)
+    setPage(0)
+    
     setSelectedItem(item)
     setIsSidebarCollapsed(true)
-  }, [setSelectedItem])
+  }, [setSelectedItem, setSocketResults, setExecutionStatus, setExecutionError])
 
-  const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
+  const { data: tables, isFetching: isFetchingTables, refetch: refetchTables } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema),
+    queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema || undefined),
     enabled: !!activeConnection,
     staleTime: 5 * 60 * 1000, // 5 minutes cache
   })
 
-  const { data: views, isLoading: isLoadingViews, refetch: refetchViews } = useQuery({
+  const { data: views, isFetching: isFetchingViews, refetch: refetchViews } = useQuery({
     queryKey: ['views', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema),
+    queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema || undefined),
     enabled: !!activeConnection,
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: procedures, isLoading: isLoadingProcedures, refetch: refetchProcedures } = useQuery({
+  const { data: procedures, isFetching: isFetchingProcedures, refetch: refetchProcedures } = useQuery({
     queryKey: ['procedures', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getProcedures(activeConnection!.id, currentSchema),
+    queryFn: () => schemaService.getProcedures(activeConnection!.id, currentSchema || undefined),
     enabled: !!activeConnection,
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: triggers, isLoading: isLoadingTriggers, refetch: refetchTriggers } = useQuery({
+  const { data: triggers, isFetching: isFetchingTriggers, refetch: refetchTriggers } = useQuery({
     queryKey: ['triggers', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getTriggers(activeConnection!.id, currentSchema),
+    queryFn: () => schemaService.getTriggers(activeConnection!.id, currentSchema || undefined),
     enabled: !!activeConnection,
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: functions, isLoading: isLoadingFunctions, refetch: refetchFunctions } = useQuery({
+  const { data: functions, isFetching: isFetchingFunctions, refetch: refetchFunctions } = useQuery({
     queryKey: ['functions', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getFunctions(activeConnection!.id, currentSchema),
+    queryFn: () => schemaService.getFunctions(activeConnection!.id, currentSchema || undefined),
     enabled: !!activeConnection,
     staleTime: 5 * 60 * 1000,
   })
 
-  const handleRefetch = useCallback(() => {
+  const handleRefetch = useCallback(async () => {
+    // Invalidate all object queries for the current connection and schema
+    const baseKey = [activeConnection?.id, currentSchema]
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['tables', ...baseKey] }),
+      queryClient.invalidateQueries({ queryKey: ['views', ...baseKey] }),
+      queryClient.invalidateQueries({ queryKey: ['procedures', ...baseKey] }),
+      queryClient.invalidateQueries({ queryKey: ['triggers', ...baseKey] }),
+      queryClient.invalidateQueries({ queryKey: ['functions', ...baseKey] }),
+    ])
+    
+    // Also trigger refetch for the current tab to ensure immediate UI update if needed
     if (sidebarTab === SidebarTab.TABLES) refetchTables()
     else if (sidebarTab === SidebarTab.VIEWS) refetchViews()
     else if (sidebarTab === SidebarTab.PROCEDURES) refetchProcedures()
     else if (sidebarTab === SidebarTab.TRIGGERS) refetchTriggers()
     else if (sidebarTab === SidebarTab.FUNCTIONS) refetchFunctions()
-  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers, refetchFunctions])
+  }, [activeConnection?.id, currentSchema, queryClient, sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers, refetchFunctions])
 
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getColumns(activeConnection!.id, selectedItem!.name, currentSchema),
+    queryFn: () => schemaService.getColumns(activeConnection!.id, selectedItem!.name, currentSchema || undefined),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === DatabaseObjectType.TABLE || selectedItem.type === DatabaseObjectType.VIEW),
   })
 
   const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
     queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getIndexes(activeConnection!.id, selectedItem!.name, currentSchema),
+    queryFn: () => schemaService.getIndexes(activeConnection!.id, selectedItem!.name, currentSchema || undefined),
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
   const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
     queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getForeignKeys(activeConnection!.id, selectedItem!.name, currentSchema),
+    queryFn: () => schemaService.getForeignKeys(activeConnection!.id, selectedItem!.name, currentSchema || undefined),
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
   const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
     queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getConstraints(activeConnection!.id, selectedItem!.name, currentSchema),
+    queryFn: () => schemaService.getConstraints(activeConnection!.id, selectedItem!.name, currentSchema || undefined),
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
   const { isLoading: isLoadingDDL } = useQuery({
     queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
-      const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema)
+      const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema || undefined)
       let formatted = ddl
       try {
         formatted = format(ddl, { language: 'mysql' })
@@ -137,12 +168,12 @@ export function useExplorer() {
 
   const { data: parameters } = useQuery({
     queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getParameters(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema),
+    queryFn: () => schemaService.getParameters(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema || undefined),
     enabled: !!activeConnection && !!selectedItem && (selectedItem.type === DatabaseObjectType.PROCEDURE || selectedItem.type === DatabaseObjectType.VIEW),
   })
 
   const updateDdlMutation = useMutation({
-    mutationFn: (sql: string) => schemaService.updateDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, sql, currentSchema),
+    mutationFn: (sql: string) => schemaService.updateDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, sql, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection?.id, selectedItem] })
       handleRefetch()
@@ -150,7 +181,7 @@ export function useExplorer() {
   })
 
   const editColumnMutation = useMutation({
-    mutationFn: (sql: string) => schemaService.editColumn(activeConnection!.id, selectedItem!.name, sql, currentSchema),
+    mutationFn: (sql: string) => schemaService.editColumn(activeConnection!.id, selectedItem!.name, sql, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
       handleRefetch()
@@ -158,14 +189,14 @@ export function useExplorer() {
   })
 
   const dropColumnMutation = useMutation({
-    mutationFn: (columnName: string) => schemaService.dropColumn(activeConnection!.id, selectedItem!.name, columnName, currentSchema),
+    mutationFn: (columnName: string) => schemaService.dropColumn(activeConnection!.id, selectedItem!.name, columnName, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
   const dropIndexMutation = useMutation({
-    mutationFn: (indexName: string) => schemaService.dropIndex(activeConnection!.id, selectedItem!.name, indexName, currentSchema),
+    mutationFn: (indexName: string) => schemaService.dropIndex(activeConnection!.id, selectedItem!.name, indexName, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
     }
@@ -173,21 +204,21 @@ export function useExplorer() {
 
   const renameIndexMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) => 
-      schemaService.renameIndex(activeConnection!.id, selectedItem!.name, oldName, newName, currentSchema),
+      schemaService.renameIndex(activeConnection!.id, selectedItem!.name, oldName, newName, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
   const dropForeignKeyMutation = useMutation({
-    mutationFn: (constraintName: string) => schemaService.dropForeignKey(activeConnection!.id, selectedItem!.name, constraintName, currentSchema),
+    mutationFn: (constraintName: string) => schemaService.dropForeignKey(activeConnection!.id, selectedItem!.name, constraintName, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema] })
     }
   })
 
   const dropConstraintMutation = useMutation({
-    mutationFn: (constraintName: string) => schemaService.dropConstraint(activeConnection!.id, selectedItem!.name, constraintName, currentSchema),
+    mutationFn: (constraintName: string) => schemaService.dropConstraint(activeConnection!.id, selectedItem!.name, constraintName, currentSchema || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema] })
     }
@@ -284,7 +315,7 @@ export function useExplorer() {
     setExecutionError('Query cancelled by user')
   }, [setExecutionStatus, setExecutionError])
 
-  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers || isLoadingFunctions
+  const isLoadingSidebar = isFetchingTables || isFetchingViews || isFetchingProcedures || isFetchingTriggers || isFetchingFunctions
 
   const filteredItems = useMemo(() => {
     let items: { name: string }[] | undefined;

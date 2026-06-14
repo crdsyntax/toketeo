@@ -66,6 +66,7 @@ export interface QueryResult {
   columns: string[];
   rows: DbRow[];
   executionTime: number;
+  executionTimeMs?: number;
   affectedRows?: number;
   message?: string;
   page?: number;

@@ -9,7 +9,7 @@ import type {
   DbValue,
 } from '@/types/database';
 import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database';
-import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary } from 'lucide-react';
+import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ColumnsTab } from './tabs/ColumnsTab';
@@ -95,11 +95,13 @@ export function ObjectDetail({
     );
   };
 
+  const isMetadataLoading = isLoadingColumns || isLoadingIndexes || isLoadingForeignKeys || isLoadingConstraints || isLoadingDDL;
+
   if (!selectedItem) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
         <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mb-4">
-          <Database className="w-8 h-8 text-muted-foreground" />
+          <Database className="w-8 h-8 text-muted-foreground/30" />
         </div>
         <h3 className="text-lg font-medium">Object Detail</h3>
         <p className="text-sm text-muted-foreground max-w-xs">
@@ -110,9 +112,17 @@ export function ObjectDetail({
   }
 
   return (
-    <>
-      <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
-        <div className="flex items-center gap-3">
+    <div className="flex-1 flex flex-col min-h-0 relative">
+      {isMetadataLoading && (
+        <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] z-50 flex items-center justify-center animate-in fade-in duration-300">
+           <div className="flex flex-col items-center gap-2">
+             <Loader2 className="w-8 h-8 text-primary animate-spin" />
+             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Loading Metadata...</span>
+           </div>
+        </div>
+      )}
+      <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20 shrink-0">
+        <div className="flex items-center gap-3 text-left">
           <div className="p-2 bg-background border border-border rounded-none">
             {selectedItem.type === DatabaseObjectType.TABLE && (
               <Table2 className="w-5 h-5 text-primary" />
@@ -226,7 +236,7 @@ export function ObjectDetail({
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto flex flex-col">
+      <div className="flex-1 overflow-auto flex flex-col min-h-0">
         {activeTab === ExplorerTab.COLUMNS &&
           (selectedItem.type === DatabaseObjectType.TABLE || selectedItem.type === DatabaseObjectType.VIEW) && (
             <ColumnsTab
@@ -296,6 +306,6 @@ export function ObjectDetail({
           />
         )}
       </div>
-    </>
+    </div>
   );
 }

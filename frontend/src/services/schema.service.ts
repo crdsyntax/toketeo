@@ -114,7 +114,7 @@ export const schemaService = {
     pageSize: number,
     params?: Record<string, string>
   }) => {
-    return await tauriApi.invoke<QueryResult>('execute_explorer', {
+    const result = await tauriApi.invoke<QueryResult>('execute_explorer', {
       id: payload.connectionId,
       database: payload.database,
       name: payload.name,
@@ -123,6 +123,11 @@ export const schemaService = {
       pageSize: payload.pageSize,
       params: payload.params
     })
+    
+    return {
+      ...result,
+      executionTime: result.executionTimeMs ?? result.executionTime ?? 0
+    }
   },
 
   switchSchema: async (id: string, schema: string) => {

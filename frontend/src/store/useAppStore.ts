@@ -39,6 +39,8 @@ interface AppState {
   togglePanel: (panel: 'editor' | 'results') => void
   isSidebarOpen: boolean
   toggleSidebar: () => void
+  isBackendConnected: boolean
+  setIsBackendConnected: (connected: boolean) => void
   explorer: {
     selectedItem: DatabaseObject | null
     sidebarTab: SidebarTab
@@ -74,6 +76,8 @@ export const useAppStore = create<AppState>()(
       })),
       isSidebarOpen: true,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      isBackendConnected: false,
+      setIsBackendConnected: (isBackendConnected) => set({ isBackendConnected }),
       explorer: {
         selectedItem: null,
         sidebarTab: SidebarTab.TABLES,

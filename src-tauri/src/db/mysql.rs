@@ -299,6 +299,12 @@ impl DbDriver for MySqlDriver {
         Ok(params)
     }
 
+    async fn switch_schema(&self, schema: &str) -> AppResult<()> {
+        let query = format!("USE `{}`", schema.replace('`', "``"));
+        sqlx::query(&query).execute(&self.pool).await?;
+        Ok(())
+    }
+
     async fn close(&self) -> AppResult<()> {
         self.pool.close().await;
         Ok(())

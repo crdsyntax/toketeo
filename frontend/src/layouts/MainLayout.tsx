@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutGrid, Terminal, Activity, FileText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutGrid, Terminal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
@@ -12,7 +12,7 @@ import { ConnectionModal } from '@/components/connections/ConnectionModal'
 export default function MainLayout() {
   const location = useLocation()
   const queryClient = useQueryClient()
-  const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
+  const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar, setIsBackendConnected } = useAppStore()
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
@@ -52,10 +52,14 @@ export default function MainLayout() {
 
   const handleConnect = async (conn: Connection) => {
     try {
+      setIsBackendConnected(false) // Reset before connecting
       await connectionService.connect(conn)
       setActiveConnection(conn)
+      setIsBackendConnected(true)
+      queryClient.invalidateQueries({ queryKey: ['schemas'] })
     } catch (error: unknown) {
       console.error('Failed to connect to database:', error)
+      setIsBackendConnected(false)
     }
   }
 
@@ -67,23 +71,20 @@ export default function MainLayout() {
   const navItems = [
     { name: 'Explorer', icon: LayoutGrid, path: '/explorer' },
     { name: 'Query Editor', icon: Terminal, path: '/query' },
-    { name: 'Logs', icon: Activity, path: '/logs' },
-    { name: 'Audit', icon: FileText, path: '/audit' },
   ]
 
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
+      <header className="h-20 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
-          <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-md text-muted-foreground">
-            {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-          </button>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center justify-center shrink-0">
             <img 
-              src="./logo.svg" 
+              src="./logo2.svg" 
               alt="Toketeo Logo" 
-              className="w-50 h-50 object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]" 
+              className="w-16 h-16 cursor-pointer object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]" 
+              onClick={toggleSidebar}
             />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] -mt-3 text-muted-foreground/80">Toketeo</span>
           </div>
           <nav className="flex items-center ml-4">
             {navItems.map((item) => (

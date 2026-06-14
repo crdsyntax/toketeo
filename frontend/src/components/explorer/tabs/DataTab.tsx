@@ -131,13 +131,13 @@ export function DataTab({
               </thead>
               <tbody>
                 {queryData.rows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
+                  <tr key={i} className="border-b border-border/50 hover:bg-primary/5 whitespace-nowrap group">
                     {queryData.columns.map((col) => (
                       <td 
                         key={col} 
-                        className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text group relative"
+                        className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text group/cell relative"
                         onDoubleClick={() => handleStartEdit(i, col, row[col])}
-                        title={row[col] !== null ? String(row[col]) : 'NULL'}
+                        title={selectedItem.type === 'table' ? `Double-click to edit cell\nValue: ${row[col] !== null ? String(row[col]) : 'NULL'}` : (row[col] !== null ? String(row[col]) : 'NULL')}
                       >
                         {editingCell?.rowIndex === i && editingCell?.column === col ? (
                           <div className="flex items-center gap-1 bg-background" onClick={(e) => e.stopPropagation()}>
@@ -170,9 +170,6 @@ export function DataTab({
                             ) : (
                               String(row[col])
                             )}
-                            <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-background/80 px-1 rounded text-[8px] text-muted-foreground pointer-events-none">
-                              Double-click to edit
-                            </div>
                           </>
                         )}
                       </td>
@@ -197,20 +194,23 @@ export function DataTab({
               Rows: <span className="font-bold text-foreground">{queryData.rows.length}</span>
             </span>
             <span>
-              Execution: <span className="font-bold text-foreground">{queryData.executionTime}ms</span>
+              Execution: <span className="font-bold text-foreground">{queryData.executionTimeMs ?? queryData.executionTime ?? 0}ms</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="text-[10px] bg-background border border-border rounded px-2 py-1 outline-none"
-            >
-              <option value={10}>10</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <div className="flex items-center gap-1 ml-4">
+            <div className="flex items-center gap-1.5 border border-border bg-white rounded px-2 py-1 shadow-sm">
+              <span className="text-[10px] text-black whitespace-nowrap font-bold">Rows:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="text-[10px] bg-transparent border-none outline-none p-0 cursor-pointer font-extrabold focus:ring-0 text-black appearance-none"
+              >
+                <option value={10}>10</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1 ml-2 border border-border bg-background rounded p-1">
               <button
                 disabled={page === 0}
                 onClick={() => setPage((p) => Math.max(0, p - 1))}

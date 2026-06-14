@@ -338,6 +338,12 @@ impl DbDriver for PostgresDriver {
         Ok(params)
     }
 
+    async fn switch_schema(&self, schema: &str) -> AppResult<()> {
+        let query = format!("SET search_path TO \"{}\"", schema.replace('"', "\"\""));
+        sqlx::query(&query).execute(&self.pool).await?;
+        Ok(())
+    }
+
     async fn close(&self) -> AppResult<()> {
         self.pool.close().await;
         Ok(())

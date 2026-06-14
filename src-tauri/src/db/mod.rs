@@ -29,6 +29,7 @@ pub trait DbDriver: Send + Sync {
     async fn fetch_constraints(&self, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>>;
     async fn fetch_ddl(&self, name: &str, object_type: &str, schema: Option<String>) -> AppResult<String>;
     async fn fetch_parameters(&self, name: &str, object_type: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>>;
+    async fn switch_schema(&self, schema: &str) -> AppResult<()>;
     async fn close(&self) -> AppResult<()>;
 }
 

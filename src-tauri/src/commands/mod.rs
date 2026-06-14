@@ -318,9 +318,10 @@ pub async fn execute_explorer(
 
 #[tauri::command]
 pub async fn switch_schema(
-    _id: String,
-    _schema: String,
-    _state: State<'_, AppState>,
+    id: String,
+    schema: String,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    let driver = state.get_connection(&id).await?;
+    driver.switch_schema(&schema).await
 }
