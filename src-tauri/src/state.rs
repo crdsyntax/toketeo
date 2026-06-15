@@ -4,9 +4,10 @@ use crate::error::AppResult;
 use crate::storage::Storage;
 use crate::db::DbDriver;
 use std::collections::HashMap;
+use crate::application::session_service::ConnectionSession;
 
 pub struct AppState {
-    pub connections: RwLock<HashMap<String, Arc<dyn DbDriver>>>,
+    pub connections: RwLock<HashMap<String, ConnectionSession>>,
     pub storage: Storage,
 }
 
@@ -18,22 +19,25 @@ impl AppState {
         }
     }
 
-    pub async fn add_connection(&self, id: String, driver: Arc<dyn DbDriver>) {
+    pub async fn add_connection(&self, id: String, driver: Arc<dyn DbDriver>, ssh_tunnel: Option<crate::ssh::SshTunnel>) {
         let mut conns = self.connections.write().await;
-        conns.insert(id, driver);
+        conns.insert(id, ConnectionSession::new(driver, ssh_tunnel));
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<Arc<dyn DbDriver>> {
-        let conns = self.connections.read().await;
-        conns.get(id)
-            .cloned()
-            .ok_or_else(|| crate::error::AppError::Internal(format!("Connection {} not found", id)))
+        let mut conns = self.connections.write().await;
+        if let Some(session) = conns.get_mut(id) {
+            session.touch();
+            Ok(session.driver.clone())
+        } else {
+            Err(crate::error::AppError::Internal(format!("Connection {} not found", id)))
+        }
     }
 
     pub async fn remove_connection(&self, id: &str) -> AppResult<()> {
         let mut conns = self.connections.write().await;
-        if let Some(driver) = conns.remove(id) {
-            driver.close().await?;
+        if let Some(session) = conns.remove(id) {
+            session.driver.close().await?;
         }
         Ok(())
     }

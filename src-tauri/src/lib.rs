@@ -5,6 +5,9 @@ pub mod ssh;
 pub mod commands;
 pub mod state;
 pub mod storage;
+pub mod application;
+pub mod presentation;
+pub mod infrastructure;
 
 use state::AppState;
 use storage::Storage;
@@ -35,7 +38,15 @@ pub fn run() {
         Storage::new(db_path).await.expect("Failed to initialize storage")
       });
 
-      app.manage(tauri::async_runtime::block_on(AppState::new(storage)));
+      let state = tauri::async_runtime::block_on(AppState::new(storage));
+      app.manage(state);
+      
+      crate::application::session_service::SessionService::spawn_cleanup_task(
+          app.handle().clone(),
+          std::time::Duration::from_secs(60),
+          std::time::Duration::from_secs(1800)
+      );
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![

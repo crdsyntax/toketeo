@@ -31,3 +31,5 @@ chrono = { version = "0.4.39", features = ["serde"] }
 validator = { version = "0.19.0", features = ["derive"] }
 uuid = { version = "1.13.1", features = ["v4", "serde"] }
 async-trait = "0.1.86"
+secrecy = { version = "0.10.3", features = ["serde"] }
+zeroize = "1.8.2"

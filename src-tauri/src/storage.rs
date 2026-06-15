@@ -4,6 +4,7 @@ use crate::models::{DbConnectionConfig, SshConfig};
 use crate::db::DbType;
 use crate::error::AppResult;
 use uuid::Uuid;
+use secrecy::ExposeSecret;
 
 pub struct Storage {
     pool: SqlitePool,
@@ -65,7 +66,7 @@ impl Storage {
         .bind(&config.host)
         .bind(config.port as i64)
         .bind(&config.user)
-        .bind(config.password)
+        .bind(config.password.as_ref().map(|p| p.expose_secret()))
         .bind(config.database)
         .bind(ssh_json)
         .execute(&self.pool)
@@ -96,7 +97,7 @@ impl Storage {
                 host: row.get("host"),
                 port: row.get::<i64, _>("port") as u16,
                 user: row.get("user"),
-                password: row.get("password"),
+                password: row.get::<Option<String>, _>("password").map(secrecy::SecretString::from),
                 database: row.get("database"),
                 ssh_tunnel,
             });
