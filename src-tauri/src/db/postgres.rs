@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::{PgPool, Row, Column};
 use std::time::Instant;
 use crate::db::DbDriver;
-use crate::error::AppResult;
+use crate::error::{AppResult, AppError};
 use crate::models::QueryResult;
 
 pub struct PostgresDriver {
@@ -11,13 +11,23 @@ pub struct PostgresDriver {
 
 impl PostgresDriver {
     pub async fn new(url: &str) -> AppResult<Self> {
-        let pool = PgPool::connect(url).await?;
+        let pool = PgPool::connect(url).await.map_err(|e| {
+            let app_err: AppError = e.into();
+            match app_err {
+                AppError::Auth(msg) => AppError::Auth(format!("PostgreSQL Auth Failed: {}", msg)),
+                _ => AppError::Connection(format!("Could not connect to PostgreSQL: {}", app_err))
+            }
+        })?;
         Ok(Self { pool })
     }
 }
 
 #[async_trait]
 impl DbDriver for PostgresDriver {
+    fn db_type(&self) -> crate::db::DbType {
+        crate::db::DbType::Postgres
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let rows = sqlx::query(query).fetch_all(&self.pool).await?;

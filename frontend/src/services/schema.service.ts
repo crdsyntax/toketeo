@@ -6,6 +6,7 @@ import type {
   ForeignKeyResponse, 
   ConstraintResponse,
   ParameterResponse,
+  QueryResult,
 } from '@/types/database'
 
 export const schemaService = {

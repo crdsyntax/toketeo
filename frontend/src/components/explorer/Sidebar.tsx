@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 interface SidebarProps {
   sidebarTab: SidebarTab
   setSidebarTab: (tab: SidebarTab) => void
-  currentSchema: string
+  currentSchema: string | undefined
   handleRefetch: () => void
   isLoadingSidebar: boolean
   search: string

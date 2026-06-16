@@ -18,9 +18,15 @@ export function useExplorer() {
   const setActiveTab = useCallback((tab: ExplorerTab) => setExplorerState({ activeTab: tab }), [setExplorerState])
   const setExecutionStatus = useCallback((status: ExecutionStatus) => setExplorerState({ executionStatus: status }), [setExplorerState])
   const setExecutionError = useCallback((error: string | null) => setExplorerState({ executionError: error }), [setExplorerState])
-  const setSocketResults = useCallback((results: QueryResult | null) => setExplorerState({ socketResults: results }), [setExplorerState])
+  const setSocketResults = useCallback((results: QueryResult | null | ((prev: QueryResult | null) => QueryResult | null)) => {
+    if (typeof results === 'function') {
+      setExplorerState({ socketResults: results(explorer.socketResults) })
+    } else {
+      setExplorerState({ socketResults: results })
+    }
+  }, [setExplorerState, explorer.socketResults])
 
-  const currentSchema = activeConnection?.database || ''
+  const currentSchema = activeConnection?.database
 
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(50)
@@ -237,12 +243,12 @@ export function useExplorer() {
     });
 
     // Optimistic update
-    setSocketResults(prev => {
+    setSocketResults((prev: QueryResult | null) => {
       if (!prev) return prev
       return {
         ...prev,
-        rows: prev.rows.map(r => r === row ? { ...r, [column]: newValue } : r)
-      }
+        rows: (prev.rows as DbRow[]).map((r: DbRow) => r === row ? { ...r, [column]: newValue } : r)
+      } as QueryResult
     })
   }, [selectedItem, activeConnection, columns, currentSchema, setSocketResults])
 

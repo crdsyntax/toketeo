@@ -1,4 +1,4 @@
-import { Database, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon } from 'lucide-react'
+import { Database, Download, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Environment } from '@/types/database'
 import type { Connection } from '@/types/database'
@@ -8,77 +8,87 @@ interface ConnectionCardProps {
   onEdit: (conn: Connection) => void
   onDelete: (id: string) => void
   onConnect: (conn: Connection) => void
+  onExport?: (conn: Connection) => void
 }
 
-export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExport }: ConnectionCardProps) {
   const getEnvColor = (env: Environment) => {
     switch (env) {
-      case Environment.PRODUCTION: return 'bg-red-500/10 text-red-600 border-red-500/20'
-      case Environment.STAGING: return 'bg-orange-500/10 text-orange-600 border-orange-500/20'
-      case Environment.DEVELOPMENT: return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+      case Environment.PRODUCTION: return 'bg-red-500/5 text-red-500 border-red-500/20'
+      case Environment.STAGING: return 'bg-orange-500/5 text-orange-500 border-orange-500/20'
+      case Environment.DEVELOPMENT: return 'bg-blue-500/5 text-blue-400 border-blue-500/20'
       default: return 'bg-muted text-muted-foreground border-border'
     }
   }
 
   return (
     <div className={cn(
-      "group relative border border-border bg-card p-5 rounded-md hover:shadow-md transition-shadow overflow-hidden text-left",
-      connection.environment === Environment.PRODUCTION && "border-l-4 border-l-red-500"
+      "group relative border border-border bg-secondary/30 p-4 transition-all duration-200 hover:border-primary/30 hover:bg-secondary/50",
+      connection.environment === Environment.PRODUCTION && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-red-500"
     )}>
       <div className="flex items-start justify-between mb-4">
-        <div className="p-2 bg-primary/10 rounded-md">
-          <Database className="w-6 h-6 text-primary" />
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/5 border border-primary/10 rounded-sm">
+            <Database className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm tracking-tight truncate max-w-[140px]">{connection.name}</h3>
+            <span className={cn("inline-flex px-1.5 py-0.5 mt-1 text-[9px] font-bold tracking-widest uppercase border", getEnvColor(connection.environment))}>
+              {connection.environment}
+            </span>
+          </div>
         </div>
-        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onExport && (
+            <button
+              onClick={() => onExport(connection)}
+              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button 
             onClick={() => onEdit(connection)}
-            className="text-muted-foreground hover:text-primary transition-colors"
+            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
           >
-            <Edit2 className="w-4 h-4" />
+            <Edit2 className="w-3.5 h-3.5" />
           </button>
           <button 
             onClick={() => onDelete(connection.id)}
-            className="text-muted-foreground hover:text-destructive transition-colors"
+            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
-      
-      <div className="flex items-center gap-2 mb-1">
-        <h3 className="font-bold text-lg truncate">{connection.name}</h3>
-        <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border", getEnvColor(connection.environment))}>
-          {connection.environment}
-        </span>
-      </div>
 
-      <div className="space-y-1.5 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5" />
-          <span>{connection.host}:{connection.port}</span>
+      <div className="space-y-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 font-mono">
+          <Globe className="w-3 h-3 opacity-50" />
+          <span className="truncate">{connection.host}:{connection.port}</span>
         </div>
         {connection.database && (
-          <div className="flex items-center gap-2">
-            <Server className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2 font-mono">
+            <Server className="w-3 h-3 opacity-50" />
             <span className="truncate">{connection.database}</span>
           </div>
         )}
-        <div className="flex items-center gap-2 pt-1">
-          <div className="uppercase font-semibold text-[10px] tracking-wider bg-muted px-2 py-0.5 rounded">
-            {connection.type}
+        <div className="flex items-center gap-2 pt-2">
+          <div className="text-[10px] font-bold tracking-tighter bg-primary/5 text-primary/80 border border-primary/10 px-2 py-0.5">
+            {connection.type.toUpperCase()}
           </div>
           {connection.ssh && (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
+            <div className="flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-400/5 border border-blue-400/20 px-2 py-0.5">
               <Shield className="w-2.5 h-2.5" /> SSH
             </div>
           )}
         </div>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-border flex justify-end">
+      <div className="mt-4 pt-4 border-t border-border/50 flex justify-end">
         <button 
           onClick={() => onConnect(connection)}
-          className="text-xs font-semibold text-primary flex items-center gap-1 hover:underline"
+          className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform"
         >
           Connect <LinkIcon className="w-3 h-3" />
         </button>

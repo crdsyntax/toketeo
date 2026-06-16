@@ -46,62 +46,87 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   }
 
   return (
-    <div className="w-72 border-r border-border bg-card flex flex-col h-full">
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <h2 className="font-bold flex items-center gap-2">
-          <Database className="w-4 h-4 text-primary" />
+    <div className="w-72 border-r border-border bg-secondary/50 flex flex-col h-full">
+      <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
+        <h2 className="text-[10px] font-bold flex items-center gap-2 uppercase tracking-[0.2em] text-muted-foreground">
+          <Database className="w-3.5 h-3.5 text-accent" />
           Connections
         </h2>
-        <button onClick={onNew} className="p-1 hover:bg-muted rounded-none">
-          <Plus className="w-4 h-4" />
+        <button 
+          onClick={onNew} 
+          className="p-1.5 hover:bg-accent/10 text-muted-foreground hover:text-accent transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="flex-1 overflow-auto p-2 space-y-1">
+      <div className="flex-1 overflow-auto p-2 space-y-1 scrollbar-thin">
         {connections.map((conn) => (
           <div 
             key={conn.id}
             className={cn(
-              "group rounded-none p-2 border transition-all cursor-pointer",
+              "group transition-all border",
               activeConnection?.id === conn.id 
-                ? "bg-primary/10 border-primary" 
-                : "border-transparent hover:bg-muted"
+                ? "bg-accent/5 border-accent/30" 
+                : "border-transparent hover:bg-accent/5 hover:border-border"
             )}
           >
-            <div className="flex justify-between items-center" onClick={() => onConnect(conn)}>
+            <div 
+              className="p-2 cursor-pointer flex justify-between items-center" 
+              onClick={() => onConnect(conn)}
+              onDoubleClick={() => setExpandedConnId(expandedConnId === conn.id ? null : conn.id)}
+            >
               <div className="flex-1 truncate">
-                <span className="font-bold text-sm truncate">{conn.name}</span>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {conn.ssh ? <Shield className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-                  <span className="truncate">{conn.host}:{conn.port}</span>
+                <span className={cn(
+                  "text-xs font-bold truncate block",
+                  activeConnection?.id === conn.id ? "text-accent" : "text-foreground"
+                )}>
+                  {conn.name}
+                </span>
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mt-0.5">
+                  {conn.ssh ? <Shield className="w-2.5 h-2.5 text-blue-400" /> : <Globe className="w-2.5 h-2.5 opacity-50" />}
+                  <span className="truncate opacity-70">{conn.host}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={(e) => { e.stopPropagation(); onEdit(conn); }} className="p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+              <div className="flex items-center gap-0.5">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onEdit(conn); }} 
+                  className="p-1 opacity-0 group-hover:opacity-100 hover:text-accent transition-all"
+                >
+                  <Edit2 className="w-3 h-3" />
                 </button>
-                {activeConnection?.id === conn.id && (
-                  <button onClick={(e) => { e.stopPropagation(); setExpandedConnId(expandedConnId === conn.id ? null : conn.id); }}>
-                    <ChevronDown className={cn("w-4 h-4 transition-transform", expandedConnId === conn.id && "rotate-180")} />
-                  </button>
-                )}
+                <button 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (activeConnection?.id !== conn.id) onConnect(conn);
+                    setExpandedConnId(expandedConnId === conn.id ? null : conn.id); 
+                  }}
+                  className="p-1 hover:text-accent transition-colors"
+                >
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", expandedConnId === conn.id && "rotate-180")} />
+                </button>
               </div>
             </div>
             
             {expandedConnId === conn.id && (
-              <div className="mt-1 pl-2 ml-2 border-l border-border space-y-0.5">
-                {schemas.map((s, index) => (
-                  <div 
-                    key={s} 
-                    onDoubleClick={() => handleSchemaDoubleClick(conn, s)}
-                    className={cn(
-                      "text-xs p-1.5 cursor-pointer relative flex items-center hover:bg-muted",
-                      index === schemas.length - 1 ? "before:absolute before:left-[-1px] before:top-[-5px] before:h-[15px] before:w-[1px] before:bg-border" : "before:absolute before:left-[-1px] before:top-[-5px] before:h-full before:w-[1px] before:bg-border",
-                      "after:absolute after:left-[-1px] after:top-[12px] after:w-[10px] after:h-[1px] after:bg-border"
-                    )}
-                  >
-                    <span className="pl-4 truncate">{s}</span>
-                  </div>
-                ))}
+              <div className="pb-2 px-2 animate-in slide-in-from-top-1 duration-200">
+                <div className="pl-3 ml-1 border-l border-border/50 space-y-0.5">
+                  {schemas.length > 0 ? (
+                    schemas.map((s) => (
+                      <div 
+                        key={s} 
+                        onDoubleClick={() => handleSchemaDoubleClick(conn, s)}
+                        className="text-[10px] p-1.5 cursor-pointer font-mono hover:bg-accent/10 hover:text-accent transition-colors truncate"
+                        title={s}
+                      >
+                        {s}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-[9px] p-1.5 text-muted-foreground italic font-mono uppercase tracking-widest opacity-50">
+                      Empty
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

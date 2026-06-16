@@ -2,14 +2,16 @@ import { Table2, ExternalLink, Minus, Copy, Maximize2, X, ArrowUp, ArrowDown, Ar
 import { cn, downloadCSV } from '@/lib/utils'
 import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 
 interface ResultsModalProps {
   isOpen: boolean
   activeTab: QueryTab | null
   modalRect: { x: number; y: number; w: number; h: number }
   isMaximized: boolean
-  draggingRef: React.MutableRefObject<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>
-  resizingRef: React.MutableRefObject<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>
+  draggingRef: MutableRefObject<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>
+  resizingRef: MutableRefObject<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>
+  setModalRect: Dispatch<SetStateAction<{ x: number; y: number; w: number; h: number }>>
   handlePopout?: () => void
   onClose: () => void
   toggleMaximize: () => void

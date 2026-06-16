@@ -49,10 +49,16 @@ export enum Environment {
   LOCAL = 'local',
 }
 
+export enum SshAuthType {
+  PASSWORD = 'password',
+  KEY = 'key',
+}
+
 export interface SshConfig {
   host: string
   port: number
   user: string
+  authType: SshAuthType
   password?: string
   privateKey?: string
   passphrase?: string

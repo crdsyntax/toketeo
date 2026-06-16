@@ -16,6 +16,7 @@ pub enum DbType {
 
 #[async_trait]
 pub trait DbDriver: Send + Sync {
+    fn db_type(&self) -> DbType;
     async fn execute(&self, query: &str) -> AppResult<QueryResult>;
     async fn fetch_schemas(&self) -> AppResult<Vec<String>>;
     async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>>;
@@ -34,3 +35,4 @@ pub trait DbDriver: Send + Sync {
 
 pub mod postgres;
 pub mod mysql;
+pub mod mongodb;

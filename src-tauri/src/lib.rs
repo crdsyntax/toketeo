@@ -16,9 +16,12 @@ use std::fs;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  tracing::info!("Starting Toketeo Backend...");
+
   tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
-    .plugin(tauri_plugin_log::Builder::default().build())
+    .plugin(tauri_plugin_log::Builder::default().skip_logger().build())
+    .plugin(tauri_plugin_dialog::init())
     .setup(|app| {
       let app_handle = app.handle();
       let app_dir = app_handle.path().app_data_dir().expect("Failed to get app data dir");
@@ -29,9 +32,7 @@ pub fn run() {
 
       let db_path = app_dir.join("toketeo.db");
       
-      // We need to run the async setup in a tokio runtime
       let storage = tauri::async_runtime::block_on(async {
-        // Ensure sqlite file exists or create it
         if !db_path.exists() {
             fs::File::create(&db_path).expect("Failed to create db file");
         }
@@ -74,9 +75,16 @@ pub fn run() {
         commands::drop_foreign_key,
         commands::drop_constraint,
         commands::switch_schema,
+        commands::export_connection,
+        commands::export_all_connections,
+        commands::import_connections,
+        commands::export_connection_dialog,
+        commands::export_all_connections_dialog,
+        commands::import_connections_dialog,
         commands::save_connection,
         commands::get_connections,
         commands::delete_connection,
+        commands::get_audit_logs,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

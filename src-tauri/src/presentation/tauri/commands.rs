@@ -1,5 +1,6 @@
-use tauri::State;
-use crate::error::AppResult;
+use tauri::{State, AppHandle};
+use tauri_plugin_dialog::DialogExt;
+use crate::error::{AppError, AppResult};
 use crate::models::{DbConnectionConfig, QueryResult};
 use crate::state::AppState;
 use crate::application::connection_service::ConnectionService;
@@ -42,6 +43,101 @@ pub async fn disconnect(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     ConnectionService::disconnect(&state, &id).await
+}
+
+#[tauri::command]
+pub async fn export_connection(
+    id: String,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::export_connection(&state, &id, &file_path).await
+}
+
+#[tauri::command]
+pub async fn export_all_connections(
+    file_path: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::export_all_connections(&state, &file_path).await
+}
+
+#[tauri::command]
+pub async fn import_connections(
+    file_path: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    ConnectionService::import_connections(&state, &file_path).await
+}
+
+#[tauri::command]
+pub async fn export_connection_dialog(
+    id: String,
+    default_file_name: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Export connection")
+        .set_file_name(default_file_name)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file();
+
+    let path = match file_path {
+        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let file_path = path.display().to_string();
+    ConnectionService::export_connection(&state, &id, &file_path).await?;
+    Ok(Some(file_path))
+}
+
+#[tauri::command]
+pub async fn export_all_connections_dialog(
+    default_file_name: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Export all connections")
+        .set_file_name(default_file_name)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file();
+
+    let path = match file_path {
+        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let file_path = path.display().to_string();
+    ConnectionService::export_all_connections(&state, &file_path).await?;
+    Ok(Some(file_path))
+}
+
+#[tauri::command]
+pub async fn import_connections_dialog(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<Vec<String>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Import connections")
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file();
+
+    let path = match file_path {
+        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(Vec::new()),
+    };
+
+    let file_path = path.display().to_string();
+    ConnectionService::import_connections(&state, &file_path).await
 }
 
 #[tauri::command]
@@ -256,10 +352,19 @@ pub async fn execute_explorer(
 }
 
 #[tauri::command]
+pub async fn get_audit_logs(
+    limit: u32,
+    offset: u32,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::application::audit_service::AuditEntry>> {
+    crate::application::audit_service::AuditService::get_logs(&state, limit, offset).await
+}
+
+#[tauri::command]
 pub async fn switch_schema(
-    _id: String,
-    _schema: String,
-    _state: State<'_, AppState>,
+    id: String,
+    schema: String,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    ExplorerService::switch_schema(&state, &id, schema).await
 }

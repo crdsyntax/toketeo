@@ -16,7 +16,7 @@ const createWrapper = () => {
     defaultOptions: {
       queries: {
         retry: false,
-        cacheTime: 1000,
+        gcTime: 1000,
       },
     },
   })

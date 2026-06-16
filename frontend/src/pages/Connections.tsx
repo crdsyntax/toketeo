@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { Plus, Download, UploadCloud } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 import { useState } from 'react'
@@ -15,6 +15,9 @@ export default function Connections() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [testMessage, setTestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const { data: connections, isLoading } = useQuery({
@@ -54,7 +57,7 @@ export default function Connections() {
     setIsTesting(true)
     setTestMessage(null)
     connectionService.test(payload).then(() => {
-      setTestMessage({ type: 'success', text: 'Processing completed successfully' })
+      setTestMessage({ type: 'success', text: 'Connection established successfully' })
     }).catch((err: Error) => {
       setTestMessage({ type: 'error', text: err.message || 'Operation failed' })
     }).finally(() => {
@@ -62,9 +65,14 @@ export default function Connections() {
     })
   }
 
-  const handleConnect = (conn: Connection) => {
-    setActiveConnection(conn)
-    navigate('/explorer')
+  const handleConnect = async (conn: Connection) => {
+    try {
+      await connectionService.connect(conn)
+      setActiveConnection(conn)
+      navigate('/explorer')
+    } catch (error: unknown) {
+      console.error('Failed to connect to database:', error)
+    }
   }
 
   const handleEdit = (conn: Connection) => {
@@ -72,26 +80,102 @@ export default function Connections() {
     setIsModalOpen(true)
   }
 
+  const handleExport = async (conn: Connection) => {
+    setToastMessage(null)
+    setIsExporting(true)
+
+    try {
+      const exportedPath = await connectionService.exportConnection(conn.id, conn.name)
+      if (!exportedPath) {
+        return
+      }
+      setToastMessage({ type: 'success', text: `Connection exported to ${exportedPath}` })
+    } catch (error: unknown) {
+      console.error('Failed to export connection:', error)
+      setToastMessage({ type: 'error', text: 'Failed to export connection' })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportAll = async () => {
+    setToastMessage(null)
+    setIsExporting(true)
+
+    try {
+      const exportedPath = await connectionService.exportAll()
+      if (!exportedPath) {
+        return
+      }
+      setToastMessage({ type: 'success', text: `All connections exported to ${exportedPath}` })
+    } catch (error: unknown) {
+      console.error('Failed to export connections:', error)
+      setToastMessage({ type: 'error', text: 'Failed to export all connections' })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleImport = async () => {
+    setToastMessage(null)
+    setIsImporting(true)
+
+    try {
+      const savedIds = await connectionService.importConnections()
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      setToastMessage({ type: 'success', text: `Imported ${savedIds.length} connection(s)` })
+    } catch (error: unknown) {
+      console.error('Failed to import connections:', error)
+      setToastMessage({ type: 'error', text: 'Failed to import connections' })
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-end">
+    <div className="space-y-8 max-w-6xl mx-auto py-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-border pb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Connections</h1>
-          <p className="text-muted-foreground mt-1">Manage your database access configurations.</p>
+          <h1 className="text-2xl font-bold tracking-tight uppercase">Connections</h1>
+          <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">Manage database access configurations</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" />
-          New Connection
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleImport}
+            disabled={isImporting}
+            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+          >
+            <UploadCloud className="w-4 h-4" />
+            Import JSON
+          </button>
+          <button
+            onClick={handleExportAll}
+            disabled={isExporting}
+            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            Export All
+          </button>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            New Connection
+          </button>
+        </div>
       </div>
+
+      {toastMessage && (
+        <div className={`rounded-md border px-4 py-3 text-sm ${toastMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-700' : 'bg-red-500/10 border-red-500 text-red-700'}`}>
+          {toastMessage.text}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-40 bg-muted animate-pulse rounded-md" />
+            <div key={i} className="h-44 bg-secondary/30 border border-border animate-pulse" />
           ))}
         </div>
       ) : (
@@ -103,6 +187,7 @@ export default function Connections() {
               onEdit={handleEdit}
               onDelete={(id) => deleteMutation.mutate(id)}
               onConnect={handleConnect}
+              onExport={handleExport}
             />
           ))}
         </div>

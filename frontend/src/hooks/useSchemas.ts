@@ -26,7 +26,7 @@ export function useSchemas() {
   return {
     schemas: schemas || [],
     isLoading,
-    currentSchema: activeConnection?.database || '',
+    currentSchema: activeConnection?.database,
     switchSchema: switchSchema.mutate,
     isSwitching: switchSchema.isPending
   }

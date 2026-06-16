@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutGrid, Terminal, Activity, FileText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
@@ -42,7 +42,7 @@ export default function MainLayout() {
     setIsTesting(true)
     setTestMessage(null)
     connectionService.test(payload).then(() => {
-      setTestMessage({ type: 'success', text: 'Processing completed successfully' })
+      setTestMessage({ type: 'success', text: 'Connection established successfully' })
     }).catch((err: Error) => {
       setTestMessage({ type: 'error', text: err.message || 'Operation failed' })
     }).finally(() => {
@@ -67,7 +67,6 @@ export default function MainLayout() {
   const navItems = [
     { name: 'Explorer', icon: LayoutGrid, path: '/explorer' },
     { name: 'Query Editor', icon: Terminal, path: '/query' },
-    { name: 'Logs', icon: Activity, path: '/logs' },
     { name: 'Audit', icon: FileText, path: '/audit' },
   ]
 

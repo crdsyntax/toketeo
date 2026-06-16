@@ -3,6 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Serialize)]
 pub enum AppError {
+    #[error("Database connection failed: {0}")]
+    Connection(String),
     #[error("Database error: {0}")]
     Database(String),
     #[error("SSH error: {0}")]
@@ -19,7 +21,27 @@ pub type AppResult<T> = Result<T, AppError>;
 
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
-        AppError::Database(err.to_string())
+        match err {
+            sqlx::Error::Database(db_err) => {
+                let msg = db_err.message();
+                // Common error codes/messages for Auth
+                if msg.contains("Access denied") || msg.contains("password authentication failed") {
+                    AppError::Auth(msg.to_string())
+                } else {
+                    AppError::Database(msg.to_string())
+                }
+            }
+            sqlx::Error::Io(io_err) => {
+                AppError::Connection(format!("Network/IO error: {}", io_err))
+            }
+            sqlx::Error::PoolTimedOut => {
+                AppError::Connection("Connection pool timed out".into())
+            }
+            sqlx::Error::Tls(tls_err) => {
+                AppError::Connection(format!("TLS error: {}", tls_err))
+            }
+            _ => AppError::Database(err.to_string()),
+        }
     }
 }
 
@@ -32,6 +54,18 @@ impl From<mongodb::error::Error> for AppError {
 impl From<ssh2::Error> for AppError {
     fn from(err: ssh2::Error) -> Self {
         AppError::Ssh(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::Internal(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(err: serde_json::Error) -> Self {
+        AppError::Validation(err.to_string())
     }
 }
 

@@ -77,3 +77,60 @@ impl SessionService {
         conns.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::DbDriver;
+    use crate::models::QueryResult;
+    use crate::error::AppResult;
+    use async_trait::async_trait;
+
+    struct MockDriver;
+    #[async_trait]
+    impl DbDriver for MockDriver {
+        fn db_type(&self) -> crate::db::DbType { crate::db::DbType::Postgres }
+        async fn execute(&self, _: &str) -> AppResult<QueryResult> { todo!() }
+        async fn fetch_schemas(&self) -> AppResult<Vec<String>> { todo!() }
+        async fn fetch_tables(&self, _: Option<String>) -> AppResult<Vec<String>> { todo!() }
+        async fn fetch_views(&self, _: Option<String>) -> AppResult<Vec<String>> { todo!() }
+        async fn fetch_procedures(&self, _: Option<String>) -> AppResult<Vec<String>> { todo!() }
+        async fn fetch_triggers(&self, _: Option<String>) -> AppResult<Vec<String>> { todo!() }
+        async fn fetch_functions(&self, _: Option<String>) -> AppResult<Vec<String>> { todo!() }
+        async fn fetch_columns(&self, _: &str, _: Option<String>) -> AppResult<Vec<serde_json::Value>> { todo!() }
+        async fn fetch_indexes(&self, _: &str, _: Option<String>) -> AppResult<Vec<serde_json::Value>> { todo!() }
+        async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> AppResult<Vec<serde_json::Value>> { todo!() }
+        async fn fetch_constraints(&self, _: &str, _: Option<String>) -> AppResult<Vec<serde_json::Value>> { todo!() }
+        async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> AppResult<String> { todo!() }
+        async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> AppResult<Vec<serde_json::Value>> { todo!() }
+        async fn close(&self) -> AppResult<()> { Ok(()) }
+    }
+
+    #[test]
+    fn test_session_expiration() {
+        let driver = Arc::new(MockDriver);
+        let mut session = ConnectionSession::new(driver, None);
+        
+        // Initial state
+        assert!(!session.is_expired(Duration::from_secs(3600)));
+        
+        // Fake old access
+        session.last_access = Instant::now() - Duration::from_secs(4000);
+        assert!(session.is_expired(Duration::from_secs(3600)));
+        
+        // Touch should revive
+        session.touch();
+        assert!(!session.is_expired(Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn test_session_ttl_expiration() {
+        let driver = Arc::new(MockDriver);
+        let mut session = ConnectionSession::new(driver, None);
+        session.max_ttl = Some(Duration::from_secs(10));
+        
+        // Fake old creation
+        session.created_at = Instant::now() - Duration::from_secs(20);
+        assert!(session.is_expired(Duration::from_secs(3600)));
+    }
+}

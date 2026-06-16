@@ -13,7 +13,6 @@ Located in `frontend/src/store/useAppStore.ts`.
 ### 2. Custom Hooks
 - **`useQueryEditor`**: The heart of the SQL interface. Handles tab creation/deletion, query execution (via WebSocket or HTTP), result formatting, and sorting.
 - **`useExplorer`**: Manages the database schema tree, handles object selection, and fetches metadata (columns, indexes, DDL).
-- **`useSystemStatus`**: Monitors the connection to the backend and the status of local services via WebSockets.
 
 ### 3. Key Components
 - **`SqlEditorPanel`**: Wraps the **Monaco Editor**. Provides a high-fidelity SQL editing experience.

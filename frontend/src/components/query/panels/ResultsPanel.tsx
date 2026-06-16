@@ -2,6 +2,7 @@ import { ChevronUp, Table2, Clock, Save, Maximize2, Download, AlertCircle, X, Ar
 import { downloadCSV } from '@/lib/utils';
 import type { QueryTab, DbValue } from '@/store/useAppStore';
 import type { DbRow } from '@/types/database';
+import { ExecutionStatus } from '@/types/database';
 
 interface ResultsPanelProps {
   activeTab: QueryTab;
@@ -41,7 +42,7 @@ export function ResultsPanel({
           </button>
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <Table2 className="w-3 h-3" />
-            Results {activeTab.status === 'executing' && <span className="animate-pulse text-primary ml-2">Executing...</span>}
+            Results {activeTab.status === ExecutionStatus.EXECUTING && <span className="animate-pulse text-primary ml-2">Executing...</span>}
           </h3>
         </div>
         {activeTab.results && (
@@ -49,7 +50,7 @@ export function ResultsPanel({
             {activeTab.results.page !== undefined && (
               <div className="flex items-center gap-1 border-r border-border pr-4 mr-2">
                 <button 
-                  disabled={activeTab.results.page <= 1 || activeTab.status === 'executing'}
+                  disabled={activeTab.results.page <= 1 || activeTab.status === ExecutionStatus.EXECUTING}
                   onClick={() => handlePageChange(activeTab.results!.page! - 1)}
                   className="p-1 hover:bg-muted rounded disabled:opacity-30"
                 >
@@ -59,7 +60,7 @@ export function ResultsPanel({
                   PAGE {activeTab.results.page}
                 </span>
                 <button 
-                  disabled={!activeTab.results.hasMore || activeTab.status === 'executing'}
+                  disabled={!activeTab.results.hasMore || activeTab.status === ExecutionStatus.EXECUTING}
                   onClick={() => handlePageChange(activeTab.results!.page! + 1)}
                   className="p-1 hover:bg-muted rounded disabled:opacity-30"
                 >
@@ -111,12 +112,12 @@ export function ResultsPanel({
         )}
       </div>
       <div className="flex-1 overflow-auto">
-        {activeTab.status === 'error' && (
+        {activeTab.status === ExecutionStatus.ERROR && (
           <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
             <p className="text-xs font-mono">{activeTab.error}</p>
             <button 
-              onClick={() => updateTabResults(activeTab.id, { status: 'idle', error: null })} 
+              onClick={() => updateTabResults(activeTab.id, { status: ExecutionStatus.IDLE, error: null })} 
               className="ml-auto p-1 hover:bg-destructive/20 rounded"
             >
               <X className="w-3.5 h-3.5" />
@@ -124,7 +125,7 @@ export function ResultsPanel({
           </div>
         )}
 
-        {activeTab.status === 'success' && activeTab.results && activeTab.results.rows.length === 0 && (
+        {activeTab.status === ExecutionStatus.SUCCESS && activeTab.results && activeTab.results.rows.length === 0 && (
           <div className="p-8 flex flex-col items-center justify-center text-center space-y-3">
             <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center text-green-500">
               <CheckCircle2 className="w-6 h-6" />
@@ -199,13 +200,13 @@ export function ResultsPanel({
             </tbody>
           </table>
         ) : (
-          activeTab.status === 'idle' && (
+          activeTab.status === ExecutionStatus.IDLE && (
             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic text-center p-8">
               Run a query to see results
             </div>
           )
         )}
-        {activeTab.status === 'executing' && (
+        {activeTab.status === ExecutionStatus.EXECUTING && (
           <div className="p-4 space-y-4 text-left">
             {[1, 2, 3].map(i => <div key={i} className="h-6 bg-muted animate-pulse rounded-none" />)}
           </div>

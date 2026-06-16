@@ -7,6 +7,7 @@ import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef } from 'react';
+import { ExecutionStatus } from '@/types/database';
 
 export default function QueryEditor() {
   const {
@@ -125,7 +126,7 @@ export default function QueryEditor() {
         onSave={handleSaveScript}
         onExecute={handleExecuteAll}
         onCancel={handleCancel}
-        isExecuting={activeTab?.status === 'executing'}
+        isExecuting={activeTab?.status === ExecutionStatus.EXECUTING}
         showLayoutMenu={showLayoutMenu}
         setShowLayoutMenu={setShowLayoutMenu}
       />

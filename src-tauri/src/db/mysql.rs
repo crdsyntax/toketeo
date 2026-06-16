@@ -11,13 +11,23 @@ pub struct MySqlDriver {
 
 impl MySqlDriver {
     pub async fn new(url: &str) -> AppResult<Self> {
-        let pool = MySqlPool::connect(url).await?;
+        let pool = MySqlPool::connect(url).await.map_err(|e| {
+            let app_err: AppError = e.into();
+            match app_err {
+                AppError::Auth(msg) => AppError::Auth(format!("MySQL Auth Failed: {}", msg)),
+                _ => AppError::Connection(format!("Could not connect to MySQL: {}", app_err))
+            }
+        })?;
         Ok(Self { pool })
     }
 }
 
 #[async_trait]
 impl DbDriver for MySqlDriver {
+    fn db_type(&self) -> crate::db::DbType {
+        crate::db::DbType::Mysql
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let rows = sqlx::query(query).fetch_all(&self.pool).await?;

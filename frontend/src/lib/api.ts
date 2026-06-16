@@ -15,10 +15,23 @@ export const tauriApi = {
       return response
     } catch (error: unknown) {
       console.error(`[Tauri Error] Command ${command} failed:`, error)
-      // Standardizing error format
-      const message = typeof error === 'string' 
-        ? error 
-        : (error instanceof Error ? error.message : 'Internal Rust Error')
+      
+      let message = 'Internal Rust Error'
+      
+      if (typeof error === 'string') {
+        message = error
+      } else if (error && typeof error === 'object') {
+        // Rust AppError serializes as { "Variant": "Message" }
+        const keys = Object.keys(error)
+        if (keys.length === 1) {
+          const variant = keys[0]
+          const content = (error as Record<string, unknown>)[variant]
+          message = typeof content === 'string' ? content : JSON.stringify(content)
+        } else if ('message' in error) {
+          message = String(error.message)
+        }
+      }
+      
       throw new Error(message, { cause: error })
     }
   }

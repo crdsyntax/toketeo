@@ -1,11 +1,14 @@
-import { apiClient } from '@/lib/api'
+import { tauriApi } from '@/lib/api'
 import type { AuditEntry } from '@/types/audit'
 
 export const auditService = {
+  /**
+   * Fetches audit logs from the native Rust backend via Tauri IPC.
+   */
   getLogs: async (limit = 50, offset = 0) => {
-    const response = await apiClient.get<AuditEntry[]>('/audit', {
-      params: { limit, offset }
+    return await tauriApi.invoke<AuditEntry[]>('get_audit_logs', {
+      limit,
+      offset
     })
-    return response.data
   }
 }

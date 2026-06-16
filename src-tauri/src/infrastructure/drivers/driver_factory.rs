@@ -3,6 +3,7 @@ use crate::error::AppResult;
 use crate::db::{DbDriver, DbType};
 use crate::db::postgres::PostgresDriver;
 use crate::db::mysql::MySqlDriver;
+use crate::db::mongodb::MongoDbDriver;
 
 pub struct DriverFactory;
 
@@ -15,7 +16,10 @@ impl DriverFactory {
             DbType::Mysql | DbType::Mariadb => {
                 Ok(Arc::new(MySqlDriver::new(url).await?))
             }
-            _ => Err(crate::error::AppError::Internal("Driver not yet implemented".into())),
+            DbType::Mongodb => {
+                Ok(Arc::new(MongoDbDriver::new(url).await?))
+            }
+            _ => Err(crate::error::AppError::Validation(format!("Database engine '{:?}' is not yet implemented", db_type))),
         }
     }
 }

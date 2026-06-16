@@ -2,6 +2,7 @@ import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, Alert
 import { cn } from '@/lib/utils'
 import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
+import { ExecutionStatus } from '@/types/database'
 
 interface ResultsPanelProps {
   activeTab: QueryTab | null
@@ -37,7 +38,7 @@ export function ResultsPanel({
           </button>
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <Table2 className="w-3 h-3" />
-            Results {activeTab?.status === 'executing' && <span className="animate-pulse text-primary ml-2">Processing...</span>}
+            Results {activeTab?.status === ExecutionStatus.EXECUTING && <span className="animate-pulse text-primary ml-2">Processing...</span>}
           </h3>
         </div>
         
@@ -75,11 +76,11 @@ export function ResultsPanel({
 
       {panels.results && (
         <div className="flex-1 overflow-auto text-left">
-          {activeTab?.status === 'error' && (
+          {activeTab?.status === ExecutionStatus.ERROR && (
             <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               <p className="text-xs font-mono">{activeTab.error}</p>
-              <button onClick={() => updateTabResults(activeTab.id, { status: 'idle', error: null })} className="ml-auto p-1 hover:bg-destructive/20 rounded">
+              <button onClick={() => updateTabResults(activeTab.id, { status: ExecutionStatus.IDLE, error: null })} className="ml-auto p-1 hover:bg-destructive/20 rounded">
                 <X className="w-3 h-3" />
               </button>
             </div>
@@ -135,13 +136,13 @@ export function ResultsPanel({
               </tbody>
             </table>
 
-          ) : activeTab?.status !== 'executing' && (
+          ) : activeTab?.status !== ExecutionStatus.EXECUTING && (
             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic">
               Processing...
             </div>
           )}
 
-          {activeTab?.status === 'executing' && (
+          {activeTab?.status === ExecutionStatus.EXECUTING && (
             <div className="p-4 space-y-4">
               {[1, 2, 3].map(i => <div key={i} className="h-6 bg-muted animate-pulse rounded" />)}
             </div>

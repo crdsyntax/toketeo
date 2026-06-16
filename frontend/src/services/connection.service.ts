@@ -48,6 +48,18 @@ export const connectionService = {
     await tauriApi.invoke<void>('disconnect', { id })
   },
 
+  exportConnection: async (id: string, name: string): Promise<string | null> => {
+    return await tauriApi.invoke<string | null>('export_connection_dialog', { id, default_file_name: `${name}.json` })
+  },
+
+  exportAll: async (): Promise<string | null> => {
+    return await tauriApi.invoke<string | null>('export_all_connections_dialog', { default_file_name: 'toketeo-connections.json' })
+  },
+
+  importConnections: async (): Promise<string[]> => {
+    return await tauriApi.invoke<string[]>('import_connections_dialog')
+  },
+
   test: async (config: CreateConnectionDto): Promise<string> => {
     return await tauriApi.invoke<string>('connect', { config })
   }

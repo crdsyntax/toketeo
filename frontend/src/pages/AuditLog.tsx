@@ -1,8 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Download, RefreshCw, Search, Clock, User, Activity } from 'lucide-react'
-import { getApiUrl } from '@/lib/api'
+import { RefreshCw, Search, Clock, Database, Activity, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { auditService } from '@/services/audit.service'
-import { AuditAction } from '@/types/audit'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -17,31 +15,17 @@ export default function AuditLog() {
   })
 
   const filteredLogs = logs?.filter(log => 
-    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.resource.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.userId.toLowerCase().includes(searchTerm.toLowerCase())
+    log.query.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.connection_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.status.toLowerCase().includes(searchTerm.toLowerCase())
   )
-
-  const getActionColor = (action: AuditAction) => {
-    switch (action) {
-      case AuditAction.DELETE_CONNECTION: return 'text-red-500 bg-red-500/10 border-red-500/20'
-      case AuditAction.CREATE_CONNECTION: return 'text-green-500 bg-green-500/10 border-green-500/20'
-      case AuditAction.EXECUTE_QUERY: return 'text-blue-500 bg-blue-500/10 border-blue-500/20'
-      case AuditAction.SCHEMA_CHANGE: return 'text-orange-500 bg-orange-500/10 border-orange-500/20'
-      default: return 'text-muted-foreground bg-muted/50 border-border'
-    }
-  }
-
-  const handleExport = (type: 'json' | 'csv') => {
-    window.open(getApiUrl(`/audit/export/${type}`), '_blank')
-  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto text-left">
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Audit Log</h1>
-          <p className="text-muted-foreground mt-1">Track all administrative and database actions.</p>
+          <p className="text-muted-foreground mt-1">Track all database queries and executions.</p>
         </div>
         <div className="flex gap-2">
           <button 
@@ -52,21 +36,6 @@ export default function AuditLog() {
             <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
             Refresh
           </button>
-          <div className="flex rounded-md border border-border overflow-hidden">
-            <button 
-              onClick={() => handleExport('csv')}
-              className="flex items-center gap-2 px-3 py-2 bg-background hover:bg-muted transition-colors text-sm font-medium border-r border-border"
-            >
-              <Download className="w-4 h-4" />
-              CSV
-            </button>
-            <button 
-              onClick={() => handleExport('json')}
-              className="flex items-center gap-2 px-3 py-2 bg-background hover:bg-muted transition-colors text-sm font-medium"
-            >
-              JSON
-            </button>
-          </div>
         </div>
       </div>
 
@@ -74,7 +43,7 @@ export default function AuditLog() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <input 
           type="text"
-          placeholder="Search by action, user or resource..."
+          placeholder="Search by query, connection or status..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full bg-muted/30 border border-border rounded-md pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:outline-none transition-all"
@@ -87,10 +56,10 @@ export default function AuditLog() {
             <thead>
               <tr className="bg-muted/50 border-b border-border">
                 <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Timestamp</th>
-                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">User</th>
-                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Action</th>
-                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Resource</th>
-                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">ID</th>
+                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Connection ID</th>
+                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Status</th>
+                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Execution Time</th>
+                <th className="px-4 py-3 font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Query</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -107,8 +76,8 @@ export default function AuditLog() {
                   </td>
                 </tr>
               ) : (
-                filteredLogs?.map((log) => (
-                  <tr key={log.id} className="hover:bg-muted/30 transition-colors group">
+                filteredLogs?.map((log, idx) => (
+                  <tr key={log.id || idx} className="hover:bg-muted/30 transition-colors group">
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Clock className="w-3.5 h-3.5" />
@@ -117,25 +86,44 @@ export default function AuditLog() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 font-medium">
-                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="w-3 h-3 text-primary" />
-                        </div>
-                        {log.userId}
+                        <Database className="w-3.5 h-3.5 text-primary" />
+                        {log.connection_id.slice(0, 8)}...
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase border", getActionColor(log.action))}>
-                        {log.action.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-                        {log.resource}
+                      <div className="flex items-center gap-1.5">
+                        {log.status === 'success' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                        )}
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase border",
+                          log.status === 'success' 
+                            ? "text-green-500 bg-green-500/10 border-green-500/20" 
+                            : "text-red-500 bg-red-500/10 border-red-500/20"
+                        )}>
+                          {log.status}
+                        </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground">
-                      {log.resourceId || '-'}
+                    <td className="px-4 py-3 text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Activity className="w-3.5 h-3.5" />
+                        {log.execution_time_ms}ms
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="max-w-md">
+                        <code className="text-[11px] font-mono bg-muted/50 px-1.5 py-0.5 rounded block truncate group-hover:whitespace-normal group-hover:overflow-visible transition-all">
+                          {log.query}
+                        </code>
+                        {log.error && (
+                          <p className="text-[10px] text-red-500 mt-1 truncate group-hover:whitespace-normal group-hover:overflow-visible">
+                            {log.error}
+                          </p>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
