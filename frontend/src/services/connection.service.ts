@@ -10,10 +10,7 @@ export const connectionService = {
   },
 
   getOne: async (id: string): Promise<Connection> => {
-    const all = await connectionService.getAll()
-    const found = all.find(c => c.id === id)
-    if (!found) throw new Error(`Connection ${id} not found`)
-    return found
+    return await tauriApi.invoke<Connection>('get_connection', { id })
   },
 
   /**

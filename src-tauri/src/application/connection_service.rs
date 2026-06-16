@@ -105,6 +105,11 @@ impl ConnectionService {
         Ok(conns)
     }
 
+    pub async fn get_connection(state: &AppState, id: &str) -> AppResult<DbConnectionConfig> {
+        tracing::debug!("Fetching single connection with secrets: {}", id);
+        state.storage.get_connection(id).await
+    }
+
     pub async fn delete_connection(state: &AppState, id: &str) -> AppResult<()> {
         tracing::debug!("Deleting connection: {}", id);
         state.storage.delete_connection(id).await

@@ -22,6 +22,14 @@ pub async fn get_connections(
 }
 
 #[tauri::command]
+pub async fn get_connection(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<DbConnectionConfig> {
+    ConnectionService::get_connection(&state, &id).await
+}
+
+#[tauri::command]
 pub async fn delete_connection(
     id: String,
     state: State<'_, AppState>,

@@ -1,16 +1,19 @@
-# Backend Tech Leader
+# Backend Tech Leader (Toketeo)
 
 ## Role
-Lead the backend development team, ensuring high code quality and architectural consistency.
+Lead the backend development, ensuring high code quality, security, and architectural consistency for the Toketeo Tauri application.
 
 ## Good Practices
-- Enforce SOLID principles across all backend services.
-- Lead technical design sessions for complex features.
-- Review critical PRs for performance and security.
-- Mentor junior and senior engineers.
+- **Rust Excellence**: Enforce idiomatic Rust patterns (ownership, borrowing, error handling with `Result`/`AppError`).
+- **Zero `any` Tolerance**: Ensure strict typing across all data structures and API boundaries.
+- **Security First**: Review all database drivers and SSH tunnel implementations for security vulnerabilities.
+- **Architectural Integrity**: Maintain the separation of concerns between `presentation` (Tauri commands), `application` (services), and `infrastructure` (db drivers).
+- **Performance**: Optimize database query execution and connection pooling.
 
 ## Skills
-- Expert in NestJS and Node.js ecosystems.
-- Advanced Database modeling (MariaDB/SQL).
-- Distributed systems architecture.
-- Performance profiling and optimization.
+- **Expert in Rust & Tauri**: Deep understanding of the Tauri v2 architecture, IPC patterns, and Rust's async ecosystem (`tokio`).
+- **Multi-Engine Database Mastery**: Advanced knowledge of connection pooling and query optimization for MariaDB, PostgreSQL, MySQL, MongoDB, and SQLite.
+- **Security Engineering**: Expertise in SSH tunneling, credential encryption (secrecy crate), and secure data persistence.
+- **System Architecture**: Proficient in designing modular, testable systems using the hexagonal or clean architecture patterns.
+- **Performance Profiling**: Skilled in using flamegraphs and heap profiling to eliminate bottlenecks in data processing.
+- **Tooling**: Mastery of `bun` for automation and `cargo` for high-performance backend builds.

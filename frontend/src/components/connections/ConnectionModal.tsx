@@ -1,8 +1,9 @@
-import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key } from 'lucide-react'
+import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment, SshAuthType } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
 import { useState, useEffect } from 'react'
+import { connectionService } from '@/services/connection.service'
 
 interface ConnectionModalProps {
   isOpen: boolean
@@ -34,34 +35,93 @@ export function ConnectionModal({
 }: ConnectionModalProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'ssh'>('general')
   const [form, setForm] = useState<CreateConnectionDto>(INITIAL_FORM)
+  const [storePassword, setStorePassword] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoadingConnection, setIsLoadingConnection] = useState(false)
+  const [showSshPassword, setShowSshPassword] = useState(false)
+  const [showSshPassphrase, setShowSshPassphrase] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return;
 
-    if (editingConnection) {
-      const editData: CreateConnectionDto = {
-        name: editingConnection.name,
-        type: editingConnection.type,
-        environment: editingConnection.environment,
-        host: editingConnection.host,
-        port: editingConnection.port,
-        user: editingConnection.user,
-        password: editingConnection.password || '',
-        database: editingConnection.database || '',
-        authSource: editingConnection.authSource || '',
-        replicaSet: editingConnection.replicaSet || '',
-        ssl: editingConnection.ssl || 'false',
-        ssh: editingConnection.ssh ? {
-          ...editingConnection.ssh,
-          authType: editingConnection.ssh.authType || (editingConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
-        } : undefined,
-      };
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm(editData);
-    } else {
-      setForm(INITIAL_FORM);
+    setShowPassword(false)
+    setShowSshPassword(false)
+    setShowSshPassphrase(false)
+
+    const resetForm = () => {
+      setForm(INITIAL_FORM)
+      setStorePassword(true)
+      setIsLoadingConnection(false)
     }
-    setActiveTab('general');
+
+    if (!editingConnection) {
+      resetForm()
+      setActiveTab('general')
+      return
+    }
+
+    let cancelled = false
+
+    const loadConnection = async () => {
+      setIsLoadingConnection(true)
+      try {
+        const fullConnection = await connectionService.getOne(editingConnection.id)
+        if (cancelled) return
+
+        const editData: CreateConnectionDto = {
+          name: fullConnection.name,
+          type: fullConnection.type,
+          environment: fullConnection.environment,
+          host: fullConnection.host,
+          port: fullConnection.port,
+          user: fullConnection.user,
+          password: fullConnection.password || '',
+          database: fullConnection.database || '',
+          authSource: fullConnection.authSource || '',
+          replicaSet: fullConnection.replicaSet || '',
+          ssl: fullConnection.ssl || 'false',
+          ssh: fullConnection.ssh ? {
+            ...fullConnection.ssh,
+            authType: fullConnection.ssh.authType || (fullConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
+          } : undefined,
+        }
+
+        setForm(editData)
+        setStorePassword(!!fullConnection.password)
+      } catch {
+        const editData: CreateConnectionDto = {
+          name: editingConnection.name,
+          type: editingConnection.type,
+          environment: editingConnection.environment,
+          host: editingConnection.host,
+          port: editingConnection.port,
+          user: editingConnection.user,
+          password: editingConnection.password || '',
+          database: editingConnection.database || '',
+          authSource: editingConnection.authSource || '',
+          replicaSet: editingConnection.replicaSet || '',
+          ssl: editingConnection.ssl || 'false',
+          ssh: editingConnection.ssh ? {
+            ...editingConnection.ssh,
+            authType: editingConnection.ssh.authType || (editingConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
+          } : undefined,
+        }
+
+        setForm(editData)
+        setStorePassword(false)
+      } finally {
+        if (!cancelled) {
+          setIsLoadingConnection(false)
+        }
+      }
+    }
+
+    loadConnection()
+    setActiveTab('general')
+
+    return () => {
+      cancelled = true
+    }
   }, [isOpen, editingConnection]);
 
   if (!isOpen) return null
@@ -135,7 +195,11 @@ export function ConnectionModal({
 
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8 scrollbar-thin">
-          {activeTab === 'general' ? (
+          {isLoadingConnection ? (
+            <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.2em] text-muted-foreground">
+              Cargando datos de conexión...
+            </div>
+          ) : activeTab === 'general' ? (
             <div className="space-y-6 animate-in slide-in-from-left-2 duration-300">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
@@ -231,13 +295,40 @@ export function ConnectionModal({
                   <div className="relative">
                     <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                     <input 
-                      type="password"
-                      className="w-full bg-background border border-border pl-10 pr-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
+                      type={showPassword ? 'text' : 'password'}
+                      className={cn(
+                        "w-full bg-background border border-border pl-10 pr-10 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all",
+                        !storePassword && editingConnection ? 'opacity-60 cursor-not-allowed' : ''
+                      )}
                       value={form.password}
                       onChange={(e) => setForm({ ...form, password: e.target.value })}
-                      placeholder="••••••••"
+                      placeholder={editingConnection ? '••••••••' : '••••••••'}
+                      disabled={!storePassword && !!editingConnection}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
+                  {editingConnection && (
+                    <label className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border bg-background text-primary focus:ring-primary"
+                        checked={storePassword}
+                        onChange={(e) => {
+                          setStorePassword(e.target.checked)
+                          if (!e.target.checked) {
+                            setForm((prev) => ({ ...prev, password: '' }))
+                          }
+                        }}
+                      />
+                      Guardar contraseña
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -390,24 +481,42 @@ export function ConnectionModal({
                     {form.ssh.authType === SshAuthType.PASSWORD ? (
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Password</label>
-                        <input 
-                          type="password"
-                          className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
-                          value={form.ssh.password || ''}
-                          onChange={(e) => updateSsh({ password: e.target.value })}
-                          placeholder="••••••••"
-                        />
+                        <div className="relative">
+                          <input 
+                            type={showSshPassword ? 'text' : 'password'}
+                            className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
+                            value={form.ssh.password || ''}
+                            onChange={(e) => updateSsh({ password: e.target.value })}
+                            placeholder="••••••••"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSshPassword((prev) => !prev)}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+                          >
+                            {showSshPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Passphrase (Optional)</label>
-                        <input 
-                          type="password"
-                          className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
-                          value={form.ssh.passphrase || ''}
-                          onChange={(e) => updateSsh({ passphrase: e.target.value })}
-                          placeholder="••••••••"
-                        />
+                        <div className="relative">
+                          <input 
+                            type={showSshPassphrase ? 'text' : 'password'}
+                            className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
+                            value={form.ssh.passphrase || ''}
+                            onChange={(e) => updateSsh({ passphrase: e.target.value })}
+                            placeholder="••••••••"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSshPassphrase((prev) => !prev)}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+                          >
+                            {showSshPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -452,7 +561,7 @@ export function ConnectionModal({
               Cancel
             </button>
             <button 
-              onClick={() => onSave(form)}
+              onClick={() => onSave({ ...form, password: storePassword ? form.password : '' })}
               disabled={isSaving}
               className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
             >

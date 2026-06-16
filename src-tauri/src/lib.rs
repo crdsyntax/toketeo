@@ -83,6 +83,7 @@ pub fn run() {
         commands::import_connections_dialog,
         commands::save_connection,
         commands::get_connections,
+        commands::get_connection,
         commands::delete_connection,
         commands::get_audit_logs,
     ])
