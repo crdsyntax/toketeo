@@ -403,11 +403,13 @@ pub async fn execute_explorer(
     database: Option<String>,
     name: String,
     object_type: String,
-    page: u32,
-    page_size: u32,
-    _params: Option<serde_json::Value>,
+    page: Option<u32>,
+    page_size: Option<u32>,
+    params: Option<serde_json::Value>,
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
+    let page = page.unwrap_or(0);
+    let page_size = page_size.unwrap_or(50);
     ExplorerService::execute_explorer(&state, &id, database, &name, object_type, page, page_size).await
 }
 

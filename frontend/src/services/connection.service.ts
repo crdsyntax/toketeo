@@ -54,11 +54,11 @@ export const connectionService = {
   },
 
   exportConnection: async (id: string, name: string): Promise<string | null> => {
-    return await tauriApi.invoke<string | null>('export_connection_dialog', { id, default_file_name: `${name}.json` })
+    return await tauriApi.invoke<string | null>('export_connection_dialog', { id, defaultFileName: `${name}.json` })
   },
 
   exportAll: async (): Promise<string | null> => {
-    return await tauriApi.invoke<string | null>('export_all_connections_dialog', { default_file_name: 'toketeo-connections.json' })
+    return await tauriApi.invoke<string | null>('export_all_connections_dialog', { defaultFileName: 'toketeo-connections.json' })
   },
 
   importConnections: async (): Promise<string[]> => {

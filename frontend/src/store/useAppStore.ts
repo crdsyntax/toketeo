@@ -47,6 +47,8 @@ interface AppState {
     executionStatus: ExecutionStatus
     executionError: string | null
     socketResults: QueryResult | null
+    page: number
+    pageSize: number
   }
   setExplorerState: (state: Partial<AppState['explorer']>) => void
   miniToasts: Record<string, { type: 'success' | 'error', text: string } | null>
@@ -84,7 +86,9 @@ export const useAppStore = create<AppState>()(
         search: '',
         executionStatus: ExecutionStatus.IDLE,
         executionError: null,
-        socketResults: null
+        socketResults: null,
+        page: 0,
+        pageSize: 50
       },
       setExplorerState: (explorerState) => set((state) => ({
         explorer: { ...state.explorer, ...explorerState }
@@ -146,6 +150,8 @@ export const useAppStore = create<AppState>()(
           search: state.explorer.search,
           executionStatus: state.explorer.executionStatus,
           executionError: state.explorer.executionError,
+          page: state.explorer.page,
+          pageSize: state.explorer.pageSize,
           // socketResults is NOT persisted
         },
       }),

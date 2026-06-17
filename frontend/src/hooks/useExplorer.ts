@@ -11,9 +11,8 @@ export function useExplorer() {
   const { activeConnection, explorer, setExplorerState } = useAppStore()
   const queryClient = useQueryClient()
 
-  const { search, selectedItem, sidebarTab, activeTab, executionStatus, executionError, socketResults } = explorer
+  const { search, selectedItem, sidebarTab, activeTab, executionStatus, executionError, socketResults, page, pageSize } = explorer
   const setSearch = useCallback((s: string) => setExplorerState({ search: s }), [setExplorerState])
-  const setSelectedItem = useCallback((item: DatabaseObject | null) => setExplorerState({ selectedItem: item }), [setExplorerState])
   const setSidebarTab = useCallback((tab: SidebarTab) => setExplorerState({ sidebarTab: tab }), [setExplorerState])
   const setActiveTab = useCallback((tab: ExplorerTab) => setExplorerState({ activeTab: tab }), [setExplorerState])
   const setExecutionStatus = useCallback((status: ExecutionStatus) => setExplorerState({ executionStatus: status }), [setExplorerState])
@@ -28,13 +27,23 @@ export function useExplorer() {
 
   const currentSchema = activeConnection?.database
 
-  const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(50)
-
   const handleSetPageSize = useCallback((size: number) => {
-    setPageSize(size)
-    setPage(0)
-  }, [])
+    setExplorerState({ 
+      pageSize: size,
+      page: 0,
+      socketResults: null, 
+      executionStatus: ExecutionStatus.IDLE 
+    })
+  }, [setExplorerState])
+
+  const handleSetPage = useCallback((updater: number | ((p: number) => number)) => {
+    const newPage = typeof updater === 'function' ? updater(page) : updater
+    setExplorerState({ 
+      page: newPage,
+      socketResults: null, 
+      executionStatus: ExecutionStatus.IDLE 
+    })
+  }, [setExplorerState, page])
   
   const [editableDdl, setEditableDdl] = useState('')
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
@@ -60,19 +69,26 @@ export function useExplorer() {
   // Reset selection ONLY when connection ID changes
   useEffect(() => {
     if (activeConnection?.id && activeConnection.id !== prevConnIdRef.current) {
-      setSelectedItem(null)
+      setExplorerState({
+        selectedItem: null,
+        socketResults: null,
+        executionStatus: ExecutionStatus.IDLE,
+        page: 0
+      })
       setIsSidebarCollapsed(false)
       prevConnIdRef.current = activeConnection.id
     }
-  }, [activeConnection?.id, setSelectedItem])
+  }, [activeConnection?.id, setExplorerState])
 
   const handleSelectItem = useCallback((item: DatabaseObject) => {
-    setSelectedItem(item)
+    setExplorerState({
+      selectedItem: item,
+      page: 0,
+      executionStatus: ExecutionStatus.IDLE,
+      socketResults: null
+    })
     setIsSidebarCollapsed(true)
-    setPage(0)
-    setExecutionStatus(ExecutionStatus.IDLE)
-    setSocketResults(null)
-  }, [setSelectedItem, setExecutionStatus, setSocketResults])
+  }, [setExplorerState])
 
   const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
@@ -366,14 +382,17 @@ export function useExplorer() {
 
   // Automatic execution trigger: fires when the active item or pagination parameters change
   useEffect(() => {
-    if ((selectedItem?.type === DatabaseObjectType.TABLE || selectedItem?.type === DatabaseObjectType.VIEW) && 
-        activeTab === ExplorerTab.DATA) {
+    const isDataTable = selectedItem?.type === DatabaseObjectType.TABLE || selectedItem?.type === DatabaseObjectType.VIEW;
+    const isDataTab = activeTab === ExplorerTab.DATA;
+    const isIdle = executionStatus === ExecutionStatus.IDLE;
+
+    if (isDataTable && isDataTab && isIdle) {
       const timer = setTimeout(() => {
         handleExecute()
       }, 0)
       return () => clearTimeout(timer)
     }
-  }, [selectedItem?.name, selectedItem?.type, activeTab, page, pageSize, currentSchema, handleExecute])
+  }, [activeTab, executionStatus, handleExecute, selectedItem?.type])
 
   const handleCancel = useCallback(() => {
     setExecutionStatus(ExecutionStatus.ERROR)
@@ -413,7 +432,7 @@ export function useExplorer() {
     setActiveTab,
     currentSchema,
     page,
-    setPage,
+    setPage: handleSetPage,
     pageSize,
     setPageSize: handleSetPageSize,
     executionStatus,

@@ -105,27 +105,25 @@ export const schemaService = {
   dropConstraint: async (id: string, table: string, constraint: string, schema?: string) => {
     await tauriApi.invoke<void>('drop_constraint', { id, table, constraint, schema })
   },
-
-  executeExplorer: async (payload: {
-    connectionId: string,
-    database?: string,
-    name: string,
-    objectType: string,
-    page: number,
-    pageSize: number,
-    params?: Record<string, string>
-  }) => {
-    return await tauriApi.invoke<QueryResult>('execute_explorer', {
-      id: payload.connectionId,
-      database: payload.database,
-      name: payload.name,
-      objectType: payload.objectType,
-      page: payload.page,
-      pageSize: payload.pageSize,
-      params: payload.params
-    })
-  },
-
+executeExplorer: async (payload: {
+  connectionId: string,
+  database?: string,
+  name: string,
+  objectType: string,
+  page: number,
+  pageSize: number,
+  params?: Record<string, string>
+}) => {
+  return await tauriApi.invoke<QueryResult>('execute_explorer', {
+    id: payload.connectionId,
+    database: payload.database,
+    name: payload.name,
+    objectType: payload.objectType,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    params: payload.params
+  })
+},
   switchSchema: async (id: string, schema: string) => {
     // Rust side might need to handle switching the default database in the pool
     return await tauriApi.invoke<void>('switch_schema', { id, schema })
