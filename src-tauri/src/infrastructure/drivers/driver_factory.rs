@@ -9,13 +9,13 @@ use crate::db::sqlserver::SqlServerDriver;
 pub struct DriverFactory;
 
 impl DriverFactory {
-    pub async fn create(db_type: DbType, url: &str) -> AppResult<Arc<dyn DbDriver>> {
+    pub async fn create(db_type: DbType, url: &str, transactional: bool) -> AppResult<Arc<dyn DbDriver>> {
         match db_type {
             DbType::Postgres => {
-                Ok(Arc::new(PostgresDriver::new(url).await?))
+                Ok(Arc::new(PostgresDriver::new(url, transactional).await?))
             }
             DbType::Mysql | DbType::Mariadb => {
-                Ok(Arc::new(MySqlDriver::new(url).await?))
+                Ok(Arc::new(MySqlDriver::new(url, transactional).await?))
             }
             DbType::Mongodb => {
                 Ok(Arc::new(MongoDbDriver::new(url).await?))

@@ -129,5 +129,13 @@ export const schemaService = {
   switchSchema: async (id: string, schema: string) => {
     // Rust side might need to handle switching the default database in the pool
     return await tauriApi.invoke<void>('switch_schema', { id, schema })
-  }
+  },
+
+  commitTransaction: async (id: string) => {
+    return await tauriApi.invoke<void>('commit_transaction', { id })
+  },
+
+  rollbackTransaction: async (id: string) => {
+    return await tauriApi.invoke<void>('rollback_transaction', { id })
+  },
 }

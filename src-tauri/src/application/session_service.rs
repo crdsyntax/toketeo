@@ -9,17 +9,19 @@ use tauri::Manager;
 pub struct ConnectionSession {
     pub driver: Arc<dyn DbDriver>,
     pub ssh_tunnel: Option<SshTunnel>,
+    pub transactional: bool,
     pub created_at: Instant,
     pub last_access: Instant,
     pub max_ttl: Option<Duration>,
 }
 
 impl ConnectionSession {
-    pub fn new(driver: Arc<dyn DbDriver>, ssh_tunnel: Option<SshTunnel>) -> Self {
+    pub fn new(driver: Arc<dyn DbDriver>, ssh_tunnel: Option<SshTunnel>, transactional: bool) -> Self {
         let now = Instant::now();
         Self {
             driver,
             ssh_tunnel,
+            transactional,
             created_at: now,
             last_access: now,
             max_ttl: Some(Duration::from_secs(3600 * 8)), // 8 hours default TTL
@@ -109,7 +111,7 @@ mod tests {
     #[test]
     fn test_session_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None);
+        let mut session = ConnectionSession::new(driver, None, false);
         
         // Initial state
         assert!(!session.is_expired(Duration::from_secs(3600)));
@@ -126,7 +128,7 @@ mod tests {
     #[test]
     fn test_session_ttl_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None);
+        let mut session = ConnectionSession::new(driver, None, false);
         session.max_ttl = Some(Duration::from_secs(10));
         
         // Fake old creation

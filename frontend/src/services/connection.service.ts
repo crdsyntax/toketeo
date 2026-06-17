@@ -45,6 +45,14 @@ export const connectionService = {
     await tauriApi.invoke<void>('disconnect', { id })
   },
 
+  commit: async (id: string): Promise<void> => {
+    await tauriApi.invoke<void>('commit_transaction', { id })
+  },
+
+  rollback: async (id: string): Promise<void> => {
+    await tauriApi.invoke<void>('rollback_transaction', { id })
+  },
+
   exportConnection: async (id: string, name: string): Promise<string | null> => {
     return await tauriApi.invoke<string | null>('export_connection_dialog', { id, default_file_name: `${name}.json` })
   },

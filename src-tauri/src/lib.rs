@@ -66,6 +66,8 @@ pub fn run() {
         commands::get_constraints,
         commands::get_ddl,
         commands::update_ddl,
+        commands::commit_transaction,
+        commands::rollback_transaction,
         commands::get_parameters,
         commands::execute_explorer,
         commands::edit_column,

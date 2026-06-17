@@ -139,7 +139,8 @@ export function ObjectDetail({
             </p>
           </div>
         </div>
-        <div className="flex bg-muted p-1 rounded-none">
+        <div className="flex bg-muted p-1 rounded-none items-center">
+       
           {(selectedItem.type === DatabaseObjectType.TABLE ||
             selectedItem.type === DatabaseObjectType.VIEW ||
             selectedItem.type === DatabaseObjectType.PROCEDURE) && (

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{PgPool, Row, Column};
+use sqlx::{PgPool, Row, Column, postgres::PgPoolOptions};
 use std::time::Instant;
 use crate::db::DbDriver;
 use crate::error::{AppResult, AppError};
@@ -10,8 +10,16 @@ pub struct PostgresDriver {
 }
 
 impl PostgresDriver {
-    pub async fn new(url: &str) -> AppResult<Self> {
-        let pool = PgPool::connect(url).await.map_err(|e| {
+    pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
+        let pool = if transactional {
+            PgPoolOptions::new()
+                .max_connections(1)
+                .connect(url)
+                .await
+        } else {
+            PgPool::connect(url).await
+        }
+        .map_err(|e| {
             let app_err: AppError = e.into();
             match app_err {
                 AppError::Auth(msg) => AppError::Auth(format!("PostgreSQL Auth Failed: {}", msg)),

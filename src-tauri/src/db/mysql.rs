@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{MySqlPool, Row, Column};
+use sqlx::{MySqlPool, Row, Column, mysql::MySqlPoolOptions};
 use std::time::Instant;
 use crate::db::DbDriver;
 use crate::error::{AppError, AppResult};
@@ -10,8 +10,16 @@ pub struct MySqlDriver {
 }
 
 impl MySqlDriver {
-    pub async fn new(url: &str) -> AppResult<Self> {
-        let pool = MySqlPool::connect(url).await.map_err(|e| {
+    pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
+        let pool = if transactional {
+            MySqlPoolOptions::new()
+                .max_connections(1)
+                .connect(url)
+                .await
+        } else {
+            MySqlPool::connect(url).await
+        }
+        .map_err(|e| {
             let app_err: AppError = e.into();
             match app_err {
                 AppError::Auth(msg) => AppError::Auth(format!("MySQL Auth Failed: {}", msg)),
@@ -30,56 +38,35 @@ impl DbDriver for MySqlDriver {
 
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
-        let rows = sqlx::query(query).fetch_all(&self.pool).await?;
+        let trimmed_query = query.trim();
         
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                primary_keys: None,
-            });
-        }
+        println!("[MySQL] Executing query (length: {}): {}", trimmed_query.len(), &trimmed_query[..std::cmp::min(100, trimmed_query.len())]);
 
-        let columns: Vec<String> = rows[0]
-            .columns()
-            .iter()
-            .map(|col| col.name().to_string())
-            .collect();
-
-        let mut result_rows = Vec::new();
-        for row in rows {
-            let mut row_map = serde_json::Map::new();
-            for (i, col_name) in columns.iter().enumerate() {
-                let value = self.decode_column(&row, i);
-                row_map.insert(col_name.clone(), value);
-            }
-            result_rows.push(serde_json::Value::Object(row_map));
-        }
-
-        // Try to identify PKs for simple SELECT * FROM table queries
-        let mut primary_keys = None;
-        if let Some(table_name) = self.extract_table_name(query) {
-             let pk_rows = sqlx::query("SHOW KEYS FROM ?? WHERE Key_name = 'PRIMARY'")
-                .bind(&table_name)
-                .fetch_all(&self.pool)
+        let result = if trimmed_query.contains(';') {
+             println!("[MySQL] Multi-statement detected, using raw_sql");
+             sqlx::raw_sql(query)
+                .execute(&self.pool)
                 .await
-                .ok();
-            
-            if let Some(pks) = pk_rows {
-                let keys: Vec<String> = pks.iter().map(|r| r.get::<String, _>("Column_name")).collect();
-                if !keys.is_empty() {
-                    primary_keys = Some(keys);
-                }
+        } else {
+             println!("[MySQL] Single statement detected, using regular query");
+             sqlx::query(query).execute(&self.pool).await
+        };
+
+        match result {
+            Ok(res) => {
+                println!("[MySQL] Query executed successfully in {}ms. Rows affected: {}", start.elapsed().as_millis(), res.rows_affected());
+                Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                })
+            },
+            Err(e) => {
+                println!("[MySQL] Query FAILED: {:?}", e);
+                Err(e.into())
             }
         }
-
-        Ok(QueryResult {
-            columns,
-            rows: result_rows,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            primary_keys,
-        })
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
@@ -282,8 +269,33 @@ impl DbDriver for MySqlDriver {
         
         println!("[MySQL] Fetching DDL for {} {} with query: {}", object_type, full_name, query);
 
-        let row = match sqlx::query(&query).fetch_one(&self.pool).await {
-            Ok(r) => r,
+        let ddl_base = match sqlx::query(&query).fetch_one(&self.pool).await {
+            Ok(row) => {
+                let mut found_ddl = None;
+                let columns = row.columns();
+                for col in columns {
+                    let col_name = col.name().to_lowercase();
+                    if col_name.contains("create") || col_name.contains("statement") {
+                        if let Ok(val) = row.try_get::<String, _>(col.ordinal()) {
+                            if !val.is_empty() {
+                                found_ddl = Some(val);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if found_ddl.is_none() {
+                    found_ddl = match obj_type_lower.as_str() {
+                        "procedure" | "function" | "trigger" => {
+                            row.try_get::<String, _>(2).or_else(|_| row.try_get::<String, _>(1)).ok()
+                        },
+                        _ => row.try_get::<String, _>(1).ok(),
+                    };
+                }
+                
+                found_ddl.ok_or_else(|| AppError::Internal("Could not find DDL column in result".into()))?
+            },
             Err(e) => {
                 println!("[MySQL] Error fetching DDL via SHOW CREATE: {:?}", e);
                 // Fallback for procedures/functions/views via information_schema
@@ -299,32 +311,25 @@ impl DbDriver for MySqlDriver {
                     if let Ok(r) = res {
                         let def: Option<String> = r.try_get(0).ok();
                         if let Some(d) = def {
-                            return Ok(format!("-- Fallback DDL (header might be missing)\n{}", d));
+                            d
+                        } else {
+                            return Err(e.into());
                         }
+                    } else {
+                        return Err(e.into());
                     }
+                } else {
+                    return Err(e.into());
                 }
-                return Err(e.into());
             }
         };
-        
-        let columns = row.columns();
-        for col in columns {
-            let col_name = col.name().to_lowercase();
-            if col_name.contains("create") || col_name.contains("statement") {
-                if let Ok(val) = row.try_get::<String, _>(col.ordinal()) {
-                    if !val.is_empty() {
-                        return Ok(val);
-                    }
-                }
-            }
-        }
 
-        // Final fallbacks if heuristic fails or returns empty
+        // Prepend DROP IF EXISTS for routines and triggers
         match obj_type_lower.as_str() {
-            "procedure" | "function" | "trigger" => {
-                row.try_get::<String, _>(2).or_else(|_| row.try_get::<String, _>(1)).map_err(|e| e.into())
-            },
-            _ => row.try_get::<String, _>(1).map_err(|e| e.into()),
+            "procedure" => Ok(format!("DROP PROCEDURE IF EXISTS {};\n\n{}", full_name, ddl_base)),
+            "function" => Ok(format!("DROP FUNCTION IF EXISTS {};\n\n{}", full_name, ddl_base)),
+            "trigger" => Ok(format!("DROP TRIGGER IF EXISTS {};\n\n{}", full_name, ddl_base)),
+            _ => Ok(ddl_base),
         }
     }
 

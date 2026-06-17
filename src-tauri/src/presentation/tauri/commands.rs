@@ -5,6 +5,7 @@ use crate::models::{DbConnectionConfig, QueryResult};
 use crate::state::AppState;
 use crate::application::connection_service::ConnectionService;
 use crate::application::explorer_service::ExplorerService;
+use crate::application::audit_service::AuditService;
 
 #[tauri::command]
 pub async fn save_connection(
@@ -281,10 +282,58 @@ pub async fn update_ddl(
     schema: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    // ExplorerService::update_ddl(&state, &id, &name, &object_type, &sql, schema).await
     let driver = state.get_connection(&id).await?;
-    driver.execute(&sql).await?;
-    Ok(())
+    let db_type = driver.db_type();
+    let start = std::time::Instant::now();
+
+    let final_sql = if let Some(s) = schema {
+        match db_type {
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                format!("USE `{}`;\n{}", s, sql)
+            },
+            crate::db::DbType::Postgres => {
+                // For Postgres, we still do SET search_path first as it might behave differently with raw_sql
+                driver.execute(&format!("SET search_path TO \"{}\";", s)).await?;
+                sql
+            },
+            _ => sql
+        }
+    } else {
+        sql
+    };
+
+    let result = driver.execute(&final_sql).await;
+    
+    // Log the DDL update in audit
+    let status = if result.is_ok() { "success" } else { "error" };
+    let error_msg = result.as_ref().err().map(|e| e.to_string());
+    
+    let _ = AuditService::log_query(
+        &state,
+        id,
+        format!("UPDATE DDL ({} {}): {}", object_type, name, final_sql),
+        start.elapsed().as_millis() as u64,
+        status.to_string(),
+        error_msg
+    ).await;
+
+    result.map(|_| ())
+}
+
+#[tauri::command]
+pub async fn commit_transaction(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.commit_transaction(&id).await
+}
+
+#[tauri::command]
+pub async fn rollback_transaction(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.rollback_transaction(&id).await
 }
 
 #[tauri::command]

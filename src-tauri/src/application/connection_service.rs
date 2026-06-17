@@ -156,11 +156,13 @@ impl ConnectionService {
         println!("[Database] Building connection string... Done.");
         tracing::debug!("Connection string built successfully (sensitive data hidden)");
         
+        let is_transactional = config.environment.to_lowercase() == "production";
+
         // Create Driver
         println!("[Database] Initializing {:?} driver and verifying connection...", config.db_type);
         tracing::debug!("Initializing driver for {:?}", config.db_type);
         
-        let driver = match DriverFactory::create(config.db_type, &url).await {
+        let driver = match DriverFactory::create(config.db_type.clone(), &url, is_transactional).await {
             Ok(d) => {
                 println!("[Database] Connection verified successfully!");
                 tracing::info!("Driver created successfully and connection verified");
@@ -174,7 +176,18 @@ impl ConnectionService {
             }
         };
 
-        state.add_connection(id.clone(), driver, ssh_tunnel).await;
+        if is_transactional {
+            let begin_sql = match config.db_type {
+                crate::db::DbType::Postgres => "BEGIN",
+                crate::db::DbType::Mysql | crate::db::DbType::Mariadb => "START TRANSACTION",
+                crate::db::DbType::Sqlserver => "BEGIN TRANSACTION",
+                _ => "BEGIN",
+            };
+            driver.execute(begin_sql).await?;
+            tracing::info!("Production transaction mode enabled for connection {}", id);
+        }
+
+        state.add_connection(id.clone(), driver, ssh_tunnel, is_transactional).await;
         println!("[Connection] <<< Session established with ID: {}\n", id);
         tracing::info!("Connection session established: {}", id);
         Ok(id)

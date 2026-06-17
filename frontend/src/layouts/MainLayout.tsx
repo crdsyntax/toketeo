@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen, CheckCircle, RotateCcw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
@@ -14,6 +14,8 @@ export default function MainLayout() {
   const queryClient = useQueryClient()
   const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
   const setMiniToast = useAppStore((state) => state.setMiniToast)
+
+  const isProduction = activeConnection?.environment?.toLowerCase() === 'production'
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
@@ -36,6 +38,34 @@ export default function MainLayout() {
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [testMessage, setTestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
+  const [isTransacting, setIsTransacting] = useState(false)
+
+  const handleCommit = async () => {
+    if (!activeConnection?.id) return
+    setIsTransacting(true)
+    try {
+      await connectionService.commit(activeConnection.id)
+      setMiniToast('tx', { type: 'success', text: 'Transaction Committed' })
+    } catch (error: any) {
+      setMiniToast('tx', { type: 'error', text: error.message || 'Commit failed' })
+    } finally {
+      setIsTransacting(false)
+    }
+  }
+
+  const handleRollback = async () => {
+    if (!activeConnection?.id) return
+    setIsTransacting(true)
+    try {
+      await connectionService.rollback(activeConnection.id)
+      setMiniToast('tx', { type: 'success', text: 'Transaction Rolled Back' })
+    } catch (error: any) {
+      setMiniToast('tx', { type: 'error', text: error.message || 'Rollback failed' })
+    } finally {
+      setIsTransacting(false)
+    }
+  }
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateConnectionDto) => {
@@ -114,6 +144,39 @@ export default function MainLayout() {
               </Link>
             ))}
           </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {isProduction && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-destructive/10 border border-destructive/20 rounded-full animate-pulse">
+              <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">Production Mode</span>
+            </div>
+          )}
+          
+          {isProduction && activeConnection && (
+            <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border">
+              <button
+                onClick={handleRollback}
+                disabled={isTransacting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50"
+                title="Rollback Transaction"
+              >
+                <RotateCcw className={cn("w-3.5 h-3.5", isTransacting && "animate-spin")} />
+                Rollback
+              </button>
+              <div className="w-[1px] h-4 bg-border mx-1" />
+              <button
+                onClick={handleCommit}
+                disabled={isTransacting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 rounded-md transition-all disabled:opacity-50"
+                title="Commit Transaction"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                Commit
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

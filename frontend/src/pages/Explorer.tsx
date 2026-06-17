@@ -56,6 +56,10 @@ export default function Explorer() {
     dropConstraintMutation,
     updateCell,
     errorDDL,
+    transactionStatus,
+    transactionMessage,
+    commitTransaction,
+    rollbackTransaction,
     handleExecute,
     handleCancel,
     handleRefetch
@@ -73,7 +77,7 @@ export default function Explorer() {
     if (activeTab === ExplorerTab.DATA) {
       setExecutionStatus(ExecutionStatus.IDLE)
     }
-  }, [page, pageSize, activeTab, setExecutionStatus])
+  }, [page, pageSize, activeTab, currentSchema, setExecutionStatus])
 
   if (!activeConnection) {
     return (

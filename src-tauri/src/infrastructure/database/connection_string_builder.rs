@@ -43,8 +43,16 @@ impl ConnectionStringBuilder {
                     "mysql://{}:{}@{}:{}/{}",
                     user, password, host, port, database
                 );
+                
+                let mut params = Vec::new();
                 if ssl_enabled && config.ssh_tunnel.is_none() {
-                    url.push_str("?ssl-mode=REQUIRED");
+                    params.push("ssl-mode=REQUIRED");
+                }
+                params.push("multiStatements=true");
+                
+                if !params.is_empty() {
+                    url.push_str("?");
+                    url.push_str(&params.join("&"));
                 }
                 Ok(url)
             }

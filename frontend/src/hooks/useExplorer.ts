@@ -40,6 +40,19 @@ export function useExplorer() {
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
   const [showParamModal, setShowParamModal] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [transactionStatus, setTransactionStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  const [transactionMessage, setTransactionMessage] = useState<string>('')
+
+  const setTransactionFeedback = useCallback((status: 'idle' | 'pending' | 'success' | 'error', message: string) => {
+    setTransactionStatus(status)
+    setTransactionMessage(message)
+    if (status === 'success' || status === 'error') {
+      window.setTimeout(() => {
+        setTransactionStatus('idle')
+        setTransactionMessage('')
+      }, 4000)
+    }
+  }, [])
 
   // Track previous connection to detect real changes
   const prevConnIdRef = useRef<string | null>(null)
@@ -99,7 +112,11 @@ export function useExplorer() {
     else if (sidebarTab === SidebarTab.PROCEDURES) refetchProcedures()
     else if (sidebarTab === SidebarTab.TRIGGERS) refetchTriggers()
     else if (sidebarTab === SidebarTab.FUNCTIONS) refetchFunctions()
-  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers, refetchFunctions])
+
+    if (selectedItem && activeTab === ExplorerTab.DATA) {
+      setExecutionStatus(ExecutionStatus.IDLE)
+    }
+  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers, refetchFunctions, selectedItem, activeTab, setExecutionStatus])
 
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
@@ -173,6 +190,36 @@ export function useExplorer() {
       handleRefetch()
     }
   })
+
+  const commitTransaction = useCallback(async () => {
+    if (!activeConnection) return
+    setTransactionFeedback('pending', 'Committing transaction...')
+    try {
+      await schemaService.commitTransaction(activeConnection.id)
+      queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection.id, selectedItem] })
+      queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection.id, currentSchema] })
+      handleRefetch()
+      setTransactionFeedback('success', 'Transaction committed successfully.')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to commit transaction'
+      setTransactionFeedback('error', message)
+    }
+  }, [activeConnection, currentSchema, handleRefetch, queryClient, selectedItem, setTransactionFeedback])
+
+  const rollbackTransaction = useCallback(async () => {
+    if (!activeConnection) return
+    setTransactionFeedback('pending', 'Rolling back transaction...')
+    try {
+      await schemaService.rollbackTransaction(activeConnection.id)
+      queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection.id, selectedItem] })
+      queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection.id, currentSchema] })
+      handleRefetch()
+      setTransactionFeedback('success', 'Transaction rolled back successfully.')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to rollback transaction'
+      setTransactionFeedback('error', message)
+    }
+  }, [activeConnection, currentSchema, handleRefetch, queryClient, selectedItem, setTransactionFeedback])
 
   const editColumnMutation = useMutation({
     mutationFn: (sql: string) => schemaService.editColumn(activeConnection!.id, selectedItem!.name, sql, currentSchema),
@@ -370,6 +417,10 @@ export function useExplorer() {
     isLoadingDDL,
     errorDDL,
     parameters,
+    transactionStatus,
+    transactionMessage,
+    commitTransaction,
+    rollbackTransaction,
     updateDdlMutation,
     editColumnMutation,
     dropColumnMutation,
