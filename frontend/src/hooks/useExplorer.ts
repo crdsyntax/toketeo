@@ -69,7 +69,10 @@ export function useExplorer() {
   const handleSelectItem = useCallback((item: DatabaseObject) => {
     setSelectedItem(item)
     setIsSidebarCollapsed(true)
-  }, [setSelectedItem])
+    setPage(0)
+    setExecutionStatus(ExecutionStatus.IDLE)
+    setSocketResults(null)
+  }, [setSelectedItem, setExecutionStatus, setSocketResults])
 
   const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
@@ -156,7 +159,7 @@ export function useExplorer() {
           case 'sqlserver': lang = 'tsql'; break;
           default: lang = 'mysql'; break;
         }
-        formatted = format(ddl, { language: lang as any })
+        formatted = format(ddl, { language: lang as 'mysql' | 'postgresql' | 'tsql' })
       } catch (e) {
         console.error('SQL Formatting error:', e);
         // ignore format error
@@ -171,8 +174,10 @@ export function useExplorer() {
   })
 
   // Sync editableDdl with query result
+  const lastSyncedDdl = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (ddlData?.ddl !== undefined) {
+    if (ddlData?.ddl !== undefined && ddlData.ddl !== lastSyncedDdl.current) {
+      lastSyncedDdl.current = ddlData.ddl
       setEditableDdl(ddlData.ddl)
     }
   }, [ddlData?.ddl])
@@ -325,9 +330,11 @@ export function useExplorer() {
         return
       }
 
-      setExecutionStatus(ExecutionStatus.EXECUTING)
-      setExecutionError(null)
-      setSocketResults(null)
+      setExplorerState({
+        executionStatus: ExecutionStatus.EXECUTING,
+        executionError: null,
+        socketResults: null
+      })
       setShowParamModal(false)
 
       try {
@@ -336,20 +343,37 @@ export function useExplorer() {
           database: currentSchema,
           name: selectedItem.name,
           objectType: selectedItem.type,
-          page: page + 1, // Rust side might expect 1-based paging
+          page: page + 1,
           pageSize: pageSize,
           params: useParams ? paramValues : undefined
         })
         
-        setSocketResults(result)
-        setExecutionStatus(ExecutionStatus.SUCCESS)
+        setExplorerState({
+          socketResults: result,
+          executionStatus: ExecutionStatus.SUCCESS,
+          executionError: null
+        })
       } catch (err: unknown) {
-        setExecutionStatus(ExecutionStatus.ERROR)
         const errorMessage = err instanceof Error ? err.message : 'Failed to execute query'
-        setExecutionError(errorMessage)
+        setExplorerState({
+          executionStatus: ExecutionStatus.ERROR,
+          executionError: errorMessage,
+          socketResults: null
+        })
       }
     }
-  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema, setExecutionStatus, setExecutionError, setSocketResults])
+  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema, setExplorerState])
+
+  // Automatic execution trigger: fires when the active item or pagination parameters change
+  useEffect(() => {
+    if ((selectedItem?.type === DatabaseObjectType.TABLE || selectedItem?.type === DatabaseObjectType.VIEW) && 
+        activeTab === ExplorerTab.DATA) {
+      const timer = setTimeout(() => {
+        handleExecute()
+      }, 0)
+      return () => clearTimeout(timer)
+    }
+  }, [selectedItem?.name, selectedItem?.type, activeTab, page, pageSize, currentSchema, handleExecute])
 
   const handleCancel = useCallback(() => {
     setExecutionStatus(ExecutionStatus.ERROR)

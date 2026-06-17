@@ -38,64 +38,81 @@ impl DbDriver for PostgresDriver {
 
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
-        let rows = sqlx::query(query).fetch_all(&self.pool).await?;
-        
-        if rows.is_empty() {
-            return Ok(QueryResult {
+        let trimmed_query = query.trim();
+        let is_select = trimmed_query.to_uppercase().starts_with("SELECT") 
+                     || trimmed_query.to_uppercase().starts_with("SHOW") 
+                     || trimmed_query.to_uppercase().starts_with("DESCRIBE") 
+                     || trimmed_query.to_uppercase().starts_with("EXPLAIN")
+                     || trimmed_query.to_uppercase().starts_with("WITH"); // CTEs
+
+        if is_select {
+            let rows = sqlx::query(query).fetch_all(&self.pool).await?;
+            
+            if rows.is_empty() {
+                return Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                });
+            }
+
+            let columns: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.name().to_string())
+                .collect();
+
+            let mut result_rows = Vec::new();
+            for row in rows {
+                let mut row_map = serde_json::Map::new();
+                for (i, col_name) in columns.iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    row_map.insert(col_name.clone(), value);
+                }
+                result_rows.push(serde_json::Value::Object(row_map));
+            }
+
+            // Try to identify PKs
+            let mut primary_keys = None;
+            if let Some(table_name) = self.extract_table_name(query) {
+                let pk_query = r#"
+                    SELECT a.attname
+                    FROM   pg_index i
+                    JOIN   pg_attribute a ON a.attrelid = i.indrelid
+                                         AND a.attnum = ANY(i.indkey)
+                    WHERE  i.indrelid = $1::regclass
+                    AND    i.indisprimary;
+                "#;
+                let pk_rows = sqlx::query(pk_query)
+                    .bind(&table_name)
+                    .fetch_all(&self.pool)
+                    .await
+                    .ok();
+
+                if let Some(pks) = pk_rows {
+                    let keys: Vec<String> = pks.iter().map(|r| r.get(0)).collect();
+                    if !keys.is_empty() {
+                        primary_keys = Some(keys);
+                    }
+                }
+            }
+
+            Ok(QueryResult {
+                columns,
+                rows: result_rows,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys,
+            })
+        } else {
+            let res = sqlx::query(query).execute(&self.pool).await?;
+            Ok(QueryResult {
                 columns: vec![],
                 rows: vec![],
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
-            });
+            })
         }
-
-        let columns: Vec<String> = rows[0]
-            .columns()
-            .iter()
-            .map(|col| col.name().to_string())
-            .collect();
-
-        let mut result_rows = Vec::new();
-        for row in rows {
-            let mut row_map = serde_json::Map::new();
-            for (i, col_name) in columns.iter().enumerate() {
-                let value = self.decode_column(&row, i);
-                row_map.insert(col_name.clone(), value);
-            }
-            result_rows.push(serde_json::Value::Object(row_map));
-        }
-
-        // Try to identify PKs
-        let mut primary_keys = None;
-        if let Some(table_name) = self.extract_table_name(query) {
-            let pk_query = r#"
-                SELECT a.attname
-                FROM   pg_index i
-                JOIN   pg_attribute a ON a.attrelid = i.indrelid
-                                     AND a.attnum = ANY(i.indkey)
-                WHERE  i.indrelid = $1::regclass
-                AND    i.indisprimary;
-            "#;
-            let pk_rows = sqlx::query(pk_query)
-                .bind(&table_name)
-                .fetch_all(&self.pool)
-                .await
-                .ok();
-
-            if let Some(pks) = pk_rows {
-                let keys: Vec<String> = pks.iter().map(|r| r.get(0)).collect();
-                if !keys.is_empty() {
-                    primary_keys = Some(keys);
-                }
-            }
-        }
-
-        Ok(QueryResult {
-            columns,
-            rows: result_rows,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            primary_keys,
-        })
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {

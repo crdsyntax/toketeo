@@ -47,8 +47,9 @@ export default function MainLayout() {
     try {
       await connectionService.commit(activeConnection.id)
       setMiniToast('tx', { type: 'success', text: 'Transaction Committed' })
-    } catch (error: any) {
-      setMiniToast('tx', { type: 'error', text: error.message || 'Commit failed' })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Commit failed'
+      setMiniToast('tx', { type: 'error', text: message })
     } finally {
       setIsTransacting(false)
     }
@@ -60,8 +61,9 @@ export default function MainLayout() {
     try {
       await connectionService.rollback(activeConnection.id)
       setMiniToast('tx', { type: 'success', text: 'Transaction Rolled Back' })
-    } catch (error: any) {
-      setMiniToast('tx', { type: 'error', text: error.message || 'Rollback failed' })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Rollback failed'
+      setMiniToast('tx', { type: 'error', text: message })
     } finally {
       setIsTransacting(false)
     }
@@ -115,17 +117,31 @@ export default function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
+      <header className="h-20 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
           <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-md text-muted-foreground">
             {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
           </button>
-          <div className="flex items-center gap-4">
-            <img 
-              src="./logo.svg" 
-              alt="Toketeo Logo" 
-              className="w-50 h-50 object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]" 
-            />
+          <div className="flex flex-col items-center justify-center select-none group cursor-default pt-2">
+            <div className="relative mb-[-16px] z-10">
+              <div className="absolute inset-0 bg-white/10 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <img 
+                src="./logo2.svg" 
+                alt="Toketeo Logo" 
+                className="relative w-12 h-12 object-contain brightness-0 invert transition-all duration-300 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.6)] drop-shadow-[0_0_10px_rgba(255,255,255,0.25)] group-hover:scale-110" 
+              />
+            </div>
+            <div className="flex items-end justify-center leading-none mt-2">
+              <span className="text-2xl font-black tracking-tighter text-foreground transition-all duration-300 group-hover:text-primary group-hover:scale-105">
+                T
+              </span>
+              <span className="text-sm font-black tracking-[0.2em] text-foreground/80 mb-[3px] mx-[1px] transition-all duration-300 group-hover:text-foreground group-hover:tracking-[0.3em]">
+                OKETE
+              </span>
+              <span className="text-2xl font-black tracking-tighter text-foreground transition-all duration-300 group-hover:text-primary group-hover:scale-105">
+                O
+              </span>
+            </div>
           </div>
           <nav className="flex items-center ml-4">
             {navItems.map((item) => (

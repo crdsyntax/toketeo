@@ -200,31 +200,48 @@ export function DataTab({
               Execution: <span className="font-bold text-foreground">{queryData.executionTime}ms</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="text-[10px] bg-background border border-border rounded px-2 py-1 outline-none"
-            >
-              <option value={10}>10</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <div className="flex items-center gap-1 ml-4">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest opacity-70">Rows:</span>
+              <div className="relative flex items-center group/select">
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="appearance-none text-[10px] bg-muted/30 border border-border/50 rounded-md pl-3 pr-8 py-1.5 outline-none font-black text-foreground transition-all hover:border-primary/40 hover:bg-muted/60 cursor-pointer shadow-inner"
+                >
+                  <option value={10}>10</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                  <option value={500}>500</option>
+                </select>
+                <div className="absolute right-2.5 pointer-events-none flex flex-col items-center justify-center opacity-50 group-hover/select:opacity-100 transition-opacity">
+                  <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[4px] border-b-muted-foreground mb-[1px]" />
+                  <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-muted-foreground" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
               <button
                 disabled={page === 0}
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
-                className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30"
+                className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Previous Page"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[10px] font-bold px-2">{page + 1}</span>
+              <div className="flex items-center justify-center min-w-[40px]">
+                <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                  PAGE {page + 1}
+                </span>
+              </div>
               <button
                 disabled={queryData.rows.length < pageSize}
                 onClick={() => setPage((p) => p + 1)}
-                className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30"
+                className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Next Page"
               >
-                <ChevronRightIcon className="w-4 h-4" />
+                <ChevronRightIcon className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

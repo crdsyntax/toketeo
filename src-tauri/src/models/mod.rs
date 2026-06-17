@@ -107,8 +107,8 @@ impl fmt::Debug for SshConfig {
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<serde_json::Value>,
+    #[serde(rename = "executionTime")]
     pub execution_time_ms: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_keys: Option<Vec<String>>,
 }
 

@@ -2,8 +2,7 @@ import { Code, Play, X, AlertCircle } from 'lucide-react'
 import { Sidebar } from '@/components/explorer/Sidebar'
 import { ObjectDetail } from '@/components/explorer/ObjectDetail'
 import { useExplorer } from '@/hooks/useExplorer'
-import { useEffect } from 'react'
-import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database'
+import { ExecutionStatus } from '@/types/database'
 
 export default function Explorer() {
   const {
@@ -56,28 +55,10 @@ export default function Explorer() {
     dropConstraintMutation,
     updateCell,
     errorDDL,
-    transactionStatus,
-    transactionMessage,
-    commitTransaction,
-    rollbackTransaction,
     handleExecute,
     handleCancel,
     handleRefetch
   } = useExplorer()
-
-  useEffect(() => {
-    if ((selectedItem?.type === DatabaseObjectType.TABLE || selectedItem?.type === DatabaseObjectType.VIEW) && 
-        activeTab === ExplorerTab.DATA && 
-        executionStatus === ExecutionStatus.IDLE) {
-      handleExecute()
-    }
-  }, [selectedItem, activeTab, executionStatus, handleExecute])
-
-  useEffect(() => {
-    if (activeTab === ExplorerTab.DATA) {
-      setExecutionStatus(ExecutionStatus.IDLE)
-    }
-  }, [page, pageSize, activeTab, currentSchema, setExecutionStatus])
 
   if (!activeConnection) {
     return (

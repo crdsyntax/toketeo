@@ -1,4 +1,4 @@
-import { Database, Plus, Edit2, Globe, Shield, ChevronDown, Check } from 'lucide-react'
+import { Plus, Edit2, Globe, Shield, ChevronDown} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection } from '@/types/database'
 import { useState } from 'react'
@@ -51,7 +51,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     <div className="w-72 border-r border-border bg-secondary/50 flex flex-col h-full">
       <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
         <h2 onDoubleClick={() => navigate('/')} className="cursor-pointer text-[10px] font-bold flex items-center gap-2 uppercase tracking-[0.2em] text-muted-foreground">
-          <Check className="w-3.5 h-3.5 text-accent" />
           Connections
         </h2>
         <button 

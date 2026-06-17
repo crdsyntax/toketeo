@@ -45,19 +45,18 @@ export function ConnectionModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    setShowPassword(false)
-    setShowSshPassword(false)
-    setShowSshPassphrase(false)
-
     const resetForm = () => {
       setForm(INITIAL_FORM)
       setStorePassword(true)
       setIsLoadingConnection(false)
+      setShowPassword(false)
+      setShowSshPassword(false)
+      setShowSshPassphrase(false)
+      setActiveTab('general')
     }
 
     if (!editingConnection) {
       resetForm()
-      setActiveTab('general')
       return
     }
 
@@ -120,7 +119,6 @@ export function ConnectionModal({
     }
 
     loadConnection()
-    setActiveTab('general')
 
     return () => {
       cancelled = true
@@ -570,9 +568,9 @@ export function ConnectionModal({
             onClick={() => {
               const payload = { ...form };
               if (payload.ssh) {
-                const cleanedSsh = { ...payload.ssh };
-                delete (cleanedSsh as any).authMethod;
-                payload.ssh = cleanedSsh;
+                const cleanedSsh = { ...payload.ssh } as Record<string, unknown>;
+                delete cleanedSsh.authMethod;
+                payload.ssh = cleanedSsh as unknown as SshConfig;
               }
               onTest(payload);
             }}
@@ -599,9 +597,9 @@ export function ConnectionModal({
                 const payload = { ...form, password: storePassword ? form.password : '' };
                 // Cleanup legacy fields to avoid Serde duplicate errors
                 if (payload.ssh) {
-                  const cleanedSsh = { ...payload.ssh };
-                  delete (cleanedSsh as any).authMethod;
-                  payload.ssh = cleanedSsh;
+                  const cleanedSsh = { ...payload.ssh } as Record<string, unknown>;
+                  delete cleanedSsh.authMethod;
+                  payload.ssh = cleanedSsh as unknown as SshConfig;
                 }
                 onSave(payload);
               }}

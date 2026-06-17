@@ -39,32 +39,73 @@ impl DbDriver for MySqlDriver {
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let trimmed_query = query.trim();
+        let is_select = trimmed_query.to_uppercase().starts_with("SELECT") 
+                     || trimmed_query.to_uppercase().starts_with("SHOW") 
+                     || trimmed_query.to_uppercase().starts_with("DESCRIBE") 
+                     || trimmed_query.to_uppercase().starts_with("EXPLAIN")
+                     || trimmed_query.to_uppercase().starts_with("CALL");
         
         println!("[MySQL] Executing query (length: {}): {}", trimmed_query.len(), &trimmed_query[..std::cmp::min(100, trimmed_query.len())]);
 
-        let result = if trimmed_query.contains(';') {
-             println!("[MySQL] Multi-statement detected, using raw_sql");
-             sqlx::raw_sql(query)
-                .execute(&self.pool)
-                .await
-        } else {
-             println!("[MySQL] Single statement detected, using regular query");
-             sqlx::query(query).execute(&self.pool).await
-        };
-
-        match result {
-            Ok(res) => {
-                println!("[MySQL] Query executed successfully in {}ms. Rows affected: {}", start.elapsed().as_millis(), res.rows_affected());
-                Ok(QueryResult {
+        if is_select {
+            let rows = sqlx::query(query).fetch_all(&self.pool).await?;
+            
+            if rows.is_empty() {
+                return Ok(QueryResult {
                     columns: vec![],
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
-                })
-            },
-            Err(e) => {
-                println!("[MySQL] Query FAILED: {:?}", e);
-                Err(e.into())
+                });
+            }
+
+            let columns: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.name().to_string())
+                .collect();
+
+            let mut result_rows = Vec::new();
+            for row in rows {
+                let mut row_map = serde_json::Map::new();
+                for (i, col_name) in columns.iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    row_map.insert(col_name.clone(), value);
+                }
+                result_rows.push(serde_json::Value::Object(row_map));
+            }
+
+            Ok(QueryResult {
+                columns,
+                rows: result_rows,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys: None,
+            })
+        } else {
+            let result = if trimmed_query.contains(';') {
+                 println!("[MySQL] Multi-statement detected, using raw_sql");
+                 sqlx::raw_sql(query)
+                    .execute(&self.pool)
+                    .await
+            } else {
+                 println!("[MySQL] Single statement detected, using regular query");
+                 sqlx::query(query).execute(&self.pool).await
+            };
+
+            match result {
+                Ok(res) => {
+                    println!("[MySQL] Query executed successfully in {}ms. Rows affected: {}", start.elapsed().as_millis(), res.rows_affected());
+                    Ok(QueryResult {
+                        columns: vec![],
+                        rows: vec![],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: None,
+                    })
+                },
+                Err(e) => {
+                    println!("[MySQL] Query FAILED: {:?}", e);
+                    Err(e.into())
+                }
             }
         }
     }
