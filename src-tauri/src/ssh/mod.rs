@@ -76,53 +76,88 @@ impl SshTunnel {
                     break;
                 }
 
-                if let Ok((mut local_stream, _)) = listener.accept() {
+                if let Ok((mut local_stream, addr)) = listener.accept() {
+                    println!("[SSH] Local connection accepted from {}", addr);
                     let sess_inner = sess_clone.clone();
                     let host_inner = remote_host.clone();
                     
                     thread::spawn(move || {
-                        let sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
-                        match sess_guard.channel_direct_tcpip(&host_inner, remote_port, None) {
-                            Ok(mut channel) => {
-                                tracing::debug!("SSH channel established to {}:{}", host_inner, remote_port);
-                                
-                                let mut local_write = local_stream.try_clone().unwrap();
-                                let mut channel_write = channel.clone();
+                        let mut sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
+                        
+                        // Ensure the session is in non-blocking mode for this thread's channel operations
+                        sess_guard.set_blocking(false);
+                        
+                        println!("[SSH] Attempting to open channel to remote {}:{}...", host_inner, remote_port);
+                        
+                        // We might need to poll for the channel opening in non-blocking mode
+                        let mut channel = loop {
+                            match sess_guard.channel_direct_tcpip(&host_inner, remote_port, None) {
+                                Ok(ch) => break ch,
+                                Err(e) if e.code() == ssh2::ErrorCode::Session(-37) => { // EAGAIN
+                                    drop(sess_guard);
+                                    thread::sleep(std::time::Duration::from_millis(50));
+                                    sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
+                                    continue;
+                                }
+                                Err(e) => {
+                                    println!("[SSH] FAILED to open channel to {}:{}: {}", host_inner, remote_port, e);
+                                    return;
+                                }
+                            }
+                        };
 
-                                // Bridge local -> remote
-                                let t1 = thread::spawn(move || {
-                                    let mut buffer = [0u8; 8192];
-                                    loop {
-                                        match local_stream.read(&mut buffer) {
-                                            Ok(0) => break,
-                                            Ok(n) => {
-                                                if channel_write.write_all(&buffer[..n]).is_err() { break; }
+                        println!("[SSH] Channel established to {}:{}!", host_inner, remote_port);
+                        
+                        // local_stream should already be non-blocking from the accept loop if we did it there,
+                        // but let's be safe.
+                        local_stream.set_nonblocking(true).ok();
+                        
+                        let mut buffer_local = [0u8; 16384];
+                        let mut buffer_remote = [0u8; 16384];
+                        
+                        loop {
+                            let mut activity = false;
+                            
+                            // 1. Try to read from local and write to remote
+                            match local_stream.read(&mut buffer_local) {
+                                Ok(0) => break, // Local closed
+                                Ok(n) => {
+                                    activity = true;
+                                    let mut pos = 0;
+                                    while pos < n {
+                                        match channel.write(&buffer_local[pos..n]) {
+                                            Ok(written) => pos += written,
+                                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                                thread::sleep(std::time::Duration::from_millis(10));
                                             }
                                             Err(_) => break,
                                         }
                                     }
-                                    let _ = channel_write.send_eof();
-                                    tracing::debug!("SSH bridge (local -> remote) closed");
-                                });
-
-                                // Bridge remote -> local
-                                let mut buffer = [0u8; 8192];
-                                loop {
-                                    match channel.read(&mut buffer) {
-                                        Ok(0) => break,
-                                        Ok(n) => {
-                                            if local_write.write_all(&buffer[..n]).is_err() { break; }
-                                        }
-                                        Err(_) => break,
+                                }
+                                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                                Err(_) => break,
+                            }
+                            
+                            // 2. Try to read from remote and write to local
+                            match channel.read(&mut buffer_remote) {
+                                Ok(0) => break, // Remote closed
+                                Ok(n) => {
+                                    activity = true;
+                                    if local_stream.write_all(&buffer_remote[..n]).is_err() {
+                                        break;
                                     }
                                 }
-                                tracing::debug!("SSH bridge (remote -> local) closed");
-                                let _ = t1.join();
+                                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {} 
+                                Err(_) => break,
                             }
-                            Err(e) => {
-                                tracing::error!("Failed to open SSH channel: {}", e);
+                            
+                            if !activity {
+                                drop(sess_guard);
+                                thread::sleep(std::time::Duration::from_millis(50));
+                                sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
                             }
                         }
+                        println!("[SSH] Bridge closed for {}:{}", host_inner, remote_port);
                     });
                 }
                 

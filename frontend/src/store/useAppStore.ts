@@ -49,6 +49,9 @@ interface AppState {
     socketResults: QueryResult | null
   }
   setExplorerState: (state: Partial<AppState['explorer']>) => void
+  miniToasts: Record<string, { type: 'success' | 'error', text: string } | null>
+  setMiniToast: (id: string, msg: { type: 'success' | 'error', text: string }) => void
+  clearMiniToast: (id: string) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -118,6 +121,14 @@ export const useAppStore = create<AppState>()(
         tabs: state.tabs.map((t) => t.id === id ? { ...t, results: null, status: ExecutionStatus.IDLE, error: null } : t),
       })),
       setActiveTabId: (id) => set({ activeTabId: id }),
+      miniToasts: {},
+      setMiniToast: (id, msg) => {
+        set((state) => ({ miniToasts: { ...state.miniToasts, [id]: msg } }), false)
+        setTimeout(() => {
+          set((state) => ({ miniToasts: { ...state.miniToasts, [id]: null } }), false)
+        }, 3000)
+      },
+      clearMiniToast: (id) => set((state) => ({ miniToasts: { ...state.miniToasts, [id]: null } }), false),
     }),
     {
       name: 'toketeo-app-storage',

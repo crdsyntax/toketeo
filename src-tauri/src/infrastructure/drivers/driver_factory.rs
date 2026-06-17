@@ -4,6 +4,7 @@ use crate::db::{DbDriver, DbType};
 use crate::db::postgres::PostgresDriver;
 use crate::db::mysql::MySqlDriver;
 use crate::db::mongodb::MongoDbDriver;
+use crate::db::sqlserver::SqlServerDriver;
 
 pub struct DriverFactory;
 
@@ -18,6 +19,9 @@ impl DriverFactory {
             }
             DbType::Mongodb => {
                 Ok(Arc::new(MongoDbDriver::new(url).await?))
+            }
+            DbType::Sqlserver => {
+                Ok(Arc::new(SqlServerDriver::new(url).await?))
             }
             _ => Err(crate::error::AppError::Validation(format!("Database engine '{:?}' is not yet implemented", db_type))),
         }

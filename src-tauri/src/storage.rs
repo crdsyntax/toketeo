@@ -65,6 +65,10 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN direct_connection INTEGER")
+            .execute(&pool)
+            .await;
+
         Ok(Self { pool })
     }
 
@@ -137,6 +141,7 @@ impl Storage {
             database: row.get("database"),
             auth_source: row.get("auth_source"),
             replica_set: row.get("replica_set"),
+            direct_connection: row.get::<Option<i64>, _>("direct_connection").map(|v| v != 0),
             ssl: row.get("ssl"),
             ssh_tunnel,
         })
@@ -150,8 +155,8 @@ impl Storage {
         let password = config.password.as_ref().map(|p| p.expose_secret().to_string());
         
         sqlx::query(
-            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, ssl, ssh)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, direct_connection, ssl, ssh)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 environment = excluded.environment,
@@ -166,6 +171,7 @@ impl Storage {
                 database = excluded.database,
                 auth_source = excluded.auth_source,
                 replica_set = excluded.replica_set,
+                direct_connection = excluded.direct_connection,
                 ssl = excluded.ssl,
                 ssh = CASE 
                     WHEN excluded.ssh IS NOT NULL THEN excluded.ssh 
@@ -183,6 +189,7 @@ impl Storage {
         .bind(config.database)
         .bind(config.auth_source)
         .bind(config.replica_set)
+        .bind(config.direct_connection.map(|v| if v { 1 } else { 0 }))
         .bind(config.ssl)
         .bind(ssh_json)
         .execute(&self.pool)
@@ -217,6 +224,7 @@ impl Storage {
                 database: row.get("database"),
                 auth_source: row.get("auth_source"),
                 replica_set: row.get("replica_set"),
+                direct_connection: row.get::<Option<i64>, _>("direct_connection").map(|v| v != 0),
                 ssl: row.get("ssl"),
                 ssh_tunnel,
             });

@@ -119,36 +119,55 @@ impl ConnectionService {
         state: &AppState,
         mut config: DbConnectionConfig,
     ) -> AppResult<String> {
-        tracing::info!("Attempting to connect to: {} ({:?})", config.name, config.db_type);
-        // If we have an ID, load the full config from DB to get the password
+        // If we have an ID, load the full config from DB first!
         Self::merge_sensitive_data(state, &mut config).await;
-
+        
+        println!("\n[Connection] >>> Starting connection process for: {} ({:?})", config.name, config.db_type);
+        tracing::info!("Attempting to connect to: {} ({:?})", config.name, config.db_type);
+        
         let id_uuid = config.id.unwrap_or_else(Uuid::new_v4);
         let id = id_uuid.to_string();
         config.id = Some(id_uuid);
 
         // SSH Tunnel Setup
         let ssh_tunnel = if let Some(ref ssh_config) = config.ssh_tunnel {
+            println!("[SSH] Opening tunnel to {}:{}...", ssh_config.host, ssh_config.port);
             tracing::info!("SSH Tunnel requested for connection. Opening tunnel to {}:{}", ssh_config.host, ssh_config.port);
-            let tunnel = crate::ssh::SshTunnel::open(ssh_config, &config.host, config.port).await?;
-            config.port = tunnel.local_port;
-            Some(tunnel)
+            
+            match crate::ssh::SshTunnel::open(ssh_config, &config.host, config.port).await {
+                Ok(tunnel) => {
+                    println!("[SSH] Tunnel established! Local port: {}", tunnel.local_port);
+                    config.port = tunnel.local_port;
+                    Some(tunnel)
+                },
+                Err(e) => {
+                    println!("[SSH] FAILED to open tunnel: {}", e);
+                    tracing::error!("SSH Tunnel failed: {}", e);
+                    return Err(e);
+                }
+            }
         } else {
+            println!("[SSH] No SSH tunnel configured, connecting directly.");
             None
         };
 
         // Build URL (will use localhost if SSH is active)
         let url = ConnectionStringBuilder::build(&config)?;
+        println!("[Database] Building connection string... Done.");
         tracing::debug!("Connection string built successfully (sensitive data hidden)");
         
         // Create Driver
+        println!("[Database] Initializing {:?} driver and verifying connection...", config.db_type);
         tracing::debug!("Initializing driver for {:?}", config.db_type);
+        
         let driver = match DriverFactory::create(config.db_type, &url).await {
             Ok(d) => {
+                println!("[Database] Connection verified successfully!");
                 tracing::info!("Driver created successfully and connection verified");
                 d
             },
             Err(e) => {
+                println!("[Database] FAILED to connect: {}", e);
                 tracing::error!("Failed to create driver: {:?}", e);
                 // ssh_tunnel will be dropped here automatically if it exists
                 return Err(e);
@@ -156,6 +175,7 @@ impl ConnectionService {
         };
 
         state.add_connection(id.clone(), driver, ssh_tunnel).await;
+        println!("[Connection] <<< Session established with ID: {}\n", id);
         tracing::info!("Connection session established: {}", id);
         Ok(id)
     }

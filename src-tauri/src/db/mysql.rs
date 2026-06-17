@@ -120,33 +120,27 @@ impl DbDriver for MySqlDriver {
     }
 
     async fn fetch_procedures(&self, schema: Option<String>) -> AppResult<Vec<String>> {
-        let query = if let Some(schema_name) = schema {
-            sqlx::query("SHOW PROCEDURE STATUS WHERE Db = ?").bind(schema_name)
-        } else {
-            sqlx::query("SHOW PROCEDURE STATUS")
-        };
-        let rows = query.fetch_all(&self.pool).await?;
-        Ok(rows.iter().map(|r| r.get::<String, _>("Name")).collect())
+        let rows = sqlx::query("SELECT routine_name FROM information_schema.routines WHERE routine_type = 'PROCEDURE' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name")
+            .bind(schema)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
     async fn fetch_triggers(&self, schema: Option<String>) -> AppResult<Vec<String>> {
-        let query = if let Some(schema_name) = schema {
-            sqlx::query("SHOW TRIGGERS FROM ??").bind(schema_name)
-        } else {
-            sqlx::query("SHOW TRIGGERS")
-        };
-        let rows = query.fetch_all(&self.pool).await?;
-        Ok(rows.iter().map(|r| r.get::<String, _>("Trigger")).collect())
+        let rows = sqlx::query("SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = IFNULL(?, DATABASE()) ORDER BY trigger_name")
+            .bind(schema)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
     async fn fetch_functions(&self, schema: Option<String>) -> AppResult<Vec<String>> {
-        let query = if let Some(schema_name) = schema {
-            sqlx::query("SHOW FUNCTION STATUS WHERE Db = ?").bind(schema_name)
-        } else {
-            sqlx::query("SHOW FUNCTION STATUS")
-        };
-        let rows = query.fetch_all(&self.pool).await?;
-        Ok(rows.iter().map(|r| r.get::<String, _>("Name")).collect())
+        let rows = sqlx::query("SELECT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name")
+            .bind(schema)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
     async fn fetch_columns(&self, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
@@ -269,32 +263,92 @@ impl DbDriver for MySqlDriver {
         Ok(cs)
     }
 
-    async fn fetch_ddl(&self, name: &str, object_type: &str, _schema: Option<String>) -> AppResult<String> {
-        let query = match object_type.to_lowercase().as_str() {
-            "table" => format!("SHOW CREATE TABLE `{}`", name),
-            "view" => format!("SHOW CREATE VIEW `{}`", name),
-            "procedure" => format!("SHOW CREATE PROCEDURE `{}`", name),
-            "function" => format!("SHOW CREATE FUNCTION `{}`", name),
-            "trigger" => format!("SHOW CREATE TRIGGER `{}`", name),
+    async fn fetch_ddl(&self, name: &str, object_type: &str, schema: Option<String>) -> AppResult<String> {
+        let full_name = if let Some(schema_name) = schema.as_ref() {
+            format!("`{}`.`{}`", schema_name, name)
+        } else {
+            format!("`{}`", name)
+        };
+
+        let obj_type_lower = object_type.to_lowercase();
+        let query = match obj_type_lower.as_str() {
+            "table" => format!("SHOW CREATE TABLE {}", full_name),
+            "view" => format!("SHOW CREATE VIEW {}", full_name),
+            "procedure" => format!("SHOW CREATE PROCEDURE {}", full_name),
+            "function" => format!("SHOW CREATE FUNCTION {}", full_name),
+            "trigger" => format!("SHOW CREATE TRIGGER {}", full_name),
             _ => return Err(AppError::Internal("Unsupported object type for DDL".into())),
         };
         
-        let row = sqlx::query(&query).fetch_one(&self.pool).await?;
-        Ok(row.get(1))
+        println!("[MySQL] Fetching DDL for {} {} with query: {}", object_type, full_name, query);
+
+        let row = match sqlx::query(&query).fetch_one(&self.pool).await {
+            Ok(r) => r,
+            Err(e) => {
+                println!("[MySQL] Error fetching DDL via SHOW CREATE: {:?}", e);
+                // Fallback for procedures/functions/views via information_schema
+                if obj_type_lower == "procedure" || obj_type_lower == "function" {
+                    let routine_type = obj_type_lower.to_uppercase();
+                    let fallback_query = "SELECT routine_definition FROM information_schema.routines WHERE routine_name = ? AND routine_schema = IFNULL(?, DATABASE()) AND routine_type = ?";
+                    let res = sqlx::query(fallback_query)
+                        .bind(name)
+                        .bind(schema)
+                        .bind(routine_type)
+                        .fetch_one(&self.pool).await;
+                    
+                    if let Ok(r) = res {
+                        let def: Option<String> = r.try_get(0).ok();
+                        if let Some(d) = def {
+                            return Ok(format!("-- Fallback DDL (header might be missing)\n{}", d));
+                        }
+                    }
+                }
+                return Err(e.into());
+            }
+        };
+        
+        let columns = row.columns();
+        for col in columns {
+            let col_name = col.name().to_lowercase();
+            if col_name.contains("create") || col_name.contains("statement") {
+                if let Ok(val) = row.try_get::<String, _>(col.ordinal()) {
+                    if !val.is_empty() {
+                        return Ok(val);
+                    }
+                }
+            }
+        }
+
+        // Final fallbacks if heuristic fails or returns empty
+        match obj_type_lower.as_str() {
+            "procedure" | "function" | "trigger" => {
+                row.try_get::<String, _>(2).or_else(|_| row.try_get::<String, _>(1)).map_err(|e| e.into())
+            },
+            _ => row.try_get::<String, _>(1).map_err(|e| e.into()),
+        }
     }
 
-    async fn fetch_parameters(&self, name: &str, _object_type: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    async fn fetch_parameters(&self, name: &str, object_type: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+        let routine_type = match object_type.to_lowercase().as_str() {
+            "procedure" => "PROCEDURE",
+            "function" => "FUNCTION",
+            _ => "",
+        };
+
         let query = "SELECT 
             parameter_name as name, 
             dtd_identifier as type, 
             parameter_mode as mode
             FROM information_schema.parameters 
             WHERE specific_name = ? AND specific_schema = IFNULL(?, DATABASE())
+            AND (ROUTINE_TYPE = ? OR ? = '')
             ORDER BY ordinal_position";
         
         let rows = sqlx::query(query)
             .bind(name)
             .bind(schema)
+            .bind(routine_type)
+            .bind(routine_type)
             .fetch_all(&self.pool)
             .await?;
 

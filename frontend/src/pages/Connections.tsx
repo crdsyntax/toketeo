@@ -12,9 +12,12 @@ export default function Connections() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const setActiveConnection = useAppStore((state) => state.setActiveConnection)
+  const activeConnection = useAppStore((state) => state.activeConnection)
+  const setMiniToast = useAppStore((state) => state.setMiniToast)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
+  const [connectingId, setConnectingId] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -66,18 +69,34 @@ export default function Connections() {
   }
 
   const handleConnect = async (conn: Connection) => {
+    setConnectingId(conn.id)
     try {
       await connectionService.connect(conn)
       setActiveConnection(conn)
       navigate('/explorer')
     } catch (error: unknown) {
       console.error('Failed to connect to database:', error)
+      setToastMessage({ type: 'error', text: (error as Error)?.message || 'Failed to connect' })
+    } finally {
+      setConnectingId(null)
     }
   }
 
   const handleEdit = (conn: Connection) => {
     setEditingConnection(conn)
     setIsModalOpen(true)
+  }
+
+  const handleDisconnect = async (id: string) => {
+    try {
+      await connectionService.disconnect(id)
+      if (activeConnection?.id === id) setActiveConnection(null)
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      setMiniToast(id, { type: 'success', text: 'Disconnected' })
+    } catch (error: unknown) {
+      console.error('Failed to disconnect:', error)
+      setMiniToast(id, { type: 'error', text: 'Failed to disconnect' })
+    }
   }
 
   const handleExport = async (conn: Connection) => {
@@ -172,6 +191,19 @@ export default function Connections() {
         </div>
       )}
 
+      {connectingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative z-10 flex items-center gap-3 bg-background/90 border border-border rounded-md px-6 py-4 shadow">
+            <svg className="w-6 h-6 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <div className="text-sm font-bold">Connecting to database...</div>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
@@ -187,7 +219,10 @@ export default function Connections() {
               onEdit={handleEdit}
               onDelete={(id) => deleteMutation.mutate(id)}
               onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
               onExport={handleExport}
+              isConnecting={connectingId === conn.id}
+              isActive={activeConnection?.id === conn.id}
             />
           ))}
         </div>

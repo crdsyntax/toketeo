@@ -14,29 +14,71 @@ pub struct MongoDbDriver {
 
 impl MongoDbDriver {
     pub async fn new(url: &str) -> AppResult<Self> {
-        tracing::debug!("Parsing MongoDB URL and initializing client");
+        let sanitized_url = if let Some(idx) = url.find('@') {
+            format!("{}@{}", "mongodb://***", &url[idx+1..])
+        } else {
+            url.to_string()
+        };
+        
+        tracing::debug!("Initializing MongoDB driver with URL: {}", sanitized_url);
+        println!("[MongoDB] Initializing driver with URL: {}", sanitized_url);
+        
         let mut client_options = ClientOptions::parse(url).await
             .map_err(|e| {
-                tracing::error!("Failed to parse MongoDB URL: {}", e);
+                tracing::error!("Failed to parse MongoDB URL: {}. Error: {}", sanitized_url, e);
+                eprintln!("[MongoDB] Failed to parse URL: {}", e);
                 AppError::Connection(format!("Failed to parse MongoDB URL: {}", e))
             })?;
+
+        // If directConnection is explicitly set in the URL, let it be.
+        // Otherwise, apply our local/replicaSet logic.
+        if client_options.direct_connection.is_none() {
+            let is_local = url.contains("localhost") || url.contains("127.0.0.1");
+            
+            // Special case: If it's a local address but also contains replicaSet, 
+            // it might be an SSH tunnel to a replica set. 
+            // In that case, we should allow discovery (direct_connection = false).
+            if is_local && !url.contains("replicaSet=") {
+                tracing::debug!("Localhost detected and no replicaSet, forcing direct_connection = true");
+                client_options.direct_connection = Some(true);
+            } else if url.contains("replicaSet=") {
+                client_options.direct_connection = Some(false);
+                tracing::debug!("ReplicaSet detected, disabling direct_connection for discovery");
+            } else {
+                client_options.direct_connection = Some(true);
+                tracing::debug!("Defaulting to direct_connection = true");
+            }
+        }
         
-        // Set a shorter timeout for the connection test/initialization (default is 30s)
-        client_options.server_selection_timeout = Some(std::time::Duration::from_secs(5));
-        client_options.connect_timeout = Some(std::time::Duration::from_secs(5));
+        tracing::debug!("MongoDB client options final Direct Connection: {:?}", client_options.direct_connection);
         
+        // Set longer timeouts for SSH tunnel latency
+        client_options.server_selection_timeout = Some(std::time::Duration::from_secs(10));
+        client_options.connect_timeout = Some(std::time::Duration::from_secs(10));
+        client_options.retry_writes = Some(false);
+        client_options.retry_reads = Some(false);
+        
+        tracing::debug!("Setting MongoDB timeouts: Connect=10s, ServerSelection=10s, Retries=Disabled");
+        println!("[MongoDB] Applying SSH-friendly settings (10s timeouts, retries disabled)");
+
         let client = Client::with_options(client_options)
             .map_err(|e| {
-                tracing::error!("Failed to create MongoDB client: {}", e);
+                tracing::error!("Failed to create MongoDB client for {}: {}", sanitized_url, e);
+                eprintln!("[MongoDB] Failed to create client: {}", e);
                 AppError::Connection(format!("Failed to create MongoDB client: {}", e))
             })?;
 
         // Verify connection with a ping
-        tracing::debug!("Pinging MongoDB to verify connection...");
+        tracing::debug!("Pinging MongoDB server at {} to verify connection...", sanitized_url);
+        println!("[MongoDB] Pinging server {}...", sanitized_url);
+        let ping_start = Instant::now();
+        
         client.database("admin").run_command(doc! {"ping": 1}).await
             .map_err(|e| {
                 let msg = e.to_string().to_uppercase();
-                tracing::error!("MongoDB ping failed: {}", msg);
+                let elapsed = ping_start.elapsed();
+                tracing::error!("MongoDB ping failed after {:?} for {}: {}", elapsed, sanitized_url, msg);
+                eprintln!("[MongoDB] Ping failed after {:?}: {}", elapsed, msg);
                 
                 if msg.contains("CONNECTION REFUSED") || msg.contains("OS ERROR 111") {
                     AppError::Connection("MongoDB connection refused: the server might not be running or the port is blocked".into())
@@ -45,11 +87,12 @@ impl MongoDbDriver {
                 } else if msg.contains("AUTHENTICATION FAILED") || msg.contains("AUTH FAILED") {
                     AppError::Auth(format!("MongoDB Authentication Failed: please check your credentials"))
                 } else {
-                    AppError::Connection(format!("MongoDB Error: {}", msg))
+                    AppError::Connection(format!("MongoDB Error (after {:?}): {}", elapsed, msg))
                 }
             })?;
         
-        tracing::info!("MongoDB connection verified successfully");
+        tracing::info!("MongoDB connection to {} verified successfully in {:?}", sanitized_url, ping_start.elapsed());
+        println!("[MongoDB] Connection verified successfully in {:?}", ping_start.elapsed());
 
         // Extract default db from URL if possible
         let default_db = url.split('/').last()

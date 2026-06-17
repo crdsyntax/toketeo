@@ -169,6 +169,7 @@ export interface Connection {
   database?: string
   authSource?: string
   replicaSet?: string
+  directConnection?: boolean
   ssl?: string
   ssh?: SshConfig
   createdAt: string

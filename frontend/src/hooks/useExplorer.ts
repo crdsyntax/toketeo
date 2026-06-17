@@ -125,21 +125,40 @@ export function useExplorer() {
     enabled: !!activeConnection && !!selectedItem && selectedItem.type === DatabaseObjectType.TABLE,
   })
 
-  const { isLoading: isLoadingDDL } = useQuery({
+  const { data: ddlData, isLoading: isLoadingDDL, error: errorDDL } = useQuery({
     queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
+      console.log(`[useExplorer] Fetching DDL for ${selectedItem?.name} (${selectedItem?.type})`);
       const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema)
+      console.log(`[useExplorer] Received DDL for ${selectedItem?.name}: ${ddl?.substring(0, 50)}...`);
       let formatted = ddl
       try {
-        formatted = format(ddl, { language: 'mysql' })
-      } catch {
+        let lang = 'mysql';
+        switch(activeConnection?.type) {
+          case 'postgres': lang = 'postgresql'; break;
+          case 'sqlserver': lang = 'tsql'; break;
+          default: lang = 'mysql'; break;
+        }
+        formatted = format(ddl, { language: lang as any })
+      } catch (e) {
+        console.error('SQL Formatting error:', e);
         // ignore format error
       }
-      setEditableDdl(formatted)
       return { ddl: formatted }
     },
-    enabled: !!activeConnection && !!selectedItem && activeTab === ExplorerTab.DDL,
+    enabled: !!activeConnection && !!selectedItem && (
+      activeTab === ExplorerTab.DDL || 
+      selectedItem.type === DatabaseObjectType.PROCEDURE || 
+      selectedItem.type === DatabaseObjectType.FUNCTION
+    ),
   })
+
+  // Sync editableDdl with query result
+  useEffect(() => {
+    if (ddlData?.ddl !== undefined) {
+      setEditableDdl(ddlData.ddl)
+    }
+  }, [ddlData?.ddl])
 
   const { data: parameters } = useQuery({
     queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
@@ -349,6 +368,7 @@ export function useExplorer() {
     constraints,
     isLoadingConstraints,
     isLoadingDDL,
+    errorDDL,
     parameters,
     updateDdlMutation,
     editColumnMutation,

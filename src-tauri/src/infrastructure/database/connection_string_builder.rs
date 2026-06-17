@@ -65,12 +65,39 @@ impl ConnectionStringBuilder {
                     params.push("authSource=admin".to_string());
                 }
                 if let Some(ref replica_set) = config.replica_set {
-                    params.push(format!("replicaSet={}", replica_set));
+                    if !replica_set.is_empty() {
+                        params.push(format!("replicaSet={}", replica_set));
+                    }
+                }
+                if let Some(direct) = config.direct_connection {
+                    params.push(format!("directConnection={}", direct));
                 }
                 if !params.is_empty() {
                     url.push_str("?");
                     url.push_str(&params.join("&"));
                 }
+                
+                let sanitized_url = if let Some(idx) = url.find('@') {
+                    format!("{}@{}", &url[..url.find("://").unwrap_or(0)+3], &url[idx+1..])
+                } else {
+                    url.clone()
+                };
+                println!("[Database] Generated URL: {}", sanitized_url);
+
+                Ok(url)
+            }
+            DbType::Sqlserver => {
+                let mut url = format!(
+                    "sqlserver://{}:{}@{}:{}/{}",
+                    user, password, host, port, database
+                );
+
+                if ssl_enabled {
+                    url.push_str("?encrypt=require");
+                } else {
+                    url.push_str("?encrypt=false");
+                }
+
                 Ok(url)
             }
             _ => Err(AppError::Validation(format!("Unsupported database engine for connection string: {:?}", config.db_type))),
@@ -107,6 +134,10 @@ mod tests {
             user: "user".into(),
             password: Some(SecretString::new("pass@word".into())),
             database: Some("db".into()),
+            auth_source: None,
+            replica_set: None,
+            direct_connection: None,
+            ssl: None,
             ssh_tunnel: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
@@ -125,6 +156,10 @@ mod tests {
             user: "user".into(),
             password: Some(SecretString::new("pass".into())),
             database: Some("db".into()),
+            auth_source: None,
+            replica_set: None,
+            direct_connection: None,
+            ssl: None,
             ssh_tunnel: Some(SshConfig {
                 host: "ssh-host".into(),
                 port: 22,

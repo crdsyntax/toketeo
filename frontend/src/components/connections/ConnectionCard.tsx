@@ -1,17 +1,22 @@
-import { Database, Download, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon } from 'lucide-react'
+import { Database, Download, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Environment } from '@/types/database'
 import type { Connection } from '@/types/database'
+import { useAppStore } from '@/store/useAppStore'
 
 interface ConnectionCardProps {
   connection: Connection
   onEdit: (conn: Connection) => void
   onDelete: (id: string) => void
   onConnect: (conn: Connection) => void
+  onDisconnect?: (id: string) => void
   onExport?: (conn: Connection) => void
+  isConnecting?: boolean
+  isActive?: boolean
 }
 
-export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExport }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExport, isConnecting, onDisconnect, isActive }: ConnectionCardProps) {
+  const miniToast = useAppStore((state) => state.miniToasts[connection.id])
   const getEnvColor = (env: Environment) => {
     switch (env) {
       case Environment.PRODUCTION: return 'bg-red-500/5 text-red-500 border-red-500/20'
@@ -22,10 +27,15 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExpo
   }
 
   return (
-    <div className={cn(
+    <div onDoubleClick={() => onConnect(connection)} className={cn(
       "group relative border border-border bg-secondary/30 p-4 transition-all duration-200 hover:border-primary/30 hover:bg-secondary/50",
       connection.environment === Environment.PRODUCTION && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-red-500"
     )}>
+      {miniToast && (
+        <div className={`absolute top-2 right-2 text-xs rounded-md px-2 py-1 font-semibold shadow-lg animate-in slide-in-from-top-1 duration-200 ${miniToast.type === 'success' ? 'bg-emerald-500 text-emerald-900 border border-emerald-700' : 'bg-red-500 text-red-900 border border-red-700'}`}>
+          {miniToast.text}
+        </div>
+      )}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/5 border border-primary/10 rounded-sm">
@@ -42,20 +52,23 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExpo
           {onExport && (
             <button
               onClick={() => onExport(connection)}
-              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+              disabled={isConnecting}
+              className={cn("p-1.5 text-muted-foreground transition-colors", !isConnecting ? "hover:text-primary hover:bg-primary/5" : "opacity-60 cursor-not-allowed")}
             >
               <Download className="w-3.5 h-3.5" />
             </button>
           )}
           <button 
             onClick={() => onEdit(connection)}
-            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+            disabled={isConnecting}
+            className={cn("p-1.5 text-muted-foreground transition-colors", !isConnecting ? "hover:text-primary hover:bg-primary/5" : "opacity-60 cursor-not-allowed")}
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
           <button 
             onClick={() => onDelete(connection.id)}
-            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+            disabled={isConnecting}
+            className={cn("p-1.5 text-muted-foreground transition-colors", !isConnecting ? "hover:text-destructive hover:bg-destructive/5" : "opacity-60 cursor-not-allowed")}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -85,13 +98,32 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExpo
         </div>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-border/50 flex justify-end">
-        <button 
-          onClick={() => onConnect(connection)}
-          className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform"
-        >
-          Connect <LinkIcon className="w-3 h-3" />
-        </button>
+        <div className="mt-4 pt-4 border-t border-border/50 flex justify-end">
+        <div className="flex items-center gap-3">
+          {onDisconnect && isActive && (
+            <button
+              onClick={() => onDisconnect(connection.id)}
+              disabled={isConnecting}
+              className={cn("text-[10px] font-bold uppercase tracking-widest text-destructive flex items-center gap-2 hover:translate-x-1 transition-transform", isConnecting && "opacity-60 cursor-not-allowed")}
+            >
+              Disconnect
+            </button>
+          )}
+
+          <button 
+            onClick={() => onConnect(connection)}
+            disabled={isConnecting}
+            className={cn("text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform", isConnecting && "opacity-60 cursor-not-allowed")}
+          >
+            {isConnecting ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" /> Connecting...
+              </>
+            ) : (
+              <>Connect <LinkIcon className="w-3 h-3" /></>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

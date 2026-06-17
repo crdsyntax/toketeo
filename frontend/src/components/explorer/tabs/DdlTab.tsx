@@ -4,6 +4,7 @@ import type { UseMutationResult } from '@tanstack/react-query';
 
 interface DdlTabProps {
   isLoading: boolean;
+  error?: Error | null;
   editableDdl: string;
   setEditableDdl: (ddl: string) => void;
   updateDdlMutation: UseMutationResult<unknown, Error, string>;
@@ -11,6 +12,7 @@ interface DdlTabProps {
 
 export function DdlTab({
   isLoading,
+  error,
   editableDdl,
   setEditableDdl,
   updateDdlMutation,
@@ -40,6 +42,13 @@ export function DdlTab({
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="h-4 bg-muted animate-pulse rounded" />
             ))}
+          </div>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <div className="text-destructive font-bold mb-2">Failed to load definition</div>
+            <div className="text-xs text-muted-foreground bg-destructive/10 p-4 rounded-md border border-destructive/20 inline-block text-left">
+              {error.message}
+            </div>
           </div>
         ) : (
           <Editor

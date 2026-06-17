@@ -13,11 +13,24 @@ export default function MainLayout() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
+  const setMiniToast = useAppStore((state) => state.setMiniToast)
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
+
+  const handleDisconnect = async (id: string) => {
+    try {
+      await connectionService.disconnect(id)
+      if (activeConnection?.id === id) setActiveConnection(null)
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      setMiniToast(id, { type: 'success', text: 'Disconnected' })
+    } catch (error) {
+      console.error('Failed to disconnect:', error)
+      setMiniToast(id, { type: 'error', text: 'Failed to disconnect' })
+    }
+  }
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
@@ -112,6 +125,7 @@ export default function MainLayout() {
             onConnect={handleConnect} 
             onEdit={handleEdit}
             onNew={() => { setEditingConnection(null); setIsModalOpen(true); }}
+            onDisconnect={handleDisconnect}
           />
         )}
         <main className="flex-1 overflow-auto p-2">

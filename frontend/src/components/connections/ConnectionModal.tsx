@@ -27,6 +27,7 @@ const INITIAL_FORM: CreateConnectionDto = {
   database: '',
   authSource: '',
   replicaSet: '',
+  directConnection: true,
   ssl: 'false',
 }
 
@@ -79,6 +80,7 @@ export function ConnectionModal({
           database: fullConnection.database || '',
           authSource: fullConnection.authSource || '',
           replicaSet: fullConnection.replicaSet || '',
+          directConnection: fullConnection.directConnection ?? true,
           ssl: fullConnection.ssl || 'false',
           ssh: fullConnection.ssh ? {
             ...fullConnection.ssh,
@@ -100,6 +102,7 @@ export function ConnectionModal({
           database: editingConnection.database || '',
           authSource: editingConnection.authSource || '',
           replicaSet: editingConnection.replicaSet || '',
+          directConnection: editingConnection.directConnection ?? true,
           ssl: editingConnection.ssl || 'false',
           ssh: editingConnection.ssh ? {
             ...editingConnection.ssh,
@@ -393,6 +396,29 @@ export function ConnectionModal({
                       />
                     </div>
                   </div>
+                  <div className="flex items-center justify-between p-3 bg-background/50 border border-border">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-primary/5 border border-primary/10 flex items-center justify-center text-primary">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Direct Connection</h4>
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-tight">Force single node connection</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setForm({ ...form, directConnection: !form.directConnection })}
+                      className={cn(
+                        "w-10 h-5 transition-all relative border p-0.5",
+                        form.directConnection ? "bg-primary border-primary" : "bg-muted border-border"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-3.5 h-3.5 transition-all",
+                        form.directConnection ? "translate-x-5 bg-background" : "translate-x-0 bg-muted-foreground"
+                      )} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -541,7 +567,15 @@ export function ConnectionModal({
         {/* Footer */}
         <div className="p-6 bg-muted/30 border-t border-border flex items-center justify-between gap-4">
           <button 
-            onClick={() => onTest(form)}
+            onClick={() => {
+              const payload = { ...form };
+              if (payload.ssh) {
+                const cleanedSsh = { ...payload.ssh };
+                delete (cleanedSsh as any).authMethod;
+                payload.ssh = cleanedSsh;
+              }
+              onTest(payload);
+            }}
             disabled={isTesting}
             className="flex items-center gap-2 px-4 py-2 text-[10px] font-bold text-muted-foreground hover:text-primary transition-all uppercase tracking-widest disabled:opacity-50"
           >
@@ -561,7 +595,16 @@ export function ConnectionModal({
               Cancel
             </button>
             <button 
-              onClick={() => onSave({ ...form, password: storePassword ? form.password : '' })}
+              onClick={() => {
+                const payload = { ...form, password: storePassword ? form.password : '' };
+                // Cleanup legacy fields to avoid Serde duplicate errors
+                if (payload.ssh) {
+                  const cleanedSsh = { ...payload.ssh };
+                  delete (cleanedSsh as any).authMethod;
+                  payload.ssh = cleanedSsh;
+                }
+                onSave(payload);
+              }}
               disabled={isSaving}
               className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
             >

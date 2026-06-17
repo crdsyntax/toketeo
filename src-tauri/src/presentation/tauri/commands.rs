@@ -262,18 +262,6 @@ pub async fn get_ddl(
 }
 
 #[tauri::command]
-pub async fn update_ddl(
-    _id: String,
-    _name: String,
-    _object_type: String,
-    _sql: String,
-    _schema: Option<String>,
-    _state: State<'_, AppState>,
-) -> AppResult<()> {
-    Ok(()) // TODO
-}
-
-#[tauri::command]
 pub async fn get_parameters(
     id: String,
     name: String,
@@ -282,6 +270,21 @@ pub async fn get_parameters(
     state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
     ExplorerService::get_parameters(&state, &id, &name, &object_type, schema).await
+}
+
+#[tauri::command]
+pub async fn update_ddl(
+    id: String,
+    name: String,
+    object_type: String,
+    sql: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    // ExplorerService::update_ddl(&state, &id, &name, &object_type, &sql, schema).await
+    let driver = state.get_connection(&id).await?;
+    driver.execute(&sql).await?;
+    Ok(())
 }
 
 #[tauri::command]

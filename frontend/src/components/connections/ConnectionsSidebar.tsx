@@ -1,4 +1,4 @@
-import { Database, Plus, Edit2, Globe, Shield, ChevronDown } from 'lucide-react'
+import { Database, Plus, Edit2, Globe, Shield, ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection } from '@/types/database'
 import { useState } from 'react'
@@ -13,10 +13,12 @@ interface ConnectionsSidebarProps {
   onConnect: (conn: Connection) => Promise<void> | void
   onEdit: (conn: Connection) => void
   onNew: () => void
+  onDisconnect?: (id: string) => void
 }
 
-export function ConnectionsSidebar({ connections, activeConnection, onConnect, onEdit, onNew }: ConnectionsSidebarProps) {
+export function ConnectionsSidebar({ connections, activeConnection, onConnect, onEdit, onNew, onDisconnect }: ConnectionsSidebarProps) {
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, connId?: string }>({ visible: false, x: 0, y: 0 })
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase } = useAppStore()
   const navigate = useNavigate()
@@ -48,8 +50,8 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   return (
     <div className="w-72 border-r border-border bg-secondary/50 flex flex-col h-full">
       <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
-        <h2 className="text-[10px] font-bold flex items-center gap-2 uppercase tracking-[0.2em] text-muted-foreground">
-          <Database className="w-3.5 h-3.5 text-accent" />
+        <h2 onDoubleClick={() => navigate('/')} className="cursor-pointer text-[10px] font-bold flex items-center gap-2 uppercase tracking-[0.2em] text-muted-foreground">
+          <Check className="w-3.5 h-3.5 text-accent" />
           Connections
         </h2>
         <button 
@@ -60,20 +62,21 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         </button>
       </div>
       <div className="flex-1 overflow-auto p-2 space-y-1 scrollbar-thin">
-        {connections.map((conn) => (
+          {connections.map((conn) => (
           <div 
             key={conn.id}
             className={cn(
               "group transition-all border",
               activeConnection?.id === conn.id 
                 ? "bg-accent/5 border-accent/30" 
-                : "border-transparent hover:bg-accent/5 hover:border-border"
+                : "border-transparent hover:bg-accent/10 hover:text-accent hover:border-border"
             )}
           >
             <div 
               className="p-2 cursor-pointer flex justify-between items-center" 
               onClick={() => onConnect(conn)}
               onDoubleClick={() => setExpandedConnId(expandedConnId === conn.id ? null : conn.id)}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
             >
               <div className="flex-1 truncate">
                 <span className={cn(
@@ -131,6 +134,22 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             )}
           </div>
         ))}
+        {contextMenu.visible && contextMenu.connId === activeConnection?.id && (
+          <div
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            className="absolute z-50 bg-background border border-border rounded-md shadow-md"
+            onClick={() => setContextMenu({ visible: false, x: 0, y: 0 })}
+          >
+            <div className="p-2 text-sm">
+              <button
+                className="w-full text-left px-3 py-1 hover:bg-muted"
+                onClick={(e) => { e.stopPropagation(); setContextMenu({ visible: false, x: 0, y: 0 }); if (contextMenu.connId && typeof onDisconnect === 'function') onDisconnect(contextMenu.connId) }}
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

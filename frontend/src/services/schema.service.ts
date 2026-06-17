@@ -70,16 +70,16 @@ export const schemaService = {
     return await tauriApi.invoke<ConstraintResponse[]>('get_constraints', { id, table, schema })
   },
 
-  getDDL: async (id: string, name: string, type: string, schema?: string) => {
-    return await tauriApi.invoke<string>('get_ddl', { id, name, type, schema })
+  getDDL: async (id: string, name: string, objectType: string, schema?: string) => {
+    return await tauriApi.invoke<string>('get_ddl', { id, name, objectType, schema })
   },
 
-  updateDDL: async (id: string, name: string, type: string, sql: string, schema?: string) => {
-    await tauriApi.invoke<void>('update_ddl', { id, name, type, sql, schema })
+  updateDDL: async (id: string, name: string, objectType: string, sql: string, schema?: string) => {
+    await tauriApi.invoke<void>('update_ddl', { id, name, objectType, sql, schema })
   },
 
-  getParameters: async (id: string, name: string, type: string, schema?: string) => {
-    return await tauriApi.invoke<ParameterResponse[]>('get_parameters', { id, name, type, schema })
+  getParameters: async (id: string, name: string, objectType: string, schema?: string) => {
+    return await tauriApi.invoke<ParameterResponse[]>('get_parameters', { id, name, objectType, schema })
   },
 
   editColumn: async (id: string, table: string, sql: string, schema?: string) => {

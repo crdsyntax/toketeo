@@ -55,6 +55,7 @@ export default function Explorer() {
     dropForeignKeyMutation,
     dropConstraintMutation,
     updateCell,
+    errorDDL,
     handleExecute,
     handleCancel,
     handleRefetch
@@ -183,6 +184,7 @@ export default function Explorer() {
             handleCancel={handleCancel}
             updateCell={updateCell}
             isLoadingDDL={isLoadingDDL}
+            errorDDL={errorDDL}
             editableDdl={editableDdl}
             setEditableDdl={setEditableDdl}
             updateDdlMutation={updateDdlMutation}

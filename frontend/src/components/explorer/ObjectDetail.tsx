@@ -43,6 +43,7 @@ interface ObjectDetailProps {
   handleCancel: () => void;
   updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
   isLoadingDDL: boolean;
+  errorDDL: Error | null;
   editableDdl: string;
   setEditableDdl: (ddl: string) => void;
   updateDdlMutation: UseMutationResult<unknown, Error, string>;
@@ -78,6 +79,7 @@ export function ObjectDetail({
   handleCancel,
   updateCell,
   isLoadingDDL,
+  errorDDL,
   editableDdl,
   setEditableDdl,
   updateDdlMutation,
@@ -290,6 +292,7 @@ export function ObjectDetail({
         {activeTab === ExplorerTab.DDL && (
           <DdlTab
             isLoading={isLoadingDDL}
+            error={errorDDL}
             editableDdl={editableDdl}
             setEditableDdl={setEditableDdl}
             updateDdlMutation={updateDdlMutation}

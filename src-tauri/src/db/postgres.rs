@@ -301,24 +301,46 @@ impl DbDriver for PostgresDriver {
 
     async fn fetch_ddl(&self, name: &str, object_type: &str, schema: Option<String>) -> AppResult<String> {
         let schema_name = schema.unwrap_or_else(|| "public".to_string());
-        // Postgres doesn't have a simple SHOW CREATE TABLE. We'd need to query pg_catalog.
-        // For now, return a placeholder or a simple query.
-        match object_type.to_lowercase().as_str() {
+        let obj_type_lower = object_type.to_lowercase();
+        
+        println!("[Postgres] Fetching DDL for {} {}.{}", obj_type_lower, schema_name, name);
+
+        match obj_type_lower.as_str() {
             "view" => {
-                let row = sqlx::query("SELECT view_definition FROM information_schema.views WHERE table_name = $1 AND table_schema = $2")
-                    .bind(name)
-                    .bind(schema_name)
+                // Fetch OID first to ensure the view exists and handle schema qualification correctly
+                let oid_query = "SELECT c.oid FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = $2 AND c.relname = $1 AND c.relkind = 'v' LIMIT 1";
+                let oid: i64 = match sqlx::query(oid_query).bind(name).bind(&schema_name).fetch_one(&self.pool).await {
+                    Ok(r) => r.get(0),
+                    Err(_) => return Err(AppError::Internal(format!("View {}.{} not found", schema_name, name))),
+                };
+
+                let row = sqlx::query("SELECT pg_get_viewdef($1, true)")
+                    .bind(oid)
                     .fetch_one(&self.pool)
                     .await?;
-                Ok(row.get(0))
+                
+                let def: Option<String> = row.try_get(0).ok();
+                if let Some(d) = def {
+                    return Ok(format!("CREATE OR REPLACE VIEW \"{}\".\"{}\" AS\n{}", schema_name.replace('"', "\"\""), name.replace('"', "\"\""), d));
+                }
+                Ok(format!("-- Definition not found for view {}.{}", schema_name, name))
             },
             "procedure" | "function" => {
-                let row = sqlx::query("SELECT routine_definition FROM information_schema.routines WHERE routine_name = $1 AND routine_schema = $2")
-                    .bind(name)
-                    .bind(schema_name)
+                // Fetch OID first to handle overloading and get correct definition
+                let oid_query = "SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = $2 AND p.proname = $1 LIMIT 1";
+                let oid: i64 = match sqlx::query(oid_query).bind(name).bind(&schema_name).fetch_one(&self.pool).await {
+                    Ok(r) => r.get(0),
+                    Err(_) => return Err(AppError::Internal(format!("Object {}.{} not found", schema_name, name))),
+                };
+
+                let row = sqlx::query("SELECT pg_get_functiondef($1)")
+                    .bind(oid)
                     .fetch_one(&self.pool)
                     .await?;
-                Ok(row.get(0))
+                Ok(row.try_get::<Option<String>, _>(0).map(|v| v.unwrap_or_default()).unwrap_or_default())
+            },
+            "table" => {
+                Ok(format!("-- DDL for table {}.{} via pg_dump logic is complex, returning schema definition placeholder\n-- Use a specialized tool for full table DDL in Postgres", schema_name, name))
             },
             _ => Ok(format!("-- DDL for {} {} not implemented for Postgres yet", object_type, name)),
         }

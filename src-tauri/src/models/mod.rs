@@ -21,6 +21,8 @@ pub struct DbConnectionConfig {
     pub auth_source: Option<String>,
     #[serde(rename = "replicaSet")]
     pub replica_set: Option<String>,
+    #[serde(rename = "directConnection")]
+    pub direct_connection: Option<bool>,
     pub ssl: Option<String>,
     #[serde(rename = "ssh")]
     pub ssh_tunnel: Option<SshConfig>,
@@ -39,11 +41,12 @@ impl fmt::Debug for DbConnectionConfig {
             .field("database", &self.database)
             .field("auth_source", &self.auth_source)
             .field("replica_set", &self.replica_set)
+            .field("direct_connection", &self.direct_connection)
             .finish()
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SshAuthType {
     Password,
@@ -55,7 +58,7 @@ pub struct SshConfig {
     pub host: String,
     pub port: u16,
     pub user: String,
-    #[serde(rename = "authType")]
+    #[serde(rename = "authType", alias = "authMethod")]
     pub auth_type: SshAuthType,
     #[serde(serialize_with = "serialize_secret", deserialize_with = "deserialize_secret", default)]
     pub password: Option<SecretString>,
@@ -126,6 +129,10 @@ mod tests {
             user: "admin".into(),
             password: Some(SecretString::new("super-secret".into())),
             database: Some("main".into()),
+            auth_source: None,
+            replica_set: None,
+            direct_connection: None,
+            ssl: None,
             ssh_tunnel: None,
         };
 
@@ -156,5 +163,23 @@ mod tests {
         assert!(json.contains("ssh-pass"));
         assert!(json.contains("password"));
         assert!(json.contains("ssh-host"));
+        assert!(json.contains("authType"));
+    }
+
+    #[test]
+    fn test_ssh_config_deserialization_legacy_auth_method() {
+        use secrecy::ExposeSecret;
+
+        let json = r#"{
+            "host": "ssh-host",
+            "port": 22,
+            "user": "ssh-user",
+            "authMethod": "password",
+            "password": "ssh-pass"
+        }"#;
+
+        let ssh: SshConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(ssh.auth_type, SshAuthType::Password);
+        assert_eq!(ssh.password.unwrap().expose_secret(), "ssh-pass");
     }
 }
