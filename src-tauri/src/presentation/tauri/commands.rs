@@ -195,45 +195,50 @@ pub async fn switch_database(
 pub async fn get_tables(
     id: String,
     schema: Option<String>,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    ExplorerService::get_tables(&state, &id, schema).await
+    ExplorerService::get_tables(&state, &id, schema, filter).await
 }
 
 #[tauri::command]
 pub async fn get_views(
     id: String,
     schema: Option<String>,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    ExplorerService::get_views(&state, &id, schema).await
+    ExplorerService::get_views(&state, &id, schema, filter).await
 }
 
 #[tauri::command]
 pub async fn get_procedures(
     id: String,
     schema: Option<String>,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    ExplorerService::get_procedures(&state, &id, schema).await
+    ExplorerService::get_procedures(&state, &id, schema, filter).await
 }
 
 #[tauri::command]
 pub async fn get_triggers(
     id: String,
     schema: Option<String>,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    ExplorerService::get_triggers(&state, &id, schema).await
+    ExplorerService::get_triggers(&state, &id, schema, filter).await
 }
 
 #[tauri::command]
 pub async fn get_functions(
     id: String,
     schema: Option<String>,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    ExplorerService::get_functions(&state, &id, schema).await
+    ExplorerService::get_functions(&state, &id, schema, filter).await
 }
 
 #[tauri::command]
@@ -430,12 +435,13 @@ pub async fn execute_explorer(
     object_type: String,
     page: Option<u32>,
     page_size: Option<u32>,
+    filter: Option<String>,
     params: Option<serde_json::Value>,
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
     let page = page.unwrap_or(0);
     let page_size = page_size.unwrap_or(50);
-    ExplorerService::execute_explorer(&state, &id, database, &name, object_type, page, page_size).await
+    ExplorerService::execute_explorer(&state, &id, database, &name, object_type, page, page_size, filter).await
 }
 
 #[tauri::command]

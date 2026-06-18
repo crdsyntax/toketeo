@@ -126,7 +126,7 @@ impl DbDriver for MySqlDriver {
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_tables(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let rows = if let Some(schema_name) = schema {
             sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'")
                 .bind(schema_name)
@@ -141,7 +141,7 @@ impl DbDriver for MySqlDriver {
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_views(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_views(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let rows = if let Some(schema_name) = schema {
             sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'VIEW'")
                 .bind(schema_name)
@@ -155,7 +155,7 @@ impl DbDriver for MySqlDriver {
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_procedures(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_procedures(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let rows = sqlx::query("SELECT routine_name FROM information_schema.routines WHERE routine_type = 'PROCEDURE' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name")
             .bind(schema)
             .fetch_all(&self.pool)
@@ -163,7 +163,7 @@ impl DbDriver for MySqlDriver {
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_triggers(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_triggers(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let rows = sqlx::query("SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = IFNULL(?, DATABASE()) ORDER BY trigger_name")
             .bind(schema)
             .fetch_all(&self.pool)
@@ -171,7 +171,7 @@ impl DbDriver for MySqlDriver {
         Ok(rows.iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_functions(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_functions(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let rows = sqlx::query("SELECT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name")
             .bind(schema)
             .fetch_all(&self.pool)

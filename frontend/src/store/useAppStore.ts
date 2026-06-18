@@ -23,6 +23,7 @@ export interface ExplorerTabState {
   page: number;
   pageSize: number;
   editableDdl: string;
+  filter: string;
 }
 
 interface AppState {
@@ -180,7 +181,7 @@ export const useAppStore = create<AppState>()(
         explorerTabs: Object.fromEntries(
           Object.entries(state.explorerTabs).map(([id, tab]) => [
             id,
-            { ...tab, socketResults: null }
+            { ...tab, socketResults: null, filter: '' }
           ])
         ),
       }),

@@ -50,29 +50,29 @@ impl ExplorerService {
         driver.fetch_databases().await
     }
 
-    pub async fn get_tables(state: &AppState, id: &str, schema: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_tables(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
-        driver.fetch_tables(schema).await
+        driver.fetch_tables(schema, filter).await
     }
 
-    pub async fn get_views(state: &AppState, id: &str, schema: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_views(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
-        driver.fetch_views(schema).await
+        driver.fetch_views(schema, filter).await
     }
 
-    pub async fn get_procedures(state: &AppState, id: &str, schema: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_procedures(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
-        driver.fetch_procedures(schema).await
+        driver.fetch_procedures(schema, filter).await
     }
 
-    pub async fn get_triggers(state: &AppState, id: &str, schema: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_triggers(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
-        driver.fetch_triggers(schema).await
+        driver.fetch_triggers(schema, filter).await
     }
 
-    pub async fn get_functions(state: &AppState, id: &str, schema: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_functions(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
-        driver.fetch_functions(schema).await
+        driver.fetch_functions(schema, filter).await
     }
 
     pub async fn get_columns(state: &AppState, id: &str, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
@@ -113,6 +113,7 @@ impl ExplorerService {
         object_type: String,
         page: u32,
         page_size: u32,
+        filter: Option<String>,
     ) -> AppResult<QueryResult> {
         let driver = state.get_connection(id).await?;
         let db_type = driver.db_type();
@@ -151,8 +152,7 @@ impl ExplorerService {
 
         let result = match object_type.to_lowercase().as_str() {
             "table" | "view" => {
-                // FASE 9: Explicit column selection
-                let columns = driver.fetch_columns(name, database).await?;
+                let columns = driver.fetch_columns(name, database.clone()).await?;
                 let col_names: Vec<String> = columns.iter()
                     .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(|s| format!("{}{}{}", q_open, s.replace(q_close, q_esc), q_close)))
                     .collect();
@@ -163,7 +163,14 @@ impl ExplorerService {
                     col_names.join(", ")
                 };
 
-                let query = format!("SELECT {} FROM {} LIMIT {} OFFSET {}", select_clause, full_name, page_size, offset);
+                let mut query = format!("SELECT {} FROM {}", select_clause, full_name);
+                
+                if let Some(f) = filter {
+                    query.push_str(&format!(" WHERE {}", f));
+                }
+                
+                query.push_str(&format!(" LIMIT {} OFFSET {}", page_size, offset));
+                
                 driver.execute(&query).await
             },
             "procedure" => {

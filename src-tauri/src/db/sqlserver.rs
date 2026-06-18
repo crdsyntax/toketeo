@@ -152,7 +152,7 @@ impl DbDriver for SqlServerDriver {
         Ok(rows.into_iter().filter_map(|row| row.get("name").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
     }
 
-    async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_tables(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
         let query = format!(
             "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = '{}' ORDER BY TABLE_NAME",
@@ -162,7 +162,7 @@ impl DbDriver for SqlServerDriver {
         Ok(rows.into_iter().filter_map(|row| row.get("TABLE_NAME").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
     }
 
-    async fn fetch_views(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_views(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
         let query = format!(
             "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = '{}' ORDER BY TABLE_NAME",
@@ -172,7 +172,7 @@ impl DbDriver for SqlServerDriver {
         Ok(rows.into_iter().filter_map(|row| row.get("TABLE_NAME").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
     }
 
-    async fn fetch_procedures(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_procedures(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
         let query = format!(
             "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA = '{}' ORDER BY ROUTINE_NAME",
@@ -182,12 +182,12 @@ impl DbDriver for SqlServerDriver {
         Ok(rows.into_iter().filter_map(|row| row.get("ROUTINE_NAME").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
     }
 
-    async fn fetch_triggers(&self, _schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_triggers(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let rows = self.run_query("SELECT name FROM sys.triggers ORDER BY name").await?;
         Ok(rows.into_iter().filter_map(|row| row.get("name").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
     }
 
-    async fn fetch_functions(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_functions(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
         let query = format!(
             "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA = '{}' ORDER BY ROUTINE_NAME",

@@ -15,6 +15,8 @@ interface DataTabProps {
   handleExecute: () => void;
   handleCancel: () => void;
   updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
+  filter: string;
+  setFilter: (f: string) => void;
 }
 
 export function DataTab({
@@ -30,6 +32,8 @@ export function DataTab({
   handleExecute,
   handleCancel,
   updateCell,
+  filter,
+  setFilter
 }: DataTabProps) {
   const [editingCell, setEditingCell] = useState<{ rowIndex: number, column: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -88,6 +92,27 @@ export function DataTab({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      <div className="px-4 py-2 border-b border-border bg-muted/5 flex justify-between items-center shrink-0">
+        <div className="flex items-center gap-2">
+           <input
+            className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary w-64"
+            placeholder="WHERE clause (e.g. id > 10)"
+            value={filter}
+            onChange={(e) => {
+              console.log('[DataTab] Filter input changing:', e.target.value);
+              setFilter(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              console.log('[DataTab] Key down:', e.key);
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                console.log('[DataTab] Enter pressed, calling handleExecute');
+                handleExecute();
+              }
+            }}
+          />
+        </div>
+      </div>
       {executionStatus === 'error' && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />

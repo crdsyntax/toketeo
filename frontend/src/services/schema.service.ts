@@ -20,40 +20,40 @@ export const schemaService = {
     return await tauriApi.invoke<string[]>('get_schemas', { id })
   },
 
-  getTables: async (id: string, schema?: string) => {
-    const names = await tauriApi.invoke<string[]>('get_tables', { id, schema })
+  getTables: async (id: string, schema?: string, filter?: string) => {
+    const names = await tauriApi.invoke<string[]>('get_tables', { id, schema, filter })
     return names.map(name => ({
       name,
       type: 'table'
     })) as TableResponse[]
   },
 
-  getViews: async (id: string, schema?: string) => {
-    const names = await tauriApi.invoke<string[]>('get_views', { id, schema })
+  getViews: async (id: string, schema?: string, filter?: string) => {
+    const names = await tauriApi.invoke<string[]>('get_views', { id, schema, filter })
     return names.map(name => ({
       name,
       type: 'view'
     })) as TableResponse[]
   },
 
-  getProcedures: async (id: string, schema?: string) => {
-    const names = await tauriApi.invoke<string[]>('get_procedures', { id, schema })
+  getProcedures: async (id: string, schema?: string, filter?: string) => {
+    const names = await tauriApi.invoke<string[]>('get_procedures', { id, schema, filter })
     return names.map(name => ({
       name,
       type: 'procedure'
     })) as TableResponse[]
   },
 
-  getTriggers: async (id: string, schema?: string) => {
-    const names = await tauriApi.invoke<string[]>('get_triggers', { id, schema })
+  getTriggers: async (id: string, schema?: string, filter?: string) => {
+    const names = await tauriApi.invoke<string[]>('get_triggers', { id, schema, filter })
     return names.map(name => ({
       name,
       type: 'trigger'
     })) as TableResponse[]
   },
 
-  getFunctions: async (id: string, schema?: string) => {
-    const names = await tauriApi.invoke<string[]>('get_functions', { id, schema })
+  getFunctions: async (id: string, schema?: string, filter?: string) => {
+    const names = await tauriApi.invoke<string[]>('get_functions', { id, schema, filter })
     return names.map(name => ({
       name,
       type: 'function'
@@ -117,9 +117,10 @@ executeExplorer: async (payload: {
   name: string,
   objectType: string,
   page: number,
-  pageSize: number,
-  params?: Record<string, string>
-}) => {
+  pageSize: number;
+  params?: Record<string, string>;
+  filter?: string;
+  }) => {
   return await tauriApi.invoke<QueryResult>('execute_explorer', {
     id: payload.connectionId,
     database: payload.database,
@@ -127,9 +128,10 @@ executeExplorer: async (payload: {
     objectType: payload.objectType,
     page: payload.page,
     pageSize: payload.pageSize,
-    params: payload.params
+    params: payload.params,
+    filter: payload.filter
   })
-},
+  },
   switchSchema: async (id: string, schema: string) => {
     // Rust side might need to handle switching the default database in the pool
     return await tauriApi.invoke<void>('switch_schema', { id, schema })

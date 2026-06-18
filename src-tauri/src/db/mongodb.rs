@@ -197,25 +197,25 @@ impl DbDriver for MongoDbDriver {
             .map_err(|e| AppError::Database(format!("Failed to list databases: {}", e)))
     }
 
-    async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_tables(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let db = self.get_db(schema)?;
         db.list_collection_names().await
             .map_err(|e| AppError::Database(format!("Failed to list collections: {}", e)))
     }
 
-    async fn fetch_views(&self, _schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_views(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         Ok(vec![]) // MongoDB views are listed in collections usually, or needs special filtering
     }
 
-    async fn fetch_procedures(&self, _schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_procedures(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         Ok(vec![])
     }
 
-    async fn fetch_triggers(&self, _schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_triggers(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         Ok(vec![])
     }
 
-    async fn fetch_functions(&self, _schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_functions(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         Ok(vec![])
     }
 

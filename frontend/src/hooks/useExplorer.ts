@@ -32,7 +32,8 @@ export function useExplorer() {
     socketResults, 
     page, 
     pageSize,
-    editableDdl
+    editableDdl,
+    filter
   } = activeTabState || {
     selectedItem: null,
     activeTab: ExplorerTab.COLUMNS,
@@ -41,8 +42,15 @@ export function useExplorer() {
     socketResults: null,
     page: 0,
     pageSize: 50,
-    editableDdl: ''
+    editableDdl: '',
+    filter: ''
   }
+
+  const setFilter = useCallback((f: string) => {
+    if (activeExplorerTabId) {
+      updateExplorerTab(activeExplorerTabId, { filter: f })
+    }
+  }, [activeExplorerTabId, updateExplorerTab])
 
   const setSearch = useCallback((s: string) => setExplorerState({ search: s }), [setExplorerState])
   const setSidebarTab = useCallback((tab: SidebarTab) => setExplorerState({ sidebarTab: tab }), [setExplorerState])
@@ -406,6 +414,7 @@ export function useExplorer() {
   }, [selectedItem, activeConnection, columns, currentSchema, setSocketResults])
 
   const handleExecute = useCallback(async (useParams: boolean = false) => {
+    console.log('[useExplorer] handleExecute called with filter:', filter);
     if (selectedItem && activeConnection) {
       if (!useParams && parameters && parameters.length > 0) {
         setShowParamModal(true)
@@ -427,7 +436,8 @@ export function useExplorer() {
           objectType: selectedItem.type,
           page: page + 1,
           pageSize: pageSize,
-          params: useParams ? paramValues : undefined
+          params: useParams ? paramValues : undefined,
+          filter: filter
         })
         
         if (activeExplorerTabId) {
@@ -447,7 +457,7 @@ export function useExplorer() {
         })
       }
     }
-  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema, setExplorerState])
+  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema, setExplorerState, updateExplorerTab, activeExplorerTabId, filter])
 
   // Automatic execution trigger: fires when the active item or pagination parameters change
   useEffect(() => {
@@ -555,6 +565,8 @@ export function useExplorer() {
     handleExecute,
     handleCancel,
     handleRefetch,
+    filter,
+    setFilter,
     explorerTabs,
     activeExplorerTabId,
     removeExplorerTab,

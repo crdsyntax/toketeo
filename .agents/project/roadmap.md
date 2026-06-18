@@ -6,7 +6,7 @@ The system already includes:
 
 * SSH tunneling support
 * MariaDB fully functional (schemas, tables, queries, metadata)
-* PostgreSQL connection (partial: connects but lacks schema/table listing)
+* PostgreSQL connection (full metadata: databases → schemas → tables/objects)
 * MongoDB connection implemented
 * SQL Server support not validated
 * Monaco-based SQL editor
@@ -15,46 +15,25 @@ The system already includes:
 * Table DDL extraction
 * Row-level data viewer with inline editing (double-click)
 * Transaction support for production-marked connections
-* Connection testing
+* Connection testing (with "Test Connection" button)
 * Import / export of connections
 * Database restore functionality
+* Explorer tab state persistence
 
 ---
 
 ## Current Architectural Issues (Must Fix First)
 
-### Explorer State Desync (Critical)
-
-* Tab switching causes:
-
-  * unnecessary reloads of table metadata
-  * loss of active query/editor state
-* Root problem:
-
-  * missing persistent UI state layer for explorer context
-
-### PostgreSQL Metadata Gap
-
-* Cannot list:
-
-  * databases (or schemas correctly)
-  * tables under schemas
-* Likely cause:
-
-  * incomplete `information_schema` usage or missing `pg_catalog` fallback queries
+* (None - Core stabilization completed)
 
 ---
 
 ## Phase 1: Core Stabilization (Critical Path)
 
-* [ ] Fix PostgreSQL metadata introspection (schemas → tables → columns)
-* [ ] Normalize cross-engine schema discovery layer (without losing engine fidelity)
-* [ ] Stabilize Explorer tab state (no reload on tab switch)
-* [ ] Introduce persistent UI session state per connection:
-
-  * active schema
-  * active table
-  * active query state
+* [x] Fix PostgreSQL metadata introspection (schemas → tables → columns)
+* [x] Normalize cross-engine schema discovery layer (without losing engine fidelity)
+* [x] Stabilize Explorer tab state (no reload on tab switch)
+* [x] Introduce persistent UI session state per connection
 
 ---
 
@@ -106,7 +85,6 @@ The system already includes:
 
 ## Phase 4: Multi-Driver Completion
 
-* [ ] PostgreSQL schema/table listing fix completed
 * [ ] Validate SQL Server driver behavior
 * [ ] MongoDB full explorer support:
 

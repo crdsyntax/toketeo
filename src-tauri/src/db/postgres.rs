@@ -136,25 +136,26 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_tables(&self, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
-        let rows = sqlx::query(
-            r#"
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = $1 
-              AND table_type = 'BASE TABLE'
-            ORDER BY table_name
-            "#,
-        )
-        .bind(schema)
-        .fetch_all(&self.pool)
-        .await?;
+        
+        let mut query = "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'".to_string();
+        
+        if let Some(f) = filter {
+            query.push_str(&format!(" AND table_name LIKE '%{}%'", f.replace("'", "''")));
+        }
+        
+        query.push_str(" ORDER BY table_name");
+        
+        let rows = sqlx::query(&query)
+            .bind(schema)
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_views(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_views(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -171,7 +172,7 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_functions(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_functions(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -188,7 +189,7 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_procedures(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_procedures(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -205,7 +206,7 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_triggers(&self, schema: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_triggers(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"

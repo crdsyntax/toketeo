@@ -58,6 +58,8 @@ interface ObjectDetailProps {
   renameIndexMutation: UseMutationResult<unknown, Error, { oldName: string; newName: string }>;
   dropForeignKeyMutation: UseMutationResult<unknown, Error, string>;
   dropConstraintMutation: UseMutationResult<unknown, Error, string>;
+  filter: string;
+  setFilter: (f: string) => void;
 }
 
 export function ObjectDetail(props: ObjectDetailProps) {
@@ -339,6 +341,8 @@ export function ObjectDetail(props: ObjectDetailProps) {
               handleExecute={handleExecute}
               handleCancel={handleCancel}
               updateCell={updateCell}
+              filter={props.filter}
+              setFilter={props.setFilter}
             />
           )}
 

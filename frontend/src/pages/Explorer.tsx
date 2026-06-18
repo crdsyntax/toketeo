@@ -58,6 +58,8 @@ export default function Explorer() {
     handleExecute,
     handleCancel,
     handleRefetch,
+    filter,
+    setFilter,
     explorerTabs,
     activeExplorerTabId,
     removeExplorerTab,
@@ -188,6 +190,8 @@ export default function Explorer() {
             renameIndexMutation={renameIndexMutation}
             dropForeignKeyMutation={dropForeignKeyMutation}
             dropConstraintMutation={dropConstraintMutation}
+            filter={filter}
+            setFilter={setFilter}
           />
         </div>
       </div>
