@@ -104,7 +104,6 @@ impl DbDriver for PostgresDriver {
     // ==================== METADATOS ====================
 
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {
-        println!("[Postgres] Listing databases...");
         let rows = sqlx::query(
             r#"
             SELECT datname 
@@ -116,9 +115,7 @@ impl DbDriver for PostgresDriver {
         .fetch_all(&self.pool)
         .await?;
 
-        let dbs: Vec<String> = rows.into_iter().map(|r| r.get(0)).collect();
-        println!("[Postgres] Found databases: {:?}", dbs);
-        Ok(dbs)
+        Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {

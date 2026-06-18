@@ -132,12 +132,17 @@ export function DataTab({
               <tbody>
                 {queryData.rows.map((row, i) => (
                   <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
-                    {queryData.columns.map((col) => (
+                    {queryData.columns.map((col) => {
+                      const value = row[col];
+                      if (value === undefined) {
+                        console.warn(`[DataTab] Column '${col}' not found in row:`, row);
+                      }
+                      return (
                       <td 
                         key={col} 
                         className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text group relative"
-                        onDoubleClick={() => handleStartEdit(i, col, row[col])}
-                        title={row[col] !== null ? String(row[col]) : 'NULL'}
+                        onDoubleClick={() => handleStartEdit(i, col, value)}
+                        title={value !== null ? String(value) : 'NULL'}
                       >
                         {editingCell?.rowIndex === i && editingCell?.column === col ? (
                           <div className="flex items-center gap-1 bg-background" onClick={(e) => e.stopPropagation()}>
@@ -165,10 +170,10 @@ export function DataTab({
                           </div>
                         ) : (
                           <>
-                            {row[col] === null ? (
+                            {value === null ? (
                               <span className="text-muted-foreground italic text-[10px]">NULL</span>
                             ) : (
-                              String(row[col])
+                              String(value)
                             )}
                             <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-background/80 px-1 rounded text-[8px] text-muted-foreground pointer-events-none">
                               Double-click to edit
@@ -176,7 +181,7 @@ export function DataTab({
                           </>
                         )}
                       </td>
-                    ))}
+                    )})}
                   </tr>
                 ))}
               </tbody>

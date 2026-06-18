@@ -21,9 +21,8 @@ export function useExplorer() {
 
   const { search, sidebarTab, activeExplorerTabId } = explorer
   
-  const activeTabState = useMemo(() => 
-    activeExplorerTabId ? explorerTabs[activeExplorerTabId] : null
-  , [activeExplorerTabId, explorerTabs])
+  // Directly use the store state to ensure reactivity
+  const activeTabState = activeExplorerTabId ? explorerTabs[activeExplorerTabId] : null
 
   const { 
     selectedItem, 
@@ -126,9 +125,9 @@ export function useExplorer() {
   // Clear tabs when connection ID changes
   useEffect(() => {
     if (activeConnection?.id && activeConnection.id !== prevConnIdRef.current) {
-      setExplorerState({
-        activeExplorerTabId: null
-      })
+      // setExplorerState({
+      //   activeExplorerTabId: null
+      // })
       setIsSidebarCollapsed(false)
       prevConnIdRef.current = activeConnection.id
     }
@@ -232,9 +231,7 @@ export function useExplorer() {
   const { data: ddlData, isLoading: isLoadingDDL, error: errorDDL } = useQuery({
     queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
-      console.log(`[useExplorer] Fetching DDL for ${selectedItem?.name} (${selectedItem?.type})`);
       const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema)
-      console.log(`[useExplorer] Received DDL for ${selectedItem?.name}: ${ddl?.substring(0, 50)}...`);
       let formatted = ddl
       try {
         let lang = 'mysql';
@@ -432,11 +429,14 @@ export function useExplorer() {
           params: useParams ? paramValues : undefined
         })
         
-        setExplorerState({
-          socketResults: result,
-          executionStatus: ExecutionStatus.SUCCESS,
-          executionError: null
-        })
+        if (activeExplorerTabId) {
+          updateExplorerTab(activeExplorerTabId, {
+            socketResults: result,
+            executionStatus: ExecutionStatus.SUCCESS,
+            executionError: null
+          });
+        }
+
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to execute query'
         setExplorerState({
@@ -452,15 +452,13 @@ export function useExplorer() {
   useEffect(() => {
     const isDataTable = selectedItem?.type === DatabaseObjectType.TABLE || selectedItem?.type === DatabaseObjectType.VIEW;
     const isDataTab = activeTab === ExplorerTab.DATA;
-    const isIdle = executionStatus === ExecutionStatus.IDLE;
+    // Check if we need data (executionStatus is IDLE or we just don't have results)
+    const needsExecution = isDataTable && isDataTab && (executionStatus === ExecutionStatus.IDLE || socketResults === null);
 
-    if (isDataTable && isDataTab && isIdle) {
-      const timer = setTimeout(() => {
-        handleExecute()
-      }, 0)
-      return () => clearTimeout(timer)
+    if (needsExecution) {
+      handleExecute();
     }
-  }, [activeTab, executionStatus, handleExecute, selectedItem?.type])
+  }, [activeTab, executionStatus, handleExecute, selectedItem?.type, socketResults])
 
   const handleCancel = useCallback(() => {
     setExecutionStatus(ExecutionStatus.ERROR)
