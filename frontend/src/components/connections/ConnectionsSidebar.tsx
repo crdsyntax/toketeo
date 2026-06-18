@@ -19,6 +19,7 @@ interface ConnectionsSidebarProps {
 
 export function ConnectionsSidebar({ connections, activeConnection, onConnect, onEdit, onNew, onDisconnect }: ConnectionsSidebarProps) {
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
+  const [selectedConnId, setSelectedConnId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, connId?: string }>({ visible: false, x: 0, y: 0 })
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase } = useAppStore()
@@ -37,6 +38,11 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     onSuccess: (_, { schema }) => {
       setActiveConnectionDatabase(schema)
       queryClient.invalidateQueries({ queryKey: ['schemas'] })
+      queryClient.invalidateQueries({ queryKey: ['tables'] })
+      queryClient.invalidateQueries({ queryKey: ['views'] })
+      queryClient.invalidateQueries({ queryKey: ['procedures'] })
+      queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      queryClient.invalidateQueries({ queryKey: ['functions'] })
       navigate('/explorer')
     }
   })
@@ -66,26 +72,34 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
           <div 
             key={conn.id}
             className={cn(
-              "group transition-all border",
+              "group transition-all border-l-2",
               activeConnection?.id === conn.id 
-                ? "bg-accent/5 border-accent/30" 
-                : "border-transparent hover:bg-accent/10 hover:text-accent hover:border-border"
+                ? "border-l-emerald-500 bg-accent/5" 
+                : "border-l-transparent",
+              selectedConnId === conn.id
+                ? "bg-accent/10 border-l-primary"
+                : "hover:bg-accent/5"
             )}
           >
             <div 
               className="p-2 cursor-pointer flex justify-between items-center" 
-              onClick={() => onConnect(conn)}
+              onClick={() => { setSelectedConnId(conn.id); onConnect(conn); }}
               onDoubleClick={() => setExpandedConnId(expandedConnId === conn.id ? null : conn.id)}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
             >
               <div className="flex-1 truncate">
-                <span className={cn(
-                  "text-xs font-bold truncate block",
-                  activeConnection?.id === conn.id ? "text-accent" : "text-foreground"
-                )}>
-                  {conn.name}
-                </span>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mt-0.5">
+                <div className="flex items-center gap-2">
+                    {activeConnection?.id === conn.id && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    )}
+                    <span className={cn(
+                      "text-xs font-bold truncate block",
+                      selectedConnId === conn.id ? "text-primary" : "text-foreground"
+                    )}>
+                      {conn.name}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mt-0.5 ml-3.5">
                   {conn.ssh ? <Shield className="w-2.5 h-2.5 text-blue-400" /> : <Globe className="w-2.5 h-2.5 opacity-50" />}
                   <span className="truncate opacity-70">{conn.host}</span>
                 </div>
