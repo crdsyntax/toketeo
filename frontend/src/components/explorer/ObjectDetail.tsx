@@ -9,7 +9,7 @@ import type {
   DbValue,
 } from '@/types/database';
 import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database';
-import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary } from 'lucide-react';
+import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ColumnsTab } from './tabs/ColumnsTab';
@@ -18,8 +18,13 @@ import { ForeignKeysTab } from './tabs/ForeignKeysTab';
 import { ConstraintsTab } from './tabs/ConstraintsTab';
 import { DataTab } from './tabs/DataTab';
 import { DdlTab } from './tabs/DdlTab';
+import type { ExplorerTabState } from '@/store/useAppStore';
 
 interface ObjectDetailProps {
+  explorerTabs: Record<string, ExplorerTabState>;
+  activeExplorerTabId: string | null;
+  removeExplorerTab: (id: string) => void;
+  setExplorerState: (state: Partial<{ activeExplorerTabId: string | null }>) => void;
   selectedItem: DatabaseObject | null;
   activeTab: ExplorerTab;
   setActiveTab: (tab: ExplorerTab) => void;
@@ -56,6 +61,10 @@ interface ObjectDetailProps {
 }
 
 export function ObjectDetail({
+  explorerTabs,
+  activeExplorerTabId,
+  removeExplorerTab,
+  setExplorerState,
   selectedItem,
   activeTab,
   setActiveTab,
@@ -97,7 +106,20 @@ export function ObjectDetail({
     );
   };
 
-  if (!selectedItem) {
+  const getObjectIcon = (type: DatabaseObjectType) => {
+    switch (type) {
+      case DatabaseObjectType.TABLE: return <Table2 className="w-4 h-4" />;
+      case DatabaseObjectType.VIEW: return <Eye className="w-4 h-4" />;
+      case DatabaseObjectType.PROCEDURE: return <Terminal className="w-4 h-4" />;
+      case DatabaseObjectType.TRIGGER: return <Zap className="w-4 h-4" />;
+      case DatabaseObjectType.FUNCTION: return <Binary className="w-4 h-4" />;
+      default: return <Table2 className="w-4 h-4" />;
+    }
+  };
+
+  const tabs = Object.values(explorerTabs);
+
+  if (tabs.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
         <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mb-4">
@@ -113,40 +135,68 @@ export function ObjectDetail({
 
   return (
     <>
+      {/* Tab Bar */}
+      <div className="flex bg-muted/30 border-b border-border overflow-x-auto no-scrollbar">
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            onClick={() => setExplorerState({ activeExplorerTabId: tab.id })}
+            className={cn(
+              'group flex items-center gap-2 px-4 py-2 text-xs font-medium border-r border-border cursor-pointer min-w-[120px] max-w-[200px] transition-colors relative',
+              activeExplorerTabId === tab.id
+                ? 'bg-background border-t-2 border-t-primary border-b-transparent'
+                : 'hover:bg-background/50',
+            )}
+          >
+            <span className="text-primary/70">{getObjectIcon(tab.selectedItem.type)}</span>
+            <span className="truncate flex-1">{tab.selectedItem.name}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                removeExplorerTab(tab.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted rounded-sm transition-all"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+
       <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-background border border-border rounded-none">
-            {selectedItem.type === DatabaseObjectType.TABLE && (
+            {selectedItem?.type === DatabaseObjectType.TABLE && (
               <Table2 className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === DatabaseObjectType.VIEW && (
+            {selectedItem?.type === DatabaseObjectType.VIEW && (
               <Eye className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === DatabaseObjectType.PROCEDURE && (
+            {selectedItem?.type === DatabaseObjectType.PROCEDURE && (
               <Terminal className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === DatabaseObjectType.TRIGGER && (
+            {selectedItem?.type === DatabaseObjectType.TRIGGER && (
               <Zap className="w-5 h-5 text-primary" />
             )}
-            {selectedItem.type === DatabaseObjectType.FUNCTION && (
+            {selectedItem?.type === DatabaseObjectType.FUNCTION && (
               <Binary className="w-5 h-5 text-primary" />
             )}
           </div>
           <div>
-            <h3 className="font-bold text-lg">{selectedItem.name}</h3>
+            <h3 className="font-bold text-lg">{selectedItem?.name}</h3>
             <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-              {selectedItem.type}
+              {selectedItem?.type}
             </p>
           </div>
         </div>
         <div className="flex bg-muted p-1 rounded-none items-center">
        
-          {(selectedItem.type === DatabaseObjectType.TABLE ||
-            selectedItem.type === DatabaseObjectType.VIEW ||
-            selectedItem.type === DatabaseObjectType.PROCEDURE) && (
+          {(selectedItem?.type === DatabaseObjectType.TABLE ||
+            selectedItem?.type === DatabaseObjectType.VIEW ||
+            selectedItem?.type === DatabaseObjectType.PROCEDURE) && (
             <>
-              {(selectedItem.type === DatabaseObjectType.TABLE ||
-                selectedItem.type === DatabaseObjectType.VIEW) && (
+              {(selectedItem?.type === DatabaseObjectType.TABLE ||
+                selectedItem?.type === DatabaseObjectType.VIEW) && (
                 <button
                   onClick={() => setActiveTab(ExplorerTab.COLUMNS)}
                   className={cn(
@@ -160,7 +210,7 @@ export function ObjectDetail({
                   Columns
                 </button>
               )}
-              {selectedItem.type === DatabaseObjectType.TABLE && (
+              {selectedItem?.type === DatabaseObjectType.TABLE && (
                 <>
                   <button
                     onClick={() => setActiveTab(ExplorerTab.INDEXES)}
@@ -210,7 +260,7 @@ export function ObjectDetail({
                 )}
               >
                 <Table className="w-3.5 h-3.5" />
-                {selectedItem.type === DatabaseObjectType.PROCEDURE ? 'Execution' : 'Data'}
+                {selectedItem?.type === DatabaseObjectType.PROCEDURE ? 'Execution' : 'Data'}
               </button>
             </>
           )}
@@ -231,7 +281,7 @@ export function ObjectDetail({
 
       <div className="flex-1 overflow-auto flex flex-col">
         {activeTab === ExplorerTab.COLUMNS &&
-          (selectedItem.type === DatabaseObjectType.TABLE || selectedItem.type === DatabaseObjectType.VIEW) && (
+          selectedItem && (selectedItem.type === DatabaseObjectType.TABLE || selectedItem.type === DatabaseObjectType.VIEW) && (
             <ColumnsTab
               tableName={selectedItem.name}
               columns={columns}
@@ -242,7 +292,7 @@ export function ObjectDetail({
             />
           )}
 
-        {activeTab === ExplorerTab.INDEXES && selectedItem.type === DatabaseObjectType.TABLE && (
+        {activeTab === ExplorerTab.INDEXES && selectedItem && selectedItem.type === DatabaseObjectType.TABLE && (
           <IndexesTab
             indexes={indexes}
             isLoading={isLoadingIndexes}
@@ -252,7 +302,7 @@ export function ObjectDetail({
           />
         )}
 
-        {activeTab === ExplorerTab.FOREIGN_KEYS && selectedItem.type === DatabaseObjectType.TABLE && (
+        {activeTab === ExplorerTab.FOREIGN_KEYS && selectedItem && selectedItem.type === DatabaseObjectType.TABLE && (
           <ForeignKeysTab
             foreignKeys={foreignKeys}
             isLoading={isLoadingForeignKeys}
@@ -261,7 +311,7 @@ export function ObjectDetail({
           />
         )}
 
-        {activeTab === ExplorerTab.CONSTRAINTS && selectedItem.type === DatabaseObjectType.TABLE && (
+        {activeTab === ExplorerTab.CONSTRAINTS && selectedItem && selectedItem.type === DatabaseObjectType.TABLE && (
           <ConstraintsTab
             constraints={constraints}
             isLoading={isLoadingConstraints}
@@ -271,6 +321,7 @@ export function ObjectDetail({
         )}
 
         {activeTab === ExplorerTab.DATA &&
+          selectedItem &&
           (selectedItem.type === DatabaseObjectType.TABLE ||
             selectedItem.type === DatabaseObjectType.VIEW ||
             selectedItem.type === DatabaseObjectType.PROCEDURE) && (

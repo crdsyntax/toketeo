@@ -87,6 +87,9 @@ pub fn run() {
         commands::get_connections,
         commands::get_connection,
         commands::delete_connection,
+        commands::get_databases,
+        commands::diagnose_connection,
+        commands::switch_database,
         commands::get_audit_logs,
     ])
     .run(tauri::generate_context!())

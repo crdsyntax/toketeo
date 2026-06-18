@@ -13,6 +13,18 @@ export interface QueryTab {
   error?: string | null
 }
 
+export interface ExplorerTabState {
+  id: string; // connectionId:database:name
+  selectedItem: DatabaseObject;
+  activeTab: ExplorerTab;
+  executionStatus: ExecutionStatus;
+  executionError: string | null;
+  socketResults: QueryResult | null;
+  page: number;
+  pageSize: number;
+  editableDdl: string;
+}
+
 interface AppState {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
@@ -40,17 +52,15 @@ interface AppState {
   isSidebarOpen: boolean
   toggleSidebar: () => void
   explorer: {
-    selectedItem: DatabaseObject | null
     sidebarTab: SidebarTab
-    activeTab: ExplorerTab
     search: string
-    executionStatus: ExecutionStatus
-    executionError: string | null
-    socketResults: QueryResult | null
-    page: number
-    pageSize: number
+    activeExplorerTabId: string | null
   }
+  explorerTabs: Record<string, ExplorerTabState>
   setExplorerState: (state: Partial<AppState['explorer']>) => void
+  addExplorerTab: (tab: ExplorerTabState) => void
+  updateExplorerTab: (id: string, updates: Partial<ExplorerTabState>) => void
+  removeExplorerTab: (id: string) => void
   miniToasts: Record<string, { type: 'success' | 'error', text: string } | null>
   setMiniToast: (id: string, msg: { type: 'success' | 'error', text: string }) => void
   clearMiniToast: (id: string) => void
@@ -80,19 +90,38 @@ export const useAppStore = create<AppState>()(
       isSidebarOpen: true,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       explorer: {
-        selectedItem: null,
         sidebarTab: SidebarTab.TABLES,
-        activeTab: ExplorerTab.COLUMNS,
         search: '',
-        executionStatus: ExecutionStatus.IDLE,
-        executionError: null,
-        socketResults: null,
-        page: 0,
-        pageSize: 50
+        activeExplorerTabId: null
       },
+      explorerTabs: {},
       setExplorerState: (explorerState) => set((state) => ({
         explorer: { ...state.explorer, ...explorerState }
       })),
+      addExplorerTab: (tab) => set((state) => ({
+        explorerTabs: { ...state.explorerTabs, [tab.id]: tab },
+        explorer: { ...state.explorer, activeExplorerTabId: tab.id }
+      })),
+      updateExplorerTab: (id, updates) => set((state) => ({
+        explorerTabs: {
+          ...state.explorerTabs,
+          [id]: { ...state.explorerTabs[id], ...updates }
+        }
+      })),
+      removeExplorerTab: (id) => set((state) => {
+        const remainingTabs = Object.fromEntries(
+          Object.entries(state.explorerTabs).filter(([tabId]) => tabId !== id)
+        )
+        let nextActiveId = state.explorer.activeExplorerTabId
+        if (nextActiveId === id) {
+          const tabIds = Object.keys(remainingTabs)
+          nextActiveId = tabIds.length > 0 ? tabIds[tabIds.length - 1] : null
+        }
+        return {
+          explorerTabs: remainingTabs,
+          explorer: { ...state.explorer, activeExplorerTabId: nextActiveId }
+        }
+      }),
       addTab: () => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {
@@ -144,16 +173,16 @@ export const useAppStore = create<AppState>()(
         panels: state.panels,
         isSidebarOpen: state.isSidebarOpen,
         explorer: {
-          selectedItem: state.explorer.selectedItem,
           sidebarTab: state.explorer.sidebarTab,
-          activeTab: state.explorer.activeTab,
           search: state.explorer.search,
-          executionStatus: state.explorer.executionStatus,
-          executionError: state.explorer.executionError,
-          page: state.explorer.page,
-          pageSize: state.explorer.pageSize,
-          // socketResults is NOT persisted
+          activeExplorerTabId: state.explorer.activeExplorerTabId,
         },
+        explorerTabs: Object.fromEntries(
+          Object.entries(state.explorerTabs).map(([id, tab]) => [
+            id,
+            { ...tab, socketResults: null }
+          ])
+        ),
       }),
     },
   ),

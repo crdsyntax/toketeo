@@ -10,6 +10,12 @@ import type {
 } from '@/types/database'
 
 export const schemaService = {
+  getDatabases: async (id: string) => {
+    return await tauriApi.invoke<string[]>('get_databases', { id })
+  },
+  switchDatabase: async (id: string, newDb: string) => {
+    return await tauriApi.invoke<void>('switch_database', { id, newDb })
+  },
   getSchemas: async (id: string) => {
     return await tauriApi.invoke<string[]>('get_schemas', { id })
   },

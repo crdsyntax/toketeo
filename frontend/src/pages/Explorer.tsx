@@ -57,7 +57,11 @@ export default function Explorer() {
     errorDDL,
     handleExecute,
     handleCancel,
-    handleRefetch
+    handleRefetch,
+    explorerTabs,
+    activeExplorerTabId,
+    removeExplorerTab,
+    setExplorerState
   } = useExplorer()
 
   if (!activeConnection) {
@@ -146,6 +150,10 @@ export default function Explorer() {
 
         <div className="flex-1 border border-border rounded-xl bg-card flex flex-col overflow-hidden">
           <ObjectDetail 
+            explorerTabs={explorerTabs}
+            activeExplorerTabId={activeExplorerTabId}
+            removeExplorerTab={removeExplorerTab}
+            setExplorerState={setExplorerState}
             selectedItem={selectedItem}
             activeTab={activeTab}
             setActiveTab={setActiveTab}

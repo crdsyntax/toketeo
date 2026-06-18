@@ -111,6 +111,14 @@ impl DbDriver for MySqlDriver {
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
+        let rows = sqlx::query("SELECT schema_name FROM information_schema.schemata")
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows.iter().map(|r| r.get(0)).collect())
+    }
+
+    async fn fetch_databases(&self) -> AppResult<Vec<String>> {
         let rows = sqlx::query("SHOW DATABASES")
             .fetch_all(&self.pool)
             .await?;

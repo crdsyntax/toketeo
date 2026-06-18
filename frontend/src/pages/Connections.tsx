@@ -18,6 +18,7 @@ export default function Connections() {
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [connectingId, setConnectingId] = useState<string | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -65,6 +66,17 @@ export default function Connections() {
       setTestMessage({ type: 'error', text: err.message || 'Operation failed' })
     }).finally(() => {
       setIsTesting(false)
+    })
+  }
+
+  const handleTestCard = (conn: Connection) => {
+    setTestingId(conn.id)
+    connectionService.test(conn).then(() => {
+      setMiniToast(conn.id, { type: 'success', text: 'Connection established successfully' })
+    }).catch((err: Error) => {
+      setMiniToast(conn.id, { type: 'error', text: err.message || 'Operation failed' })
+    }).finally(() => {
+      setTestingId(null)
     })
   }
 
@@ -219,9 +231,11 @@ export default function Connections() {
               onEdit={handleEdit}
               onDelete={(id) => deleteMutation.mutate(id)}
               onConnect={handleConnect}
+              onTest={handleTestCard}
               onDisconnect={handleDisconnect}
               onExport={handleExport}
               isConnecting={connectingId === conn.id}
+              isTesting={testingId === conn.id}
               isActive={activeConnection?.id === conn.id}
             />
           ))}

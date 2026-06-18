@@ -1,127 +1,257 @@
-# Frontend Agent
+# Frontend Agent (DBA Client Edition)
 
 ## Stack
 
-- React
-- TypeScript
-- Vite
-- React Router
-- TanStack Query
-- TanStack Table
-- Zustand
-- Monaco Editor
-- Shadcn UI
+* React
+* TypeScript
+* Vite
+* React Router
+* TanStack Query
+* TanStack Table
+* Zustand
+* Monaco Editor
+* Shadcn UI
+* Tauri (Desktop runtime)
 
-## Structure
+---
 
-```text
-src/
-├── app/
-├── pages/
-├── features/
-├── components/
-├── services/
-├── stores/
-├── hooks/
-├── types/
-└── utils/
-```
+## Core Principle
 
-## Rules
+Frontend is a **presentation layer for database metadata**.
 
-- Strict TypeScript
-- No any
-- No business logic in components
-- Early returns
-- Reusable components
-- Feature-based structure
-- Single responsibility
-- Strong typing everywhere
+It is NOT a domain system.
 
-## Components
+It does NOT define business or database concepts.
 
-- UI only
-- No API calls
-- No complex transformations
+All database knowledge comes from Rust backend.
 
-## Services
+---
 
-- API communication only
-- Return typed DTOs
+## Absolute Rule
 
-## Stores
+Frontend must never define or assume:
 
-- Global state only
-- No API calls
+* schemas
+* tables
+* views
+* procedures
+* triggers
+* columns
+* indexes
+* relationships
+* hierarchy
 
-## Pages
+All of these come exclusively from backend responses.
 
-- Compose features
-- No business logic
+---
 
-## Tables
+## Architecture Boundaries
 
-- TanStack Table
-- Server pagination
-- Server filtering
-- Server sorting
+### UI Layer (React Components)
 
-## Forms
+Allowed:
 
-- React Hook Form
-- Zod validation
-
-## SQL Editor
-
-- Monaco Editor
-- Multi-tab support
-- Query execution
-- History support
-
-## Explorer
-
-Support:
-
-- Tables
-- Views
-- Procedures
-- Triggers
-
-## Data Viewer
-
-Support:
-
-- Pagination
-- Sorting
-- Filtering
-- Export CSV
-
-## Electron Compatibility
+* rendering data
+* user interactions
+* layout composition
+* visual state (open/close/loading)
 
 Forbidden:
 
-- window.localStorage directly
-- filesystem access
-- browser-specific APIs
+* API calls
+* data shaping
+* domain logic
+* metadata interpretation
 
-Use adapters.
+---
 
-## Workflow
+### Services Layer
 
-1 Analyze request
-2 List affected files
-3 Create plan
-4 Wait approval
-5 One atomic change
-6 Stop
+Allowed:
 
-## Review Checklist
+* raw API calls to Rust backend
+* return typed DTOs exactly as received
 
-- Types safe
-- No any
-- No duplicated code
-- No business logic in UI
-- Feature isolated
-- DTO typed
-- Reusable components
-- Electron compatible
+Forbidden:
+
+* transformations
+* merging entities
+* inferring structure
+* normalizing DB engines
+
+---
+
+### Stores (Zustand)
+
+Allowed:
+
+* UI state only
+* selection state
+* expansion state
+* caching raw backend responses
+
+Forbidden:
+
+* business logic
+* derived schema models
+* computed database structure
+
+---
+
+## Data Model Rule
+
+Frontend does NOT define database models.
+
+There is no:
+
+* "Explorer model"
+* "Schema model"
+* "Tree model with assumptions"
+
+Only backend-provided DTOs exist.
+
+If backend changes → UI adapts.
+
+---
+
+## Explorer Rule (Critical)
+
+Explorer is NOT a predefined feature.
+
+Explorer is a **dynamic rendering of backend metadata nodes**.
+
+Valid nodes only exist if backend returns them.
+
+Example:
+
+✔ Valid:
+
+* schema node if backend returns schema
+* table node if backend returns table
+* view node if backend returns view
+
+✘ Invalid:
+
+* assuming "Tables" exists under schema
+* assuming "public" is special
+* grouping objects by frontend logic
+
+---
+
+## Explorer Rendering Strategy
+
+Frontend must render a generic node system:
+
+* Node has type (from backend)
+* Node has children (if backend provides)
+* Node expands only by API request
+
+No static tree structure exists.
+
+---
+
+## Tables / Views / Procedures Rule
+
+These are NOT UI features.
+
+They are backend-defined object types.
+
+Frontend must not assume:
+
+* existence
+* grouping
+* naming conventions
+* hierarchy
+
+---
+
+## PostgreSQL Warning (Hard Rule)
+
+PostgreSQL schema structure must NOT be normalized.
+
+Rules:
+
+* schemas are flat
+* public is not special
+* no parent-child schema assumptions
+* no default schema assumptions
+
+---
+
+## TanStack Table Rule
+
+* All operations are server-side
+* Pagination is mandatory server-side
+* Filtering is server-side
+* Sorting is server-side
+
+Frontend never filters full datasets locally.
+
+---
+
+## SQL Editor Rule
+
+* Monaco is only an editor
+* Execution is handled by backend
+* No SQL parsing in frontend
+* No query interpretation
+
+---
+
+## Electron / Tauri Rule
+
+* No direct filesystem access
+* No direct OS calls
+* No browser-only dependencies without adapter layer
+
+---
+
+## State Management Rule
+
+Zustand stores:
+
+* raw backend responses
+* UI expansion state
+* selected node state
+
+Zustand must NOT:
+
+* compute schema structures
+* infer relationships
+* transform database metadata
+
+---
+
+## API Rule
+
+TanStack Query:
+
+* only wraps backend calls
+* no transformation logic
+* no caching of derived models
+* stale-while-revalidate allowed
+
+---
+
+## Anti-Hallucination Rule
+
+Before writing any frontend logic:
+
+Ask:
+
+1. Is this provided by backend?
+2. Am I inventing structure?
+3. Would another DB engine behave differently?
+4. Am I hardcoding database concepts?
+
+If yes → invalid implementation.
+
+---
+
+## Golden Rule
+
+Frontend never understands databases.
+
+Frontend only renders what Rust describes.
+
+If Rust does not describe it → it does not exist.

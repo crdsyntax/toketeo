@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
+import { DatabaseItem } from './DatabaseItem'
 
 interface ConnectionsSidebarProps {
   connections: Connection[]
@@ -23,9 +24,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const { setActiveConnectionDatabase } = useAppStore()
   const navigate = useNavigate()
 
-  const { data: schemas = [] } = useQuery({
-    queryKey: ['schemas', expandedConnId],
-    queryFn: () => schemaService.getSchemas(expandedConnId!),
+  const { data: databases = [] } = useQuery({
+    queryKey: ['databases', expandedConnId],
+    queryFn: () => schemaService.getDatabases(expandedConnId!),
     enabled: !!expandedConnId,
     staleTime: 5 * 60 * 1000,
   })
@@ -112,16 +113,14 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             {expandedConnId === conn.id && (
               <div className="pb-2 px-2 animate-in slide-in-from-top-1 duration-200">
                 <div className="pl-3 ml-1 border-l border-border/50 space-y-0.5">
-                  {schemas.length > 0 ? (
-                    schemas.map((s) => (
-                      <div 
-                        key={s} 
-                        onDoubleClick={() => handleSchemaDoubleClick(conn, s)}
-                        className="text-[10px] p-1.5 cursor-pointer font-mono hover:bg-accent/10 hover:text-accent transition-colors truncate"
-                        title={s}
-                      >
-                        {s}
-                      </div>
+                  {databases.length > 0 ? (
+                    databases.map((db) => (
+                      <DatabaseItem 
+                        key={db} 
+                        conn={conn}
+                        dbName={db}
+                        onSelect={handleSchemaDoubleClick}
+                      />
                     ))
                   ) : (
                     <div className="text-[9px] p-1.5 text-muted-foreground italic font-mono uppercase tracking-widest opacity-50">

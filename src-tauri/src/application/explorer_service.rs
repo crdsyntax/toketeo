@@ -45,6 +45,11 @@ impl ExplorerService {
         driver.fetch_schemas().await
     }
 
+    pub async fn get_databases(state: &AppState, id: &str) -> AppResult<Vec<String>> {
+        let driver = state.get_connection(id).await?;
+        driver.fetch_databases().await
+    }
+
     pub async fn get_tables(state: &AppState, id: &str, schema: Option<String>) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_tables(schema).await

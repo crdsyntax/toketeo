@@ -193,6 +193,42 @@ impl ConnectionService {
         Ok(id)
     }
 
+    pub async fn diagnose_connection(
+        state: &AppState,
+        id: &str,
+    ) -> AppResult<serde_json::Value> {
+        let config = state.storage.get_connection(id).await?;
+        let url = ConnectionStringBuilder::build(&config)?;
+        
+        let driver = DriverFactory::create(config.db_type, &url, false).await?;
+        
+        let dbs = driver.fetch_databases().await?;
+        let schemas = driver.fetch_schemas().await?;
+        
+        Ok(serde_json::json!({
+            "databases": dbs,
+            "schemas": schemas
+        }))
+    }
+
+    pub async fn switch_database(
+        state: &AppState,
+        id: &str,
+        new_db: &str,
+    ) -> AppResult<()> {
+        let mut config = state.storage.get_connection(id).await?;
+        config.database = Some(new_db.to_string());
+        
+        // Re-establish connection with new DB
+        let url = ConnectionStringBuilder::build(&config)?;
+        let driver = DriverFactory::create(config.db_type, &url, false).await?;
+        
+        // Replace existing driver in state
+        state.add_connection(id.to_string(), driver, None, false).await;
+        
+        Ok(())
+    }
+
     pub async fn disconnect(state: &AppState, id: &str) -> AppResult<()> {
         state.remove_connection(id).await
     }

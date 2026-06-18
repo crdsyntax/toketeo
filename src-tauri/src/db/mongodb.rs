@@ -187,6 +187,12 @@ impl DbDriver for MongoDbDriver {
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
+        // Mongo doesn't have "schemas" per se, maybe return collections in current db?
+        // Let's keep it as is for now, or change to something meaningful.
+        Ok(vec![])
+    }
+
+    async fn fetch_databases(&self) -> AppResult<Vec<String>> {
         self.client.list_database_names().await
             .map_err(|e| AppError::Database(format!("Failed to list databases: {}", e)))
     }

@@ -1,4 +1,4 @@
-import { Database, Download, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon, Loader2 } from 'lucide-react'
+import { Database, Download, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon, Loader2, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Environment } from '@/types/database'
 import type { Connection } from '@/types/database'
@@ -9,13 +9,15 @@ interface ConnectionCardProps {
   onEdit: (conn: Connection) => void
   onDelete: (id: string) => void
   onConnect: (conn: Connection) => void
+  onTest?: (conn: Connection) => void
   onDisconnect?: (id: string) => void
   onExport?: (conn: Connection) => void
   isConnecting?: boolean
+  isTesting?: boolean
   isActive?: boolean
 }
 
-export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExport, isConnecting, onDisconnect, isActive }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest, onExport, isConnecting, isTesting, onDisconnect, isActive }: ConnectionCardProps) {
   const miniToast = useAppStore((state) => state.miniToasts[connection.id])
   const getEnvColor = (env: Environment) => {
     switch (env) {
@@ -52,23 +54,23 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExpo
           {onExport && (
             <button
               onClick={() => onExport(connection)}
-              disabled={isConnecting}
-              className={cn("p-1.5 text-muted-foreground transition-colors", !isConnecting ? "hover:text-primary hover:bg-primary/5" : "opacity-60 cursor-not-allowed")}
+              disabled={isConnecting || isTesting}
+              className={cn("p-1.5 text-muted-foreground transition-colors", (!isConnecting && !isTesting) ? "hover:text-primary hover:bg-primary/5" : "opacity-60 cursor-not-allowed")}
             >
               <Download className="w-3.5 h-3.5" />
             </button>
           )}
           <button 
             onClick={() => onEdit(connection)}
-            disabled={isConnecting}
-            className={cn("p-1.5 text-muted-foreground transition-colors", !isConnecting ? "hover:text-primary hover:bg-primary/5" : "opacity-60 cursor-not-allowed")}
+            disabled={isConnecting || isTesting}
+            className={cn("p-1.5 text-muted-foreground transition-colors", (!isConnecting && !isTesting) ? "hover:text-primary hover:bg-primary/5" : "opacity-60 cursor-not-allowed")}
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
           <button 
             onClick={() => onDelete(connection.id)}
-            disabled={isConnecting}
-            className={cn("p-1.5 text-muted-foreground transition-colors", !isConnecting ? "hover:text-destructive hover:bg-destructive/5" : "opacity-60 cursor-not-allowed")}
+            disabled={isConnecting || isTesting}
+            className={cn("p-1.5 text-muted-foreground transition-colors", (!isConnecting && !isTesting) ? "hover:text-destructive hover:bg-destructive/5" : "opacity-60 cursor-not-allowed")}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -98,33 +100,53 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onExpo
         </div>
       </div>
 
-        <div className="mt-4 pt-4 border-t border-border/50 flex justify-end">
-        <div className="flex items-center gap-3">
-          {onDisconnect && isActive && (
-            <button
-              onClick={() => onDisconnect(connection.id)}
-              disabled={isConnecting}
-              className={cn("text-[10px] font-bold uppercase tracking-widest text-destructive flex items-center gap-2 hover:translate-x-1 transition-transform", isConnecting && "opacity-60 cursor-not-allowed")}
-            >
-              Disconnect
-            </button>
-          )}
-
-          <button 
-            onClick={() => onConnect(connection)}
-            disabled={isConnecting}
-            className={cn("text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform", isConnecting && "opacity-60 cursor-not-allowed")}
-          >
-            {isConnecting ? (
-              <>
-                <Loader2 className="w-3 h-3 animate-spin" /> Connecting...
-              </>
-            ) : (
-              <>Connect <LinkIcon className="w-3 h-3" /></>
+        <div className="mt-4 pt-4 border-t border-border/50 flex items-center justify-between">
+          <div>
+            {onTest && !isActive && (
+              <button 
+                onClick={() => onTest(connection)}
+                disabled={isConnecting || isTesting}
+                className={cn("text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 hover:text-primary transition-colors", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
+              >
+                {isTesting ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" /> Testing...
+                  </>
+                ) : (
+                  <>Test <Zap className="w-3 h-3" /></>
+                )}
+              </button>
             )}
-          </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {onDisconnect && isActive && (
+              <button
+                onClick={() => onDisconnect(connection.id)}
+                disabled={isConnecting || isTesting}
+                className={cn("text-[10px] font-bold uppercase tracking-widest text-destructive flex items-center gap-2 hover:translate-x-1 transition-transform", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
+              >
+                Disconnect
+              </button>
+            )}
+
+            <button 
+              onClick={() => onConnect(connection)}
+              disabled={isConnecting || isTesting}
+              className={cn("text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" /> Connecting...
+                </>
+              ) : (
+                <>Connect <LinkIcon className="w-3 h-3" /></>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+
     </div>
   )
 }
+

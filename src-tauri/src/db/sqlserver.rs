@@ -147,6 +147,11 @@ impl DbDriver for SqlServerDriver {
         Ok(rows.into_iter().filter_map(|row| row.get("name").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
     }
 
+    async fn fetch_databases(&self) -> AppResult<Vec<String>> {
+        let rows = self.run_query("SELECT name FROM sys.databases").await?;
+        Ok(rows.into_iter().filter_map(|row| row.get("name").and_then(|v| v.as_str().map(|s| s.to_string()))).collect())
+    }
+
     async fn fetch_tables(&self, schema: Option<String>) -> AppResult<Vec<String>> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
         let query = format!(

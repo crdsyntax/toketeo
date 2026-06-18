@@ -167,6 +167,31 @@ pub async fn get_schemas(
 }
 
 #[tauri::command]
+pub async fn get_databases(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    ExplorerService::get_databases(&state, &id).await
+}
+
+#[tauri::command]
+pub async fn diagnose_connection(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<serde_json::Value> {
+    ConnectionService::diagnose_connection(&state, &id).await
+}
+
+#[tauri::command]
+pub async fn switch_database(
+    id: String,
+    new_db: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::switch_database(&state, &id, &new_db).await
+}
+
+#[tauri::command]
 pub async fn get_tables(
     id: String,
     schema: Option<String>,

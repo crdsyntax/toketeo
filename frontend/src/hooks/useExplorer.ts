@@ -8,44 +8,101 @@ import type { DatabaseObject, QueryResult, DbValue, DbRow } from '@/types/databa
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType } from '@/types/database'
 
 export function useExplorer() {
-  const { activeConnection, explorer, setExplorerState } = useAppStore()
+  const { 
+    activeConnection, 
+    explorer, 
+    explorerTabs,
+    setExplorerState, 
+    addExplorerTab, 
+    updateExplorerTab,
+    removeExplorerTab
+  } = useAppStore()
   const queryClient = useQueryClient()
 
-  const { search, selectedItem, sidebarTab, activeTab, executionStatus, executionError, socketResults, page, pageSize } = explorer
+  const { search, sidebarTab, activeExplorerTabId } = explorer
+  
+  const activeTabState = useMemo(() => 
+    activeExplorerTabId ? explorerTabs[activeExplorerTabId] : null
+  , [activeExplorerTabId, explorerTabs])
+
+  const { 
+    selectedItem, 
+    activeTab, 
+    executionStatus, 
+    executionError, 
+    socketResults, 
+    page, 
+    pageSize,
+    editableDdl
+  } = activeTabState || {
+    selectedItem: null,
+    activeTab: ExplorerTab.COLUMNS,
+    executionStatus: ExecutionStatus.IDLE,
+    executionError: null,
+    socketResults: null,
+    page: 0,
+    pageSize: 50,
+    editableDdl: ''
+  }
+
   const setSearch = useCallback((s: string) => setExplorerState({ search: s }), [setExplorerState])
   const setSidebarTab = useCallback((tab: SidebarTab) => setExplorerState({ sidebarTab: tab }), [setExplorerState])
-  const setActiveTab = useCallback((tab: ExplorerTab) => setExplorerState({ activeTab: tab }), [setExplorerState])
-  const setExecutionStatus = useCallback((status: ExecutionStatus) => setExplorerState({ executionStatus: status }), [setExplorerState])
-  const setExecutionError = useCallback((error: string | null) => setExplorerState({ executionError: error }), [setExplorerState])
-  const setSocketResults = useCallback((results: QueryResult | null | ((prev: QueryResult | null) => QueryResult | null)) => {
-    if (typeof results === 'function') {
-      setExplorerState({ socketResults: results(explorer.socketResults) })
-    } else {
-      setExplorerState({ socketResults: results })
+  
+  const setActiveTab = useCallback((tab: ExplorerTab) => {
+    if (activeExplorerTabId) {
+      updateExplorerTab(activeExplorerTabId, { activeTab: tab })
     }
-  }, [setExplorerState, explorer.socketResults])
+  }, [activeExplorerTabId, updateExplorerTab])
+
+  const setExecutionStatus = useCallback((status: ExecutionStatus) => {
+    if (activeExplorerTabId) {
+      updateExplorerTab(activeExplorerTabId, { executionStatus: status })
+    }
+  }, [activeExplorerTabId, updateExplorerTab])
+
+  const setExecutionError = useCallback((error: string | null) => {
+    if (activeExplorerTabId) {
+      updateExplorerTab(activeExplorerTabId, { executionError: error })
+    }
+  }, [activeExplorerTabId, updateExplorerTab])
+
+  const setSocketResults = useCallback((results: QueryResult | null | ((prev: QueryResult | null) => QueryResult | null)) => {
+    if (activeExplorerTabId) {
+      const newResults = typeof results === 'function' ? results(socketResults) : results
+      updateExplorerTab(activeExplorerTabId, { socketResults: newResults })
+    }
+  }, [activeExplorerTabId, socketResults, updateExplorerTab])
+
+  const setEditableDdl = useCallback((ddl: string) => {
+    if (activeExplorerTabId) {
+      updateExplorerTab(activeExplorerTabId, { editableDdl: ddl })
+    }
+  }, [activeExplorerTabId, updateExplorerTab])
 
   const currentSchema = activeConnection?.database
 
   const handleSetPageSize = useCallback((size: number) => {
-    setExplorerState({ 
-      pageSize: size,
-      page: 0,
-      socketResults: null, 
-      executionStatus: ExecutionStatus.IDLE 
-    })
-  }, [setExplorerState])
+    if (activeExplorerTabId) {
+      updateExplorerTab(activeExplorerTabId, { 
+        pageSize: size,
+        page: 0,
+        socketResults: null, 
+        executionStatus: ExecutionStatus.IDLE 
+      })
+    }
+  }, [activeExplorerTabId, updateExplorerTab])
 
   const handleSetPage = useCallback((updater: number | ((p: number) => number)) => {
-    const newPage = typeof updater === 'function' ? updater(page) : updater
-    setExplorerState({ 
-      page: newPage,
-      socketResults: null, 
-      executionStatus: ExecutionStatus.IDLE 
-    })
-  }, [setExplorerState, page])
+    if (activeExplorerTabId) {
+      const newPage = typeof updater === 'function' ? updater(page) : updater
+      updateExplorerTab(activeExplorerTabId, { 
+        page: newPage,
+        socketResults: null, 
+        executionStatus: ExecutionStatus.IDLE 
+      })
+    }
+  }, [activeExplorerTabId, page, updateExplorerTab])
   
-  const [editableDdl, setEditableDdl] = useState('')
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
   const [showParamModal, setShowParamModal] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -66,14 +123,11 @@ export function useExplorer() {
   // Track previous connection to detect real changes
   const prevConnIdRef = useRef<string | null>(null)
 
-  // Reset selection ONLY when connection ID changes
+  // Clear tabs when connection ID changes
   useEffect(() => {
     if (activeConnection?.id && activeConnection.id !== prevConnIdRef.current) {
       setExplorerState({
-        selectedItem: null,
-        socketResults: null,
-        executionStatus: ExecutionStatus.IDLE,
-        page: 0
+        activeExplorerTabId: null
       })
       setIsSidebarCollapsed(false)
       prevConnIdRef.current = activeConnection.id
@@ -81,14 +135,28 @@ export function useExplorer() {
   }, [activeConnection?.id, setExplorerState])
 
   const handleSelectItem = useCallback((item: DatabaseObject) => {
-    setExplorerState({
-      selectedItem: item,
-      page: 0,
-      executionStatus: ExecutionStatus.IDLE,
-      socketResults: null
-    })
+    if (!activeConnection) return
+
+    const tabId = `${activeConnection.id}:${currentSchema || 'default'}:${item.name}`
+    
+    if (explorerTabs[tabId]) {
+      setExplorerState({ activeExplorerTabId: tabId })
+    } else {
+      addExplorerTab({
+        id: tabId,
+        selectedItem: item,
+        activeTab: ExplorerTab.COLUMNS,
+        executionStatus: ExecutionStatus.IDLE,
+        executionError: null,
+        socketResults: null,
+        page: 0,
+        pageSize: 50,
+        editableDdl: ''
+      })
+    }
+    
     setIsSidebarCollapsed(true)
-  }, [setExplorerState])
+  }, [activeConnection, currentSchema, explorerTabs, addExplorerTab, setExplorerState])
 
   const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
@@ -196,7 +264,7 @@ export function useExplorer() {
       lastSyncedDdl.current = ddlData.ddl
       setEditableDdl(ddlData.ddl)
     }
-  }, [ddlData?.ddl])
+  }, [ddlData?.ddl, setEditableDdl])
 
   const { data: parameters } = useQuery({
     queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
@@ -474,6 +542,10 @@ export function useExplorer() {
     updateCell,
     handleExecute,
     handleCancel,
-    handleRefetch
+    handleRefetch,
+    explorerTabs,
+    activeExplorerTabId,
+    removeExplorerTab,
+    setExplorerState
   }
 }
