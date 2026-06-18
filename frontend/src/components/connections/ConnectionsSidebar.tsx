@@ -7,6 +7,7 @@ import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
 import { DatabaseItem } from './DatabaseItem'
+import { SchemaItem } from './SchemaItem'
 
 interface ConnectionsSidebarProps {
   connections: Connection[]
@@ -17,6 +18,38 @@ interface ConnectionsSidebarProps {
   onDisconnect?: (id: string) => void
 }
 
+function PostgresContent({ conn, onSelect }: { conn: Connection, onSelect: (c: Connection, s: string) => void }) {
+  const { data: databases = [] } = useQuery({
+    queryKey: ['databases', conn.id],
+    queryFn: () => schemaService.getDatabases(conn.id),
+    enabled: !!conn.id,
+    staleTime: 5 * 60 * 1000,
+  })
+  return (
+    <>
+      {databases.map((db) => (
+        <DatabaseItem key={db} conn={conn} dbName={db} onSelect={onSelect} />
+      ))}
+    </>
+  )
+}
+
+function SchemaContent({ conn, onSelect }: { conn: Connection, onSelect: (c: Connection, s: string) => void }) {
+  const { data: schemas = [] } = useQuery({
+    queryKey: ['schemas', conn.id],
+    queryFn: () => schemaService.getSchemas(conn.id),
+    enabled: !!conn.id,
+    staleTime: 5 * 60 * 1000,
+  })
+  return (
+    <>
+      {schemas.map((s) => (
+        <SchemaItem key={s} conn={conn} schema={s} onSelect={onSelect} />
+      ))}
+    </>
+  )
+}
+
 export function ConnectionsSidebar({ connections, activeConnection, onConnect, onEdit, onNew, onDisconnect }: ConnectionsSidebarProps) {
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null)
@@ -24,13 +57,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase } = useAppStore()
   const navigate = useNavigate()
-
-  const { data: databases = [] } = useQuery({
-    queryKey: ['databases', expandedConnId],
-    queryFn: () => schemaService.getDatabases(expandedConnId!),
-    enabled: !!expandedConnId,
-    staleTime: 5 * 60 * 1000,
-  })
 
   const switchSchemaMutation = useMutation({
     mutationFn: ({ connectionId, schema }: { connectionId: string, schema: string }) =>
@@ -127,19 +153,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             {expandedConnId === conn.id && (
               <div className="pb-2 px-2 animate-in slide-in-from-top-1 duration-200">
                 <div className="pl-3 ml-1 border-l border-border/50 space-y-0.5">
-                  {databases.length > 0 ? (
-                    databases.map((db) => (
-                      <DatabaseItem 
-                        key={db} 
-                        conn={conn}
-                        dbName={db}
-                        onSelect={handleSchemaDoubleClick}
-                      />
-                    ))
+                  {conn.type === 'postgres' ? (
+                    <PostgresContent conn={conn} onSelect={handleSchemaDoubleClick} />
                   ) : (
-                    <div className="text-[9px] p-1.5 text-muted-foreground italic font-mono uppercase tracking-widest opacity-50">
-                      Empty
-                    </div>
+                    <SchemaContent conn={conn} onSelect={handleSchemaDoubleClick} />
                   )}
                 </div>
               </div>

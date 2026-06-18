@@ -82,25 +82,26 @@ export function useExplorer() {
 
   const handleSetPageSize = useCallback((size: number) => {
     if (activeExplorerTabId) {
-      updateExplorerTab(activeExplorerTabId, { 
+      updateExplorerTab(activeExplorerTabId, {
         pageSize: size,
         page: 0,
-        socketResults: null, 
-        executionStatus: ExecutionStatus.IDLE 
+        socketResults: null,
+        executionStatus: ExecutionStatus.EXECUTING
       })
     }
   }, [activeExplorerTabId, updateExplorerTab])
 
   const handleSetPage = useCallback((updater: number | ((p: number) => number)) => {
     if (activeExplorerTabId) {
-      const newPage = typeof updater === 'function' ? updater(page) : updater
-      updateExplorerTab(activeExplorerTabId, { 
+      const currentPage = explorerTabs[activeExplorerTabId]?.page || 0;
+      const newPage = typeof updater === 'function' ? updater(currentPage) : updater
+      updateExplorerTab(activeExplorerTabId, {
         page: newPage,
-        socketResults: null, 
-        executionStatus: ExecutionStatus.IDLE 
+        socketResults: null,
+        executionStatus: ExecutionStatus.EXECUTING
       })
     }
-  }, [activeExplorerTabId, page, updateExplorerTab])
+  }, [activeExplorerTabId, explorerTabs, updateExplorerTab])
   
   const [paramValues, setParamsValues] = useState<Record<string, string>>({})
   const [showParamModal, setShowParamModal] = useState(false)
@@ -452,13 +453,26 @@ export function useExplorer() {
   useEffect(() => {
     const isDataTable = selectedItem?.type === DatabaseObjectType.TABLE || selectedItem?.type === DatabaseObjectType.VIEW;
     const isDataTab = activeTab === ExplorerTab.DATA;
-    // Check if we need data (executionStatus is IDLE or we just don't have results)
+    
+    // Explicitly trigger if executionStatus is IDLE or socketResults is null.
+    // If it is SUCCESS, it means we have data for the previous page, 
+    // so we should only execute if page or pageSize changed and we've reset results.
     const needsExecution = isDataTable && isDataTab && (executionStatus === ExecutionStatus.IDLE || socketResults === null);
+
+    console.log('[useExplorer] useEffect trigger pagination/tab:', { 
+        isDataTable, 
+        isDataTab, 
+        executionStatus, 
+        socketResultsIsNull: socketResults === null, 
+        needsExecution,
+        page,
+        pageSize
+    });
 
     if (needsExecution) {
       handleExecute();
     }
-  }, [activeTab, executionStatus, handleExecute, selectedItem?.type, socketResults])
+  }, [activeTab, executionStatus, handleExecute, selectedItem?.type, socketResults, page, pageSize])
 
   const handleCancel = useCallback(() => {
     setExecutionStatus(ExecutionStatus.ERROR)

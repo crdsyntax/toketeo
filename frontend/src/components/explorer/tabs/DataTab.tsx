@@ -96,22 +96,19 @@ export function DataTab({
       )}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
-          <div className="p-4 space-y-4">
-            <div className="flex items-center gap-2 text-primary animate-pulse mb-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-xs font-bold uppercase tracking-widest">
+          <div className="flex-1 flex flex-col items-center justify-center p-4 space-y-4">
+            <div className="flex flex-col items-center gap-3 text-primary animate-pulse">
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <span className="text-sm font-bold uppercase tracking-widest">
                 Loading data...
               </span>
               <button
                 onClick={handleCancel}
-                className="ml-auto bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1 rounded text-[10px] font-bold hover:bg-destructive/20 transition-colors"
+                className="bg-destructive/10 text-destructive border border-destructive/20 px-4 py-1.5 rounded text-xs font-bold hover:bg-destructive/20 transition-colors"
               >
                 Cancel
               </button>
             </div>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-8 bg-muted animate-pulse rounded" />
-            ))}
           </div>
         ) : queryData ? (
           <div className="min-w-full inline-block align-middle">
