@@ -1,12 +1,12 @@
-use std::net::{TcpListener, TcpStream};
-use ssh2::Session;
 use crate::error::AppResult;
-use crate::models::{SshConfig, SshAuthType};
+use crate::models::{SshAuthType, SshConfig};
 use secrecy::ExposeSecret;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use std::thread;
+use ssh2::Session;
 use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
+use std::thread;
+use tokio::sync::Mutex;
 
 pub struct SshTunnel {
     pub local_port: u16,
@@ -17,58 +17,94 @@ pub struct SshTunnel {
 impl SshTunnel {
     pub async fn open(config: &SshConfig, remote_host: &str, remote_port: u16) -> AppResult<Self> {
         tracing::info!("Opening SSH connection to {}:{}", config.host, config.port);
-        
-        let tcp = TcpStream::connect(format!("{}:{}", config.host, config.port))
-            .map_err(|e| crate::error::AppError::Ssh(format!("Failed to connect to SSH host {}:{}: {}", config.host, config.port, e)))?;
-        
-        let mut sess = Session::new()
-            .map_err(|e| crate::error::AppError::Ssh(format!("Failed to create SSH session: {}", e)))?;
-        
-        sess.set_tcp_stream(tcp.try_clone().map_err(|e| crate::error::AppError::Ssh(format!("Failed to set TCP stream: {}", e)))?);
-        sess.handshake().map_err(|e| crate::error::AppError::Ssh(format!("SSH handshake failed: {}", e)))?;
+
+        let tcp = TcpStream::connect(format!("{}:{}", config.host, config.port)).map_err(|e| {
+            crate::error::AppError::Ssh(format!(
+                "Failed to connect to SSH host {}:{}: {}",
+                config.host, config.port, e
+            ))
+        })?;
+
+        let mut sess = Session::new().map_err(|e| {
+            crate::error::AppError::Ssh(format!("Failed to create SSH session: {}", e))
+        })?;
+
+        sess.set_tcp_stream(tcp.try_clone().map_err(|e| {
+            crate::error::AppError::Ssh(format!("Failed to set TCP stream: {}", e))
+        })?);
+        sess.handshake()
+            .map_err(|e| crate::error::AppError::Ssh(format!("SSH handshake failed: {}", e)))?;
 
         match config.auth_type {
             SshAuthType::Password => {
                 if let Some(ref password) = config.password {
                     sess.userauth_password(&config.user, password.expose_secret())
-                        .map_err(|e| crate::error::AppError::Ssh(format!("SSH Password auth failed for user '{}': {}", config.user, e)))?;
+                        .map_err(|e| {
+                            crate::error::AppError::Ssh(format!(
+                                "SSH Password auth failed for user '{}': {}",
+                                config.user, e
+                            ))
+                        })?;
                 } else {
-                    return Err(crate::error::AppError::Ssh("SSH Password authentication requested but no password provided".into()));
+                    return Err(crate::error::AppError::Ssh(
+                        "SSH Password authentication requested but no password provided".into(),
+                    ));
                 }
             }
             SshAuthType::Key => {
                 if let Some(ref key) = config.private_key {
-                    let passphrase = config.passphrase.as_ref().map(|p| p.expose_secret().as_ref());
-                    sess.userauth_pubkey_memory(&config.user, None, key.expose_secret(), passphrase)
-                        .map_err(|e| crate::error::AppError::Ssh(format!("SSH Key auth failed for user '{}': {}", config.user, e)))?;
+                    let passphrase = config
+                        .passphrase
+                        .as_ref()
+                        .map(|p| p.expose_secret().as_ref());
+                    sess.userauth_pubkey_memory(
+                        &config.user,
+                        None,
+                        key.expose_secret(),
+                        passphrase,
+                    )
+                    .map_err(|e| {
+                        crate::error::AppError::Ssh(format!(
+                            "SSH Key auth failed for user '{}': {}",
+                            config.user, e
+                        ))
+                    })?;
                 } else {
-                    return Err(crate::error::AppError::Ssh("SSH Key authentication requested but no private key provided".into()));
+                    return Err(crate::error::AppError::Ssh(
+                        "SSH Key authentication requested but no private key provided".into(),
+                    ));
                 }
             }
         }
 
         if !sess.authenticated() {
-            return Err(crate::error::AppError::Ssh("SSH authentication failed: session not authenticated".into()));
+            return Err(crate::error::AppError::Ssh(
+                "SSH authentication failed: session not authenticated".into(),
+            ));
         }
 
         tracing::info!("SSH authentication successful for {}", config.user);
 
         // Start local listener for port forwarding
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| crate::error::AppError::Ssh(format!("Failed to bind local port for forwarding: {}", e)))?;
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| {
+            crate::error::AppError::Ssh(format!("Failed to bind local port for forwarding: {}", e))
+        })?;
         let local_port = listener.local_addr().unwrap().port();
-        
-        tracing::info!("Started local listener for SSH forwarding on 127.0.0.1:{}", local_port);
+
+        tracing::info!(
+            "Started local listener for SSH forwarding on 127.0.0.1:{}",
+            local_port
+        );
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let sess_arc = Arc::new(Mutex::new(sess));
         let sess_clone = sess_arc.clone();
         let remote_host = remote_host.to_string();
-        
+
         // Spawn background thread for port forwarding
         thread::spawn(move || {
             listener.set_nonblocking(true).ok();
-            
+
             loop {
                 // Check for shutdown signal
                 if shutdown_rx.try_recv().is_ok() {
@@ -80,44 +116,57 @@ impl SshTunnel {
                     println!("[SSH] Local connection accepted from {}", addr);
                     let sess_inner = sess_clone.clone();
                     let host_inner = remote_host.clone();
-                    
+
                     thread::spawn(move || {
-                        let mut sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
-                        
+                        let mut sess_guard =
+                            tauri::async_runtime::block_on(async { sess_inner.lock().await });
+
                         // Ensure the session is in non-blocking mode for this thread's channel operations
                         sess_guard.set_blocking(false);
-                        
-                        println!("[SSH] Attempting to open channel to remote {}:{}...", host_inner, remote_port);
-                        
+
+                        println!(
+                            "[SSH] Attempting to open channel to remote {}:{}...",
+                            host_inner, remote_port
+                        );
+
                         // We might need to poll for the channel opening in non-blocking mode
                         let mut channel = loop {
                             match sess_guard.channel_direct_tcpip(&host_inner, remote_port, None) {
                                 Ok(ch) => break ch,
-                                Err(e) if e.code() == ssh2::ErrorCode::Session(-37) => { // EAGAIN
+                                Err(e) if e.code() == ssh2::ErrorCode::Session(-37) => {
+                                    // EAGAIN
                                     drop(sess_guard);
                                     thread::sleep(std::time::Duration::from_millis(50));
-                                    sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
+                                    sess_guard = tauri::async_runtime::block_on(async {
+                                        sess_inner.lock().await
+                                    });
                                     continue;
                                 }
                                 Err(e) => {
-                                    println!("[SSH] FAILED to open channel to {}:{}: {}", host_inner, remote_port, e);
+                                    println!(
+                                        "[SSH] FAILED to open channel to {}:{}: {}",
+                                        host_inner, remote_port, e
+                                    );
                                     return;
                                 }
                             }
                         };
 
-                        println!("[SSH] Channel established to {}:{}!", host_inner, remote_port);
-                        
+                        println!(
+                            "[SSH] Channel established to {}:{}!",
+                            host_inner, remote_port
+                        );
+
                         // local_stream should already be non-blocking from the accept loop if we did it there,
                         // but let's be safe.
                         local_stream.set_nonblocking(true).ok();
-                        
+
                         let mut buffer_local = [0u8; 16384];
                         let mut buffer_remote = [0u8; 16384];
-                        
+
                         loop {
                             let mut activity = false;
-                            
+
                             // 1. Try to read from local and write to remote
                             match local_stream.read(&mut buffer_local) {
                                 Ok(0) => break, // Local closed
@@ -127,7 +176,9 @@ impl SshTunnel {
                                     while pos < n {
                                         match channel.write(&buffer_local[pos..n]) {
                                             Ok(written) => pos += written,
-                                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                            Err(ref e)
+                                                if e.kind() == std::io::ErrorKind::WouldBlock =>
+                                            {
                                                 thread::sleep(std::time::Duration::from_millis(10));
                                             }
                                             Err(_) => break,
@@ -137,7 +188,7 @@ impl SshTunnel {
                                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                                 Err(_) => break,
                             }
-                            
+
                             // 2. Try to read from remote and write to local
                             match channel.read(&mut buffer_remote) {
                                 Ok(0) => break, // Remote closed
@@ -147,20 +198,22 @@ impl SshTunnel {
                                         break;
                                     }
                                 }
-                                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {} 
+                                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                                 Err(_) => break,
                             }
-                            
+
                             if !activity {
                                 drop(sess_guard);
                                 thread::sleep(std::time::Duration::from_millis(50));
-                                sess_guard = tauri::async_runtime::block_on(async { sess_inner.lock().await });
+                                sess_guard = tauri::async_runtime::block_on(async {
+                                    sess_inner.lock().await
+                                });
                             }
                         }
                         println!("[SSH] Bridge closed for {}:{}", host_inner, remote_port);
                     });
                 }
-                
+
                 thread::sleep(std::time::Duration::from_millis(100));
             }
             tracing::info!("SSH Tunnel background worker stopped");

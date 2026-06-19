@@ -1,11 +1,14 @@
-use async_trait::async_trait;
-use mongodb::{Client, options::ClientOptions, bson::{doc, Document}};
-use std::time::Instant;
 use crate::db::DbDriver;
-use crate::error::{AppResult, AppError};
+use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
+use async_trait::async_trait;
 use futures::StreamExt;
-
+use mongodb::{
+    Client,
+    bson::{Document, doc},
+    options::ClientOptions,
+};
+use std::time::Instant;
 
 pub struct MongoDbDriver {
     client: Client,
@@ -15,31 +18,36 @@ pub struct MongoDbDriver {
 impl MongoDbDriver {
     pub async fn new(url: &str) -> AppResult<Self> {
         let sanitized_url = if let Some(idx) = url.find('@') {
-            format!("{}@{}", "mongodb://***", &url[idx+1..])
+            format!("{}@{}", "mongodb://***", &url[idx + 1..])
         } else {
             url.to_string()
         };
-        
+
         tracing::debug!("Initializing MongoDB driver with URL: {}", sanitized_url);
         println!("[MongoDB] Initializing driver with URL: {}", sanitized_url);
-        
-        let mut client_options = ClientOptions::parse(url).await
-            .map_err(|e| {
-                tracing::error!("Failed to parse MongoDB URL: {}. Error: {}", sanitized_url, e);
-                eprintln!("[MongoDB] Failed to parse URL: {}", e);
-                AppError::Connection(format!("Failed to parse MongoDB URL: {}", e))
-            })?;
+
+        let mut client_options = ClientOptions::parse(url).await.map_err(|e| {
+            tracing::error!(
+                "Failed to parse MongoDB URL: {}. Error: {}",
+                sanitized_url,
+                e
+            );
+            eprintln!("[MongoDB] Failed to parse URL: {}", e);
+            AppError::Connection(format!("Failed to parse MongoDB URL: {}", e))
+        })?;
 
         // If directConnection is explicitly set in the URL, let it be.
         // Otherwise, apply our local/replicaSet logic.
         if client_options.direct_connection.is_none() {
             let is_local = url.contains("localhost") || url.contains("127.0.0.1");
-            
-            // Special case: If it's a local address but also contains replicaSet, 
-            // it might be an SSH tunnel to a replica set. 
+
+            // Special case: If it's a local address but also contains replicaSet,
+            // it might be an SSH tunnel to a replica set.
             // In that case, we should allow discovery (direct_connection = false).
             if is_local && !url.contains("replicaSet=") {
-                tracing::debug!("Localhost detected and no replicaSet, forcing direct_connection = true");
+                tracing::debug!(
+                    "Localhost detected and no replicaSet, forcing direct_connection = true"
+                );
                 client_options.direct_connection = Some(true);
             } else if url.contains("replicaSet=") {
                 client_options.direct_connection = Some(false);
@@ -49,30 +57,41 @@ impl MongoDbDriver {
                 tracing::debug!("Defaulting to direct_connection = true");
             }
         }
-        
-        tracing::debug!("MongoDB client options final Direct Connection: {:?}", client_options.direct_connection);
-        
+
+        tracing::debug!(
+            "MongoDB client options final Direct Connection: {:?}",
+            client_options.direct_connection
+        );
+
         // Set longer timeouts for SSH tunnel latency
         client_options.server_selection_timeout = Some(std::time::Duration::from_secs(10));
         client_options.connect_timeout = Some(std::time::Duration::from_secs(10));
         client_options.retry_writes = Some(false);
         client_options.retry_reads = Some(false);
-        
-        tracing::debug!("Setting MongoDB timeouts: Connect=10s, ServerSelection=10s, Retries=Disabled");
+
+        tracing::debug!(
+            "Setting MongoDB timeouts: Connect=10s, ServerSelection=10s, Retries=Disabled"
+        );
         println!("[MongoDB] Applying SSH-friendly settings (10s timeouts, retries disabled)");
 
-        let client = Client::with_options(client_options)
-            .map_err(|e| {
-                tracing::error!("Failed to create MongoDB client for {}: {}", sanitized_url, e);
-                eprintln!("[MongoDB] Failed to create client: {}", e);
-                AppError::Connection(format!("Failed to create MongoDB client: {}", e))
-            })?;
+        let client = Client::with_options(client_options).map_err(|e| {
+            tracing::error!(
+                "Failed to create MongoDB client for {}: {}",
+                sanitized_url,
+                e
+            );
+            eprintln!("[MongoDB] Failed to create client: {}", e);
+            AppError::Connection(format!("Failed to create MongoDB client: {}", e))
+        })?;
 
         // Verify connection with a ping
-        tracing::debug!("Pinging MongoDB server at {} to verify connection...", sanitized_url);
+        tracing::debug!(
+            "Pinging MongoDB server at {} to verify connection...",
+            sanitized_url
+        );
         println!("[MongoDB] Pinging server {}...", sanitized_url);
         let ping_start = Instant::now();
-        
+
         client.database("admin").run_command(doc! {"ping": 1}).await
             .map_err(|e| {
                 let msg = e.to_string().to_uppercase();
@@ -90,21 +109,34 @@ impl MongoDbDriver {
                     AppError::Connection(format!("MongoDB Error (after {:?}): {}", elapsed, msg))
                 }
             })?;
-        
-        tracing::info!("MongoDB connection to {} verified successfully in {:?}", sanitized_url, ping_start.elapsed());
-        println!("[MongoDB] Connection verified successfully in {:?}", ping_start.elapsed());
+
+        tracing::info!(
+            "MongoDB connection to {} verified successfully in {:?}",
+            sanitized_url,
+            ping_start.elapsed()
+        );
+        println!(
+            "[MongoDB] Connection verified successfully in {:?}",
+            ping_start.elapsed()
+        );
 
         // Extract default db from URL if possible
-        let default_db = url.split('/').last()
+        let default_db = url
+            .split('/')
+            .last()
             .and_then(|s| s.split('?').next())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
 
-        Ok(Self { client, _default_db: default_db })
+        Ok(Self {
+            client,
+            _default_db: default_db,
+        })
     }
 
     fn get_db(&self, schema: Option<String>) -> AppResult<mongodb::Database> {
-        let db_name = schema.or_else(|| self._default_db.clone())
+        let db_name = schema
+            .or_else(|| self._default_db.clone())
             .ok_or_else(|| AppError::Validation("No database specified".into()))?;
         Ok(self.client.database(&db_name))
     }
@@ -118,37 +150,48 @@ impl DbDriver for MongoDbDriver {
 
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
-        
-        // Try to parse query as JSON command
-        let json_query: serde_json::Value = serde_json::from_str(query)
-            .map_err(|e| AppError::Validation(format!("MongoDB query must be valid JSON: {}", e)))?;
 
-        let obj = json_query.as_object()
+        // Try to parse query as JSON command
+        let json_query: serde_json::Value = serde_json::from_str(query).map_err(|e| {
+            AppError::Validation(format!("MongoDB query must be valid JSON: {}", e))
+        })?;
+
+        let obj = json_query
+            .as_object()
             .ok_or_else(|| AppError::Validation("MongoDB query must be a JSON object".into()))?;
 
         // Simple 'find' support: { "collection": "name", "find": { ... }, "limit": 100 }
         if let Some(coll_name) = obj.get("collection").and_then(|v| v.as_str()) {
             let db = self.get_db(None)?;
             let coll = db.collection::<Document>(coll_name);
-            
-            let filter = obj.get("find")
+
+            let filter = obj
+                .get("find")
                 .and_then(|v| v.as_object())
-                .map(|o| serde_json::from_value::<Document>(serde_json::Value::Object(o.clone())).unwrap_or_default())
+                .map(|o| {
+                    serde_json::from_value::<Document>(serde_json::Value::Object(o.clone()))
+                        .unwrap_or_default()
+                })
                 .unwrap_or_default();
 
             let limit = obj.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
             let skip = obj.get("skip").and_then(|v| v.as_i64()).unwrap_or(0);
 
-            let mut cursor = coll.find(filter).limit(limit).skip(skip as u64).await
+            let mut cursor = coll
+                .find(filter)
+                .limit(limit)
+                .skip(skip as u64)
+                .await
                 .map_err(|e| AppError::Database(format!("MongoDB find failed: {}", e)))?;
 
             let mut rows = Vec::new();
             let mut columns_set = std::collections::HashSet::new();
 
             while let Some(result) = cursor.next().await {
-                let doc = result.map_err(|e| AppError::Database(format!("Error fetching document: {}", e)))?;
+                let doc = result
+                    .map_err(|e| AppError::Database(format!("Error fetching document: {}", e)))?;
                 let json_val = serde_json::to_value(&doc).unwrap_or(serde_json::Value::Null);
-                
+
                 if let Some(obj) = json_val.as_object() {
                     for key in obj.keys() {
                         columns_set.insert(key.clone());
@@ -173,11 +216,13 @@ impl DbDriver for MongoDbDriver {
         let command = serde_json::from_value::<Document>(json_query)
             .map_err(|e| AppError::Validation(format!("Invalid BSON document: {}", e)))?;
 
-        let result = db.run_command(command).await
+        let result = db
+            .run_command(command)
+            .await
             .map_err(|e| AppError::Database(format!("MongoDB command failed: {}", e)))?;
 
         let json_result = serde_json::to_value(&result).unwrap_or(serde_json::Value::Null);
-        
+
         Ok(QueryResult {
             columns: vec!["result".to_string()],
             rows: vec![json_result],
@@ -193,38 +238,68 @@ impl DbDriver for MongoDbDriver {
     }
 
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {
-        self.client.list_database_names().await
+        self.client
+            .list_database_names()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to list databases: {}", e)))
     }
 
-    async fn fetch_tables(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_tables(
+        &self,
+        schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let db = self.get_db(schema)?;
-        db.list_collection_names().await
+        db.list_collection_names()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to list collections: {}", e)))
     }
 
-    async fn fetch_views(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_views(
+        &self,
+        _schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         Ok(vec![]) // MongoDB views are listed in collections usually, or needs special filtering
     }
 
-    async fn fetch_procedures(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_procedures(
+        &self,
+        _schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         Ok(vec![])
     }
 
-    async fn fetch_triggers(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_triggers(
+        &self,
+        _schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         Ok(vec![])
     }
 
-    async fn fetch_functions(&self, _schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_functions(
+        &self,
+        _schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         Ok(vec![])
     }
 
-    async fn fetch_columns(&self, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    async fn fetch_columns(
+        &self,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let db = self.get_db(schema)?;
         let coll = db.collection::<Document>(table);
-        
+
         // Sample 5 documents to guess "schema"
-        let mut cursor = coll.find(doc! {}).limit(5).await
+        let mut cursor = coll
+            .find(doc! {})
+            .limit(5)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to sample collection: {}", e)))?;
 
         let mut field_info = std::collections::HashMap::new();
@@ -232,7 +307,9 @@ impl DbDriver for MongoDbDriver {
         while let Some(result) = cursor.next().await {
             let doc = result.unwrap_or_default();
             for (key, value) in doc {
-                field_info.entry(key.clone()).or_insert_with(|| format!("{:?}", value.element_type()));
+                field_info
+                    .entry(key.clone())
+                    .or_insert_with(|| format!("{:?}", value.element_type()));
             }
         }
 
@@ -251,56 +328,94 @@ impl DbDriver for MongoDbDriver {
         Ok(cols)
     }
 
-    async fn fetch_indexes(&self, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    async fn fetch_indexes(
+        &self,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let db = self.get_db(schema)?;
         let coll = db.collection::<Document>(table);
-        
-        let mut cursor = coll.list_indexes().await
+
+        let mut cursor = coll
+            .list_indexes()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to list indexes: {}", e)))?;
 
         let mut idxs = Vec::new();
         while let Some(result) = cursor.next().await {
-            let index = result.map_err(|e| AppError::Database(format!("Error fetching index: {}", e)))?;
+            let index =
+                result.map_err(|e| AppError::Database(format!("Error fetching index: {}", e)))?;
             let mut map = serde_json::Map::new();
-            
-            let name = index.options.as_ref().and_then(|o| o.name.clone()).unwrap_or_else(|| "unknown".to_string());
+
+            let name = index
+                .options
+                .as_ref()
+                .and_then(|o| o.name.clone())
+                .unwrap_or_else(|| "unknown".to_string());
             let keys = &index.keys;
-            let unique = index.options.as_ref().and_then(|o| o.unique).unwrap_or(false);
+            let unique = index
+                .options
+                .as_ref()
+                .and_then(|o| o.unique)
+                .unwrap_or(false);
 
             map.insert("name".into(), name.into());
             map.insert("column".into(), format!("{:?}", keys).into());
             map.insert("isUnique".into(), unique.into());
             map.insert("type".into(), "mongo-index".into());
-            
+
             idxs.push(serde_json::Value::Object(map));
         }
 
         Ok(idxs)
     }
 
-    async fn fetch_foreign_keys(&self, _table: &str, _schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    async fn fetch_foreign_keys(
+        &self,
+        _table: &str,
+        _schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         Ok(vec![]) // MongoDB doesn't have enforced FKs
     }
 
-    async fn fetch_constraints(&self, _table: &str, _schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    async fn fetch_constraints(
+        &self,
+        _table: &str,
+        _schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         Ok(vec![])
     }
 
-    async fn fetch_ddl(&self, name: &str, _object_type: &str, schema: Option<String>) -> AppResult<String> {
+    async fn fetch_ddl(
+        &self,
+        name: &str,
+        _object_type: &str,
+        schema: Option<String>,
+    ) -> AppResult<String> {
         let db = self.get_db(schema)?;
         // For Mongo, "DDL" could be collection options or validation rules
-        let mut cursor = db.list_collections().filter(doc! { "name": name }).await
+        let mut cursor = db
+            .list_collections()
+            .filter(doc! { "name": name })
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get collection info: {}", e)))?;
 
         if let Some(result) = cursor.next().await {
-            let info = result.map_err(|e| AppError::Database(format!("Error fetching collection info: {}", e)))?;
+            let info = result.map_err(|e| {
+                AppError::Database(format!("Error fetching collection info: {}", e))
+            })?;
             return Ok(serde_json::to_string_pretty(&info).unwrap_or_default());
         }
 
         Ok(format!("-- Collection '{}' info not found", name))
     }
 
-    async fn fetch_parameters(&self, _name: &str, _object_type: &str, _schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    async fn fetch_parameters(
+        &self,
+        _name: &str,
+        _object_type: &str,
+        _schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         Ok(vec![])
     }
 

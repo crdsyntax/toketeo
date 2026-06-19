@@ -1,40 +1,38 @@
+use crate::application::audit_service::AuditService;
 use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
 use crate::state::AppState;
-use crate::application::audit_service::AuditService;
 
 pub struct ExplorerService;
 
 impl ExplorerService {
-    pub async fn execute_query(
-        state: &AppState,
-        id: &str,
-        query: &str,
-    ) -> AppResult<QueryResult> {
+    pub async fn execute_query(state: &AppState, id: &str, query: &str) -> AppResult<QueryResult> {
         let driver = state.get_connection(id).await?;
         let start = std::time::Instant::now();
-        
+
         match driver.execute(query).await {
             Ok(result) => {
                 let _ = AuditService::log_query(
-                    state, 
-                    id.to_string(), 
-                    query.to_string(), 
-                    start.elapsed().as_millis() as u64, 
-                    "success".to_string(), 
-                    None
-                ).await;
+                    state,
+                    id.to_string(),
+                    query.to_string(),
+                    start.elapsed().as_millis() as u64,
+                    "success".to_string(),
+                    None,
+                )
+                .await;
                 Ok(result)
-            },
+            }
             Err(e) => {
                 let _ = AuditService::log_query(
-                    state, 
-                    id.to_string(), 
-                    query.to_string(), 
-                    start.elapsed().as_millis() as u64, 
-                    "error".to_string(), 
-                    Some(e.to_string())
-                ).await;
+                    state,
+                    id.to_string(),
+                    query.to_string(),
+                    start.elapsed().as_millis() as u64,
+                    "error".to_string(),
+                    Some(e.to_string()),
+                )
+                .await;
                 Err(e)
             }
         }
@@ -50,57 +48,114 @@ impl ExplorerService {
         driver.fetch_databases().await
     }
 
-    pub async fn get_tables(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_tables(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_tables(schema, filter).await
     }
 
-    pub async fn get_views(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_views(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_views(schema, filter).await
     }
 
-    pub async fn get_procedures(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_procedures(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_procedures(schema, filter).await
     }
 
-    pub async fn get_triggers(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_triggers(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_triggers(schema, filter).await
     }
 
-    pub async fn get_functions(state: &AppState, id: &str, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
+    pub async fn get_functions(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_functions(schema, filter).await
     }
 
-    pub async fn get_columns(state: &AppState, id: &str, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn get_columns(
+        state: &AppState,
+        id: &str,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_columns(table, schema).await
     }
 
-    pub async fn get_indexes(state: &AppState, id: &str, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn get_indexes(
+        state: &AppState,
+        id: &str,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_indexes(table, schema).await
     }
 
-    pub async fn get_foreign_keys(state: &AppState, id: &str, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn get_foreign_keys(
+        state: &AppState,
+        id: &str,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_foreign_keys(table, schema).await
     }
 
-    pub async fn get_constraints(state: &AppState, id: &str, table: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn get_constraints(
+        state: &AppState,
+        id: &str,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_constraints(table, schema).await
     }
 
-    pub async fn get_ddl(state: &AppState, id: &str, name: &str, object_type: &str, schema: Option<String>) -> AppResult<String> {
+    pub async fn get_ddl(
+        state: &AppState,
+        id: &str,
+        name: &str,
+        object_type: &str,
+        schema: Option<String>,
+    ) -> AppResult<String> {
         let driver = state.get_connection(id).await?;
         driver.fetch_ddl(name, object_type, schema).await
     }
 
-    pub async fn get_parameters(state: &AppState, id: &str, name: &str, object_type: &str, schema: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn get_parameters(
+        state: &AppState,
+        id: &str,
+        name: &str,
+        object_type: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
         driver.fetch_parameters(name, object_type, schema).await
     }
@@ -117,8 +172,8 @@ impl ExplorerService {
     ) -> AppResult<QueryResult> {
         let driver = state.get_connection(id).await?;
         let db_type = driver.db_type();
-        
-        let page_size = page_size.min(500); 
+
+        let page_size = page_size.min(500);
         let page = page.max(1);
         let offset = (page - 1) * page_size;
 
@@ -143,9 +198,15 @@ impl ExplorerService {
         }
 
         let full_name = if let Some(schema) = database.as_ref() {
-            format!("{}{}{}.{}{}{}", 
-                q_open, schema.replace(q_close, q_esc), q_close,
-                q_open, name.replace(q_close, q_esc), q_close)
+            format!(
+                "{}{}{}.{}{}{}",
+                q_open,
+                schema.replace(q_close, q_esc),
+                q_close,
+                q_open,
+                name.replace(q_close, q_esc),
+                q_close
+            )
         } else {
             format!("{}{}{}", q_open, name.replace(q_close, q_esc), q_close)
         };
@@ -153,10 +214,15 @@ impl ExplorerService {
         let result = match object_type.to_lowercase().as_str() {
             "table" | "view" => {
                 let columns = driver.fetch_columns(name, database.clone()).await?;
-                let col_names: Vec<String> = columns.iter()
-                    .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(|s| format!("{}{}{}", q_open, s.replace(q_close, q_esc), q_close)))
+                let col_names: Vec<String> = columns
+                    .iter()
+                    .filter_map(|c| {
+                        c.get("name")
+                            .and_then(|v| v.as_str())
+                            .map(|s| format!("{}{}{}", q_open, s.replace(q_close, q_esc), q_close))
+                    })
                     .collect();
-                
+
                 let select_clause = if col_names.is_empty() {
                     "*".to_string()
                 } else {
@@ -164,60 +230,71 @@ impl ExplorerService {
                 };
 
                 let mut query = format!("SELECT {} FROM {}", select_clause, full_name);
-                
-                if let Some(f) = filter {
+
+                if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
                     query.push_str(&format!(" WHERE {}", f));
                 }
-                
-                query.push_str(&format!(" LIMIT {} OFFSET {}", page_size, offset));
-                
+
+                // Deterministic ordering is required for paginated queries
+                let order_by = if col_names.is_empty() {
+                    format!("ORDER BY (SELECT NULL)") // Fallback
+                } else {
+                    format!("ORDER BY {}", col_names[0]) // Use first column as basic deterministic order
+                };
+
+                query.push_str(&format!(
+                    " {} LIMIT {} OFFSET {}",
+                    order_by, page_size, offset
+                ));
+
                 driver.execute(&query).await
-            },
+            }
             "procedure" => {
                 let query = format!("CALL {}()", full_name);
                 driver.execute(&query).await
-            },
-            _ => Err(AppError::Internal("Unsupported object type for data execution".into())),
+            }
+            _ => Err(AppError::Internal(
+                "Unsupported object type for data execution".into(),
+            )),
         };
 
         match result {
             Ok(res) => {
                 let _ = AuditService::log_query(
-                    state, 
-                    id.to_string(), 
-                    format!("Explorer: {}", full_name), 
-                    start.elapsed().as_millis() as u64, 
-                    "success".to_string(), 
-                    None
-                ).await;
+                    state,
+                    id.to_string(),
+                    format!("Explorer: {}", full_name),
+                    start.elapsed().as_millis() as u64,
+                    "success".to_string(),
+                    None,
+                )
+                .await;
                 Ok(res)
-            },
+            }
             Err(e) => {
                 let _ = AuditService::log_query(
-                    state, 
-                    id.to_string(), 
-                    format!("Explorer: {}", full_name), 
-                    start.elapsed().as_millis() as u64, 
-                    "error".to_string(), 
-                    Some(e.to_string())
-                ).await;
+                    state,
+                    id.to_string(),
+                    format!("Explorer: {}", full_name),
+                    start.elapsed().as_millis() as u64,
+                    "error".to_string(),
+                    Some(e.to_string()),
+                )
+                .await;
                 Err(e)
             }
         }
     }
 
-    pub async fn restore_database(
-        state: &AppState,
-        id: &str,
-        file_path: String,
-    ) -> AppResult<()> {
-        use tokio::io::{AsyncBufReadExt, BufReader};
+    pub async fn restore_database(state: &AppState, id: &str, file_path: String) -> AppResult<()> {
         use tokio::fs::File;
+        use tokio::io::{AsyncBufReadExt, BufReader};
 
         let driver = state.get_connection(id).await?;
-        let file = File::open(file_path).await
+        let file = File::open(file_path)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to open dump file: {}", e)))?;
-        
+
         let mut reader = BufReader::new(file);
         let mut line = String::new();
         let mut current_query = String::new();
@@ -246,22 +323,21 @@ impl ExplorerService {
         if !current_query.trim().is_empty() {
             let _ = driver.execute(&current_query).await;
         }
-        
+
         Ok(())
     }
 
-    pub async fn switch_schema(
-        state: &AppState,
-        id: &str,
-        schema: String,
-    ) -> AppResult<()> {
+    pub async fn switch_schema(state: &AppState, id: &str, schema: String) -> AppResult<()> {
         let driver = state.get_connection(id).await?;
         let schemas = driver.fetch_schemas().await?;
-        
+
         if schemas.contains(&schema) {
             Ok(())
         } else {
-            Err(AppError::Validation(format!("Database '{}' not found", schema)))
+            Err(AppError::Validation(format!(
+                "Database '{}' not found",
+                schema
+            )))
         }
     }
 }

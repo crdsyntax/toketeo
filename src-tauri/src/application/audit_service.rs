@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use crate::error::AppResult;
 use crate::state::AppState;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuditEntry {

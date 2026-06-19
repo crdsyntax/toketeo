@@ -39,15 +39,15 @@ The system already includes:
 
 ## Phase 2: Explorer UX Completion
 
-* [ ] Add "WHERE filter input" in Data tab:
+* [x] Add "WHERE filter input" in Data tab:
 
   * SQL fragment input (`WHERE <user_input>`)
   * execute on Enter key
   * example: `id = 1 AND status = 'active'`
-* [ ] Preserve query state when switching tabs:
+* [x] Preserve query state when switching tabs:
 
   * Explorer ↔ Query Editor ↔ Data Viewer
-* [ ] Cache last executed query per tab/session
+* [x] Cache last executed query per tab/session
 
 ---
 
@@ -80,6 +80,14 @@ The system already includes:
 
 * [ ] Export selected row as structured JSON
 * [ ] Respect type decoding rules from driver layer
+
+### Model export
+
+* [ ] Export model for moongose on node express and nestjs
+* [ ] Export model for typeORM
+* [ ] Export model for Prisma
+* [ ] Export model for Zequelice
+
 
 ---
 

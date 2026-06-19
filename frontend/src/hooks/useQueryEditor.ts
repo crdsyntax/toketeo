@@ -102,7 +102,7 @@ export function useQueryEditor() {
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
       try {
-        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
+        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 100);
         updateTabResults(activeTab.id, {
           status: ExecutionStatus.SUCCESS,
           results: result,
@@ -161,7 +161,7 @@ export function useQueryEditor() {
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     
     try {
-      const result = await queryService.execute(activeConnection.id, sqlSnippet, activeConnection.database, undefined, page, 1000);
+      const result = await queryService.execute(activeConnection.id, sqlSnippet, activeConnection.database, undefined, page, 100);
       updateTabResults(activeTab.id, {
         status: ExecutionStatus.SUCCESS,
         results: result,

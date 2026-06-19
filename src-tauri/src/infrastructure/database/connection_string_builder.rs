@@ -1,17 +1,19 @@
-use crate::models::DbConnectionConfig;
 use crate::db::DbType;
+use crate::error::{AppError, AppResult};
+use crate::models::DbConnectionConfig;
 use secrecy::ExposeSecret;
-use crate::error::{AppResult, AppError};
 
 pub struct ConnectionStringBuilder;
 
 impl ConnectionStringBuilder {
     pub fn build(config: &DbConnectionConfig) -> AppResult<String> {
         let user = Self::url_encode(&config.user);
-        let password = config.password.as_ref()
+        let password = config
+            .password
+            .as_ref()
             .map(|p| Self::url_encode(p.expose_secret()))
             .unwrap_or_default();
-        
+
         let host = if config.ssh_tunnel.is_some() {
             "127.0.0.1" // Localhost for SSH tunnel
         } else {
@@ -21,14 +23,14 @@ impl ConnectionStringBuilder {
         let port = config.port;
         let database = config.database.as_deref().unwrap_or("");
         let ssl_enabled = config.ssl.as_deref().unwrap_or("false") == "true";
-        
+
         match config.db_type {
             DbType::Postgres => {
                 let mut url = format!(
                     "postgres://{}:{}@{}:{}/{}",
                     user, password, host, port, database
                 );
-                
+
                 if config.ssh_tunnel.is_some() {
                     url.push_str("?sslmode=disable");
                 } else if ssl_enabled {
@@ -43,13 +45,13 @@ impl ConnectionStringBuilder {
                     "mysql://{}:{}@{}:{}/{}",
                     user, password, host, port, database
                 );
-                
+
                 let mut params = Vec::new();
                 if ssl_enabled && config.ssh_tunnel.is_none() {
                     params.push("ssl-mode=REQUIRED");
                 }
                 params.push("multiStatements=true");
-                
+
                 if !params.is_empty() {
                     url.push_str("?");
                     url.push_str(&params.join("&"));
@@ -62,7 +64,7 @@ impl ConnectionStringBuilder {
                     user, password, host, port, database
                 );
                 let mut params = Vec::new();
-                
+
                 if ssl_enabled {
                     params.push("tls=true".to_string());
                 }
@@ -84,9 +86,13 @@ impl ConnectionStringBuilder {
                     url.push_str("?");
                     url.push_str(&params.join("&"));
                 }
-                
+
                 let sanitized_url = if let Some(idx) = url.find('@') {
-                    format!("{}@{}", &url[..url.find("://").unwrap_or(0)+3], &url[idx+1..])
+                    format!(
+                        "{}@{}",
+                        &url[..url.find("://").unwrap_or(0) + 3],
+                        &url[idx + 1..]
+                    )
                 } else {
                     url.clone()
                 };
@@ -108,26 +114,30 @@ impl ConnectionStringBuilder {
 
                 Ok(url)
             }
-            _ => Err(AppError::Validation(format!("Unsupported database engine for connection string: {:?}", config.db_type))),
+            _ => Err(AppError::Validation(format!(
+                "Unsupported database engine for connection string: {:?}",
+                config.db_type
+            ))),
         }
     }
 
     fn url_encode(input: &str) -> String {
         // Simple percent-encoding for common sensitive characters in URLs
-        input.chars().map(|c| {
-            match c {
+        input
+            .chars()
+            .map(|c| match c {
                 'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
                 _ => format!("%{:02X}", c as u32),
-            }
-        }).collect()
+            })
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{DbConnectionConfig, SshConfig, SshAuthType};
     use crate::db::DbType;
+    use crate::models::{DbConnectionConfig, SshAuthType, SshConfig};
     use secrecy::SecretString;
 
     #[test]
@@ -149,7 +159,10 @@ mod tests {
             ssh_tunnel: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
-        assert_eq!(url, "postgres://user:pass%40word@localhost:5432/db?sslmode=prefer");
+        assert_eq!(
+            url,
+            "postgres://user:pass%40word@localhost:5432/db?sslmode=prefer"
+        );
     }
 
     #[test]
@@ -181,7 +194,10 @@ mod tests {
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         // Should use 127.0.0.1 when SSH tunnel is active
-        assert_eq!(url, "postgres://user:pass@127.0.0.1:5432/db?sslmode=disable");
+        assert_eq!(
+            url,
+            "postgres://user:pass@127.0.0.1:5432/db?sslmode=disable"
+        );
     }
 
     #[test]

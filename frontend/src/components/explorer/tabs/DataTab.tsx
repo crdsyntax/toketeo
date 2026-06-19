@@ -1,6 +1,9 @@
-import { Loader2, AlertCircle, ChevronLeft, ChevronRight as ChevronRightIcon, Layout, Code, Play, Check, X } from 'lucide-react';
-import { useState } from 'react';
+import { Loader2, AlertCircle, ChevronLeft, ChevronRight as ChevronRightIcon, Layout, Code, Play, Check, X, Undo, Redo } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
 import type { QueryResult, ExecutionStatus, DatabaseObject, DbRow, DbValue } from '@/types/database';
+import { SqlGeneratorModal } from '../../query/SqlGeneratorModal';
+import { invoke } from '@tauri-apps/api/core';
+import { useAppStore } from '@/store/useAppStore';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -36,7 +39,15 @@ export function DataTab({
   setFilter
 }: DataTabProps) {
   const [editingCell, setEditingCell] = useState<{ rowIndex: number, column: string } | null>(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  
+  // Historial para Undo/Redo
+  const [history, setHistory] = useState<{ row: DbRow, col: string, prev: DbValue, next: DbValue }[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, row: DbRow } | null>(null);
+  const [sqlModal, setSqlModal] = useState<{ isOpen: boolean, sql: string }>({ isOpen: false, sql: '' });
+  const activeConnection = useAppStore(state => state.activeConnection);
 
   const handleStartEdit = (rowIndex: number, column: string, value: DbValue) => {
     if (selectedItem.type !== 'table') return; // Only tables are editable for now
@@ -46,9 +57,49 @@ export function DataTab({
 
   const handleSaveEdit = (row: DbRow) => {
     if (!editingCell) return;
+    
+    const prevValue = row[editingCell.column];
     updateCell(row, editingCell.column, editValue);
+    
+    // Guardar en historial
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push({ row, col: editingCell.column, prev: prevValue, next: editValue });
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+
     setEditingCell(null);
   };
+
+  const undo = useCallback(() => {
+    if (historyIndex >= 0) {
+      const change = history[historyIndex];
+      updateCell(change.row, change.col, change.prev);
+      setHistoryIndex(historyIndex - 1);
+    }
+  }, [history, historyIndex, updateCell]);
+
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const change = history[nextIndex];
+      updateCell(change.row, change.col, change.next);
+      setHistoryIndex(nextIndex);
+    }
+  }, [history, historyIndex, updateCell]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   const onInputKeyDown = (e: React.KeyboardEvent, row: DbRow) => {
     if (e.key === 'Enter') {
@@ -59,6 +110,33 @@ export function DataTab({
       e.preventDefault();
       e.stopPropagation();
       setEditingCell(null);
+    }
+  };
+
+  const handleGenerateSql = async (action: string) => {
+    if (!contextMenu || !activeConnection || !queryData) return;
+    
+    const pks = queryData.primary_keys || [];
+    const primary_keys = pks.reduce((acc, pk) => {
+      if (contextMenu.row[pk] !== undefined) acc[pk] = contextMenu.row[pk];
+      return acc;
+    }, {} as Record<string, DbValue>);
+
+    try {
+      const sql = await invoke<string>('generate_sql', {
+        id: activeConnection.id,
+        action,
+        context: {
+          table: selectedItem.name,
+          primary_keys,
+          data: contextMenu.row
+        }
+      });
+      setSqlModal({ isOpen: true, sql });
+    } catch (e) {
+      console.error('Failed to generate SQL:', e);
+    } finally {
+      setContextMenu(null);
     }
   };
 
@@ -91,26 +169,48 @@ export function DataTab({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 min-w-0">
+    <div className="flex-1 flex flex-col min-h-0 min-w-0" onClick={() => setContextMenu(null)}>
+      <SqlGeneratorModal 
+        isOpen={sqlModal.isOpen} 
+        onClose={() => setSqlModal({ isOpen: false, sql: '' })} 
+        initialSql={sqlModal.sql} 
+      />
+
+      {contextMenu && (
+        <div 
+          className="fixed z-[200] bg-popover border border-border rounded-md shadow-lg py-1 min-w-[150px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          {['SELECT', 'UPDATE', 'INSERT', 'DELETE'].map(action => (
+            <button 
+              key={action}
+              onClick={() => handleGenerateSql(action.toLowerCase())}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
+            >
+              Generate {action}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">
            <input
             className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary w-64"
             placeholder="WHERE clause (e.g. id > 10)"
             value={filter}
-            onChange={(e) => {
-              console.log('[DataTab] Filter input changing:', e.target.value);
-              setFilter(e.target.value);
-            }}
+            onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => {
-              console.log('[DataTab] Key down:', e.key);
               if (e.key === 'Enter') {
                 e.preventDefault();
-                console.log('[DataTab] Enter pressed, calling handleExecute');
                 handleExecute();
               }
             }}
           />
+           <div className="flex items-center gap-1 border-l pl-2">
+             <button onClick={undo} disabled={historyIndex < 0} className="p-1 hover:bg-muted rounded disabled:opacity-50" title="Undo"><Undo className="w-3.5 h-3.5"/></button>
+             <button onClick={redo} disabled={historyIndex >= history.length - 1} className="p-1 hover:bg-muted rounded disabled:opacity-50" title="Redo"><Redo className="w-3.5 h-3.5"/></button>
+           </div>
         </div>
       </div>
       {executionStatus === 'error' && (
@@ -140,6 +240,7 @@ export function DataTab({
             <table className="min-w-full text-left text-xs border-collapse table-auto">
               <thead className="sticky top-0 bg-background border-b border-border z-10">
                 <tr>
+                  <th className="p-2 font-bold bg-muted/50 border-r border-border text-center w-10">#</th>
                   {queryData.columns.map((col) => (
                     <th
                       key={col}
@@ -153,18 +254,21 @@ export function DataTab({
               </thead>
               <tbody>
                 {queryData.rows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
+                  <tr 
+                    key={i} 
+                    className={`${i === selectedRowIndex ? 'bg-muted' : 'border-b border-border/50 hover:bg-muted/30'} whitespace-nowrap`}
+                    onClick={() => setSelectedRowIndex(i)}
+                    onContextMenu={(e) => { e.preventDefault(); setContextMenu({x: e.pageX, y: e.pageY, row}); }}
+                  >
+                    <td className="p-2 border-r border-border text-center text-muted-foreground font-mono">{i + 1}</td>
                     {queryData.columns.map((col) => {
                       const value = row[col];
-                      if (value === undefined) {
-                        console.warn(`[DataTab] Column '${col}' not found in row:`, row);
-                      }
                       return (
                       <td 
                         key={col} 
-                        className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text group relative"
+                        className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text relative"
                         onDoubleClick={() => handleStartEdit(i, col, value)}
-                        title={value !== null ? String(value) : 'NULL'}
+                        title="Double-click to edit"
                       >
                         {editingCell?.rowIndex === i && editingCell?.column === col ? (
                           <div className="flex items-center gap-1 bg-background" onClick={(e) => e.stopPropagation()}>
@@ -197,9 +301,6 @@ export function DataTab({
                             ) : (
                               String(value)
                             )}
-                            <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-background/80 px-1 rounded text-[8px] text-muted-foreground pointer-events-none">
-                              Double-click to edit
-                            </div>
                           </>
                         )}
                       </td>

@@ -196,7 +196,8 @@ export default function QueryEditor() {
           <div className="flex-1 min-h-[100px]">
             <ResultsPanel 
               activeTab={activeTab}
-              onToggle={() => togglePanel('results')}
+              panels={panels}
+              togglePanel={togglePanel}
               updateTabResults={updateTabResults}
               handleSave={handleSave}
               setShowResultModal={setShowResultModal}
@@ -205,8 +206,6 @@ export default function QueryEditor() {
               sortedRows={sortedRows}
               editingCell={editingCell}
               setEditingCell={setEditingCell}
-              handlePageChange={handlePageChange}
-              clearResults={() => clearTabResults(activeTab.id)}
             />
           </div>
         )}

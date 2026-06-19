@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use crate::application::session_service::ConnectionSession;
+use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
 use crate::storage::Storage;
-use crate::db::{DbDriver, DbType};
 use std::collections::HashMap;
-use crate::application::session_service::ConnectionSession;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct AppState {
     pub connections: RwLock<HashMap<String, ConnectionSession>>,
@@ -19,9 +19,18 @@ impl AppState {
         }
     }
 
-    pub async fn add_connection(&self, id: String, driver: Arc<dyn DbDriver>, ssh_tunnel: Option<crate::ssh::SshTunnel>, transactional: bool) {
+    pub async fn add_connection(
+        &self,
+        id: String,
+        driver: Arc<dyn DbDriver>,
+        ssh_tunnel: Option<crate::ssh::SshTunnel>,
+        transactional: bool,
+    ) {
         let mut conns = self.connections.write().await;
-        conns.insert(id, ConnectionSession::new(driver, ssh_tunnel, transactional));
+        conns.insert(
+            id,
+            ConnectionSession::new(driver, ssh_tunnel, transactional),
+        );
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<Arc<dyn DbDriver>> {
@@ -30,7 +39,10 @@ impl AppState {
             session.touch();
             Ok(session.driver.clone())
         } else {
-            Err(crate::error::AppError::Internal(format!("Connection {} not found", id)))
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
         }
     }
 
@@ -47,7 +59,10 @@ impl AppState {
             session.driver.execute(begin_sql).await?;
             Ok(())
         } else {
-            Err(crate::error::AppError::Internal(format!("Connection {} not found", id)))
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
         }
     }
 
@@ -67,7 +82,10 @@ impl AppState {
             }
             Ok(())
         } else {
-            Err(crate::error::AppError::Internal(format!("Connection {} not found", id)))
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
         }
     }
 
@@ -87,7 +105,10 @@ impl AppState {
             }
             Ok(())
         } else {
-            Err(crate::error::AppError::Internal(format!("Connection {} not found", id)))
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
         }
     }
 

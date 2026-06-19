@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use crate::db::DbType;
 use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DbConnectionConfig {
@@ -14,7 +14,10 @@ pub struct DbConnectionConfig {
     pub host: String,
     pub port: u16,
     pub user: String,
-    #[serde(serialize_with = "serialize_secret", deserialize_with = "deserialize_secret")]
+    #[serde(
+        serialize_with = "serialize_secret",
+        deserialize_with = "deserialize_secret"
+    )]
     pub password: Option<SecretString>,
     pub database: Option<String>,
     #[serde(rename = "authSource")]
@@ -60,11 +63,24 @@ pub struct SshConfig {
     pub user: String,
     #[serde(rename = "authType", alias = "authMethod")]
     pub auth_type: SshAuthType,
-    #[serde(serialize_with = "serialize_secret", deserialize_with = "deserialize_secret", default)]
+    #[serde(
+        serialize_with = "serialize_secret",
+        deserialize_with = "deserialize_secret",
+        default
+    )]
     pub password: Option<SecretString>,
-    #[serde(rename = "privateKey", serialize_with = "serialize_secret", deserialize_with = "deserialize_secret", default)]
+    #[serde(
+        rename = "privateKey",
+        serialize_with = "serialize_secret",
+        deserialize_with = "deserialize_secret",
+        default
+    )]
     pub private_key: Option<SecretString>,
-    #[serde(serialize_with = "serialize_secret", deserialize_with = "deserialize_secret", default)]
+    #[serde(
+        serialize_with = "serialize_secret",
+        deserialize_with = "deserialize_secret",
+        default
+    )]
     pub passphrase: Option<SecretString>,
     #[serde(rename = "keyPath", default)]
     pub key_path: Option<String>,
@@ -112,6 +128,30 @@ pub struct QueryResult {
     pub primary_keys: Option<Vec<String>>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RowContext {
+    pub schema: Option<String>,
+    pub table: String,
+    pub primary_keys: std::collections::HashMap<String, serde_json::Value>,
+    pub data: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CellUpdateInput {
+    pub schema: Option<String>,
+    pub table: String,
+    pub row: std::collections::HashMap<String, serde_json::Value>,
+    pub column: String,
+    pub new_value: serde_json::Value,
+    pub primary_keys: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SqlGenerationInput {
+    pub context: RowContext,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,7 +180,7 @@ mod tests {
         // Now passwords ARE serialized for local storage persistence
         assert!(json.contains("super-secret"));
         assert!(json.contains("password"));
-        
+
         // Other fields should be there
         assert!(json.contains("Secret Conn"));
         assert!(json.contains("sensitive-host.com"));

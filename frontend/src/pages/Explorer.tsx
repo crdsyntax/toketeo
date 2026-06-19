@@ -79,8 +79,7 @@ export default function Explorer() {
       </div>
     )
   }
-
-  console.log('[Explorer] Passing to ObjectDetail:', { socketResults: !!socketResults, executionStatus });
+  
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
       <div className="flex-1 flex gap-6 relative overflow-hidden">

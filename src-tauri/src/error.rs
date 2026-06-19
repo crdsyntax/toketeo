@@ -34,12 +34,8 @@ impl From<sqlx::Error> for AppError {
             sqlx::Error::Io(io_err) => {
                 AppError::Connection(format!("Network/IO error: {}", io_err))
             }
-            sqlx::Error::PoolTimedOut => {
-                AppError::Connection("Connection pool timed out".into())
-            }
-            sqlx::Error::Tls(tls_err) => {
-                AppError::Connection(format!("TLS error: {}", tls_err))
-            }
+            sqlx::Error::PoolTimedOut => AppError::Connection("Connection pool timed out".into()),
+            sqlx::Error::Tls(tls_err) => AppError::Connection(format!("TLS error: {}", tls_err)),
             _ => AppError::Database(err.to_string()),
         }
     }
@@ -78,7 +74,7 @@ mod tests {
     fn test_error_serialization() {
         let err = AppError::Database("Connection failed".into());
         let json = serde_json::to_value(&err).unwrap();
-        // Since we are using #[derive(Serialize)] on the enum, 
+        // Since we are using #[derive(Serialize)] on the enum,
         // by default it serializes as { "Variant": "Content" }
         assert_eq!(json, json!({"Database": "Connection failed"}));
     }

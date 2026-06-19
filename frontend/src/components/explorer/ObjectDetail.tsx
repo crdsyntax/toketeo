@@ -120,7 +120,9 @@ export function ObjectDetail(props: ObjectDetailProps) {
     }
   };
 
-  const tabs = Object.values(explorerTabs);
+  const tabs = Object.values(explorerTabs).filter(
+    (tab) => tab.id && tab.selectedItem?.name && tab.selectedItem?.type,
+  );
 
   if (tabs.length === 0) {
     return (

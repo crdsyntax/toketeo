@@ -1,10 +1,10 @@
-use sqlx::{sqlite::SqlitePool, Row};
-use std::path::PathBuf;
-use crate::models::{DbConnectionConfig, SshConfig};
 use crate::db::DbType;
 use crate::error::AppResult;
-use uuid::Uuid;
+use crate::models::{DbConnectionConfig, SshConfig};
 use secrecy::ExposeSecret;
+use sqlx::{Row, sqlite::SqlitePool};
+use std::path::PathBuf;
+use uuid::Uuid;
 
 use crate::application::audit_service::AuditEntry;
 
@@ -29,7 +29,7 @@ impl Storage {
                 password TEXT,
                 database TEXT,
                 ssh TEXT
-            )"
+            )",
         )
         .execute(&pool)
         .await?;
@@ -43,15 +43,17 @@ impl Storage {
                 execution_time_ms INTEGER NOT NULL,
                 status TEXT NOT NULL,
                 error TEXT
-            )"
+            )",
         )
         .execute(&pool)
         .await?;
 
         // Migration: Add environment column if it doesn't exist
-        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN environment TEXT NOT NULL DEFAULT 'local'")
-            .execute(&pool)
-            .await;
+        let _ = sqlx::query(
+            "ALTER TABLE connections ADD COLUMN environment TEXT NOT NULL DEFAULT 'local'",
+        )
+        .execute(&pool)
+        .await;
 
         let _ = sqlx::query("ALTER TABLE connections ADD COLUMN auth_source TEXT")
             .execute(&pool)
@@ -126,7 +128,8 @@ impl Storage {
         let db_type_str: String = row.get("type");
         let ssh_json: Option<String> = row.get("ssh");
 
-        let db_type: DbType = serde_json::from_value(serde_json::Value::String(db_type_str)).unwrap_or(DbType::Mysql);
+        let db_type: DbType =
+            serde_json::from_value(serde_json::Value::String(db_type_str)).unwrap_or(DbType::Mysql);
         let ssh_tunnel: Option<SshConfig> = ssh_json.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(DbConnectionConfig {
@@ -137,11 +140,15 @@ impl Storage {
             host: row.get("host"),
             port: row.get::<i64, _>("port") as u16,
             user: row.get("user"),
-            password: row.get::<Option<String>, _>("password").map(secrecy::SecretString::from),
+            password: row
+                .get::<Option<String>, _>("password")
+                .map(secrecy::SecretString::from),
             database: row.get("database"),
             auth_source: row.get("auth_source"),
             replica_set: row.get("replica_set"),
-            direct_connection: row.get::<Option<i64>, _>("direct_connection").map(|v| v != 0),
+            direct_connection: row
+                .get::<Option<i64>, _>("direct_connection")
+                .map(|v| v != 0),
             ssl: row.get("ssl"),
             ssh_tunnel,
         })
@@ -149,11 +156,21 @@ impl Storage {
 
     pub async fn save_connection(&self, config: DbConnectionConfig) -> AppResult<String> {
         let id = config.id.unwrap_or_else(Uuid::new_v4).to_string();
-        let ssh_json = config.ssh_tunnel.as_ref().map(|s| serde_json::to_string(&s).unwrap_or_default());
-        let db_type = serde_json::to_value(&config.db_type).unwrap().as_str().unwrap_or("mysql").to_string();
+        let ssh_json = config
+            .ssh_tunnel
+            .as_ref()
+            .map(|s| serde_json::to_string(&s).unwrap_or_default());
+        let db_type = serde_json::to_value(&config.db_type)
+            .unwrap()
+            .as_str()
+            .unwrap_or("mysql")
+            .to_string();
 
-        let password = config.password.as_ref().map(|p| p.expose_secret().to_string());
-        
+        let password = config
+            .password
+            .as_ref()
+            .map(|p| p.expose_secret().to_string());
+
         sqlx::query(
             "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, direct_connection, ssl, ssh)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -209,8 +226,10 @@ impl Storage {
             let db_type_str: String = row.get("type");
             let ssh_json: Option<String> = row.get("ssh");
 
-            let db_type: DbType = serde_json::from_value(serde_json::Value::String(db_type_str)).unwrap_or(DbType::Mysql);
-            let ssh_tunnel: Option<SshConfig> = ssh_json.and_then(|s| serde_json::from_str(&s).ok());
+            let db_type: DbType = serde_json::from_value(serde_json::Value::String(db_type_str))
+                .unwrap_or(DbType::Mysql);
+            let ssh_tunnel: Option<SshConfig> =
+                ssh_json.and_then(|s| serde_json::from_str(&s).ok());
 
             connections.push(DbConnectionConfig {
                 id: Some(Uuid::parse_str(&id).unwrap_or_default()),
@@ -220,11 +239,15 @@ impl Storage {
                 host: row.get("host"),
                 port: row.get::<i64, _>("port") as u16,
                 user: row.get("user"),
-                password: row.get::<Option<String>, _>("password").map(secrecy::SecretString::from),
+                password: row
+                    .get::<Option<String>, _>("password")
+                    .map(secrecy::SecretString::from),
                 database: row.get("database"),
                 auth_source: row.get("auth_source"),
                 replica_set: row.get("replica_set"),
-                direct_connection: row.get::<Option<i64>, _>("direct_connection").map(|v| v != 0),
+                direct_connection: row
+                    .get::<Option<i64>, _>("direct_connection")
+                    .map(|v| v != 0),
                 ssl: row.get("ssl"),
                 ssh_tunnel,
             });

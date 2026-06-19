@@ -1,11 +1,42 @@
-use tauri::{State, AppHandle};
-use tauri_plugin_dialog::DialogExt;
-use crate::error::{AppError, AppResult};
-use crate::models::{DbConnectionConfig, QueryResult};
-use crate::state::AppState;
+use crate::application::audit_service::AuditService;
 use crate::application::connection_service::ConnectionService;
 use crate::application::explorer_service::ExplorerService;
-use crate::application::audit_service::AuditService;
+use crate::application::sql_generator_service::SqlGeneratorService;
+use crate::error::{AppError, AppResult};
+use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext};
+use crate::state::AppState;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
+
+#[tauri::command]
+pub async fn generate_sql(
+    id: String,
+    action: String,
+    context: RowContext,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let driver = state.get_connection(&id).await?;
+    let db_type = driver.db_type();
+
+    match action.to_lowercase().as_str() {
+        "select" => Ok(SqlGeneratorService::generate_select(db_type, &context)),
+        "update" => Ok(SqlGeneratorService::generate_update(db_type, &context)),
+        "insert" => Ok(SqlGeneratorService::generate_insert(db_type, &context)),
+        "delete" => Ok(SqlGeneratorService::generate_delete(db_type, &context)),
+        _ => Err(AppError::Validation("Invalid action".into())),
+    }
+}
+
+#[tauri::command]
+pub async fn update_cell(
+    id: String,
+    input: CellUpdateInput,
+    state: State<'_, AppState>,
+) -> AppResult<QueryResult> {
+    let driver = state.get_connection(&id).await?;
+    let sql = SqlGeneratorService::generate_cell_update(driver.db_type(), &input)?;
+    ExplorerService::execute_query(&state, &id, &sql).await
+}
 
 #[tauri::command]
 pub async fn save_connection(
@@ -16,9 +47,7 @@ pub async fn save_connection(
 }
 
 #[tauri::command]
-pub async fn get_connections(
-    state: State<'_, AppState>,
-) -> AppResult<Vec<DbConnectionConfig>> {
+pub async fn get_connections(state: State<'_, AppState>) -> AppResult<Vec<DbConnectionConfig>> {
     ConnectionService::get_connections(&state).await
 }
 
@@ -31,26 +60,17 @@ pub async fn get_connection(
 }
 
 #[tauri::command]
-pub async fn delete_connection(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn delete_connection(id: String, state: State<'_, AppState>) -> AppResult<()> {
     ConnectionService::delete_connection(&state, &id).await
 }
 
 #[tauri::command]
-pub async fn connect(
-    config: DbConnectionConfig,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub async fn connect(config: DbConnectionConfig, state: State<'_, AppState>) -> AppResult<String> {
     ConnectionService::connect(&state, config).await
 }
 
 #[tauri::command]
-pub async fn disconnect(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn disconnect(id: String, state: State<'_, AppState>) -> AppResult<()> {
     ConnectionService::disconnect(&state, &id).await
 }
 
@@ -95,7 +115,9 @@ pub async fn export_connection_dialog(
         .blocking_save_file();
 
     let path = match file_path {
-        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
         None => return Ok(None),
     };
 
@@ -119,7 +141,9 @@ pub async fn export_all_connections_dialog(
         .blocking_save_file();
 
     let path = match file_path {
-        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
         None => return Ok(None),
     };
 
@@ -141,7 +165,9 @@ pub async fn import_connections_dialog(
         .blocking_pick_file();
 
     let path = match file_path {
-        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
         None => return Ok(Vec::new()),
     };
 
@@ -159,18 +185,12 @@ pub async fn execute_query(
 }
 
 #[tauri::command]
-pub async fn get_schemas(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub async fn get_schemas(id: String, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     ExplorerService::get_schemas(&state, &id).await
 }
 
 #[tauri::command]
-pub async fn get_databases(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub async fn get_databases(id: String, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     ExplorerService::get_databases(&state, &id).await
 }
 
@@ -320,49 +340,46 @@ pub async fn update_ddl(
         match db_type {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
                 format!("USE `{}`;\n{}", s, sql)
-            },
+            }
             crate::db::DbType::Postgres => {
                 // For Postgres, we still do SET search_path first as it might behave differently with raw_sql
-                driver.execute(&format!("SET search_path TO \"{}\";", s)).await?;
+                driver
+                    .execute(&format!("SET search_path TO \"{}\";", s))
+                    .await?;
                 sql
-            },
-            _ => sql
+            }
+            _ => sql,
         }
     } else {
         sql
     };
 
     let result = driver.execute(&final_sql).await;
-    
+
     // Log the DDL update in audit
     let status = if result.is_ok() { "success" } else { "error" };
     let error_msg = result.as_ref().err().map(|e| e.to_string());
-    
+
     let _ = AuditService::log_query(
         &state,
         id,
         format!("UPDATE DDL ({} {}): {}", object_type, name, final_sql),
         start.elapsed().as_millis() as u64,
         status.to_string(),
-        error_msg
-    ).await;
+        error_msg,
+    )
+    .await;
 
     result.map(|_| ())
 }
 
 #[tauri::command]
-pub async fn commit_transaction(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn commit_transaction(id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.commit_transaction(&id).await
 }
 
 #[tauri::command]
-pub async fn rollback_transaction(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn rollback_transaction(id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.rollback_transaction(&id).await
 }
 
@@ -441,7 +458,17 @@ pub async fn execute_explorer(
 ) -> AppResult<QueryResult> {
     let page = page.unwrap_or(0);
     let page_size = page_size.unwrap_or(50);
-    ExplorerService::execute_explorer(&state, &id, database, &name, object_type, page, page_size, filter).await
+    ExplorerService::execute_explorer(
+        &state,
+        &id,
+        database,
+        &name,
+        object_type,
+        page,
+        page_size,
+        filter,
+    )
+    .await
 }
 
 #[tauri::command]

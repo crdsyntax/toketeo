@@ -1,9 +1,9 @@
-use async_trait::async_trait;
-use sqlx::{PgPool, Row, Column, postgres::PgPoolOptions};
-use std::time::Instant;
 use crate::db::DbDriver;
-use crate::error::{AppResult, AppError};
+use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
+use async_trait::async_trait;
+use sqlx::{Column, PgPool, Row, postgres::PgPoolOptions};
+use std::time::Instant;
 
 pub struct PostgresDriver {
     pool: PgPool,
@@ -12,10 +12,7 @@ pub struct PostgresDriver {
 impl PostgresDriver {
     pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
         let pool = if transactional {
-            PgPoolOptions::new()
-                .max_connections(1)
-                .connect(url)
-                .await
+            PgPoolOptions::new().max_connections(1).connect(url).await
         } else {
             PgPool::connect(url).await
         }
@@ -79,7 +76,10 @@ impl DbDriver for PostgresDriver {
 
             // Detectar claves primarias
             let primary_keys = if let Some(table) = self.extract_table_name(query) {
-                self.get_primary_keys(&table).await.ok().filter(|keys| !keys.is_empty())
+                self.get_primary_keys(&table)
+                    .await
+                    .ok()
+                    .filter(|keys| !keys.is_empty())
             } else {
                 None
             };
@@ -136,17 +136,24 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_tables(&self, schema: Option<String>, filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_tables(
+        &self,
+        schema: Option<String>,
+        filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
-        
+
         let mut query = "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'".to_string();
-        
+
         if let Some(f) = filter {
-            query.push_str(&format!(" AND table_name LIKE '%{}%'", f.replace("'", "''")));
+            query.push_str(&format!(
+                " AND table_name LIKE '%{}%'",
+                f.replace("'", "''")
+            ));
         }
-        
+
         query.push_str(" ORDER BY table_name");
-        
+
         let rows = sqlx::query(&query)
             .bind(schema)
             .fetch_all(&self.pool)
@@ -155,7 +162,11 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_views(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_views(
+        &self,
+        schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -172,7 +183,11 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_functions(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_functions(
+        &self,
+        schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -189,7 +204,11 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_procedures(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_procedures(
+        &self,
+        schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -206,7 +225,11 @@ impl DbDriver for PostgresDriver {
         Ok(rows.into_iter().map(|r| r.get(0)).collect())
     }
 
-    async fn fetch_triggers(&self, schema: Option<String>, _filter: Option<String>) -> AppResult<Vec<String>> {
+    async fn fetch_triggers(
+        &self,
+        schema: Option<String>,
+        _filter: Option<String>,
+    ) -> AppResult<Vec<String>> {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
@@ -269,10 +292,19 @@ impl DbDriver for PostgresDriver {
             let mut map = serde_json::Map::new();
             map.insert("name".into(), row.get::<String, _>("name").into());
             map.insert("type".into(), row.get::<String, _>("type").into());
-            map.insert("isNullable".into(), row.get::<bool, _>("is_nullable").into());
+            map.insert(
+                "isNullable".into(),
+                row.get::<bool, _>("is_nullable").into(),
+            );
             map.insert("isPrimaryKey".into(), row.get::<bool, _>("is_pk").into());
-            map.insert("defaultValue".into(), row.get::<Option<String>, _>("default_value").into());
-            map.insert("comment".into(), row.get::<Option<String>, _>("comment").into());
+            map.insert(
+                "defaultValue".into(),
+                row.get::<Option<String>, _>("default_value").into(),
+            );
+            map.insert(
+                "comment".into(),
+                row.get::<Option<String>, _>("comment").into(),
+            );
             cols.push(serde_json::Value::Object(map));
         }
         Ok(cols)
@@ -355,10 +387,22 @@ impl DbDriver for PostgresDriver {
         let mut fks = Vec::new();
         for row in rows {
             let mut map = serde_json::Map::new();
-            map.insert("constraintName".into(), row.get::<String, _>("constraint_name").into());
-            map.insert("columnName".into(), row.get::<String, _>("column_name").into());
-            map.insert("referencedTable".into(), row.get::<String, _>("referenced_table").into());
-            map.insert("referencedColumn".into(), row.get::<String, _>("referenced_column").into());
+            map.insert(
+                "constraintName".into(),
+                row.get::<String, _>("constraint_name").into(),
+            );
+            map.insert(
+                "columnName".into(),
+                row.get::<String, _>("column_name").into(),
+            );
+            map.insert(
+                "referencedTable".into(),
+                row.get::<String, _>("referenced_table").into(),
+            );
+            map.insert(
+                "referencedColumn".into(),
+                row.get::<String, _>("referenced_column").into(),
+            );
             fks.push(serde_json::Value::Object(map));
         }
         Ok(fks)
@@ -442,9 +486,19 @@ impl DbDriver for PostgresDriver {
             .into_iter()
             .map(|row| {
                 let mut map = serde_json::Map::new();
-                map.insert("name".into(), row.get::<Option<String>, _>("name").unwrap_or_default().into());
+                map.insert(
+                    "name".into(),
+                    row.get::<Option<String>, _>("name")
+                        .unwrap_or_default()
+                        .into(),
+                );
                 map.insert("type".into(), row.get::<String, _>("type").into());
-                map.insert("mode".into(), row.get::<Option<String>, _>("mode").unwrap_or_default().into());
+                map.insert(
+                    "mode".into(),
+                    row.get::<Option<String>, _>("mode")
+                        .unwrap_or_default()
+                        .into(),
+                );
                 serde_json::Value::Object(map)
             })
             .collect();
@@ -467,11 +521,25 @@ impl PostgresDriver {
         let type_name = col.type_info().name();
 
         match type_name {
-            "INT2" | "INT4" | "INT8" | "OID" => row.try_get::<i64, _>(i).map(Into::into).unwrap_or(serde_json::Value::Null),
-            "FLOAT4" | "FLOAT8" | "NUMERIC" => row.try_get::<f64, _>(i).map(Into::into).unwrap_or(serde_json::Value::Null),
-            "BOOL" => row.try_get::<bool, _>(i).map(Into::into).unwrap_or(serde_json::Value::Null),
-            "JSON" | "JSONB" => row.try_get::<serde_json::Value, _>(i).unwrap_or(serde_json::Value::Null),
-            _ => row.try_get::<String, _>(i).map(Into::into).unwrap_or(serde_json::Value::Null),
+            "INT2" | "INT4" | "INT8" | "OID" => row
+                .try_get::<i64, _>(i)
+                .map(Into::into)
+                .unwrap_or(serde_json::Value::Null),
+            "FLOAT4" | "FLOAT8" | "NUMERIC" => row
+                .try_get::<f64, _>(i)
+                .map(Into::into)
+                .unwrap_or(serde_json::Value::Null),
+            "BOOL" => row
+                .try_get::<bool, _>(i)
+                .map(Into::into)
+                .unwrap_or(serde_json::Value::Null),
+            "JSON" | "JSONB" => row
+                .try_get::<serde_json::Value, _>(i)
+                .unwrap_or(serde_json::Value::Null),
+            _ => row
+                .try_get::<String, _>(i)
+                .map(Into::into)
+                .unwrap_or(serde_json::Value::Null),
         }
     }
 
@@ -514,7 +582,7 @@ impl PostgresDriver {
 
     async fn fetch_view_ddl(&self, name: &str, schema: &str) -> AppResult<String> {
         let row = sqlx::query(
-            "SELECT pg_get_viewdef((quote_ident($2) || '.' || quote_ident($1))::regclass, true)"
+            "SELECT pg_get_viewdef((quote_ident($2) || '.' || quote_ident($1))::regclass, true)",
         )
         .bind(name)
         .bind(schema)
@@ -529,7 +597,10 @@ impl PostgresDriver {
                 name.replace('"', "\"\""),
                 d
             )),
-            _ => Ok(format!("-- No se pudo obtener definición de la vista {}.{}", schema, name)),
+            _ => Ok(format!(
+                "-- No se pudo obtener definición de la vista {}.{}",
+                schema, name
+            )),
         }
     }
 
