@@ -202,7 +202,7 @@ impl ConnectionService {
         }
 
         state
-            .add_connection(id.clone(), driver, ssh_tunnel, is_transactional)
+            .add_connection(id.clone(), driver, ssh_tunnel, is_transactional, config.read_only.unwrap_or(false))
             .await;
         tracing::info!("Connection session established: {}", id);
         Ok(id)
@@ -233,7 +233,7 @@ impl ConnectionService {
 
         // Replace existing driver in state
         state
-            .add_connection(id.to_string(), driver, None, false)
+            .add_connection(id.to_string(), driver, None, false, config.read_only.unwrap_or(false))
             .await;
 
         Ok(())

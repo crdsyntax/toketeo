@@ -101,6 +101,7 @@ pub fn run() {
             commands::generate_sql,
             commands::generate_model,
             commands::get_db_type,
+            commands::get_mongo_structure,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

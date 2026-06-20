@@ -83,10 +83,10 @@ The system already includes:
 
 ### Model export
 
-* [ ] Export model for moongose on node express and nestjs
-* [ ] Export model for typeORM
-* [ ] Export model for Prisma
-* [ ] Export model for Zequelice
+* [x] Export model for moongose on node express and nestjs
+* [x] Export model for typeORM
+* [x] Export model for Prisma
+* [x] Export model for Sequelize
 
 
 ---
@@ -127,27 +127,34 @@ The system already includes:
 
 * [x] Persist Monaco editor state per tab
 * [x] Multi-query session support (tabs independent)
-* [ ] Query execution history per connection
+* [x] Query execution history per connection
 * [ ] Result diffing between executions (optional advanced feature)
+* [x] **MongoDB Shell Syntax in Query Editor** (`db.collection.find({...})`)
+  - Client-side JS/TS parser detects `db.<collection>.<method>(...)` syntax in Monaco
+  - Transforms parsed AST into internal JSON protocol (`{ collection, find, sort, project, limit, skip, collation, hint }`)
+  - Supports chained methods: `.find()`, `.findOne()`, `.sort()`, `.project()`, `.limit()`, `.skip()`, `.count()`, `.aggregate()`, `.insertOne/Many()`, `.updateOne/Many()`, `.deleteOne/Many()`, `.distinct()`, `.createIndex()`
+  - Visual badge indicator ("Shell Mode" / "JSON Protocol") in the editor header
+  - Custom Monaco language `mongodb-shell` with syntax highlighting and autocomplete
+  - Filter bar values (MongoFilterBar) are merged on top of parsed shell queries
 
 ---
 
 ## Phase 7: Security & Transaction Layer
 
-* [ ] Validate transaction safety for production connections
-* [ ] Enforce read-only mode toggles per connection
+* [x] Validate transaction safety for production connections
+* [x] Enforce read-only mode toggles per connection
 * [ ] Add query execution guardrails:
 
-  * destructive query detection (DELETE/UPDATE without WHERE warning)
-* [ ] Audit logging for all row-level modifications
+  * [x] destructive query detection (DELETE/UPDATE without WHERE warning)
+* [x] Audit logging for all row-level modifications
 
 ---
 
 ## Phase 8: Performance & Stability
 
-* [ ] Fix unnecessary re-fetch on tab switching
-* [ ] Introduce memoized metadata layer
-* [ ] Prevent duplicated schema queries
+* [x] Fix unnecessary re-fetch on tab switching
+* [x] Introduce memoized metadata layer
+* [x] Prevent duplicated schema queries
 * [ ] Reduce driver round-trips on explorer navigation
 * [ ] Connection pool reuse optimization per engine
 

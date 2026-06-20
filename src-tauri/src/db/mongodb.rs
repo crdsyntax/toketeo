@@ -70,6 +70,8 @@ impl MongoDbDriver {
         tracing::debug!(
             "Setting MongoDB timeouts: Connect=10s, ServerSelection=10s, Retries=Disabled"
         );
+        
+        let default_db = client_options.default_database.clone();
 
         let client = Client::with_options(client_options).map_err(|e| {
             tracing::error!(
@@ -110,14 +112,6 @@ impl MongoDbDriver {
             ping_start.elapsed()
         );
 
-        // Extract default db from URL if possible
-        let default_db = url
-            .split('/')
-            .last()
-            .and_then(|s| s.split('?').next())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-
         Ok(Self {
             client,
             _default_db: default_db,
@@ -127,7 +121,7 @@ impl MongoDbDriver {
     fn get_db(&self, schema: Option<String>) -> AppResult<mongodb::Database> {
         let db_name = schema
             .or_else(|| self._default_db.clone())
-            .ok_or_else(|| AppError::Validation("No database specified".into()))?;
+            .unwrap_or_else(|| "test".to_string());
         Ok(self.client.database(&db_name))
     }
 }
@@ -168,10 +162,63 @@ impl DbDriver for MongoDbDriver {
             let limit = obj.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
             let skip = obj.get("skip").and_then(|v| v.as_i64()).unwrap_or(0);
 
-            let mut cursor = coll
+            let sort = obj
+                .get("sort")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    serde_json::from_value::<Document>(serde_json::Value::Object(o.clone()))
+                        .unwrap_or_default()
+                });
+
+            let project = obj
+                .get("project")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    serde_json::from_value::<Document>(serde_json::Value::Object(o.clone()))
+                        .unwrap_or_default()
+                });
+
+            let collation = obj
+                .get("collation")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    mongodb::options::Collation::builder()
+                        .locale(o.get("locale").and_then(|v| v.as_str()).unwrap_or("simple").to_string())
+                        .build()
+                });
+
+            let hint = obj
+                .get("hint")
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        Some(mongodb::options::Hint::Name(s.to_string()))
+                    } else if let Some(o) = v.as_object() {
+                        let doc = serde_json::from_value::<Document>(serde_json::Value::Object(o.clone())).unwrap_or_default();
+                        Some(mongodb::options::Hint::Keys(doc))
+                    } else {
+                        None
+                    }
+                });
+
+            let mut query = coll
                 .find(filter)
                 .limit(limit)
-                .skip(skip as u64)
+                .skip(skip as u64);
+                
+            if let Some(s) = sort {
+                query = query.sort(s);
+            }
+            if let Some(p) = project {
+                query = query.projection(p);
+            }
+            if let Some(c) = collation {
+                query = query.collation(c);
+            }
+            if let Some(h) = hint {
+                query = query.hint(h);
+            }
+
+            let mut cursor = query
                 .await
                 .map_err(|e| AppError::Database(format!("MongoDB find failed: {}", e)))?;
 
@@ -224,9 +271,8 @@ impl DbDriver for MongoDbDriver {
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
-        // Mongo doesn't have "schemas" per se, maybe return collections in current db?
-        // Let's keep it as is for now, or change to something meaningful.
-        Ok(vec![])
+        // For MongoDB, we treat databases as schemas to allow UI switching.
+        self.fetch_databases().await
     }
 
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {
@@ -306,6 +352,12 @@ impl DbDriver for MongoDbDriver {
                     .entry(key.clone())
                     .or_insert_with(|| format!("{:?}", value.element_type()));
             }
+        }
+
+        // Always include an `_id` field, as it is standard in MongoDB,
+        // even if the collection is empty.
+        if !field_info.contains_key("_id") {
+            field_info.insert("_id".to_string(), "ObjectId".to_string());
         }
 
         let mut cols = Vec::new();
@@ -412,6 +464,34 @@ impl DbDriver for MongoDbDriver {
         _schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
         Ok(vec![])
+    }
+
+    async fn fetch_mongo_structure(&self) -> AppResult<serde_json::Value> {
+        let databases = self.fetch_databases().await?;
+        let mut result = Vec::new();
+
+        for db_name in databases {
+            let db = self.get_db(Some(db_name.clone()))?;
+            let mut collections_info = Vec::new();
+
+            if let Ok(mut collections) = db.list_collection_names().await {
+                collections.retain(|name| !name.starts_with("system."));
+                for coll_name in collections {
+                    let cols = self.fetch_columns(&coll_name, Some(db_name.clone())).await.unwrap_or_default();
+                    let mut coll_map = serde_json::Map::new();
+                    coll_map.insert("name".to_string(), serde_json::Value::String(coll_name));
+                    coll_map.insert("columns".to_string(), serde_json::Value::Array(cols));
+                    collections_info.push(serde_json::Value::Object(coll_map));
+                }
+            }
+
+            let mut db_map = serde_json::Map::new();
+            db_map.insert("database".to_string(), serde_json::Value::String(db_name));
+            db_map.insert("collections".to_string(), serde_json::Value::Array(collections_info));
+            result.push(serde_json::Value::Object(db_map));
+        }
+
+        Ok(serde_json::Value::Array(result))
     }
 
     async fn close(&self) -> AppResult<()> {

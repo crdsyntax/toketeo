@@ -4,6 +4,14 @@ import type { Connection, QueryResult, DbValue, DatabaseObject } from '@/types/d
 import { ExecutionStatus, SidebarTab, ExplorerTab } from '@/types/database'
 
 export type { DbValue }
+export interface MongoFilterState {
+  find: string
+  project: string
+  sort: string
+  collation: string
+  hint: string
+}
+
 export interface QueryTab {
   id: string
   name: string
@@ -12,7 +20,19 @@ export interface QueryTab {
   results?: QueryResult | null
   status?: ExecutionStatus
   error?: string | null
-  editorViewState?: any
+  editorViewState?: import('monaco-editor').editor.ICodeEditorViewState | null
+  mongoFilter?: MongoFilterState
+}
+
+export interface QueryHistoryEntry {
+  id: string
+  query: string
+  connectionId: string
+  executedAt: number // epoch ms
+  durationMs?: number
+  status: 'success' | 'error'
+  error?: string
+  rowCount?: number
 }
 
 export interface ExplorerTabState {
@@ -46,7 +66,8 @@ interface AppState {
   updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
   clearTabResults: (id: string) => void
   setActiveTabId: (id: string) => void
-  updateTabViewState: (id: string, viewState: any) => void
+  updateTabViewState: (id: string, viewState: import('monaco-editor').editor.ICodeEditorViewState | null) => void
+  updateTabMongoFilter: (id: string, filter: Partial<MongoFilterState>) => void
   panels: {
     editor: boolean
     results: boolean
@@ -69,6 +90,9 @@ interface AppState {
   miniToasts: Record<string, { type: 'success' | 'error', text: string } | null>
   setMiniToast: (id: string, msg: { type: 'success' | 'error', text: string }) => void
   clearMiniToast: (id: string) => void
+  queryHistory: Record<string, QueryHistoryEntry[]> // keyed by connectionId
+  addQueryHistory: (entry: QueryHistoryEntry) => void
+  clearQueryHistory: (connectionId: string) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -185,6 +209,13 @@ export const useAppStore = create<AppState>()(
       updateTabViewState: (id, viewState) => set((state) => ({
         tabs: state.tabs.map((t) => t.id === id ? { ...t, editorViewState: viewState } : t),
       })),
+      updateTabMongoFilter: (id, filter) => set((state) => ({
+        tabs: state.tabs.map((t) =>
+          t.id === id
+            ? { ...t, mongoFilter: { ...(t.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }), ...filter } }
+            : t
+        ),
+      })),
       miniToasts: {},
       setMiniToast: (id, msg) => {
         set((state) => ({ miniToasts: { ...state.miniToasts, [id]: msg } }), false)
@@ -193,6 +224,16 @@ export const useAppStore = create<AppState>()(
         }, 3000)
       },
       clearMiniToast: (id) => set((state) => ({ miniToasts: { ...state.miniToasts, [id]: null } }), false),
+      queryHistory: {},
+      addQueryHistory: (entry) => set((state) => {
+        const MAX_HISTORY = 100;
+        const prev = state.queryHistory[entry.connectionId] ?? [];
+        const updated = [entry, ...prev].slice(0, MAX_HISTORY);
+        return { queryHistory: { ...state.queryHistory, [entry.connectionId]: updated } };
+      }),
+      clearQueryHistory: (connectionId) => set((state) => ({
+        queryHistory: { ...state.queryHistory, [connectionId]: [] }
+      })),
     }),
     {
       name: 'toketeo-app-storage',
@@ -214,6 +255,7 @@ export const useAppStore = create<AppState>()(
             { ...tab, socketResults: null, filter: '' }
           ])
         ),
+        queryHistory: state.queryHistory,
       }),
     },
   ),

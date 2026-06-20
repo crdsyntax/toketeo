@@ -331,6 +331,7 @@ export function useExplorer() {
       !!selectedItem &&
       (selectedItem.type === DatabaseObjectType.TABLE ||
         selectedItem.type === DatabaseObjectType.VIEW),
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
@@ -345,6 +346,7 @@ export function useExplorer() {
       !!activeConnection &&
       !!selectedItem &&
       selectedItem.type === DatabaseObjectType.TABLE,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
@@ -364,6 +366,7 @@ export function useExplorer() {
       !!activeConnection &&
       !!selectedItem &&
       selectedItem.type === DatabaseObjectType.TABLE,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
@@ -383,6 +386,7 @@ export function useExplorer() {
       !!activeConnection &&
       !!selectedItem &&
       selectedItem.type === DatabaseObjectType.TABLE,
+    staleTime: 5 * 60 * 1000,
   });
 
   const {
@@ -426,6 +430,7 @@ export function useExplorer() {
       (activeTab === ExplorerTab.DDL ||
         selectedItem.type === DatabaseObjectType.PROCEDURE ||
         selectedItem.type === DatabaseObjectType.FUNCTION),
+    staleTime: 5 * 60 * 1000,
   });
 
   const lastSyncedDdl = useRef<string | undefined>(undefined);
@@ -450,6 +455,7 @@ export function useExplorer() {
       !!selectedItem &&
       (selectedItem.type === DatabaseObjectType.PROCEDURE ||
         selectedItem.type === DatabaseObjectType.VIEW),
+    staleTime: 5 * 60 * 1000,
   });
 
   const updateDdlMutation = useMutation({
@@ -815,7 +821,7 @@ export function useExplorer() {
   }, [sidebarTab, tables, views, procedures, triggers, functions, search]);
 
   // Resolve db type: prefer activeConnection.type (already stored), confirm from backend only if needed
-  const dbType: DatabaseType | undefined = useMemo(() => {
+  const dbType: DatabaseType | undefined = (() => {
     if (!activeConnection?.type) return undefined;
     switch (activeConnection.type) {
       case DatabaseType.MONGODB: return DatabaseType.MONGODB;
@@ -824,7 +830,7 @@ export function useExplorer() {
       case DatabaseType.MARIADB: return DatabaseType.MARIADB;
       default: return activeConnection.type as DatabaseType;
     }
-  }, [activeConnection?.type]);
+  })();
 
   const isMongoDB = dbType === DatabaseType.MONGODB;
 

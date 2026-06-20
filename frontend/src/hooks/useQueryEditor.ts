@@ -1,15 +1,86 @@
 import type * as monaco from 'monaco-editor'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { Monaco } from '@monaco-editor/react'
-import { useAppStore } from '@/store/useAppStore'
+import { useAppStore, type MongoFilterState, type QueryHistoryEntry } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
 import { tauriApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
+import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
+
+const tryParseJson = (v: string): unknown => {
+  if (!v.trim()) return undefined;
+  try { return JSON.parse(v); } catch { return v; }
+};
+
+/**
+ * Merge MongoFilterBar values into a parsed protocol object.
+ * Filter bar values override any values already in the protocol.
+ */
+function mergeFilterBar(
+  payload: Record<string, unknown>,
+  mongoFilter: MongoFilterState | undefined,
+): void {
+  if (!mongoFilter) return;
+  const find = tryParseJson(mongoFilter.find);
+  const project = tryParseJson(mongoFilter.project);
+  const sort = tryParseJson(mongoFilter.sort);
+  const collation = tryParseJson(mongoFilter.collation);
+  const hint = tryParseJson(mongoFilter.hint);
+  if (find !== undefined) payload['find'] = find;
+  if (project !== undefined) payload['project'] = project;
+  if (sort !== undefined) payload['sort'] = sort;
+  if (collation !== undefined) payload['collation'] = collation;
+  if (hint !== undefined) payload['hint'] = hint;
+}
+
+function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | undefined): string {
+  const cleaned = rawSql.replace(/;\s*$/, '').trim();
+
+  // ── 1. Already structured JSON protocol ──────────────────────────────────
+  try {
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
+      mergeFilterBar(parsed, mongoFilter);
+      return JSON.stringify(parsed);
+    }
+  } catch { /* not JSON — fall through */ }
+
+  // ── 2. MongoDB Shell syntax (db.collection.method(...)) ──────────────────
+  if (isMongoShellSyntax(cleaned)) {
+    const parseResult = parseMongoShell(cleaned);
+    if (parseResult.success) {
+      const payload = parseResult.protocol as unknown as Record<string, unknown>;
+      mergeFilterBar(payload, mongoFilter);
+      return JSON.stringify(payload);
+    }
+    // Shell syntax detected but failed to parse: fall through to legacy handler
+    console.warn('[mongoShellParser] Parse failed:', parseResult.error);
+  }
+
+  // ── 3. Legacy fallback: bare identifier / unknown format ─────────────────
+  const dbShellMatch = cleaned.match(/db\.(\w+)/);
+  const collectionName = dbShellMatch ? dbShellMatch[1] : 'unknown';
+
+  const payload: Record<string, unknown> = {
+    collection: collectionName,
+    find: tryParseJson(mongoFilter?.find ?? '') ?? {},
+  };
+  const project = tryParseJson(mongoFilter?.project ?? '');
+  const sort = tryParseJson(mongoFilter?.sort ?? '');
+  const collation = tryParseJson(mongoFilter?.collation ?? '');
+  const hint = tryParseJson(mongoFilter?.hint ?? '');
+  if (project !== undefined) payload['project'] = project;
+  if (sort !== undefined) payload['sort'] = sort;
+  if (collation !== undefined) payload['collation'] = collation;
+  if (hint !== undefined) payload['hint'] = hint;
+
+  return JSON.stringify(payload);
+}
 
 export function useQueryEditor() {
   const { 
@@ -25,9 +96,13 @@ export function useQueryEditor() {
     updateTabResults, 
     clearTabResults,
     updateTabViewState,
+    updateTabMongoFilter,
     panels, 
     setEditorHeight,
-    togglePanel 
+    togglePanel,
+    addQueryHistory,
+    queryHistory,
+    clearQueryHistory,
   } = useAppStore()
   
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
@@ -111,8 +186,12 @@ export function useQueryEditor() {
       if (checkDangerousQuery(activeTab.query)) return
 
       const effectiveLimit = limit ?? queryLimit;
+      const isMongo = activeConnection.type === 'mongodb';
       let sql = activeTab.query.trim();
-      if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
+
+      if (isMongo) {
+        sql = buildMongoJsonQuery(sql, activeTab.mongoFilter);
+      } else if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
         const offset = (page - 1) * effectiveLimit;
         const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
         if (sql.endsWith(';')) {
@@ -121,10 +200,11 @@ export function useQueryEditor() {
           sql += limitStr;
         }
       }
-      sql = sql.endsWith(';') ? sql : `${sql};`;
+      if (!isMongo) sql = sql.endsWith(';') ? sql : `${sql};`;
       
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
+      const startTime = Date.now();
       try {
         const targetConnectionId = activeTab.connectionId || activeConnection.id;
         const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
@@ -132,8 +212,9 @@ export function useQueryEditor() {
         let result;
         try {
           result = await queryService.execute(targetConnection.id, sql, targetConnection.database, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
-        } catch (err: any) {
-          if (err?.message?.includes('not found') && err?.message?.includes('Connection')) {
+        } catch (err: unknown) {
+          const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+          if (isConnNotFound) {
             await connectionService.connect(targetConnection);
             result = await queryService.execute(targetConnection.id, sql, targetConnection.database, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
           } else {
@@ -143,20 +224,42 @@ export function useQueryEditor() {
 
         result.page = page;
         result.hasMore = effectiveLimit > 0 && result.rows.length >= effectiveLimit;
+        const durationMs = Date.now() - startTime;
         updateTabResults(activeTab.id, {
           status: ExecutionStatus.SUCCESS,
           results: result,
           error: null
-        })
+        });
+        const histEntry: QueryHistoryEntry = {
+          id: Math.random().toString(36).substring(2),
+          query: activeTab.query.trim(),
+          connectionId: targetConnection.id,
+          executedAt: Date.now(),
+          durationMs,
+          status: 'success',
+          rowCount: result.rows.length,
+        };
+        addQueryHistory(histEntry);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
+        const durationMs = Date.now() - startTime;
         updateTabResults(activeTab.id, {
           status: ExecutionStatus.ERROR,
           error: message
-        })
+        });
+        const histEntry: QueryHistoryEntry = {
+          id: Math.random().toString(36).substring(2),
+          query: activeTab.query.trim(),
+          connectionId: activeTab.connectionId || activeConnection.id,
+          executedAt: Date.now(),
+          durationMs,
+          status: 'error',
+          error: message,
+        };
+        addQueryHistory(histEntry);
       }
     }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
     if (!editorRef.current || !activeTab || !activeConnection) return
@@ -197,8 +300,11 @@ export function useQueryEditor() {
     if (!sqlSnippet) return
     if (checkDangerousQuery(sqlSnippet)) return
 
+    const isMongo = activeConnection?.type === 'mongodb';
     sqlSnippet = sqlSnippet.trim();
-    if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
+    if (isMongo) {
+      sqlSnippet = buildMongoJsonQuery(sqlSnippet, activeTab.mongoFilter);
+    } else if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
       const offset = (page - 1) * queryLimit;
       const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
       if (sqlSnippet.endsWith(';')) {
@@ -207,7 +313,7 @@ export function useQueryEditor() {
         sqlSnippet += limitStr;
       }
     }
-    if (!sqlSnippet.endsWith(';')) sqlSnippet += ';'
+    if (!isMongo && !sqlSnippet.endsWith(';')) sqlSnippet += ';'
 
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     
@@ -218,8 +324,9 @@ export function useQueryEditor() {
       let result;
       try {
         result = await queryService.execute(targetConnection.id, sqlSnippet, targetConnection.database, undefined, page, queryLimit > 0 ? queryLimit : undefined);
-      } catch (err: any) {
-        if (err?.message?.includes('not found') && err?.message?.includes('Connection')) {
+      } catch (err: unknown) {
+        const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+        if (isConnNotFound) {
           await connectionService.connect(targetConnection);
           result = await queryService.execute(targetConnection.id, sqlSnippet, targetConnection.database, undefined, page, queryLimit > 0 ? queryLimit : undefined);
         } else {
@@ -338,8 +445,9 @@ export function useQueryEditor() {
                 id: activeConnection.id,
                 query: finalSql
             })
-        } catch (err: any) {
-            if (err?.message?.includes('not found') && err?.message?.includes('Connection')) {
+        } catch (err: unknown) {
+            const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+            if (isConnNotFound) {
                 const targetConnectionId = activeTab.connectionId || activeConnection.id;
                 const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
                 await connectionService.connect(targetConnection);
@@ -375,7 +483,7 @@ export function useQueryEditor() {
     }
     
     setEditingCell(null)
-  }, [activeTab, activeConnection, updateTabResults])
+  }, [activeTab, activeConnection, connections, updateTabResults])
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
@@ -660,7 +768,10 @@ export function useQueryEditor() {
     setSqlModal,
     handleGenerateSql,
     updateTabViewState,
+    updateTabMongoFilter,
     queryLimit,
     setQueryLimit,
+    queryHistory,
+    clearQueryHistory,
   }
 }

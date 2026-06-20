@@ -29,6 +29,7 @@ const INITIAL_FORM: CreateConnectionDto = {
   replicaSet: '',
   directConnection: true,
   ssl: 'false',
+  readOnly: false,
 }
 
 export function ConnectionModal({
@@ -81,6 +82,7 @@ export function ConnectionModal({
           replicaSet: fullConnection.replicaSet || '',
           directConnection: fullConnection.directConnection ?? true,
           ssl: fullConnection.ssl || 'false',
+          readOnly: fullConnection.readOnly ?? false,
           ssh: fullConnection.ssh ? {
             ...fullConnection.ssh,
             authType: fullConnection.ssh.authType || (fullConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
@@ -103,6 +105,7 @@ export function ConnectionModal({
           replicaSet: editingConnection.replicaSet || '',
           directConnection: editingConnection.directConnection ?? true,
           ssl: editingConnection.ssl || 'false',
+          readOnly: editingConnection.readOnly ?? false,
           ssh: editingConnection.ssh ? {
             ...editingConnection.ssh,
             authType: editingConnection.ssh.authType || (editingConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
@@ -224,6 +227,22 @@ export function ConnectionModal({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="flex items-center space-x-2 p-3 border border-border bg-muted/20">
+                <input
+                  type="checkbox"
+                  id="readonly-toggle"
+                  checked={form.readOnly}
+                  onChange={(e) => setForm({ ...form, readOnly: e.target.checked })}
+                  className="w-3.5 h-3.5 accent-primary cursor-pointer"
+                />
+                <label
+                  htmlFor="readonly-toggle"
+                  className="text-xs font-bold uppercase tracking-widest text-muted-foreground cursor-pointer select-none"
+                >
+                  Read-Only Mode
+                </label>
               </div>
 
               <div className="space-y-3">

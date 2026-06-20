@@ -173,6 +173,7 @@ export interface Connection {
   directConnection?: boolean
   ssl?: string
   ssh?: SshConfig
+  readOnly?: boolean
   createdAt: string
   updatedAt: string
 }

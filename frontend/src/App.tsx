@@ -6,9 +6,12 @@ import QueryEditor from '@/pages/QueryEditor'
 import AuditLog from '@/pages/AuditLog'
 import { AuthProvider } from '@/components/layout/AuthProvider'
 
+import { Toaster } from 'react-hot-toast'
+
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="bottom-right" />
       <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<Connections />} />

@@ -6,6 +6,9 @@ import {
   Play,
   Loader2,
   Square,
+  Clock,
+  CheckCircle2,
+  Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRef } from 'react';
@@ -23,6 +26,12 @@ interface EditorToolbarProps {
   connections: Connection[];
   currentConnectionId?: string;
   onConnectionChange: (connectionId: string) => void;
+  onHistoryToggle: () => void;
+  showHistory: boolean;
+  historyCount: number;
+  onCommit: () => void;
+  onRollback: () => void;
+  isTransactional: boolean;
 }
 
 export function EditorToolbar({
@@ -37,6 +46,12 @@ export function EditorToolbar({
   connections,
   currentConnectionId,
   onConnectionChange,
+  onHistoryToggle,
+  showHistory,
+  historyCount,
+  onCommit,
+  onRollback,
+  isTransactional,
 }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,6 +135,12 @@ export function EditorToolbar({
           {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
+        {connections.find(c => c.id === currentConnectionId)?.readOnly && (
+          <span className="px-2 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold tracking-widest uppercase rounded mr-2 flex items-center select-none">
+            Read-Only
+          </span>
+        )}
+
         <button
           onClick={() => onExecute()}
           disabled={isExecuting}
@@ -134,6 +155,30 @@ export function EditorToolbar({
           {isExecuting ? 'Running...' : 'Run All'}
         </button>
 
+        {isTransactional && (
+          <>
+            <div className="w-[1px] h-4 bg-border mx-2" />
+            <button
+              onClick={onCommit}
+              disabled={isExecuting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-none transition-all disabled:opacity-50"
+              title="Commit Transaction"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Commit
+            </button>
+            <button
+              onClick={onRollback}
+              disabled={isExecuting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-all disabled:opacity-50"
+              title="Rollback Transaction"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              Rollback
+            </button>
+          </>
+        )}
+
         {isExecuting && (
           <button
             onClick={onCancel}
@@ -144,7 +189,24 @@ export function EditorToolbar({
         )}
       </div>
 
-      <div className="flex items-center gap-2 p-0.5 bg-muted/30 rounded-lg border border-border/50">
+      <div className="flex items-center gap-1 p-0.5 bg-muted/30 rounded-lg border border-border/50">
+        <button
+          onClick={onHistoryToggle}
+          className={cn(
+            'relative p-1.5 rounded-md transition-all duration-200',
+            showHistory
+              ? 'bg-amber-500/15 text-amber-500 dark:bg-amber-500/20 shadow-sm'
+              : 'text-muted-foreground hover:bg-amber-500/10 hover:text-amber-500',
+          )}
+          title="Query History"
+        >
+          <Clock className="w-4 h-4" />
+          {historyCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-amber-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-0.5">
+              {historyCount > 99 ? '99+' : historyCount}
+            </span>
+          )}
+        </button>
         <button
           onClick={() => setShowLayoutMenu(!showLayoutMenu)}
           className={cn(

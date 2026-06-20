@@ -1,7 +1,7 @@
-use chrono::{ DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc };
+use chrono::{ DateTime, NaiveDate, NaiveTime, Utc };
 use rust_decimal::Decimal;
 use serde_json::Value;
-use sqlx::{ mysql::MySqlRow, Column, Row, TypeInfo };
+use sqlx::{ mysql::MySqlRow, Row };
 
 pub type Decoder = fn(&MySqlRow, usize) -> Option<Value>;
 

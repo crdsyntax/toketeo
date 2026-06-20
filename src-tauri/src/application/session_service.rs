@@ -12,6 +12,7 @@ use tauri::Manager;
 pub struct MetadataCacheKey {
     pub object: String,
     pub schema: Option<String>,
+    pub filter: Option<String>,
     pub kind: MetadataKind,
 }
 
@@ -21,6 +22,13 @@ pub enum MetadataKind {
     Indexes,
     ForeignKeys,
     Constraints,
+    Schemas,
+    Databases,
+    Tables,
+    Views,
+    Procedures,
+    Triggers,
+    Functions,
 }
 
 pub struct MetadataCacheEntry {
@@ -68,6 +76,12 @@ impl MetadataCache {
         });
     }
 
+    pub fn invalidate_schema_lists(&mut self, schema: Option<&str>) {
+        self.entries.retain(|k, _| {
+            !(k.object == "*" && k.schema.as_deref() == schema)
+        });
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
     }
@@ -81,6 +95,7 @@ pub struct ConnectionSession {
     pub driver: Arc<dyn DbDriver>,
     pub ssh_tunnel: Option<SshTunnel>,
     pub transactional: bool,
+    pub read_only: bool,
     pub created_at: Instant,
     pub last_access: Instant,
     pub max_ttl: Option<Duration>,
@@ -92,12 +107,14 @@ impl ConnectionSession {
         driver: Arc<dyn DbDriver>,
         ssh_tunnel: Option<SshTunnel>,
         transactional: bool,
+        read_only: bool,
     ) -> Self {
         let now = Instant::now();
         Self {
             driver,
             ssh_tunnel,
             transactional,
+            read_only,
             created_at: now,
             last_access: now,
             max_ttl: Some(Duration::from_secs(3600 * 8)), // 8 hours default TTL
@@ -305,6 +322,7 @@ mod tests {
         let key = MetadataCacheKey {
             object: "users".into(),
             schema: None,
+            filter: None,
             kind: MetadataKind::Columns,
         };
         let mut cache = MetadataCache::new();
@@ -318,6 +336,7 @@ mod tests {
         let key = MetadataCacheKey {
             object: "users".into(),
             schema: Some("public".into()),
+            filter: None,
             kind: MetadataKind::Columns,
         };
         cache.set(key.clone(), vec![serde_json::json!({"name": "id"})]);

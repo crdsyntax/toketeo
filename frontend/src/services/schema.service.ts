@@ -19,6 +19,9 @@ export const schemaService = {
   getSchemas: async (id: string) => {
     return await tauriApi.invoke<string[]>('get_schemas', { id })
   },
+  getMongoStructure: async (id: string) => {
+    return await tauriApi.invoke<Record<string, unknown>>('get_mongo_structure', { id })
+  },
 
   getTables: async (id: string, schema?: string, filter?: string) => {
     const names = await tauriApi.invoke<string[]>('get_tables', { id, schema, filter })

@@ -373,8 +373,8 @@ export function ObjectDetail(props: ObjectDetailProps) {
               handleExecute={handleExecute}
               handleCancel={handleCancel}
               updateCell={updateCell}
-              filter={props.filter}
-              setFilter={props.setFilter}
+              filter={filter}
+              setFilter={setFilter}
             />
           )}
 

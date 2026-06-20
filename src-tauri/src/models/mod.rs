@@ -29,6 +29,8 @@ pub struct DbConnectionConfig {
     pub ssl: Option<String>,
     #[serde(rename = "ssh")]
     pub ssh_tunnel: Option<SshConfig>,
+    #[serde(rename = "readOnly")]
+    pub read_only: Option<bool>,
 }
 
 impl fmt::Debug for DbConnectionConfig {

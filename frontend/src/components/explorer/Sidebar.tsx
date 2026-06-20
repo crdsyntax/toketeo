@@ -1,3 +1,4 @@
+import React from 'react'
 import type { DatabaseObject, QueryResult } from '@/types/database'
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType, DatabaseType } from '@/types/database'
 import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database } from 'lucide-react'
@@ -77,19 +78,16 @@ export function Sidebar({
         </button>
         <div className="w-full h-px bg-border/50 mb-2" />
 
-        {visibleTabs.map((tab) => {
-          const Icon = getTabIcon(tab)
-          return (
+        {visibleTabs.map((tab) => (
             <button
               key={tab}
               onClick={() => { setSidebarTab(tab); if(isCollapsed && onToggle) onToggle(); }}
               title={getTabLabel(tab)}
               className={cn("p-2 rounded-none transition-colors", sidebarTab === tab ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}
             >
-              <Icon className="w-5 h-5" />
+              {React.createElement(getTabIcon(tab), { className: 'w-5 h-5' })}
             </button>
-          )
-        })}
+          ))}
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -100,10 +98,7 @@ export function Sidebar({
                 {currentSchema || 'No Database'}
               </span>
               <div className="flex items-center gap-2">
-                {(() => {
-                  const Icon = getTabIcon(sidebarTab)
-                  return <Icon className="w-3 h-3 text-primary" />
-                })()}
+                {React.createElement(getTabIcon(sidebarTab), { className: 'w-3 h-3 text-primary' })}
                 <span className="capitalize">{currentTabLabel}</span>
                 {isMongoDB && (
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/30">

@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
+  ChevronDown,
   Layout,
   Code,
   Play,
@@ -38,6 +39,21 @@ interface DataTabProps {
   filter: string;
   setFilter: (f: string) => void;
 }
+
+const formatCellValue = (value: DbValue): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    if (value.$oid) return `ObjectId("${value.$oid}")`;
+    if (value.$date) {
+      const d = value.$date;
+      if (typeof d === 'string') return new Date(d).toISOString();
+      if (d.$numberLong) return new Date(Number(d.$numberLong)).toISOString();
+      return new Date(d as string | number).toISOString();
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+};
 
 export function DataTab({
   selectedItem,
@@ -81,6 +97,43 @@ export function DataTab({
   });
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const activeConnection = useAppStore((state) => state.activeConnection);
+  const isMongo = activeConnection?.type === 'mongodb';
+  const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
+
+  const [mongoInputs, setMongoInputs] = useState(() => {
+    if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
+    try {
+      const parsed = JSON.parse(filter);
+      if (parsed.$find !== undefined || parsed.$project !== undefined || parsed.$sort !== undefined) {
+        return {
+          $find: parsed.$find ? JSON.stringify(parsed.$find) : '',
+          $project: parsed.$project ? JSON.stringify(parsed.$project) : '',
+          $sort: parsed.$sort ? JSON.stringify(parsed.$sort) : '',
+          $collation: parsed.$collation ? JSON.stringify(parsed.$collation) : '',
+          $hint: parsed.$hint ? JSON.stringify(parsed.$hint) : '',
+        };
+      }
+      return { $find: filter, $project: '', $sort: '', $collation: '', $hint: '' };
+    } catch {
+      return { $find: filter, $project: '', $sort: '', $collation: '', $hint: '' };
+    }
+  });
+
+  const handleMongoFilterExecute = () => {
+    const payload: Record<string, unknown> = {};
+    const add = (k: string, v: string) => {
+      if (!v.trim()) return;
+      try { payload[k] = JSON.parse(v); } catch { payload[k] = v; }
+    };
+    add('$find', mongoInputs.$find);
+    add('$project', mongoInputs.$project);
+    add('$sort', mongoInputs.$sort);
+    add('$collation', mongoInputs.$collation);
+    add('$hint', mongoInputs.$hint);
+    
+    setFilter(JSON.stringify(payload));
+    setTimeout(() => handleExecute(), 50);
+  };
 
   const handleStartEdit = (
     rowIndex: number,
@@ -89,7 +142,7 @@ export function DataTab({
   ) => {
     if (selectedItem.type !== 'table') return; // Only tables are editable for now
     setEditingCell({ rowIndex, column });
-    setEditValue(value === null ? '' : String(value));
+    setEditValue(value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value));
   };
 
   const handleSaveEdit = (row: DbRow) => {
@@ -242,7 +295,7 @@ export function DataTab({
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
-            SQL Actions
+            {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
           </div>
           <hr className="border-slate-700/50 my-1" />
           <div className="space-y-0.5">
@@ -278,22 +331,91 @@ export function DataTab({
         tableName={selectedItem.name}
       />
 
-      <div className="px-4 py-2 border-b border-border bg-muted/5 flex justify-between items-center shrink-0">
-        <div className="flex items-center gap-2">
-          <input
-            className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary w-64"
-            placeholder="WHERE clause (e.g. id > 10)"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleExecute();
-              }
-            }}
-          />
+      <div className="px-4 py-2 border-b border-border bg-muted/5 flex flex-col shrink-0">
+        <div className="flex items-center gap-2 w-full">
+          {isMongo ? (
+            <input
+              className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary flex-1 max-w-xl"
+              placeholder='Filter document (e.g. { "status": "active" })'
+              value={mongoInputs.$find}
+              onChange={(e) => setMongoInputs(p => ({ ...p, $find: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleMongoFilterExecute();
+                }
+              }}
+            />
+          ) : (
+            <input
+              className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary w-64"
+              placeholder="WHERE clause (e.g. id > 10)"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleExecute();
+                }
+              }}
+            />
+          )}
 
+          {isMongo && (
+            <button
+              onClick={() => setShowAdvancedMongo(!showAdvancedMongo)}
+              className="text-muted-foreground hover:text-foreground text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-muted/50 transition-colors"
+            >
+              Advanced
+              {showAdvancedMongo ? <ChevronDown className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
+            </button>
+          )}
         </div>
+        
+        {isMongo && showAdvancedMongo && (
+          <div className="mt-2 grid grid-cols-2 gap-2 text-xs w-full max-w-xl bg-background/50 p-2 rounded border border-border/50">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Project</span>
+              <input
+                className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
+                placeholder='{ "name": 1 }'
+                value={mongoInputs.$project}
+                onChange={(e) => setMongoInputs(p => ({ ...p, $project: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && handleMongoFilterExecute()}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Sort</span>
+              <input
+                className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
+                placeholder='{ "age": -1 }'
+                value={mongoInputs.$sort}
+                onChange={(e) => setMongoInputs(p => ({ ...p, $sort: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && handleMongoFilterExecute()}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Collation</span>
+              <input
+                className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
+                placeholder='{ "locale": "en" }'
+                value={mongoInputs.$collation}
+                onChange={(e) => setMongoInputs(p => ({ ...p, $collation: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && handleMongoFilterExecute()}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Hint</span>
+              <input
+                className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
+                placeholder='{ "name_1": 1 } or "name_1"'
+                value={mongoInputs.$hint}
+                onChange={(e) => setMongoInputs(p => ({ ...p, $hint: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && handleMongoFilterExecute()}
+              />
+            </div>
+          </div>
+        )}
       </div>
       {executionStatus === 'error' && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
@@ -400,7 +522,7 @@ export function DataTab({
                                   NULL
                                 </span>
                               ) : (
-                                String(value)
+                                formatCellValue(value)
                               )}
                             </>
                           )}

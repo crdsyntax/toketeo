@@ -7,12 +7,34 @@ use crate::state::AppState;
 /// Maximum allowed page size to prevent runaway queries on large tables.
 /// Rule: no more than 1000 rows per page, enforced server-side.
 const MAX_PAGE_SIZE: u32 = 1000;
-const DEFAULT_PAGE_SIZE: u32 = 50;
 
 pub struct ExplorerService;
 
 impl ExplorerService {
+    fn is_destructive_query(query: &str) -> bool {
+        let upper = query.to_uppercase();
+        // A simple heuristic for destructive queries. For a robust solution, a proper SQL parser is needed.
+        upper.contains("INSERT ") ||
+        upper.contains("UPDATE ") ||
+        upper.contains("DELETE ") ||
+        upper.contains("DROP ") ||
+        upper.contains("ALTER ") ||
+        upper.contains("CREATE ") ||
+        upper.contains("TRUNCATE ") ||
+        upper.contains("REPLACE ") ||
+        upper.contains("GRANT ") ||
+        upper.contains("REVOKE ") ||
+        upper.contains(".INSERT") ||
+        upper.contains(".UPDATE") ||
+        upper.contains(".DELETE") ||
+        upper.contains(".DROP")
+    }
     pub async fn execute_query(state: &AppState, id: &str, query: &str) -> AppResult<QueryResult> {
+        let is_read_only = state.is_read_only(id).await.unwrap_or(false);
+        if is_read_only && Self::is_destructive_query(query) {
+            return Err(AppError::Validation("Connection is in read-only mode. Destructive queries are disabled.".to_string()));
+        }
+
         let driver = state.get_connection(id).await?;
         let start = std::time::Instant::now();
 
@@ -45,13 +67,47 @@ impl ExplorerService {
     }
 
     pub async fn get_schemas(state: &AppState, id: &str) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: None, filter: None, kind: MetadataKind::Schemas };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_schemas().await
+        let data = driver.fetch_schemas().await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     pub async fn get_databases(state: &AppState, id: &str) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: None, filter: None, kind: MetadataKind::Databases };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_databases().await
+        let data = driver.fetch_databases().await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     pub async fn get_tables(
@@ -60,8 +116,25 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Tables };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_tables(schema, filter).await
+        let data = driver.fetch_tables(schema, filter).await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     pub async fn get_views(
@@ -70,8 +143,25 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Views };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_views(schema, filter).await
+        let data = driver.fetch_views(schema, filter).await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     pub async fn get_procedures(
@@ -80,8 +170,25 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Procedures };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_procedures(schema, filter).await
+        let data = driver.fetch_procedures(schema, filter).await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     pub async fn get_triggers(
@@ -90,8 +197,25 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Triggers };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_triggers(schema, filter).await
+        let data = driver.fetch_triggers(schema, filter).await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     pub async fn get_functions(
@@ -100,8 +224,25 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
+        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Functions };
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                }
+            }
+        }
         let driver = state.get_connection(id).await?;
-        driver.fetch_functions(schema, filter).await
+        let data = driver.fetch_functions(schema, filter).await?;
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+            }
+        }
+        Ok(data)
     }
 
     // ─── Cached metadata accessors ───────────────────────────────────────────
@@ -115,6 +256,7 @@ impl ExplorerService {
         let cache_key = MetadataCacheKey {
             object: table.to_string(),
             schema: schema.clone(),
+            filter: None,
             kind: MetadataKind::Columns,
         };
 
@@ -155,6 +297,7 @@ impl ExplorerService {
         let cache_key = MetadataCacheKey {
             object: table.to_string(),
             schema: schema.clone(),
+            filter: None,
             kind: MetadataKind::Indexes,
         };
 
@@ -190,6 +333,7 @@ impl ExplorerService {
         let cache_key = MetadataCacheKey {
             object: table.to_string(),
             schema: schema.clone(),
+            filter: None,
             kind: MetadataKind::ForeignKeys,
         };
 
@@ -225,6 +369,7 @@ impl ExplorerService {
         let cache_key = MetadataCacheKey {
             object: table.to_string(),
             schema: schema.clone(),
+            filter: None,
             kind: MetadataKind::Constraints,
         };
 
@@ -261,6 +406,7 @@ impl ExplorerService {
         let mut conns = state.connections.write().await;
         if let Some(session) = conns.get_mut(id) {
             session.metadata_cache.invalidate_table(table, schema);
+            session.metadata_cache.invalidate_schema_lists(schema);
         }
     }
 
@@ -328,7 +474,30 @@ impl ExplorerService {
         if matches!(db_type, crate::db::DbType::Mongodb) {
             let mut mongo_query_map = serde_json::Map::new();
             mongo_query_map.insert("collection".to_string(), serde_json::Value::String(name.to_string()));
-            mongo_query_map.insert("find".to_string(), serde_json::json!({}));
+            
+            let mut find_filter = serde_json::json!({});
+            if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+                match serde_json::from_str::<serde_json::Value>(f) {
+                    Ok(mut parsed) => {
+                        if let Some(o) = parsed.as_object_mut() {
+                            if o.contains_key("$find") {
+                                find_filter = o.remove("$find").unwrap();
+                                if let Some(p) = o.remove("$project") { mongo_query_map.insert("project".to_string(), p); }
+                                if let Some(s) = o.remove("$sort") { mongo_query_map.insert("sort".to_string(), s); }
+                                if let Some(c) = o.remove("$collation") { mongo_query_map.insert("collation".to_string(), c); }
+                                if let Some(h) = o.remove("$hint") { mongo_query_map.insert("hint".to_string(), h); }
+                            } else {
+                                find_filter = parsed;
+                            }
+                        } else {
+                            find_filter = parsed;
+                        }
+                    },
+                    Err(e) => return Err(crate::error::AppError::Validation(format!("MongoDB filter must be valid JSON: {}", e))),
+                }
+            }
+            
+            mongo_query_map.insert("find".to_string(), find_filter);
             mongo_query_map.insert("limit".to_string(), serde_json::json!(effective_page_size as i64));
             mongo_query_map.insert("skip".to_string(), serde_json::json!(offset as i64));
             
@@ -479,5 +648,10 @@ impl ExplorerService {
                 schema
             )))
         }
+    }
+
+    pub async fn get_mongo_structure(state: &AppState, id: &str) -> AppResult<serde_json::Value> {
+        let driver = state.get_connection(id).await?;
+        driver.fetch_mongo_structure().await
     }
 }

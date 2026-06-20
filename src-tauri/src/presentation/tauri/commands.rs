@@ -547,3 +547,11 @@ pub async fn switch_schema(
 ) -> AppResult<()> {
     ExplorerService::switch_schema(&state, &id, schema).await
 }
+
+#[tauri::command]
+pub async fn get_mongo_structure(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<serde_json::Value> {
+    ExplorerService::get_mongo_structure(&state, &id).await
+}

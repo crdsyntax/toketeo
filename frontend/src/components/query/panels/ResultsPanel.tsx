@@ -44,6 +44,7 @@ export function ResultsPanel({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showLimitMenu, setShowLimitMenu] = useState(false);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/virtual is not yet React Compiler compatible; warning is expected
   const rowVirtualizer = useVirtualizer({
     count: sortedRows.length,
     getScrollElement: () => parentRef.current,
@@ -376,7 +377,7 @@ export function ResultsPanel({
                                     NULL
                                   </span>
                                 ) : (
-                                  String(row[col])
+                                  typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col])
                                 )
                               )}
                             </td>

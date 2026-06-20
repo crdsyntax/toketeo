@@ -71,6 +71,10 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN read_only INTEGER")
+            .execute(&pool)
+            .await;
+
         Ok(Self { pool })
     }
 
@@ -151,6 +155,7 @@ impl Storage {
                 .map(|v| v != 0),
             ssl: row.get("ssl"),
             ssh_tunnel,
+            read_only: row.try_get::<Option<i64>, _>("read_only").unwrap_or(None).map(|v| v != 0),
         })
     }
 
@@ -172,8 +177,8 @@ impl Storage {
             .map(|p| p.expose_secret().to_string());
 
         sqlx::query(
-            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, direct_connection, ssl, ssh)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, direct_connection, ssl, ssh, read_only)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 environment = excluded.environment,
@@ -190,6 +195,7 @@ impl Storage {
                 replica_set = excluded.replica_set,
                 direct_connection = excluded.direct_connection,
                 ssl = excluded.ssl,
+                read_only = excluded.read_only,
                 ssh = CASE 
                     WHEN excluded.ssh IS NOT NULL THEN excluded.ssh 
                     ELSE connections.ssh 
@@ -209,6 +215,7 @@ impl Storage {
         .bind(config.direct_connection.map(|v| if v { 1 } else { 0 }))
         .bind(config.ssl)
         .bind(ssh_json)
+        .bind(config.read_only.map(|v| if v { 1 } else { 0 }))
         .execute(&self.pool)
         .await?;
 
@@ -250,6 +257,7 @@ impl Storage {
                     .map(|v| v != 0),
                 ssl: row.get("ssl"),
                 ssh_tunnel,
+                read_only: row.try_get::<Option<i64>, _>("read_only").unwrap_or(None).map(|v| v != 0),
             });
         }
         Ok(connections)

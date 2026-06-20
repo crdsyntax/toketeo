@@ -1,6 +1,5 @@
 import {
   Table2,
-  ExternalLink,
   Minus,
   Copy,
   Maximize2,

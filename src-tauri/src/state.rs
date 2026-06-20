@@ -25,11 +25,12 @@ impl AppState {
         driver: Arc<dyn DbDriver>,
         ssh_tunnel: Option<crate::ssh::SshTunnel>,
         transactional: bool,
+        read_only: bool,
     ) {
         let mut conns = self.connections.write().await;
         conns.insert(
             id,
-            ConnectionSession::new(driver, ssh_tunnel, transactional),
+            ConnectionSession::new(driver, ssh_tunnel, transactional, read_only),
         );
     }
 
@@ -38,6 +39,18 @@ impl AppState {
         if let Some(session) = conns.get_mut(id) {
             session.touch();
             Ok(session.driver.clone())
+        } else {
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
+        }
+    }
+
+    pub async fn is_read_only(&self, id: &str) -> AppResult<bool> {
+        let conns = self.connections.read().await;
+        if let Some(session) = conns.get(id) {
+            Ok(session.read_only)
         } else {
             Err(crate::error::AppError::Internal(format!(
                 "Connection {} not found",

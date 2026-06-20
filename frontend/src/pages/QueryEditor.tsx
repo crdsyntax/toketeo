@@ -2,15 +2,19 @@ import { AlertCircle } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
+import { MongoFilterBar } from '@/components/query/panels/MongoFilterBar';
 import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
+import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
-import { useEffect, useRef } from 'react';
-import { ExecutionStatus, type DbRow } from '@/types/database';
+import { useEffect, useRef, useState } from 'react';
+import { ExecutionStatus, Environment } from '@/types/database';
 import { useQuery } from '@tanstack/react-query';
 import { connectionService } from '@/services/connection.service';
+import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'react-hot-toast';
 
 export default function QueryEditor() {
   const { data: connections = [] } = useQuery({
@@ -67,7 +71,37 @@ export default function QueryEditor() {
     updateTabViewState,
     queryLimit,
     setQueryLimit,
+    updateTabMongoFilter,
+    queryHistory,
+    clearQueryHistory,
   } = useQueryEditor()
+
+  const [showHistory, setShowHistory] = useState(false);
+  const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
+  const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
+
+  const isMongo = activeConnection?.type === 'mongodb'
+  const isTransactional = activeConnection?.environment === Environment.PRODUCTION && !isMongo
+
+  const handleCommit = async () => {
+    if (!currentConnectionId) return;
+    try {
+      await invoke('commit_transaction', { id: currentConnectionId });
+      toast.success('Transaction committed');
+    } catch (e) {
+      toast.error(`Commit failed: ${e}`);
+    }
+  };
+
+  const handleRollback = async () => {
+    if (!currentConnectionId) return;
+    try {
+      await invoke('rollback_transaction', { id: currentConnectionId });
+      toast.success('Transaction rolled back');
+    } catch (e) {
+      toast.error(`Rollback failed: ${e}`);
+    }
+  };
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
@@ -154,7 +188,7 @@ export default function QueryEditor() {
           style={{ top: contextMenuSql.y, left: contextMenuSql.x }}
         >
           <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
-            SQL Actions
+            {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
           </div>
           <hr className="border-slate-700/50 my-1" />
           <div className="space-y-0.5">
@@ -186,7 +220,29 @@ export default function QueryEditor() {
         connections={connections}
         currentConnectionId={activeTab?.connectionId || activeConnection?.id}
         onConnectionChange={(id) => updateTabConnection(activeTab.id, id)}
+        onHistoryToggle={() => setShowHistory((v) => !v)}
+        showHistory={showHistory}
+        historyCount={currentHistory.length}
+        onCommit={handleCommit}
+        onRollback={handleRollback}
+        isTransactional={!!isTransactional}
       />
+
+      {/* History panel floating dropdown */}
+      {showHistory && (
+        <div className="relative">
+          <QueryHistoryPanel
+            connectionId={currentConnectionId}
+            history={currentHistory}
+            onClear={clearQueryHistory}
+            onReplay={(query) => {
+              updateTabQuery(activeTab.id, query);
+              setShowHistory(false);
+            }}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
 
       <ResultsModal 
         isOpen={showResultModal}
@@ -232,7 +288,14 @@ export default function QueryEditor() {
 
       <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {panels.editor && (
-          <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px]">
+          <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px] flex flex-col">
+            {isMongo && activeTab && (
+              <MongoFilterBar
+                filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
+                onChange={(f) => updateTabMongoFilter(activeTab.id, f)}
+                onExecute={() => handleExecuteAll()}
+              />
+            )}
             {(() => {
               const targetConnectionId = activeTab?.connectionId || activeConnection.id;
               const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;

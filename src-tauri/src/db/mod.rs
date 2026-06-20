@@ -77,6 +77,9 @@ pub trait DbDriver: Send + Sync {
         object_type: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>>;
+    async fn fetch_mongo_structure(&self) -> AppResult<serde_json::Value> {
+        Err(crate::error::AppError::Validation("Not supported for this database type".to_string()))
+    }
     async fn close(&self) -> AppResult<()>;
 }
 
