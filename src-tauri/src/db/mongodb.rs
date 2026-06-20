@@ -152,7 +152,8 @@ impl DbDriver for MongoDbDriver {
 
         // Simple 'find' support: { "collection": "name", "find": { ... }, "limit": 100 }
         if let Some(coll_name) = obj.get("collection").and_then(|v| v.as_str()) {
-            let db = self.get_db(None)?;
+            let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);
+            let db = self.get_db(db_name)?;
             let coll = db.collection::<Document>(coll_name);
 
             let filter = obj
@@ -202,7 +203,8 @@ impl DbDriver for MongoDbDriver {
         }
 
         // Generic command support: { "listCollections": 1 }
-        let db = self.get_db(None)?;
+        let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);
+        let db = self.get_db(db_name)?;
         let command = serde_json::from_value::<Document>(json_query)
             .map_err(|e| AppError::Validation(format!("Invalid BSON document: {}", e)))?;
 
@@ -240,9 +242,12 @@ impl DbDriver for MongoDbDriver {
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
         let db = self.get_db(schema)?;
-        db.list_collection_names()
+        let mut collections = db.list_collection_names()
             .await
-            .map_err(|e| AppError::Database(format!("Failed to list collections: {}", e)))
+            .map_err(|e| AppError::Database(format!("Failed to list collections: {}", e)))?;
+        
+        collections.retain(|name| !name.starts_with("system."));
+        Ok(collections)
     }
 
     async fn fetch_views(

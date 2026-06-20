@@ -326,12 +326,17 @@ impl ExplorerService {
 
         // Handle MongoDB separately
         if matches!(db_type, crate::db::DbType::Mongodb) {
-            let mongo_query = serde_json::json!({
-                "collection": name,
-                "find": {},
-                "limit": effective_page_size as i64,
-                "skip": offset as i64
-            });
+            let mut mongo_query_map = serde_json::Map::new();
+            mongo_query_map.insert("collection".to_string(), serde_json::Value::String(name.to_string()));
+            mongo_query_map.insert("find".to_string(), serde_json::json!({}));
+            mongo_query_map.insert("limit".to_string(), serde_json::json!(effective_page_size as i64));
+            mongo_query_map.insert("skip".to_string(), serde_json::json!(offset as i64));
+            
+            if let Some(db_name) = database {
+                mongo_query_map.insert("database".to_string(), serde_json::Value::String(db_name));
+            }
+            
+            let mongo_query = serde_json::Value::Object(mongo_query_map);
             return driver.execute(&mongo_query.to_string()).await;
         }
 

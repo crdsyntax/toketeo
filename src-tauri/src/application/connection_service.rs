@@ -187,14 +187,18 @@ impl ConnectionService {
             };
 
         if is_transactional {
-            let begin_sql = match config.db_type {
-                crate::db::DbType::Postgres => "BEGIN",
-                crate::db::DbType::Mysql | crate::db::DbType::Mariadb => "START TRANSACTION",
-                crate::db::DbType::Sqlserver => "BEGIN TRANSACTION",
-                _ => "BEGIN",
-            };
-            driver.execute(begin_sql).await?;
-            tracing::info!("Production transaction mode enabled for connection {}", id);
+            if config.db_type != crate::db::DbType::Mongodb {
+                let begin_sql = match config.db_type {
+                    crate::db::DbType::Postgres => "BEGIN",
+                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb => "START TRANSACTION",
+                    crate::db::DbType::Sqlserver => "BEGIN TRANSACTION",
+                    _ => "BEGIN",
+                };
+                driver.execute(begin_sql).await?;
+                tracing::info!("Production transaction mode enabled for connection {}", id);
+            } else {
+                tracing::info!("Production transaction mode requested but skipped for MongoDB (unsupported standard BEGIN)");
+            }
         }
 
         state

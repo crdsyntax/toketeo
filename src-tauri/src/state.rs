@@ -50,6 +50,9 @@ impl AppState {
         let mut conns = self.connections.write().await;
         if let Some(session) = conns.get_mut(id) {
             session.touch();
+            if session.driver.db_type() == DbType::Mongodb {
+                return Ok(());
+            }
             let begin_sql = match session.driver.db_type() {
                 DbType::Postgres => "BEGIN",
                 DbType::Mysql | DbType::Mariadb => "START TRANSACTION",
@@ -70,6 +73,9 @@ impl AppState {
         let mut conns = self.connections.write().await;
         if let Some(session) = conns.get_mut(id) {
             session.touch();
+            if session.driver.db_type() == DbType::Mongodb {
+                return Ok(());
+            }
             session.driver.execute("COMMIT").await?;
             if session.transactional {
                 let begin_sql = match session.driver.db_type() {
@@ -93,6 +99,9 @@ impl AppState {
         let mut conns = self.connections.write().await;
         if let Some(session) = conns.get_mut(id) {
             session.touch();
+            if session.driver.db_type() == DbType::Mongodb {
+                return Ok(());
+            }
             session.driver.execute("ROLLBACK").await?;
             if session.transactional {
                 let begin_sql = match session.driver.db_type() {
