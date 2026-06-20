@@ -1,10 +1,19 @@
 import { useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, FileJson, FileText } from 'lucide-react'
+import { cn, downloadCSV } from '@/lib/utils'
 import type { QueryTab } from '@/store/useAppStore'
 import type { DbRow, DbValue } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
+import { invoke } from '@tauri-apps/api/core'
+
+const LIMIT_OPTIONS = [
+  { label: '100 rows', value: 100 },
+  { label: '500 rows', value: 500 },
+  { label: '1 000 rows', value: 1000 },
+  { label: '5 000 rows', value: 5000 },
+  { label: 'No limit', value: 0 },
+]
 
 interface ResultsPanelProps {
   activeTab: QueryTab | null
@@ -20,15 +29,20 @@ interface ResultsPanelProps {
   updateTabResults: (tabId: string, updates: Partial<QueryTab>) => void
   handlePageChange: (page: number) => void
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void
+  queryLimit: number
+  setQueryLimit: (limit: number) => void
 }
 
 export function ResultsPanel({
   activeTab, panels, togglePanel, editingCell, setEditingCell,
   handleSave, setShowResultModal, requestSort, sortConfig,
-  sortedRows, updateTabResults, handlePageChange, setContextMenuSql
+  sortedRows, updateTabResults, handlePageChange, setContextMenuSql,
+  queryLimit, setQueryLimit,
 }: ResultsPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showLimitMenu, setShowLimitMenu] = useState(false);
 
   const rowVirtualizer = useVirtualizer({
     count: sortedRows.length,
@@ -39,22 +53,48 @@ export function ResultsPanel({
 
   const isResultsPanelVisible = panels?.results ?? false;
 
-  // Cálculos de las "Padding Rows" para la virtualización con tabla nativa
   const virtualItems = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualItems.length > 0 ? virtualItems[0]?.start || 0 : 0;
-  const paddingBottom = virtualItems.length > 0 
-    ? rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end || 0) 
+  const paddingBottom = virtualItems.length > 0
+    ? rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end || 0)
     : 0;
 
+  const handleExportJSON = async () => {
+    if (!activeTab?.results) return;
+    setShowExportMenu(false);
+    const content = JSON.stringify(sortedRows, null, 2);
+    try {
+      await invoke('save_file_dialog', {
+        content,
+        defaultFileName: `${activeTab.name}-results.json`,
+        filterName: 'JSON Files',
+        filterExt: 'json',
+      });
+    } catch (e) {
+      console.error('Failed to export JSON:', e);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    if (!activeTab?.results) return;
+    setShowExportMenu(false);
+    await downloadCSV(sortedRows, activeTab.results.columns, `${activeTab.name}-results.csv`);
+  };
+
+  const currentLimitLabel = LIMIT_OPTIONS.find(o => o.value === queryLimit)?.label ?? `${queryLimit} rows`;
+
   return (
-    <div className={cn(
-      "border border-border/80 rounded-xl bg-card flex flex-col overflow-hidden transition-all duration-300 shadow-sm",
-      isResultsPanelVisible ? "flex-1 min-h-[150px]" : "h-11 shrink-0"
-    )}>
-      {/* Panel Header Principal */}
-      <div className="h-11 border-b border-border bg-muted/40 flex justify-between items-center px-4 select-none shrink-0 z-20">
+    <div
+      className={cn(
+        "border border-border/80 rounded-xl bg-card flex flex-col transition-all duration-300 shadow-sm",
+        isResultsPanelVisible ? "flex-1 min-h-[150px] overflow-hidden" : "h-11 shrink-0 overflow-visible"
+      )}
+      onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}
+    >
+      {/* Panel Header Principal — overflow:visible para que los dropdowns salgan */}
+      <div className="h-11 border-b border-border bg-muted/40 flex justify-between items-center px-4 select-none shrink-0 relative overflow-visible" style={{ zIndex: 40 }}>
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={() => togglePanel('results')}
             className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors"
           >
@@ -71,12 +111,45 @@ export function ResultsPanel({
             )}
           </h3>
         </div>
-        
+
         {activeTab?.results && isResultsPanelVisible && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Selector de límite */}
+            <div className="relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowLimitMenu(v => !v); setShowExportMenu(false); }}
+                className="flex items-center gap-1 text-[10px] font-mono font-bold text-muted-foreground hover:text-foreground bg-muted/30 hover:bg-muted px-2 py-1 rounded-md border border-border/40 transition-colors"
+              >
+                {currentLimitLabel}
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {showLimitMenu && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-full mt-1 min-w-[130px] rounded-lg border border-border shadow-2xl p-1 animate-in fade-in zoom-in-95 duration-100"
+                  style={{ zIndex: 9999, background: 'hsl(var(--card))' }}
+                >
+                  {LIMIT_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setQueryLimit(opt.value); setShowLimitMenu(false); }}
+                      className={cn(
+                        "w-full text-left text-xs px-2.5 py-1.5 rounded-md transition-colors",
+                        queryLimit === opt.value
+                          ? "bg-primary/10 text-primary font-semibold"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {activeTab.results.page !== undefined && (
               <div className="flex items-center gap-1 bg-muted/30 px-1 py-0.5 rounded-md border border-border/40">
-                <button 
+                <button
                   disabled={activeTab.results.page <= 1 || activeTab.status === ExecutionStatus.EXECUTING}
                   onClick={() => handlePageChange(activeTab.results!.page! - 1)}
                   className="p-1 hover:bg-muted text-muted-foreground rounded disabled:opacity-30 transition-colors"
@@ -87,7 +160,7 @@ export function ResultsPanel({
                 <span className="text-[10px] font-mono font-bold mx-1 text-muted-foreground">
                   PAGE {activeTab.results.page}
                 </span>
-                <button 
+                <button
                   disabled={!activeTab.results.hasMore || activeTab.status === ExecutionStatus.EXECUTING}
                   onClick={() => handlePageChange(activeTab.results!.page! + 1)}
                   className="p-1 hover:bg-muted text-muted-foreground rounded disabled:opacity-30 transition-colors"
@@ -97,14 +170,21 @@ export function ResultsPanel({
                 </button>
               </div>
             )}
+
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-1 rounded-md border border-border/40">
               <Clock className="w-3.5 h-3.5 text-muted-foreground/70" />
               {activeTab.results.executionTime}ms
             </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-1 rounded-md border border-border/40">
+              <span className="font-bold text-foreground">{sortedRows.length}</span>
+              &nbsp;rows
+            </div>
+
             <div className="h-4 w-[1px] bg-border mx-1" />
+
             <div className="flex items-center gap-1">
               {editingCell && (
-                <button 
+                <button
                   onClick={handleSave}
                   className="text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm transition-colors mr-1"
                 >
@@ -112,17 +192,47 @@ export function ResultsPanel({
                   Apply Changes
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setShowResultModal(true)}
                 className="text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
                 Fullscreen
               </button>
-              <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors">
-                <Download className="w-3.5 h-3.5" />
-                Export
-              </button>
+
+              {/* Export dropdown */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowExportMenu(v => !v); setShowLimitMenu(false); }}
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showExportMenu && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 top-full mt-1 min-w-[150px] rounded-lg border border-border shadow-2xl p-1 animate-in fade-in zoom-in-95 duration-100"
+                    style={{ zIndex: 9999, background: 'hsl(var(--card))' }}
+                  >
+                    <button
+                      onClick={() => void handleExportCSV()}
+                      className="w-full text-left text-xs px-2.5 py-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center gap-2"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-green-500" />
+                      Export as CSV
+                    </button>
+                    <button
+                      onClick={() => void handleExportJSON()}
+                      className="w-full text-left text-xs px-2.5 py-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center gap-2"
+                    >
+                      <FileJson className="w-3.5 h-3.5 text-yellow-500" />
+                      Export as JSON
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -130,9 +240,8 @@ export function ResultsPanel({
 
       {/* Contenedor del contenido */}
       {isResultsPanelVisible && (
-        // EL SECRETO ESTÁ AQUÍ: min-h-0 fuerza al flex a no desbordarse infinitamente
         <div className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-0">
-          
+
           {/* Error Alert */}
           {activeTab?.status === ExecutionStatus.ERROR && (
             <div className="absolute top-0 left-0 right-0 p-3 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-start gap-2.5 m-3 rounded-lg z-30 animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-md">
@@ -141,8 +250,8 @@ export function ResultsPanel({
                 <p className="text-xs font-semibold leading-none">Query Execution Failed</p>
                 <p className="text-xs font-mono opacity-90 break-all">{activeTab.error}</p>
               </div>
-              <button 
-                onClick={() => updateTabResults(activeTab.id, { status: ExecutionStatus.IDLE, error: null })} 
+              <button
+                onClick={() => updateTabResults(activeTab.id, { status: ExecutionStatus.IDLE, error: null })}
                 className="p-1 hover:bg-destructive/20 rounded-md text-destructive/80 hover:text-destructive transition-colors shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
@@ -152,9 +261,9 @@ export function ResultsPanel({
 
           {/* Tabla Virtualizada */}
           {activeTab?.results && sortedRows.length > 0 ? (
-            <div ref={parentRef} className="flex-1 overflow-auto relative h-full">
+            <div ref={parentRef} className="flex-1 overflow-auto relative h-full" onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}>
               <table className="w-max min-w-full border-collapse table-fixed text-sm">
-                
+
                 {/* THEAD Fijo */}
                 <thead className="sticky top-0 z-20 bg-muted shadow-[0_1px_0_0_hsl(var(--border))]">
                   <tr>
@@ -164,8 +273,8 @@ export function ResultsPanel({
                     {activeTab.results.columns.map((col: string) => {
                       const isSorted = sortConfig?.key === col;
                       return (
-                        <th 
-                          key={col} 
+                        <th
+                          key={col}
                           onClick={() => requestSort(col)}
                           className="p-2.5 font-semibold text-muted-foreground text-xs border-r border-border/60 w-[250px] max-w-[250px] bg-muted cursor-pointer hover:bg-muted-foreground/10 hover:text-foreground transition-colors select-none"
                         >
@@ -175,9 +284,9 @@ export function ResultsPanel({
                               "p-1 rounded-md transition-colors",
                               isSorted ? "bg-primary/10 text-primary" : "text-muted-foreground/40 group-hover:text-muted-foreground group-hover:bg-background"
                             )}>
-                                {isSorted ? (
-                                  sortConfig?.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                                ) : <ArrowUpDown className="w-3 h-3" />}
+                              {isSorted ? (
+                                sortConfig?.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                              ) : <ArrowUpDown className="w-3 h-3" />}
                             </div>
                           </div>
                         </th>
@@ -188,23 +297,21 @@ export function ResultsPanel({
 
                 {/* TBODY Virtualizado */}
                 <tbody className="divide-y divide-border/40">
-                  
-                  {/* Relleno superior: padding y border a 0 para que no colapse */}
+
                   {paddingTop > 0 && (
                     <tr>
                       <td style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} colSpan={activeTab.results.columns.length + 1} />
                     </tr>
                   )}
-                  
-                  {/* Filas visibles */}
+
                   {virtualItems.map((virtualRow) => {
                     const row = sortedRows[virtualRow.index];
                     const i = virtualRow.index;
                     const isSelected = i === selectedRowIndex;
 
                     return (
-                      <tr 
-                        key={virtualRow.key} 
+                      <tr
+                        key={virtualRow.key}
                         ref={rowVirtualizer.measureElement}
                         data-index={virtualRow.index}
                         className={cn(
@@ -218,7 +325,6 @@ export function ResultsPanel({
                           setContextMenuSql({ x: e.pageX, y: e.pageY, row });
                         }}
                       >
-                        {/* Celda del Índice */}
                         <td className={cn(
                           "p-2.5 border-r border-border/60 text-center text-xs font-mono w-12 min-w-[3rem] cursor-pointer select-none transition-colors",
                           isSelected ? "text-primary font-bold bg-primary/5" : "text-muted-foreground/60 bg-muted/10 group-hover:bg-transparent"
@@ -226,25 +332,24 @@ export function ResultsPanel({
                           {i + 1}
                         </td>
 
-                        {/* Celdas de Datos */}
                         {activeTab.results!.columns.map((col: string) => {
                           const isEditing = editingCell?.rowIndex === i && editingCell?.column === col;
                           const isNull = row[col] === null;
 
                           return (
-                            <td 
-                              key={col} 
+                            <td
+                              key={col}
                               onDoubleClick={() => {
-                                  setSelectedRowIndex(i);
-                                  setEditingCell({ rowIndex: i, column: col, value: row[col] });
-                              }} 
+                                setSelectedRowIndex(i);
+                                setEditingCell({ rowIndex: i, column: col, value: row[col] });
+                              }}
                               className={cn(
                                 "border-r border-border/40 truncate relative font-mono text-xs text-foreground/90 w-[250px] max-w-[250px] cursor-pointer",
                                 isEditing ? "p-0" : "p-2.5"
                               )}
                             >
                               {isEditing ? (
-                                <input 
+                                <input
                                   autoFocus
                                   className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 font-mono text-xs z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
                                   value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
@@ -278,8 +383,7 @@ export function ResultsPanel({
                       </tr>
                     );
                   })}
-                  
-                  {/* Relleno inferior: padding y border a 0 */}
+
                   {paddingBottom > 0 && (
                     <tr>
                       <td style={{ height: `${paddingBottom}px`, padding: 0, border: 0 }} colSpan={activeTab.results.columns.length + 1} />
@@ -300,7 +404,7 @@ export function ResultsPanel({
           {/* Skeleton Loader */}
           {activeTab?.status === ExecutionStatus.EXECUTING && (
             <div className="flex-1 overflow-hidden pointer-events-none animate-in fade-in duration-150">
-               <table className="w-full border-collapse table-fixed text-sm">
+              <table className="w-full border-collapse table-fixed text-sm">
                 <thead className="bg-muted shadow-[0_1px_0_0_hsl(var(--border))]">
                   <tr>
                     <th className="w-12 h-10 border-r border-border/60 bg-muted"></th>

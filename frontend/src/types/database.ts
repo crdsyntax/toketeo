@@ -40,6 +40,7 @@ export enum DatabaseType {
   POSTGRES = 'postgres',
   MONGODB = 'mongodb',
   SQLSERVER = 'sqlserver',
+  SQLITE = 'sqlite',
 }
 
 export enum Environment {

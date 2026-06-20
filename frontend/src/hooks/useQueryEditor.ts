@@ -4,7 +4,9 @@ import type { Monaco } from '@monaco-editor/react'
 import { useAppStore } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
 import { tauriApi } from '@/lib/api'
-import type { DbValue } from '@/types/database'
+import { useQuery } from '@tanstack/react-query'
+import { connectionService } from '@/services/connection.service'
+import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
@@ -18,15 +20,22 @@ export function useQueryEditor() {
     openTab,
     removeTab, 
     updateTabQuery, 
+    updateTabConnection,
     setActiveTabId, 
     updateTabResults, 
     clearTabResults,
+    updateTabViewState,
     panels, 
     setEditorHeight,
     togglePanel 
   } = useAppStore()
   
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
+  
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  })
   
   const [showContextMenu, setShowContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
@@ -40,6 +49,7 @@ export function useQueryEditor() {
   const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
   const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
   const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({ isOpen: false, sql: '' })
+  const [queryLimit, setQueryLimit] = useState<number>(100)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -96,14 +106,15 @@ export function useQueryEditor() {
     return false
   }, [])
 
-  const handleExecuteAll = useCallback(async (page: number = 1) => {
+  const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
     if (activeTab?.query && activeConnection) {
       if (checkDangerousQuery(activeTab.query)) return
 
+      const effectiveLimit = limit ?? queryLimit;
       let sql = activeTab.query.trim();
-      if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql)) {
-        const offset = (page - 1) * 100;
-        const limitStr = offset > 0 ? ` LIMIT 100 OFFSET ${offset}` : ` LIMIT 100`;
+      if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
+        const offset = (page - 1) * effectiveLimit;
+        const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
         if (sql.endsWith(';')) {
           sql = sql.slice(0, -1).trim() + limitStr + ';';
         } else {
@@ -115,23 +126,37 @@ export function useQueryEditor() {
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
       try {
-        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 100);
+        const targetConnectionId = activeTab.connectionId || activeConnection.id;
+        const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+        
+        let result;
+        try {
+          result = await queryService.execute(targetConnection.id, sql, targetConnection.database, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
+        } catch (err: any) {
+          if (err?.message?.includes('not found') && err?.message?.includes('Connection')) {
+            await connectionService.connect(targetConnection);
+            result = await queryService.execute(targetConnection.id, sql, targetConnection.database, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
+          } else {
+            throw err;
+          }
+        }
+
         result.page = page;
-        result.hasMore = result.rows.length >= 100;
+        result.hasMore = effectiveLimit > 0 && result.rows.length >= effectiveLimit;
         updateTabResults(activeTab.id, {
           status: ExecutionStatus.SUCCESS,
           results: result,
           error: null
         })
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message = error instanceof Error ? error.message : String(error);
         updateTabResults(activeTab.id, {
           status: ExecutionStatus.ERROR,
           error: message
         })
       }
     }
-  }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
     if (!editorRef.current || !activeTab || !activeConnection) return
@@ -173,9 +198,9 @@ export function useQueryEditor() {
     if (checkDangerousQuery(sqlSnippet)) return
 
     sqlSnippet = sqlSnippet.trim();
-    if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet)) {
-      const offset = (page - 1) * 100;
-      const limitStr = offset > 0 ? ` LIMIT 100 OFFSET ${offset}` : ` LIMIT 100`;
+    if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
+      const offset = (page - 1) * queryLimit;
+      const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
       if (sqlSnippet.endsWith(';')) {
         sqlSnippet = sqlSnippet.slice(0, -1).trim() + limitStr + ';';
       } else {
@@ -187,22 +212,36 @@ export function useQueryEditor() {
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     
     try {
-      const result = await queryService.execute(activeConnection.id, sqlSnippet, activeConnection.database, undefined, page, 100);
+      const targetConnectionId = activeTab.connectionId || activeConnection.id;
+      const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+      
+      let result;
+      try {
+        result = await queryService.execute(targetConnection.id, sqlSnippet, targetConnection.database, undefined, page, queryLimit > 0 ? queryLimit : undefined);
+      } catch (err: any) {
+        if (err?.message?.includes('not found') && err?.message?.includes('Connection')) {
+          await connectionService.connect(targetConnection);
+          result = await queryService.execute(targetConnection.id, sqlSnippet, targetConnection.database, undefined, page, queryLimit > 0 ? queryLimit : undefined);
+        } else {
+          throw err;
+        }
+      }
+
       result.page = page;
-      result.hasMore = result.rows.length >= 100;
+      result.hasMore = queryLimit > 0 && result.rows.length >= queryLimit;
       updateTabResults(activeTab.id, {
         status: ExecutionStatus.SUCCESS,
         results: result,
         error: null
       })
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : String(error);
       updateTabResults(activeTab.id, {
         status: ExecutionStatus.ERROR,
         error: message
       })
     }
-  }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit])
 
   // Use refs to avoid stale closures in Monaco addCommand
   const executeCurrentRef = useRef(handleExecuteCurrent)
@@ -294,10 +333,25 @@ export function useQueryEditor() {
     })
 
     try {
-        await tauriApi.invoke('execute_query', {
-            id: activeConnection.id,
-            query: finalSql
-        })
+        try {
+            await tauriApi.invoke('execute_query', {
+                id: activeConnection.id,
+                query: finalSql
+            })
+        } catch (err: any) {
+            if (err?.message?.includes('not found') && err?.message?.includes('Connection')) {
+                const targetConnectionId = activeTab.connectionId || activeConnection.id;
+                const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+                await connectionService.connect(targetConnection);
+                await tauriApi.invoke('execute_query', {
+                    id: activeConnection.id,
+                    query: finalSql
+                })
+            } else {
+                throw err;
+            }
+        }
+        
         updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
         
         if (!isUndoRedo) {
@@ -529,24 +583,23 @@ export function useQueryEditor() {
     }
   }
 
-  const handleSaveScript = useCallback(() => {
+  const handleSaveScript = useCallback(async () => {
     const state = useAppStore.getState();
     const currentTab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
     
-    // Always prioritize editor content if available
     const content = editorRef.current ? editorRef.current.getValue() : currentTab?.query;
-    
     if (!content) return;
-    
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${currentTab?.name || 'query'}.sql`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+
+    try {
+      await tauriApi.invoke('save_file_dialog', {
+        content,
+        defaultFileName: `${currentTab?.name || 'query'}.sql`,
+        filterName: 'SQL Files',
+        filterExt: 'sql',
+      });
+    } catch (e) {
+      console.error('Failed to save script:', e);
+    }
   }, []) // No dependencies
 
   const saveScriptRef = useRef(handleSaveScript)
@@ -567,6 +620,7 @@ export function useQueryEditor() {
     openTab,
     removeTab,
     updateTabQuery,
+    updateTabConnection,
     setActiveTabId,
     updateTabResults,
     panels,
@@ -604,6 +658,9 @@ export function useQueryEditor() {
     setContextMenuSql,
     sqlModal,
     setSqlModal,
-    handleGenerateSql
+    handleGenerateSql,
+    updateTabViewState,
+    queryLimit,
+    setQueryLimit,
   }
 }

@@ -9,8 +9,15 @@ import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef } from 'react';
 import { ExecutionStatus, type DbRow } from '@/types/database';
+import { useQuery } from '@tanstack/react-query';
+import { connectionService } from '@/services/connection.service';
 
 export default function QueryEditor() {
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  });
+
   const {
     activeConnection,
     tabs,
@@ -20,6 +27,7 @@ export default function QueryEditor() {
     openTab,
     removeTab,
     updateTabQuery,
+    updateTabConnection,
     setActiveTabId,
     updateTabResults,
     panels,
@@ -56,6 +64,9 @@ export default function QueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    updateTabViewState,
+    queryLimit,
+    setQueryLimit,
   } = useQueryEditor()
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
@@ -172,6 +183,9 @@ export default function QueryEditor() {
         isExecuting={activeTab?.status === ExecutionStatus.EXECUTING}
         showLayoutMenu={showLayoutMenu}
         setShowLayoutMenu={setShowLayoutMenu}
+        connections={connections}
+        currentConnectionId={activeTab?.connectionId || activeConnection?.id}
+        onConnectionChange={(id) => updateTabConnection(activeTab.id, id)}
       />
 
       <ResultsModal 
@@ -212,20 +226,29 @@ export default function QueryEditor() {
         setActiveTabId={setActiveTabId}
         removeTab={removeTab}
         onContextMenu={onContextMenu}
+        connections={connections}
+        activeConnection={activeConnection}
       />
 
       <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {panels.editor && (
           <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px]">
-            <SqlEditorPanel 
-              activeTab={activeTab}
-              onToggle={() => togglePanel('editor')}
-              updateTabQuery={updateTabQuery}
-              handleEditorWillMount={handleEditorWillMount}
-              handleEditorDidMount={handleEditorDidMount}
-              connectionName={activeConnection.name}
-              connectionType={activeConnection.type}
-            />
+            {(() => {
+              const targetConnectionId = activeTab?.connectionId || activeConnection.id;
+              const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+              return (
+                <SqlEditorPanel 
+                  activeTab={activeTab}
+                  onToggle={() => togglePanel('editor')}
+                  updateTabQuery={updateTabQuery}
+                  handleEditorWillMount={handleEditorWillMount}
+                  handleEditorDidMount={handleEditorDidMount}
+                  connectionName={targetConnection.name}
+                  connectionType={targetConnection.type}
+                  updateTabViewState={updateTabViewState}
+                />
+              );
+            })()}
           </div>
         )}
 
@@ -238,7 +261,7 @@ export default function QueryEditor() {
 
         {panels.results && (
           <div className="flex-1 min-h-[100px]">
-            <ResultsPanel 
+            <ResultsPanel
               activeTab={activeTab}
               panels={panels}
               togglePanel={togglePanel}
@@ -252,6 +275,8 @@ export default function QueryEditor() {
               setEditingCell={setEditingCell}
               handlePageChange={handlePageChange}
               setContextMenuSql={setContextMenuSql}
+              queryLimit={queryLimit}
+              setQueryLimit={setQueryLimit}
             />
           </div>
         )}

@@ -9,9 +9,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRef } from 'react';
+import type { Connection } from '@/types/database';
 
 interface EditorToolbarProps {
-  onNew: () => void;
+  onNew: (connectionId?: string) => void;
   onOpen: (content: string, fileName: string) => void;
   onSave: () => void;
   onExecute: () => void;
@@ -19,6 +20,9 @@ interface EditorToolbarProps {
   isExecuting: boolean;
   showLayoutMenu: boolean;
   setShowLayoutMenu: (show: boolean) => void;
+  connections: Connection[];
+  currentConnectionId?: string;
+  onConnectionChange: (connectionId: string) => void;
 }
 
 export function EditorToolbar({
@@ -30,6 +34,9 @@ export function EditorToolbar({
   isExecuting,
   showLayoutMenu,
   setShowLayoutMenu,
+  connections,
+  currentConnectionId,
+  onConnectionChange,
 }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,14 +66,30 @@ export function EditorToolbar({
           accept=".sql,.json,.txt,.csv"
         />
 
-        <button
-          onClick={onNew}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-all"
-          title="Create a new query tab"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New Script
-        </button>
+        <div className="flex items-center">
+          <button
+            onClick={() => onNew()}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-md transition-all border-r border-border"
+            title="Create a new query tab"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Script
+          </button>
+          <select
+            className="appearance-none bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted px-1 py-1.5 text-xs font-bold rounded-r-md outline-none cursor-pointer"
+            onChange={(e) => {
+              if (e.target.value) {
+                onNew(e.target.value);
+                e.target.value = ''; // reset
+              }
+            }}
+            value=""
+            title="New Script with specific connection"
+          >
+            <option value="" disabled>▾</option>
+            {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
 
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -87,6 +110,15 @@ export function EditorToolbar({
         </button>
 
         <div className="w-[1px] h-4 bg-border mx-2" />
+
+        <select
+          value={currentConnectionId || ''}
+          onChange={(e) => onConnectionChange(e.target.value)}
+          className="appearance-none bg-background border border-border text-foreground px-3 py-1 rounded text-xs font-bold mr-2 outline-none cursor-pointer hover:border-primary/50 transition-colors"
+          title="Connection for this query tab"
+        >
+          {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
 
         <button
           onClick={() => onExecute()}

@@ -2,9 +2,80 @@ use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::ssh::SshTunnel;
 use crate::state::AppState;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::Manager;
+
+/// Cache key for metadata (columns, indexes, FK, constraints) per table.
+#[derive(Hash, PartialEq, Eq, Clone, Debug)]
+pub struct MetadataCacheKey {
+    pub object: String,
+    pub schema: Option<String>,
+    pub kind: MetadataKind,
+}
+
+#[derive(Hash, PartialEq, Eq, Clone, Debug)]
+pub enum MetadataKind {
+    Columns,
+    Indexes,
+    ForeignKeys,
+    Constraints,
+}
+
+pub struct MetadataCacheEntry {
+    pub data: Vec<serde_json::Value>,
+    pub cached_at: Instant,
+}
+
+/// TTL for metadata cache entries: 5 minutes.
+const METADATA_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+
+pub struct MetadataCache {
+    entries: HashMap<MetadataCacheKey, MetadataCacheEntry>,
+}
+
+impl MetadataCache {
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, key: &MetadataCacheKey) -> Option<&Vec<serde_json::Value>> {
+        self.entries.get(key).and_then(|entry| {
+            if entry.cached_at.elapsed() < METADATA_CACHE_TTL {
+                Some(&entry.data)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn set(&mut self, key: MetadataCacheKey, data: Vec<serde_json::Value>) {
+        self.entries.insert(
+            key,
+            MetadataCacheEntry {
+                data,
+                cached_at: Instant::now(),
+            },
+        );
+    }
+
+    pub fn invalidate_table(&mut self, object: &str, schema: Option<&str>) {
+        self.entries.retain(|k, _| {
+            !(k.object == object && k.schema.as_deref() == schema)
+        });
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub fn evict_expired(&mut self) {
+        self.entries.retain(|_, v| v.cached_at.elapsed() < METADATA_CACHE_TTL);
+    }
+}
 
 pub struct ConnectionSession {
     pub driver: Arc<dyn DbDriver>,
@@ -13,6 +84,7 @@ pub struct ConnectionSession {
     pub created_at: Instant,
     pub last_access: Instant,
     pub max_ttl: Option<Duration>,
+    pub metadata_cache: MetadataCache,
 }
 
 impl ConnectionSession {
@@ -29,6 +101,7 @@ impl ConnectionSession {
             created_at: now,
             last_access: now,
             max_ttl: Some(Duration::from_secs(3600 * 8)), // 8 hours default TTL
+            metadata_cache: MetadataCache::new(),
         }
     }
 
@@ -81,6 +154,11 @@ impl SessionService {
                 let state = app_handle.state::<AppState>();
                 if let Err(e) = Self::cleanup_sessions(&state, idle_timeout).await {
                     eprintln!("Session cleanup error: {:?}", e);
+                }
+                // Also evict expired metadata cache entries on every cleanup cycle
+                let mut conns = state.connections.write().await;
+                for session in conns.values_mut() {
+                    session.metadata_cache.evict_expired();
                 }
             }
         });
@@ -220,5 +298,30 @@ mod tests {
         // Fake old creation
         session.created_at = Instant::now() - Duration::from_secs(20);
         assert!(session.is_expired(Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn test_metadata_cache_hit() {
+        let key = MetadataCacheKey {
+            object: "users".into(),
+            schema: None,
+            kind: MetadataKind::Columns,
+        };
+        let mut cache = MetadataCache::new();
+        cache.set(key.clone(), vec![serde_json::json!({"name": "id"})]);
+        assert!(cache.get(&key).is_some());
+    }
+
+    #[test]
+    fn test_metadata_cache_invalidation() {
+        let mut cache = MetadataCache::new();
+        let key = MetadataCacheKey {
+            object: "users".into(),
+            schema: Some("public".into()),
+            kind: MetadataKind::Columns,
+        };
+        cache.set(key.clone(), vec![serde_json::json!({"name": "id"})]);
+        cache.invalidate_table("users", Some("public"));
+        assert!(cache.get(&key).is_none());
     }
 }

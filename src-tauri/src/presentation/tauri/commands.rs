@@ -149,6 +149,40 @@ pub async fn export_connection_dialog(
 }
 
 #[tauri::command]
+pub async fn save_file_dialog(
+    content: String,
+    default_file_name: String,
+    filter_name: Option<String>,
+    filter_ext: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    let mut dialog = app_handle
+        .dialog()
+        .file()
+        .set_title("Save File")
+        .set_file_name(default_file_name);
+        
+    if let (Some(name), Some(ext)) = (filter_name, filter_ext) {
+        dialog = dialog.add_filter(name, &[&ext]);
+    }
+    
+    dialog = dialog.add_filter("All Files", &["*"]);
+
+    let file_path = dialog.blocking_save_file();
+
+    let path = match file_path {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    std::fs::write(&path, content).map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Some(path.display().to_string()))
+}
+
+#[tauri::command]
 pub async fn export_all_connections_dialog(
     default_file_name: String,
     state: State<'_, AppState>,
@@ -358,7 +392,7 @@ pub async fn update_ddl(
     let db_type = driver.db_type();
     let start = std::time::Instant::now();
 
-    let final_sql = if let Some(s) = schema {
+    let final_sql = if let Some(ref s) = schema {
         match db_type {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
                 format!("USE `{}`;\n{}", s, sql)
@@ -384,13 +418,17 @@ pub async fn update_ddl(
 
     let _ = AuditService::log_query(
         &state,
-        id,
+        id.clone(),
         format!("UPDATE DDL ({} {}): {}", object_type, name, final_sql),
         start.elapsed().as_millis() as u64,
         status.to_string(),
         error_msg,
     )
     .await;
+
+    if result.is_ok() {
+        ExplorerService::invalidate_metadata_cache(&state, &id, &name, schema.as_deref()).await;
+    }
 
     result.map(|_| ())
 }

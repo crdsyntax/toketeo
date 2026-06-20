@@ -8,9 +8,11 @@ export interface QueryTab {
   id: string
   name: string
   query: string
+  connectionId?: string
   results?: QueryResult | null
   status?: ExecutionStatus
   error?: string | null
+  editorViewState?: any
 }
 
 export interface ExplorerTabState {
@@ -36,13 +38,15 @@ interface AppState {
   setActiveConnectionDatabase: (database: string) => void
   tabs: QueryTab[]
   activeTabId: string | null
-  addTab: () => void
-  openTab: (name: string, query: string) => void
+  addTab: (connectionId?: string) => void
+  openTab: (name: string, query: string, connectionId?: string) => void
   removeTab: (id: string) => void
   updateTabQuery: (id: string, query: string) => void
+  updateTabConnection: (id: string, connectionId: string) => void
   updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
   clearTabResults: (id: string) => void
   setActiveTabId: (id: string) => void
+  updateTabViewState: (id: string, viewState: any) => void
   panels: {
     editor: boolean
     results: boolean
@@ -75,7 +79,15 @@ export const useAppStore = create<AppState>()(
       accessToken: null,
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
-      setActiveConnection: (connection) => set({ activeConnection: connection }),
+      setActiveConnection: (connection) => set((state) => {
+        const updatedTabs = state.tabs.map(tab => {
+          if (!tab.connectionId && connection) {
+            return { ...tab, connectionId: connection.id }
+          }
+          return tab
+        })
+        return { activeConnection: connection, tabs: updatedTabs }
+      }),
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
       })),
@@ -123,17 +135,29 @@ export const useAppStore = create<AppState>()(
           explorer: { ...state.explorer, activeExplorerTabId: nextActiveId }
         }
       }),
-      addTab: () => set((state) => {
+      addTab: (connectionId?: string) => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {
-          tabs: [...state.tabs, { id, name: `Query ${state.tabs.length + 1}`, query: '', status: ExecutionStatus.IDLE }],
+          tabs: [...state.tabs, { 
+            id, 
+            name: `Query ${state.tabs.length + 1}`, 
+            query: '', 
+            connectionId: connectionId || state.activeConnection?.id,
+            status: ExecutionStatus.IDLE 
+          }],
           activeTabId: id,
         }
       }),
-      openTab: (name, query) => set((state) => {
+      openTab: (name, query, connectionId?: string) => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {
-          tabs: [...state.tabs, { id, name: name.replace(/\.sql$/i, ''), query, status: ExecutionStatus.IDLE }],
+          tabs: [...state.tabs, { 
+            id, 
+            name: name.replace(/\.sql$/i, ''), 
+            query, 
+            connectionId: connectionId || state.activeConnection?.id,
+            status: ExecutionStatus.IDLE 
+          }],
           activeTabId: id,
         }
       }),
@@ -148,6 +172,9 @@ export const useAppStore = create<AppState>()(
       updateTabQuery: (id, query) => set((state) => ({
         tabs: state.tabs.map((t) => t.id === id ? { ...t, query } : t),
       })),
+      updateTabConnection: (id, connectionId) => set((state) => ({
+        tabs: state.tabs.map((t) => t.id === id ? { ...t, connectionId } : t),
+      })),
       updateTabResults: (id, updates) => set((state) => ({
         tabs: state.tabs.map((t) => t.id === id ? { ...t, ...updates } : t),
       })),
@@ -155,6 +182,9 @@ export const useAppStore = create<AppState>()(
         tabs: state.tabs.map((t) => t.id === id ? { ...t, results: null, status: ExecutionStatus.IDLE, error: null } : t),
       })),
       setActiveTabId: (id) => set({ activeTabId: id }),
+      updateTabViewState: (id, viewState) => set((state) => ({
+        tabs: state.tabs.map((t) => t.id === id ? { ...t, editorViewState: viewState } : t),
+      })),
       miniToasts: {},
       setMiniToast: (id, msg) => {
         set((state) => ({ miniToasts: { ...state.miniToasts, [id]: msg } }), false)

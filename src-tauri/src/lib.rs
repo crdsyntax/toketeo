@@ -89,6 +89,7 @@ pub fn run() {
             commands::export_connection_dialog,
             commands::export_all_connections_dialog,
             commands::import_connections_dialog,
+            commands::save_file_dialog,
             commands::save_connection,
             commands::get_connections,
             commands::get_connection,

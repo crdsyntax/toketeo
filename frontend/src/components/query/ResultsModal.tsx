@@ -152,13 +152,11 @@ export function ResultsModal({
 
           <div className="flex items-center h-full">
             <button
-              onClick={() =>
-                downloadCSV(
+              onClick={() => void downloadCSV(
                   sortedRows,
                   activeTab.results!.columns,
                   `${activeTab.name}-results.csv`,
-                )
-              }
+                )}
               className="h-full px-3 hover:bg-muted text-muted-foreground transition-colors"
               title="Export CSV"
             >

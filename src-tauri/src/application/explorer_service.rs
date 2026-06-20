@@ -1,7 +1,13 @@
 use crate::application::audit_service::AuditService;
+use crate::application::session_service::{MetadataCacheKey, MetadataKind};
 use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
 use crate::state::AppState;
+
+/// Maximum allowed page size to prevent runaway queries on large tables.
+/// Rule: no more than 1000 rows per page, enforced server-side.
+const MAX_PAGE_SIZE: u32 = 1000;
+const DEFAULT_PAGE_SIZE: u32 = 50;
 
 pub struct ExplorerService;
 
@@ -98,14 +104,46 @@ impl ExplorerService {
         driver.fetch_functions(schema, filter).await
     }
 
+    // ─── Cached metadata accessors ───────────────────────────────────────────
+
     pub async fn get_columns(
         state: &AppState,
         id: &str,
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
+        let cache_key = MetadataCacheKey {
+            object: table.to_string(),
+            schema: schema.clone(),
+            kind: MetadataKind::Columns,
+        };
+
+        // Check cache first (read lock)
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    tracing::debug!("Metadata cache HIT: columns for {}", table);
+                    return Ok(cached.clone());
+                }
+            }
+        }
+
+        // Cache miss — fetch from driver
         let driver = state.get_connection(id).await?;
-        driver.fetch_columns(table, schema).await
+        let data = driver.fetch_columns(table, schema.clone()).await?;
+
+        // Store in cache (write lock)
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.clone());
+            }
+        }
+
+        tracing::debug!("Metadata cache MISS + stored: columns for {}", table);
+        Ok(data)
     }
 
     pub async fn get_indexes(
@@ -114,8 +152,33 @@ impl ExplorerService {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
+        let cache_key = MetadataCacheKey {
+            object: table.to_string(),
+            schema: schema.clone(),
+            kind: MetadataKind::Indexes,
+        };
+
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.clone());
+                }
+            }
+        }
+
         let driver = state.get_connection(id).await?;
-        driver.fetch_indexes(table, schema).await
+        let data = driver.fetch_indexes(table, schema).await?;
+
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.clone());
+            }
+        }
+
+        Ok(data)
     }
 
     pub async fn get_foreign_keys(
@@ -124,8 +187,33 @@ impl ExplorerService {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
+        let cache_key = MetadataCacheKey {
+            object: table.to_string(),
+            schema: schema.clone(),
+            kind: MetadataKind::ForeignKeys,
+        };
+
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.clone());
+                }
+            }
+        }
+
         let driver = state.get_connection(id).await?;
-        driver.fetch_foreign_keys(table, schema).await
+        let data = driver.fetch_foreign_keys(table, schema).await?;
+
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.clone());
+            }
+        }
+
+        Ok(data)
     }
 
     pub async fn get_constraints(
@@ -134,9 +222,49 @@ impl ExplorerService {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
+        let cache_key = MetadataCacheKey {
+            object: table.to_string(),
+            schema: schema.clone(),
+            kind: MetadataKind::Constraints,
+        };
+
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.clone());
+                }
+            }
+        }
+
         let driver = state.get_connection(id).await?;
-        driver.fetch_constraints(table, schema).await
+        let data = driver.fetch_constraints(table, schema).await?;
+
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.clone());
+            }
+        }
+
+        Ok(data)
     }
+
+    /// Invalidate cached metadata for a given table (called after schema mutations).
+    pub async fn invalidate_metadata_cache(
+        state: &AppState,
+        id: &str,
+        table: &str,
+        schema: Option<&str>,
+    ) {
+        let mut conns = state.connections.write().await;
+        if let Some(session) = conns.get_mut(id) {
+            session.metadata_cache.invalidate_table(table, schema);
+        }
+    }
+
+    // ─── Non-cached accessors ─────────────────────────────────────────────────
 
     pub async fn get_ddl(
         state: &AppState,
@@ -160,6 +288,8 @@ impl ExplorerService {
         driver.fetch_parameters(name, object_type, schema).await
     }
 
+    // ─── Execute explorer (paginated, capped at MAX_PAGE_SIZE) ────────────────
+
     pub async fn execute_explorer(
         state: &AppState,
         id: &str,
@@ -173,9 +303,17 @@ impl ExplorerService {
         let driver = state.get_connection(id).await?;
         let db_type = driver.db_type();
 
-        let page_size = page_size.min(500);
-        let page = page.max(1);
-        let offset = (page - 1) * page_size;
+        // Enforce hard cap: >1000 rows per page is not allowed
+        if page_size > MAX_PAGE_SIZE {
+            return Err(AppError::Validation(format!(
+                "Page size {} exceeds maximum allowed ({} rows). Reduce page size to continue.",
+                page_size, MAX_PAGE_SIZE
+            )));
+        }
+
+        let effective_page_size = page_size.max(1).min(MAX_PAGE_SIZE);
+        let effective_page = page.max(1);
+        let offset = (effective_page - 1) * effective_page_size;
 
         let start = std::time::Instant::now();
 
@@ -191,7 +329,7 @@ impl ExplorerService {
             let mongo_query = serde_json::json!({
                 "collection": name,
                 "find": {},
-                "limit": page_size as i64,
+                "limit": effective_page_size as i64,
                 "skip": offset as i64
             });
             return driver.execute(&mongo_query.to_string()).await;
@@ -213,7 +351,8 @@ impl ExplorerService {
 
         let result = match object_type.to_lowercase().as_str() {
             "table" | "view" => {
-                let columns = driver.fetch_columns(name, database.clone()).await?;
+                // Use cached columns when possible
+                let columns = Self::get_columns(state, id, name, database.clone()).await?;
                 let col_names: Vec<String> = columns
                     .iter()
                     .filter_map(|c| {
@@ -237,14 +376,14 @@ impl ExplorerService {
 
                 // Deterministic ordering is required for paginated queries
                 let order_by = if col_names.is_empty() {
-                    format!("ORDER BY (SELECT NULL)") // Fallback
+                    "ORDER BY (SELECT NULL)".to_string() // Fallback
                 } else {
                     format!("ORDER BY {}", col_names[0]) // Use first column as basic deterministic order
                 };
 
                 query.push_str(&format!(
                     " {} LIMIT {} OFFSET {}",
-                    order_by, page_size, offset
+                    order_by, effective_page_size, offset
                 ));
 
                 driver.execute(&query).await
@@ -299,7 +438,6 @@ impl ExplorerService {
         let mut line = String::new();
         let mut current_query = String::new();
 
-        // FASE 10: Incremental processing
         while reader.read_line(&mut line).await? > 0 {
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with("--") || trimmed.starts_with("/*") {
@@ -309,17 +447,14 @@ impl ExplorerService {
 
             current_query.push_str(&line);
             if trimmed.ends_with(';') {
-                // Execute chunk
                 if let Err(e) = driver.execute(&current_query).await {
                     eprintln!("Error executing restore chunk: {:?}", e);
-                    // Depending on policy, we might want to continue or stop
                 }
                 current_query.clear();
             }
             line.clear();
         }
 
-        // Execute last bit if any
         if !current_query.trim().is_empty() {
             let _ = driver.execute(&current_query).await;
         }

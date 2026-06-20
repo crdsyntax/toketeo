@@ -110,17 +110,23 @@ The system already includes:
 
 ## Phase 5: Advanced Explorer Engine
 
-* [ ] Unified Explorer abstraction layer (engine-aware, not normalized)
-* [ ] Metadata caching per connection session
-* [ ] Lazy-loading of schema trees
-* [ ] Pagination for large tables (mandatory >1000 rows rule enforced)
+* [x] Unified Explorer abstraction layer (engine-aware, not normalized)
+  * Implemented `EngineCapabilities` helper in frontend for motor-specific UI tweaks
+* [x] Metadata caching per connection session
+  * Backend now caches columns, indexes, FKs, and constraints with a 5-min TTL
+  * Cache is automatically invalidated upon DDL execution
+* [x] Lazy-loading of schema trees
+  * Sidebar tabs (Tables, Views, Procedures, etc.) are lazy-loaded via `enabled` condition on `useQuery`
+* [x] Pagination for large tables (mandatory >1000 rows rule enforced)
+  * Server enforces a hard cap of `MAX_PAGE_SIZE = 1000`
+  * Frontend UI allows explicit selection up to 1000 (Max)
 
 ---
 
 ## Phase 6: Query Editor Enhancements
 
-* [ ] Persist Monaco editor state per tab
-* [ ] Multi-query session support (tabs independent)
+* [x] Persist Monaco editor state per tab
+* [x] Multi-query session support (tabs independent)
 * [ ] Query execution history per connection
 * [ ] Result diffing between executions (optional advanced feature)
 

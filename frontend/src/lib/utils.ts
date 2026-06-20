@@ -1,14 +1,15 @@
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+import { invoke } from '@tauri-apps/api/core'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function downloadCSV(data: Record<string, unknown>[], columns: string[], fileName: string) {
+export async function downloadCSV(data: Record<string, unknown>[], columns: string[], fileName: string) {
   if (!data.length) return;
 
-  const csvRows = [];
+  const csvRows: string[] = [];
   // Header
   csvRows.push(columns.join(','));
 
@@ -24,13 +25,15 @@ export function downloadCSV(data: Record<string, unknown>[], columns: string[], 
   }
 
   const csvContent = csvRows.join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', fileName);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+
+  try {
+    await invoke('save_file_dialog', {
+      content: csvContent,
+      defaultFileName: fileName,
+      filterName: 'CSV Files',
+      filterExt: 'csv',
+    });
+  } catch (e) {
+    console.error('Failed to export CSV:', e);
+  }
 }

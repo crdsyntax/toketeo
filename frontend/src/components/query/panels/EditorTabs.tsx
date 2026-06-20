@@ -1,6 +1,7 @@
 import { X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
+import type { Connection } from '@/types/database';
 
 interface EditorTabsProps {
   tabs: QueryTab[];
@@ -8,6 +9,8 @@ interface EditorTabsProps {
   setActiveTabId: (id: string) => void;
   removeTab: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, tabId: string) => void;
+  connections: Connection[];
+  activeConnection: Connection | null;
 }
 
 export function EditorTabs({
@@ -16,10 +19,14 @@ export function EditorTabs({
   setActiveTabId,
   removeTab,
   onContextMenu,
+  connections,
+  activeConnection,
 }: EditorTabsProps) {
   return (
     <div className="flex items-center gap-1 overflow-x-auto min-h-[40px] border-b border-border/50">
-      {tabs.map((tab) => (
+      {tabs.map((tab) => {
+        const tabConnection = connections.find(c => c.id === tab.connectionId) || activeConnection;
+        return (
         <div 
           key={tab.id}
           onClick={() => setActiveTabId(tab.id)}
@@ -29,7 +36,14 @@ export function EditorTabs({
             activeTabId === tab.id ? "bg-card border-border text-foreground" : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted"
           )}
         >
-          <span className="truncate max-w-[120px]">{tab.name}</span>
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="truncate max-w-[120px]">{tab.name}</span>
+            {tabConnection && (
+              <span className="truncate max-w-[120px] text-[9px] opacity-70" title={tabConnection.name}>
+                {tabConnection.name}
+              </span>
+            )}
+          </div>
           {tab.status === 'executing' && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
           <button 
             onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} 
@@ -38,7 +52,7 @@ export function EditorTabs({
             <X className="w-3 h-3" />
           </button>
         </div>
-      ))}
+      )})}
     </div>
   );
 }

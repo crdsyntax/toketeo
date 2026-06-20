@@ -453,6 +453,7 @@ export function DataTab({
                     <option value={100}>100</option>
                     <option value={200}>200</option>
                     <option value={500}>500</option>
+                    <option value={1000}>1000 (Max)</option>
                   </select>
                   <div className="absolute right-2.5 pointer-events-none flex flex-col items-center justify-center opacity-50 group-hover/select:opacity-100 transition-opacity">
                     <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[4px] border-b-muted-foreground mb-[1px]" />

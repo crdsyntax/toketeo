@@ -245,7 +245,7 @@ export function useExplorer() {
   } = useQuery({
     queryKey: ['tables', activeConnection?.id, currentSchema],
     queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
+    enabled: !!activeConnection && sidebarTab === SidebarTab.TABLES,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -256,7 +256,7 @@ export function useExplorer() {
   } = useQuery({
     queryKey: ['views', activeConnection?.id, currentSchema],
     queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
+    enabled: !!activeConnection && sidebarTab === SidebarTab.VIEWS,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -268,7 +268,7 @@ export function useExplorer() {
     queryKey: ['procedures', activeConnection?.id, currentSchema],
     queryFn: () =>
       schemaService.getProcedures(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
+    enabled: !!activeConnection && sidebarTab === SidebarTab.PROCEDURES,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -280,7 +280,7 @@ export function useExplorer() {
     queryKey: ['triggers', activeConnection?.id, currentSchema],
     queryFn: () =>
       schemaService.getTriggers(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
+    enabled: !!activeConnection && sidebarTab === SidebarTab.TRIGGERS,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -292,7 +292,7 @@ export function useExplorer() {
     queryKey: ['functions', activeConnection?.id, currentSchema],
     queryFn: () =>
       schemaService.getFunctions(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
+    enabled: !!activeConnection && sidebarTab === SidebarTab.FUNCTIONS,
     staleTime: 5 * 60 * 1000,
   });
 

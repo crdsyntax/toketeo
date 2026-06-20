@@ -2,6 +2,7 @@ import { Editor, type Monaco } from '@monaco-editor/react';
 import type * as monaco from 'monaco-editor';
 import { ChevronUp } from 'lucide-react';
 import type { QueryTab } from '@/store/useAppStore';
+import { useRef, useEffect } from 'react';
 
 interface SqlEditorPanelProps {
   activeTab: QueryTab;
@@ -11,6 +12,7 @@ interface SqlEditorPanelProps {
   handleEditorDidMount: (editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => void;
   connectionName: string;
   connectionType: string;
+  updateTabViewState: (id: string, viewState: any) => void;
 }
 
 export function SqlEditorPanel({
@@ -21,7 +23,45 @@ export function SqlEditorPanel({
   handleEditorDidMount,
   connectionName,
   connectionType,
+  updateTabViewState,
 }: SqlEditorPanelProps) {
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const prevTabIdRef = useRef<string>(activeTab.id);
+
+  // Save state when switching away from a tab or unmounting
+  useEffect(() => {
+    if (editorRef.current && prevTabIdRef.current !== activeTab.id) {
+      const state = editorRef.current.saveViewState();
+      updateTabViewState(prevTabIdRef.current, state);
+      prevTabIdRef.current = activeTab.id;
+    }
+  }, [activeTab.id, updateTabViewState]);
+
+  useEffect(() => {
+    return () => {
+      // On unmount, save the current tab's state
+      if (editorRef.current) {
+        const state = editorRef.current.saveViewState();
+        updateTabViewState(prevTabIdRef.current, state);
+      }
+    };
+  }, [updateTabViewState]);
+
+  // Restore state when switching to a new tab
+  useEffect(() => {
+    if (editorRef.current && activeTab.editorViewState) {
+      editorRef.current.restoreViewState(activeTab.editorViewState);
+    }
+  }, [activeTab.id, activeTab.editorViewState]);
+
+  const onMount = (editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
+    editorRef.current = editorInstance;
+    handleEditorDidMount(editorInstance, monacoInstance);
+    if (activeTab.editorViewState) {
+      editorInstance.restoreViewState(activeTab.editorViewState);
+    }
+  };
+
   return (
     <div className="border border-border rounded-none bg-card overflow-hidden flex flex-col h-full w-full">
       <div className="p-2 border-b border-border bg-muted/20 flex justify-between items-center text-left shrink-0">
@@ -41,12 +81,13 @@ export function SqlEditorPanel({
       <div className="flex-1 min-h-0 relative">
         <Editor
           height="100%"
+          path={activeTab.id}
           defaultLanguage="sql"
           theme="vs-dark"
           value={activeTab.query}
           onChange={(val) => updateTabQuery(activeTab.id, val || '')}
           beforeMount={handleEditorWillMount}
-          onMount={handleEditorDidMount}
+          onMount={onMount}
           options={{ 
             minimap: { enabled: false }, 
             fontSize: 14, 
