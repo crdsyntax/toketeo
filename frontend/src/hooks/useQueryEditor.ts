@@ -97,12 +97,24 @@ export function useQueryEditor() {
     if (activeTab?.query && activeConnection) {
       if (checkDangerousQuery(activeTab.query)) return
 
-      const sql = activeTab.query.trim().endsWith(';') ? activeTab.query.trim() : `${activeTab.query.trim()};`
+      let sql = activeTab.query.trim();
+      if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql)) {
+        const offset = (page - 1) * 100;
+        const limitStr = offset > 0 ? ` LIMIT 100 OFFSET ${offset}` : ` LIMIT 100`;
+        if (sql.endsWith(';')) {
+          sql = sql.slice(0, -1).trim() + limitStr + ';';
+        } else {
+          sql += limitStr;
+        }
+      }
+      sql = sql.endsWith(';') ? sql : `${sql};`;
       
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
       try {
         const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 100);
+        result.page = page;
+        result.hasMore = result.rows.length >= 100;
         updateTabResults(activeTab.id, {
           status: ExecutionStatus.SUCCESS,
           results: result,
@@ -156,12 +168,25 @@ export function useQueryEditor() {
 
     if (!sqlSnippet) return
     if (checkDangerousQuery(sqlSnippet)) return
+
+    sqlSnippet = sqlSnippet.trim();
+    if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet)) {
+      const offset = (page - 1) * 100;
+      const limitStr = offset > 0 ? ` LIMIT 100 OFFSET ${offset}` : ` LIMIT 100`;
+      if (sqlSnippet.endsWith(';')) {
+        sqlSnippet = sqlSnippet.slice(0, -1).trim() + limitStr + ';';
+      } else {
+        sqlSnippet += limitStr;
+      }
+    }
     if (!sqlSnippet.endsWith(';')) sqlSnippet += ';'
 
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     
     try {
       const result = await queryService.execute(activeConnection.id, sqlSnippet, activeConnection.database, undefined, page, 100);
+      result.page = page;
+      result.hasMore = result.rows.length >= 100;
       updateTabResults(activeTab.id, {
         status: ExecutionStatus.SUCCESS,
         results: result,

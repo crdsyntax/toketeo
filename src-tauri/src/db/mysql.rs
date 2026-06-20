@@ -1,9 +1,24 @@
 use crate::db::DbDriver;
-use crate::error::{AppError, AppResult};
+use crate::error::{ AppError, AppResult };
 use crate::models::QueryResult;
 use async_trait::async_trait;
-use sqlx::{Column, MySqlPool, Row, mysql::MySqlPoolOptions};
+use crate::db::common::{
+    Decoder,
+    decode_bool,
+    decode_bytes,
+    decode_date,
+    decode_datetime,
+    decode_datetime_utc,
+    decode_decimal,
+    decode_f64,
+    decode_i64,
+    decode_string,
+    decode_time,
+};
+use sqlx::{ Column, MySqlPool, Row, mysql::MySqlPoolOptions, mysql::MySqlRow, TypeInfo };
 use std::time::Instant;
+use serde_json::Value;
+
 
 pub struct MySqlDriver {
     pool: MySqlPool,
@@ -11,15 +26,13 @@ pub struct MySqlDriver {
 
 impl MySqlDriver {
     pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
-        let pool = if transactional {
-            MySqlPoolOptions::new()
-                .max_connections(1)
-                .connect(url)
-                .await
-        } else {
-            MySqlPool::connect(url).await
-        }
-        .map_err(|e| {
+        let pool = (
+            if transactional {
+                MySqlPoolOptions::new().max_connections(1).connect(url).await
+            } else {
+                MySqlPool::connect(url).await
+            }
+        ).map_err(|e| {
             let app_err: AppError = e.into();
             match app_err {
                 AppError::Auth(msg) => AppError::Auth(format!("MySQL Auth Failed: {}", msg)),
@@ -39,17 +52,12 @@ impl DbDriver for MySqlDriver {
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let trimmed_query = query.trim();
-        let is_select = trimmed_query.to_uppercase().starts_with("SELECT")
-            || trimmed_query.to_uppercase().starts_with("SHOW")
-            || trimmed_query.to_uppercase().starts_with("DESCRIBE")
-            || trimmed_query.to_uppercase().starts_with("EXPLAIN")
-            || trimmed_query.to_uppercase().starts_with("CALL");
-
-        println!(
-            "[MySQL] Executing query (length: {}): {}",
-            trimmed_query.len(),
-            &trimmed_query[..std::cmp::min(100, trimmed_query.len())]
-        );
+        let is_select =
+            trimmed_query.to_uppercase().starts_with("SELECT") ||
+            trimmed_query.to_uppercase().starts_with("SHOW") ||
+            trimmed_query.to_uppercase().starts_with("DESCRIBE") ||
+            trimmed_query.to_uppercase().starts_with("EXPLAIN") ||
+            trimmed_query.to_uppercase().starts_with("CALL");
 
         if is_select {
             let rows = sqlx::query(query).fetch_all(&self.pool).await?;
@@ -87,20 +95,13 @@ impl DbDriver for MySqlDriver {
             })
         } else {
             let result = if trimmed_query.contains(';') {
-                println!("[MySQL] Multi-statement detected, using raw_sql");
                 sqlx::raw_sql(query).execute(&self.pool).await
             } else {
-                println!("[MySQL] Single statement detected, using regular query");
                 sqlx::query(query).execute(&self.pool).await
             };
 
             match result {
-                Ok(res) => {
-                    println!(
-                        "[MySQL] Query executed successfully in {}ms. Rows affected: {}",
-                        start.elapsed().as_millis(),
-                        res.rows_affected()
-                    );
+                Ok(_res) => {
                     Ok(QueryResult {
                         columns: vec![],
                         rows: vec![],
@@ -108,107 +109,148 @@ impl DbDriver for MySqlDriver {
                         primary_keys: None,
                     })
                 }
-                Err(e) => {
-                    println!("[MySQL] Query FAILED: {:?}", e);
-                    Err(e.into())
-                }
+                Err(e) => { Err(e.into()) }
             }
         }
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SELECT schema_name FROM information_schema.schemata")
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx
+            ::query("SELECT schema_name FROM information_schema.schemata")
+            .fetch_all(&self.pool).await?;
 
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {
         let rows = sqlx::query("SHOW DATABASES").fetch_all(&self.pool).await?;
 
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_tables(
         &self,
         schema: Option<String>,
-        _filter: Option<String>,
+        _filter: Option<String>
     ) -> AppResult<Vec<String>> {
         let rows = if let Some(schema_name) = schema {
-            sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'")
+            sqlx
+                ::query(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'"
+                )
                 .bind(schema_name)
-                .fetch_all(&self.pool)
-                .await?
+                .fetch_all(&self.pool).await?
         } else {
-            sqlx::query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")
-                .fetch_all(&self.pool)
-                .await?
+            sqlx
+                ::query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")
+                .fetch_all(&self.pool).await?
         };
 
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_views(
         &self,
         schema: Option<String>,
-        _filter: Option<String>,
+        _filter: Option<String>
     ) -> AppResult<Vec<String>> {
         let rows = if let Some(schema_name) = schema {
-            sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'VIEW'")
+            sqlx
+                ::query(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'VIEW'"
+                )
                 .bind(schema_name)
-                .fetch_all(&self.pool)
-                .await?
+                .fetch_all(&self.pool).await?
         } else {
-            sqlx::query("SHOW FULL TABLES WHERE Table_type = 'VIEW'")
-                .fetch_all(&self.pool)
-                .await?
+            sqlx::query("SHOW FULL TABLES WHERE Table_type = 'VIEW'").fetch_all(&self.pool).await?
         };
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_procedures(
         &self,
         schema: Option<String>,
-        _filter: Option<String>,
+        _filter: Option<String>
     ) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SELECT routine_name FROM information_schema.routines WHERE routine_type = 'PROCEDURE' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name")
+        let rows = sqlx
+            ::query(
+                "SELECT routine_name FROM information_schema.routines WHERE routine_type = 'PROCEDURE' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name"
+            )
             .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+            .fetch_all(&self.pool).await?;
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_triggers(
         &self,
         schema: Option<String>,
-        _filter: Option<String>,
+        _filter: Option<String>
     ) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = IFNULL(?, DATABASE()) ORDER BY trigger_name")
+        let rows = sqlx
+            ::query(
+                "SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = IFNULL(?, DATABASE()) ORDER BY trigger_name"
+            )
             .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+            .fetch_all(&self.pool).await?;
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_functions(
         &self,
         schema: Option<String>,
-        _filter: Option<String>,
+        _filter: Option<String>
     ) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SELECT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name")
+        let rows = sqlx
+            ::query(
+                "SELECT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = IFNULL(?, DATABASE()) ORDER BY routine_name"
+            )
             .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+            .fetch_all(&self.pool).await?;
+        Ok(
+            rows
+                .iter()
+                .map(|r| r.get(0))
+                .collect()
+        )
     }
 
     async fn fetch_columns(
         &self,
         table: &str,
-        schema: Option<String>,
+        schema: Option<String>
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
+        let query =
+            "SELECT 
             column_name as name, 
             column_type as type, 
             is_nullable = 'YES' as isNullable, 
@@ -219,11 +261,7 @@ impl DbDriver for MySqlDriver {
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())
             ORDER BY ordinal_position";
 
-        let rows = sqlx::query(query)
-            .bind(table)
-            .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(query).bind(table).bind(schema).fetch_all(&self.pool).await?;
 
         let mut cols = Vec::new();
         for row in rows {
@@ -231,22 +269,18 @@ impl DbDriver for MySqlDriver {
             map.insert("name".into(), row.get::<String, _>("name").into());
             map.insert("type".into(), row.get::<String, _>("type").into());
 
-            let is_nullable = row.try_get::<i64, _>("isNullable").unwrap_or(0) == 1
-                || row.try_get::<i32, _>("isNullable").unwrap_or(0) == 1;
+            let is_nullable =
+                row.try_get::<i64, _>("isNullable").unwrap_or(0) == 1 ||
+                row.try_get::<i32, _>("isNullable").unwrap_or(0) == 1;
             map.insert("isNullable".into(), is_nullable.into());
 
-            let is_pk = row.try_get::<i64, _>("isPrimaryKey").unwrap_or(0) == 1
-                || row.try_get::<i32, _>("isPrimaryKey").unwrap_or(0) == 1;
+            let is_pk =
+                row.try_get::<i64, _>("isPrimaryKey").unwrap_or(0) == 1 ||
+                row.try_get::<i32, _>("isPrimaryKey").unwrap_or(0) == 1;
             map.insert("isPrimaryKey".into(), is_pk.into());
 
-            map.insert(
-                "defaultValue".into(),
-                row.get::<Option<String>, _>("defaultValue").into(),
-            );
-            map.insert(
-                "comment".into(),
-                row.get::<Option<String>, _>("comment").into(),
-            );
+            map.insert("defaultValue".into(), row.get::<Option<String>, _>("defaultValue").into());
+            map.insert("comment".into(), row.get::<Option<String>, _>("comment").into());
             cols.push(serde_json::Value::Object(map));
         }
         Ok(cols)
@@ -255,9 +289,10 @@ impl DbDriver for MySqlDriver {
     async fn fetch_indexes(
         &self,
         table: &str,
-        schema: Option<String>,
+        schema: Option<String>
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
+        let query =
+            "SELECT 
             index_name as name, 
             column_name as column_name, 
             non_unique = 0 as isUnique, 
@@ -265,11 +300,7 @@ impl DbDriver for MySqlDriver {
             FROM information_schema.statistics 
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())";
 
-        let rows = sqlx::query(query)
-            .bind(table)
-            .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(query).bind(table).bind(schema).fetch_all(&self.pool).await?;
 
         let mut idxs = Vec::new();
         for row in rows {
@@ -277,8 +308,9 @@ impl DbDriver for MySqlDriver {
             map.insert("name".into(), row.get::<String, _>("name").into());
             map.insert("column".into(), row.get::<String, _>("column_name").into());
 
-            let is_unique = row.try_get::<i64, _>("isUnique").unwrap_or(0) == 1
-                || row.try_get::<i32, _>("isUnique").unwrap_or(0) == 1;
+            let is_unique =
+                row.try_get::<i64, _>("isUnique").unwrap_or(0) == 1 ||
+                row.try_get::<i32, _>("isUnique").unwrap_or(0) == 1;
             map.insert("isUnique".into(), is_unique.into());
 
             map.insert("type".into(), row.get::<String, _>("type").into());
@@ -290,9 +322,10 @@ impl DbDriver for MySqlDriver {
     async fn fetch_foreign_keys(
         &self,
         table: &str,
-        schema: Option<String>,
+        schema: Option<String>
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
+        let query =
+            "SELECT 
             constraint_name as constraintName, 
             column_name as columnName, 
             referenced_table_name as referencedTable, 
@@ -300,31 +333,15 @@ impl DbDriver for MySqlDriver {
             FROM information_schema.key_column_usage 
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE()) AND referenced_table_name IS NOT NULL";
 
-        let rows = sqlx::query(query)
-            .bind(table)
-            .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(query).bind(table).bind(schema).fetch_all(&self.pool).await?;
 
         let mut fks = Vec::new();
         for row in rows {
             let mut map = serde_json::Map::new();
-            map.insert(
-                "constraintName".into(),
-                row.get::<String, _>("constraintName").into(),
-            );
-            map.insert(
-                "columnName".into(),
-                row.get::<String, _>("columnName").into(),
-            );
-            map.insert(
-                "referencedTable".into(),
-                row.get::<String, _>("referencedTable").into(),
-            );
-            map.insert(
-                "referencedColumn".into(),
-                row.get::<String, _>("referencedColumn").into(),
-            );
+            map.insert("constraintName".into(), row.get::<String, _>("constraintName").into());
+            map.insert("columnName".into(), row.get::<String, _>("columnName").into());
+            map.insert("referencedTable".into(), row.get::<String, _>("referencedTable").into());
+            map.insert("referencedColumn".into(), row.get::<String, _>("referencedColumn").into());
             fks.push(serde_json::Value::Object(map));
         }
         Ok(fks)
@@ -333,19 +350,16 @@ impl DbDriver for MySqlDriver {
     async fn fetch_constraints(
         &self,
         table: &str,
-        schema: Option<String>,
+        schema: Option<String>
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
+        let query =
+            "SELECT 
             constraint_name as name, 
             constraint_type as type
             FROM information_schema.table_constraints 
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())";
 
-        let rows = sqlx::query(query)
-            .bind(table)
-            .bind(schema)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(query).bind(table).bind(schema).fetch_all(&self.pool).await?;
 
         let mut cs = Vec::new();
         for row in rows {
@@ -361,7 +375,7 @@ impl DbDriver for MySqlDriver {
         &self,
         name: &str,
         object_type: &str,
-        schema: Option<String>,
+        schema: Option<String>
     ) -> AppResult<String> {
         let full_name = if let Some(schema_name) = schema.as_ref() {
             format!("`{}`.`{}`", schema_name, name)
@@ -376,14 +390,10 @@ impl DbDriver for MySqlDriver {
             "procedure" => format!("SHOW CREATE PROCEDURE {}", full_name),
             "function" => format!("SHOW CREATE FUNCTION {}", full_name),
             "trigger" => format!("SHOW CREATE TRIGGER {}", full_name),
-            _ => return Err(AppError::Internal("Unsupported object type for DDL".into())),
+            _ => {
+                return Err(AppError::Internal("Unsupported object type for DDL".into()));
+            }
         };
-
-        println!(
-            "[MySQL] Fetching DDL for {} {} with query: {}",
-            object_type, full_name, query
-        );
-
         let ddl_base = match sqlx::query(&query).fetch_one(&self.pool).await {
             Ok(row) => {
                 let mut found_ddl = None;
@@ -402,10 +412,11 @@ impl DbDriver for MySqlDriver {
 
                 if found_ddl.is_none() {
                     found_ddl = match obj_type_lower.as_str() {
-                        "procedure" | "function" | "trigger" => row
-                            .try_get::<String, _>(2)
-                            .or_else(|_| row.try_get::<String, _>(1))
-                            .ok(),
+                        "procedure" | "function" | "trigger" =>
+                            row
+                                .try_get::<String, _>(2)
+                                .or_else(|_| row.try_get::<String, _>(1))
+                                .ok(),
                         _ => row.try_get::<String, _>(1).ok(),
                     };
                 }
@@ -415,17 +426,17 @@ impl DbDriver for MySqlDriver {
                 })?
             }
             Err(e) => {
-                println!("[MySQL] Error fetching DDL via SHOW CREATE: {:?}", e);
                 // Fallback for procedures/functions/views via information_schema
                 if obj_type_lower == "procedure" || obj_type_lower == "function" {
                     let routine_type = obj_type_lower.to_uppercase();
-                    let fallback_query = "SELECT routine_definition FROM information_schema.routines WHERE routine_name = ? AND routine_schema = IFNULL(?, DATABASE()) AND routine_type = ?";
-                    let res = sqlx::query(fallback_query)
+                    let fallback_query =
+                        "SELECT routine_definition FROM information_schema.routines WHERE routine_name = ? AND routine_schema = IFNULL(?, DATABASE()) AND routine_type = ?";
+                    let res = sqlx
+                        ::query(fallback_query)
                         .bind(name)
                         .bind(schema)
                         .bind(routine_type)
-                        .fetch_one(&self.pool)
-                        .await;
+                        .fetch_one(&self.pool).await;
 
                     if let Ok(r) = res {
                         let def: Option<String> = r.try_get(0).ok();
@@ -445,18 +456,9 @@ impl DbDriver for MySqlDriver {
 
         // Prepend DROP IF EXISTS for routines and triggers
         match obj_type_lower.as_str() {
-            "procedure" => Ok(format!(
-                "DROP PROCEDURE IF EXISTS {};\n\n{}",
-                full_name, ddl_base
-            )),
-            "function" => Ok(format!(
-                "DROP FUNCTION IF EXISTS {};\n\n{}",
-                full_name, ddl_base
-            )),
-            "trigger" => Ok(format!(
-                "DROP TRIGGER IF EXISTS {};\n\n{}",
-                full_name, ddl_base
-            )),
+            "procedure" => Ok(format!("DROP PROCEDURE IF EXISTS {};\n\n{}", full_name, ddl_base)),
+            "function" => Ok(format!("DROP FUNCTION IF EXISTS {};\n\n{}", full_name, ddl_base)),
+            "trigger" => Ok(format!("DROP TRIGGER IF EXISTS {};\n\n{}", full_name, ddl_base)),
             _ => Ok(ddl_base),
         }
     }
@@ -465,7 +467,7 @@ impl DbDriver for MySqlDriver {
         &self,
         name: &str,
         object_type: &str,
-        schema: Option<String>,
+        schema: Option<String>
     ) -> AppResult<Vec<serde_json::Value>> {
         let routine_type = match object_type.to_lowercase().as_str() {
             "procedure" => "PROCEDURE",
@@ -473,7 +475,8 @@ impl DbDriver for MySqlDriver {
             _ => "",
         };
 
-        let query = "SELECT 
+        let query =
+            "SELECT 
             parameter_name as name, 
             dtd_identifier as type, 
             parameter_mode as mode
@@ -482,29 +485,28 @@ impl DbDriver for MySqlDriver {
             AND (ROUTINE_TYPE = ? OR ? = '')
             ORDER BY ordinal_position";
 
-        let rows = sqlx::query(query)
+        let rows = sqlx
+            ::query(query)
             .bind(name)
             .bind(schema)
             .bind(routine_type)
             .bind(routine_type)
-            .fetch_all(&self.pool)
-            .await?;
+            .fetch_all(&self.pool).await?;
 
         let mut params = Vec::new();
         for row in rows {
             let mut map = serde_json::Map::new();
             map.insert(
                 "name".into(),
-                row.get::<Option<String>, _>("name")
-                    .unwrap_or_default()
-                    .into(),
+                row.get::<Option<String>, _>("name").unwrap_or_default().into()
             );
             map.insert("type".into(), row.get::<String, _>("type").into());
             map.insert(
                 "mode".into(),
-                row.get::<Option<String>, _>("mode")
+                row
+                    .get::<Option<String>, _>("mode")
                     .unwrap_or_else(|| "IN".to_string())
-                    .into(),
+                    .into()
             );
             params.push(serde_json::Value::Object(map));
         }
@@ -518,110 +520,28 @@ impl DbDriver for MySqlDriver {
 }
 
 impl MySqlDriver {
-    fn decode_column(&self, row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
-        use sqlx::Row;
-        use sqlx::TypeInfo;
+    fn decode_column(&self, row: &MySqlRow, index: usize) -> Value {
+        const DECODERS: &[Decoder] = &[
+            decode_string,
+            decode_i64,
+            decode_decimal,
+            decode_f64,
+            decode_bool,
+            decode_datetime_utc,
+            decode_datetime,
+            decode_date,
+            decode_time,
+            decode_bytes,
+        ];
 
-        let col = &row.columns()[i];
-        let type_name = col.type_info().name();
-
-        println!(
-            "[MysqlDriver] Decoding column: {}, type: {}",
-            col.name(),
-            type_name
-        );
-
-        match type_name {
-            "TINYINT" | "SMALLINT" | "INT" | "MEDIUMINT" | "BIGINT" => {
-                if let Ok(val) = row.try_get::<Option<i64>, _>(i) {
-                    return val
-                        .map(serde_json::Value::from)
-                        .unwrap_or(serde_json::Value::Null);
-                }
-            }
-            "DECIMAL" | "NUMERIC" => {
-                if let Ok(val) = row.try_get::<Option<rust_decimal::Decimal>, _>(i) {
-                    return val
-                        .map(|d| serde_json::Value::from(d.to_string()))
-                        .unwrap_or(serde_json::Value::Null);
-                }
-            }
-            "FLOAT" | "DOUBLE" => {
-                if let Ok(val) = row.try_get::<Option<f64>, _>(i) {
-                    return val
-                        .map(serde_json::Value::from)
-                        .unwrap_or(serde_json::Value::Null);
-                }
-            }
-            "DATETIME" | "TIMESTAMP" | "DATE" => {
-                if let Ok(val) = row.try_get::<Option<chrono::NaiveDateTime>, _>(i) {
-                    return val
-                        .map(|d| {
-                            serde_json::Value::from(d.format("%Y-%m-%d %H:%M:%S%.3f").to_string())
-                        })
-                        .unwrap_or(serde_json::Value::Null);
-                }
-                if let Ok(val) = row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(i) {
-                    return val
-                        .map(|d| {
-                            serde_json::Value::from(d.format("%Y-%m-%d %H:%M:%S%.3f").to_string())
-                        })
-                        .unwrap_or(serde_json::Value::Null);
-                }
-                if let Ok(val) = row.try_get::<Option<chrono::NaiveDate>, _>(i) {
-                    return val
-                        .map(|d| serde_json::Value::from(d.format("%Y-%m-%d").to_string()))
-                        .unwrap_or(serde_json::Value::Null);
-                }
-                // Si todo lo anterior falla, intentar lectura como String y truncar
-                if let Ok(val) = row.try_get::<Option<String>, _>(i) {
-                    return val
-                        .map(|s| serde_json::Value::from(s.chars().take(23).collect::<String>()))
-                        .unwrap_or(serde_json::Value::Null);
-                }
-            }
-            "BIT" | "BOOLEAN" => {
-                if let Ok(val) = row.try_get::<Option<bool>, _>(i) {
-                    return val
-                        .map(serde_json::Value::from)
-                        .unwrap_or(serde_json::Value::Null);
-                }
-            }
-            _ => {}
-        }
-
-        // Fallback to string
-        match row.try_get::<Option<String>, _>(i) {
-            Ok(val) => {
-                return val
-                    .map(serde_json::Value::from)
-                    .unwrap_or(serde_json::Value::Null);
-            }
-            Err(e) => {
-                println!(
-                    "[MysqlDriver] Failed to decode column {} (type: {}) as String: {:?}",
-                    col.name(),
-                    type_name,
-                    e
-                );
+        for decoder in DECODERS {
+            if let Some(value) = decoder(row, index) {
+                return value;
             }
         }
 
-        serde_json::Value::from(format!("Un-decodable: {}", type_name))
-    }
+        let column = &row.columns()[index];
 
-    fn extract_table_name(&self, query: &str) -> Option<String> {
-        let query = query.trim().to_uppercase();
-        if query.starts_with("SELECT") && query.contains("FROM") {
-            let parts: Vec<&str> = query.split_whitespace().collect();
-            if let Some(pos) = parts.iter().position(|&p| p == "FROM") {
-                if pos + 1 < parts.len() {
-                    let table =
-                        parts[pos + 1].replace(|c: char| !c.is_alphanumeric() && c != '_', "");
-                    return Some(table);
-                }
-            }
-        }
-        None
+        Value::from(format!("Un-decodable: {}", column.type_info().name()))
     }
 }

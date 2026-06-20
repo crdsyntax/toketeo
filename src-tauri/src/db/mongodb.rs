@@ -24,7 +24,6 @@ impl MongoDbDriver {
         };
 
         tracing::debug!("Initializing MongoDB driver with URL: {}", sanitized_url);
-        println!("[MongoDB] Initializing driver with URL: {}", sanitized_url);
 
         let mut client_options = ClientOptions::parse(url).await.map_err(|e| {
             tracing::error!(
@@ -32,7 +31,6 @@ impl MongoDbDriver {
                 sanitized_url,
                 e
             );
-            eprintln!("[MongoDB] Failed to parse URL: {}", e);
             AppError::Connection(format!("Failed to parse MongoDB URL: {}", e))
         })?;
 
@@ -72,7 +70,6 @@ impl MongoDbDriver {
         tracing::debug!(
             "Setting MongoDB timeouts: Connect=10s, ServerSelection=10s, Retries=Disabled"
         );
-        println!("[MongoDB] Applying SSH-friendly settings (10s timeouts, retries disabled)");
 
         let client = Client::with_options(client_options).map_err(|e| {
             tracing::error!(
@@ -80,7 +77,6 @@ impl MongoDbDriver {
                 sanitized_url,
                 e
             );
-            eprintln!("[MongoDB] Failed to create client: {}", e);
             AppError::Connection(format!("Failed to create MongoDB client: {}", e))
         })?;
 
@@ -89,7 +85,6 @@ impl MongoDbDriver {
             "Pinging MongoDB server at {} to verify connection...",
             sanitized_url
         );
-        println!("[MongoDB] Pinging server {}...", sanitized_url);
         let ping_start = Instant::now();
 
         client.database("admin").run_command(doc! {"ping": 1}).await
@@ -97,7 +92,6 @@ impl MongoDbDriver {
                 let msg = e.to_string().to_uppercase();
                 let elapsed = ping_start.elapsed();
                 tracing::error!("MongoDB ping failed after {:?} for {}: {}", elapsed, sanitized_url, msg);
-                eprintln!("[MongoDB] Ping failed after {:?}: {}", elapsed, msg);
                 
                 if msg.contains("CONNECTION REFUSED") || msg.contains("OS ERROR 111") {
                     AppError::Connection("MongoDB connection refused: the server might not be running or the port is blocked".into())
@@ -113,10 +107,6 @@ impl MongoDbDriver {
         tracing::info!(
             "MongoDB connection to {} verified successfully in {:?}",
             sanitized_url,
-            ping_start.elapsed()
-        );
-        println!(
-            "[MongoDB] Connection verified successfully in {:?}",
             ping_start.elapsed()
         );
 

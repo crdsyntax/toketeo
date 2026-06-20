@@ -25,7 +25,6 @@ impl SqlGeneratorService {
             table_name,
             where_clause.join(" AND ")
         );
-        println!("[SqlGenerator] Generated SELECT: {}", sql);
         sql
     }
 
@@ -50,7 +49,6 @@ impl SqlGeneratorService {
             updates.join(", "),
             where_clause.join(" AND ")
         );
-        println!("[SqlGenerator] Generated UPDATE: {}", sql);
         sql
     }
 
@@ -241,7 +239,6 @@ mod tests {
     fn test_generate_update_mariadb() {
         let ctx = mock_context();
         let sql = SqlGeneratorService::generate_update(DbType::Mariadb, &ctx);
-        println!("Generated SQL: {}", sql);
         assert!(sql.contains("`users`"));
         assert!(sql.contains("`name` = 'test'"));
         assert!(sql.contains("WHERE `id` = 1"));

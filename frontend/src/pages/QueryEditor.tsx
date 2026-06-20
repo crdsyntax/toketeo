@@ -206,6 +206,7 @@ export default function QueryEditor() {
               sortedRows={sortedRows}
               editingCell={editingCell}
               setEditingCell={setEditingCell}
+              handlePageChange={handlePageChange}
             />
           </div>
         )}

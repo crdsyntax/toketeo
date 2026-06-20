@@ -87,7 +87,7 @@ impl ConnectionStringBuilder {
                     url.push_str(&params.join("&"));
                 }
 
-                let sanitized_url = if let Some(idx) = url.find('@') {
+                let _sanitized_url = if let Some(idx) = url.find('@') {
                     format!(
                         "{}@{}",
                         &url[..url.find("://").unwrap_or(0) + 3],
@@ -96,7 +96,6 @@ impl ConnectionStringBuilder {
                 } else {
                     url.clone()
                 };
-                println!("[Database] Generated URL: {}", sanitized_url);
 
                 Ok(url)
             }

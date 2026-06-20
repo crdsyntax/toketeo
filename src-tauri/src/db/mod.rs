@@ -81,6 +81,8 @@ pub trait DbDriver: Send + Sync {
 }
 
 pub mod mongodb;
+pub mod common;
 pub mod mysql;
 pub mod postgres;
 pub mod sqlserver;
+

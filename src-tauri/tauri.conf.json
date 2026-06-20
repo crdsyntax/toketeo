@@ -33,6 +33,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

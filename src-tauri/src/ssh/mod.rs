@@ -112,8 +112,7 @@ impl SshTunnel {
                     break;
                 }
 
-                if let Ok((mut local_stream, addr)) = listener.accept() {
-                    println!("[SSH] Local connection accepted from {}", addr);
+                if let Ok((mut local_stream, _addr)) = listener.accept() {
                     let sess_inner = sess_clone.clone();
                     let host_inner = remote_host.clone();
 
@@ -121,15 +120,8 @@ impl SshTunnel {
                         let mut sess_guard =
                             tauri::async_runtime::block_on(async { sess_inner.lock().await });
 
-                        // Ensure the session is in non-blocking mode for this thread's channel operations
                         sess_guard.set_blocking(false);
 
-                        println!(
-                            "[SSH] Attempting to open channel to remote {}:{}...",
-                            host_inner, remote_port
-                        );
-
-                        // We might need to poll for the channel opening in non-blocking mode
                         let mut channel = loop {
                             match sess_guard.channel_direct_tcpip(&host_inner, remote_port, None) {
                                 Ok(ch) => break ch,
@@ -151,14 +143,6 @@ impl SshTunnel {
                                 }
                             }
                         };
-
-                        println!(
-                            "[SSH] Channel established to {}:{}!",
-                            host_inner, remote_port
-                        );
-
-                        // local_stream should already be non-blocking from the accept loop if we did it there,
-                        // but let's be safe.
                         local_stream.set_nonblocking(true).ok();
 
                         let mut buffer_local = [0u8; 16384];
@@ -210,7 +194,6 @@ impl SshTunnel {
                                 });
                             }
                         }
-                        println!("[SSH] Bridge closed for {}:{}", host_inner, remote_port);
                     });
                 }
 

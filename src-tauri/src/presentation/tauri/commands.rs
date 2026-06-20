@@ -453,7 +453,6 @@ pub async fn execute_explorer(
     page: Option<u32>,
     page_size: Option<u32>,
     filter: Option<String>,
-    params: Option<serde_json::Value>,
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
     let page = page.unwrap_or(0);
