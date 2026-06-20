@@ -11,6 +11,7 @@ import type {
   DbRow,
 } from '@/types/database';
 import {
+  DatabaseType,
   ExecutionStatus,
   SidebarTab,
   ExplorerTab,
@@ -813,6 +814,20 @@ export function useExplorer() {
     );
   }, [sidebarTab, tables, views, procedures, triggers, functions, search]);
 
+  // Resolve db type: prefer activeConnection.type (already stored), confirm from backend only if needed
+  const dbType: DatabaseType | undefined = useMemo(() => {
+    if (!activeConnection?.type) return undefined;
+    switch (activeConnection.type) {
+      case DatabaseType.MONGODB: return DatabaseType.MONGODB;
+      case DatabaseType.SQLSERVER: return DatabaseType.SQLSERVER;
+      case DatabaseType.POSTGRES: return DatabaseType.POSTGRES;
+      case DatabaseType.MARIADB: return DatabaseType.MARIADB;
+      default: return activeConnection.type as DatabaseType;
+    }
+  }, [activeConnection?.type]);
+
+  const isMongoDB = dbType === DatabaseType.MONGODB;
+
   return {
     activeConnection,
     search,
@@ -872,6 +887,8 @@ export function useExplorer() {
     handleRefetch,
     filter,
     setFilter,
+    dbType,
+    isMongoDB,
     explorerTabs,
     activeExplorerTabId,
     removeExplorerTab,

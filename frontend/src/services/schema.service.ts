@@ -144,4 +144,8 @@ executeExplorer: async (payload: {
   rollbackTransaction: async (id: string) => {
     return await tauriApi.invoke<void>('rollback_transaction', { id })
   },
+
+  getDbType: async (id: string): Promise<string> => {
+    return await tauriApi.invoke<string>('get_db_type', { id })
+  },
 }

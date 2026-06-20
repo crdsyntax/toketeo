@@ -41,6 +41,15 @@ pub async fn generate_model(
 }
 
 #[tauri::command]
+pub async fn get_db_type(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::db::DbType> {
+    let driver = state.get_connection(&id).await?;
+    Ok(driver.db_type())
+}
+
+#[tauri::command]
 pub async fn update_cell(
     id: String,
     input: CellUpdateInput,

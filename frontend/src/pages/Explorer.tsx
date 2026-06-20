@@ -60,6 +60,8 @@ export default function Explorer() {
     handleRefetch,
     filter,
     setFilter,
+    dbType,
+    isMongoDB,
     explorerTabs,
     activeExplorerTabId,
     removeExplorerTab,
@@ -148,6 +150,7 @@ export default function Explorer() {
           setActiveTab={setActiveTab}
           isCollapsed={isSidebarCollapsed}
           onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          dbType={dbType}
         />
 
         <div className="flex-1 border border-border rounded-xl bg-card flex flex-col overflow-hidden">
@@ -192,6 +195,7 @@ export default function Explorer() {
             filter={filter}
             setFilter={setFilter}
             currentSchema={currentSchema}
+            isMongoDB={isMongoDB}
           />
         </div>
       </div>

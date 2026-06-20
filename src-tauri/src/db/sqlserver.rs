@@ -292,7 +292,28 @@ impl DbDriver for SqlServerDriver {
     ) -> AppResult<Vec<serde_json::Value>> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
         let query = format!(
-            "SELECT COLUMN_NAME AS name, DATA_TYPE AS type, CASE WHEN IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS isNullable, COLUMN_DEFAULT AS defaultValue, CHARACTER_MAXIMUM_LENGTH AS maxLength FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}' AND TABLE_SCHEMA = '{}' ORDER BY ORDINAL_POSITION",
+            "SELECT \
+                c.COLUMN_NAME AS name, \
+                c.DATA_TYPE AS type, \
+                CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS isNullable, \
+                c.COLUMN_DEFAULT AS defaultValue, \
+                c.CHARACTER_MAXIMUM_LENGTH AS maxLength, \
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS isPrimaryKey \
+            FROM INFORMATION_SCHEMA.COLUMNS c \
+            LEFT JOIN ( \
+                SELECT kcu.COLUMN_NAME \
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc \
+                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu \
+                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME \
+                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA \
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY' \
+                    AND tc.TABLE_NAME = '{}' \
+                    AND tc.TABLE_SCHEMA = '{}' \
+            ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME \
+            WHERE c.TABLE_NAME = '{}' AND c.TABLE_SCHEMA = '{}' \
+            ORDER BY c.ORDINAL_POSITION",
+            Self::escape_sql(table),
+            Self::escape_sql(&schema_name),
             Self::escape_sql(table),
             Self::escape_sql(&schema_name)
         );

@@ -63,6 +63,7 @@ interface ObjectDetailProps {
   filter: string;
   setFilter: (f: string) => void;
   currentSchema?: string;
+  isMongoDB?: boolean;
 }
 
 export function ObjectDetail(props: ObjectDetailProps) {
@@ -104,10 +105,13 @@ export function ObjectDetail(props: ObjectDetailProps) {
     renameIndexMutation,
     dropForeignKeyMutation,
     dropConstraintMutation,
+    filter,
+    setFilter,
+    currentSchema,
+    isMongoDB = false,
   } = props;
   
   const [modelModalOpen, setModelModalOpen] = useState(false);
-  const currentSchema = props.currentSchema;
   
   const handleAddObject = (type: string) => {
     setActiveTab(ExplorerTab.DDL);
@@ -201,6 +205,8 @@ export function ObjectDetail(props: ObjectDetailProps) {
             </p>
           </div>
         </div>
+
+        {/* === TABS NAV === */}
         <div className="flex bg-muted p-1 rounded-none items-center">
        
           {(selectedItem?.type === DatabaseObjectType.TABLE ||
@@ -219,7 +225,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
                   )}
                 >
                   <List className="w-3.5 h-3.5" />
-                  Columns
+                  {isMongoDB ? 'Schema' : 'Columns'}
                 </button>
               )}
               {selectedItem?.type === DatabaseObjectType.TABLE && (
@@ -236,30 +242,34 @@ export function ObjectDetail(props: ObjectDetailProps) {
                     <List className="w-3.5 h-3.5" />
                     Indexes
                   </button>
-                  <button
-                    onClick={() => setActiveTab(ExplorerTab.FOREIGN_KEYS)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                      activeTab === ExplorerTab.FOREIGN_KEYS
-                        ? 'bg-background shadow-sm'
-                        : 'hover:bg-background/50',
-                    )}
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    FKs
-                  </button>
-                  <button
-                    onClick={() => setActiveTab(ExplorerTab.CONSTRAINTS)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                      activeTab === ExplorerTab.CONSTRAINTS
-                        ? 'bg-background shadow-sm'
-                        : 'hover:bg-background/50',
-                    )}
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    Constraints
-                  </button>
+                  {!isMongoDB && (
+                    <>
+                      <button
+                        onClick={() => setActiveTab(ExplorerTab.FOREIGN_KEYS)}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                          activeTab === ExplorerTab.FOREIGN_KEYS
+                            ? 'bg-background shadow-sm'
+                            : 'hover:bg-background/50',
+                        )}
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        FKs
+                      </button>
+                      <button
+                        onClick={() => setActiveTab(ExplorerTab.CONSTRAINTS)}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                          activeTab === ExplorerTab.CONSTRAINTS
+                            ? 'bg-background shadow-sm'
+                            : 'hover:bg-background/50',
+                        )}
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        Constraints
+                      </button>
+                    </>
+                  )}
                 </>
               )}
               <button
@@ -276,18 +286,20 @@ export function ObjectDetail(props: ObjectDetailProps) {
               </button>
             </>
           )}
-          <button
-            onClick={() => setActiveTab(ExplorerTab.DDL)}
-            className={cn(
-              'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-              activeTab === ExplorerTab.DDL
-                ? 'bg-background shadow-sm'
-                : 'hover:bg-background/50',
-            )}
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            Definition
-          </button>
+          {!isMongoDB && (
+            <button
+              onClick={() => setActiveTab(ExplorerTab.DDL)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                activeTab === ExplorerTab.DDL
+                  ? 'bg-background shadow-sm'
+                  : 'hover:bg-background/50',
+              )}
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              Definition
+            </button>
+          )}
           
           {selectedItem?.type === DatabaseObjectType.TABLE && (
             <button

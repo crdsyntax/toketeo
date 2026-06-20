@@ -93,12 +93,17 @@ The system already includes:
 
 ## Phase 4: Multi-Driver Completion
 
-* [ ] Validate SQL Server driver behavior
-* [ ] MongoDB full explorer support:
-
-  * collections
-  * documents
-  * schema inference (best-effort)
+* [x] Validate SQL Server driver behavior:
+  * Fixed `isPrimaryKey` in `fetch_columns` (LEFT JOIN with `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`)
+  * DDL fallback for tables documented
+* [x] MongoDB full explorer support:
+  * Collections listed in sidebar (via TABLES tab renamed to "Collections")
+  * Documents viewable in Data tab with `_id` as PK
+  * Schema inference (best-effort) via `fetch_columns` sampling 5 documents
+  * Indexes support via `list_indexes()`
+  * FK / Constraints / DDL tabs hidden (not applicable to MongoDB)
+  * `get_db_type` command exposes engine type to frontend
+  * Engine-aware UI: Sidebar and ObjectDetail adapt per motor
 * [ ] SQLite integration for local persistence layer (if required)
 
 ---
