@@ -260,7 +260,7 @@ export default function QueryEditor() {
         )}
 
         {panels.results && (
-          <div className="flex-1 min-h-[100px]">
+          <div className="flex-1 min-h-[100px] flex flex-col overflow-hidden">
             <ResultsPanel
               activeTab={activeTab}
               panels={panels}

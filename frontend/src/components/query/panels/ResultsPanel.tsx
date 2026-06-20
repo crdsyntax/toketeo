@@ -300,7 +300,9 @@ export function ResultsPanel({
 
                   {paddingTop > 0 && (
                     <tr>
-                      <td style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} colSpan={activeTab.results.columns.length + 1} />
+                      <td style={{ padding: 0, border: 0 }} colSpan={activeTab.results.columns.length + 1}>
+                        <div style={{ height: `${paddingTop}px` }} />
+                      </td>
                     </tr>
                   )}
 
@@ -386,7 +388,9 @@ export function ResultsPanel({
 
                   {paddingBottom > 0 && (
                     <tr>
-                      <td style={{ height: `${paddingBottom}px`, padding: 0, border: 0 }} colSpan={activeTab.results.columns.length + 1} />
+                      <td style={{ padding: 0, border: 0 }} colSpan={activeTab.results.columns.length + 1}>
+                        <div style={{ height: `${paddingBottom}px` }} />
+                      </td>
                     </tr>
                   )}
 
