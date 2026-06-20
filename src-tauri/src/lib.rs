@@ -98,6 +98,7 @@ pub fn run() {
             commands::switch_database,
             commands::get_audit_logs,
             commands::generate_sql,
+            commands::generate_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

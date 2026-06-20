@@ -50,6 +50,7 @@ interface ResultsModalProps {
   handlePageChange: (page: number) => void;
   clearResults: () => void;
   isInteracting: boolean;
+  setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
 }
 
 export function ResultsModal({
@@ -70,6 +71,7 @@ export function ResultsModal({
   handlePageChange,
   clearResults,
   isInteracting,
+  setContextMenuSql,
 }: ResultsModalProps) {
   if (!isOpen || !activeTab?.results) return null;
 
@@ -228,6 +230,10 @@ export function ResultsModal({
                 <tr
                   key={i}
                   className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenuSql({ x: e.pageX, y: e.pageY, row });
+                  }}
                 >
                   {activeTab.results!.columns.map((col: string) => (
                     <td

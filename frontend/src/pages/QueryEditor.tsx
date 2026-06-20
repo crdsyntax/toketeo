@@ -5,9 +5,10 @@ import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
 import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
+import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef } from 'react';
-import { ExecutionStatus } from '@/types/database';
+import { ExecutionStatus, type DbRow } from '@/types/database';
 
 export default function QueryEditor() {
   const {
@@ -50,7 +51,14 @@ export default function QueryEditor() {
     isInteracting,
     draggingRef,
     resizingRef,
+    contextMenuSql,
+    setContextMenuSql,
+    sqlModal,
+    setSqlModal,
+    handleGenerateSql,
   } = useQueryEditor()
+
+  const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
   const containerRef = useRef<HTMLDivElement>(null)
   const splitterRef = useRef({ isDragging: false })
@@ -79,10 +87,13 @@ export default function QueryEditor() {
   }, [setEditorHeight])
 
   useEffect(() => {
-    const handleClick = () => setShowContextMenu(null)
+    const handleClick = () => {
+      setShowContextMenu(null)
+      setContextMenuSql(null)
+    }
     window.addEventListener('click', handleClick)
     return () => window.removeEventListener('click', handleClick)
-  }, [setShowContextMenu])
+  }, [setShowContextMenu, setContextMenuSql])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -119,7 +130,39 @@ export default function QueryEditor() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-0 relative overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-8rem)] gap-0 relative overflow-hidden" onClick={() => setContextMenuSql(null)}>
+      <SqlGeneratorModal
+        isOpen={sqlModal.isOpen}
+        onClose={() => setSqlModal({ isOpen: false, sql: '' })}
+        initialSql={sqlModal.sql}
+      />
+
+      {contextMenuSql && (
+        <div
+          className="fixed z-[200] min-w-[160px] bg-slate-800 border border-slate-700/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
+          style={{ top: contextMenuSql.y, left: contextMenuSql.x }}
+        >
+          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
+            SQL Actions
+          </div>
+          <hr className="border-slate-700/50 my-1" />
+          <div className="space-y-0.5">
+            {SQL_ACTIONS.map((action) => (
+              <button
+                key={action}
+                onClick={() => handleGenerateSql(action.toLowerCase())}
+                className="w-full text-left px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700 hover:text-white transition-colors duration-150 flex items-center justify-between font-medium"
+              >
+                <span>Generate {action}</span>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  ⌘{action[0]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <EditorToolbar 
         onNew={addTab}
         onOpen={handleFileImport}
@@ -150,6 +193,7 @@ export default function QueryEditor() {
         isInteracting={isInteracting}
         draggingRef={draggingRef}
         resizingRef={resizingRef}
+        setContextMenuSql={setContextMenuSql}
       />
 
       <QueryMenus 
@@ -207,6 +251,7 @@ export default function QueryEditor() {
               editingCell={editingCell}
               setEditingCell={setEditingCell}
               handlePageChange={handlePageChange}
+              setContextMenuSql={setContextMenuSql}
             />
           </div>
         )}

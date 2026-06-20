@@ -1,4 +1,12 @@
-import { Plus, FileUp, Save, Layout, Play, Loader2, Square } from 'lucide-react';
+import {
+  Plus,
+  FileUp,
+  Save,
+  Layout,
+  Play,
+  Loader2,
+  Square,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRef } from 'react';
 
@@ -43,15 +51,15 @@ export function EditorToolbar({
   return (
     <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/10 h-12 shrink-0">
       <div className="flex items-center gap-2">
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleFileChange} 
-          className="hidden" 
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          className="hidden"
           accept=".sql,.json,.txt,.csv"
         />
-        
-        <button 
+
+        <button
           onClick={onNew}
           className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-all"
           title="Create a new query tab"
@@ -59,8 +67,8 @@ export function EditorToolbar({
           <Plus className="w-3.5 h-3.5" />
           New Script
         </button>
-        
-        <button 
+
+        <button
           onClick={() => fileInputRef.current?.click()}
           className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-all"
           title="Open a local SQL or text file"
@@ -69,7 +77,7 @@ export function EditorToolbar({
           Open Script
         </button>
 
-        <button 
+        <button
           onClick={onSave}
           className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-all"
           title="Save the current script as a file"
@@ -80,19 +88,23 @@ export function EditorToolbar({
 
         <div className="w-[1px] h-4 bg-border mx-2" />
 
-        <button 
-          onClick={() => onExecute()} 
-          disabled={isExecuting} 
+        <button
+          onClick={() => onExecute()}
+          disabled={isExecuting}
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-1.5 rounded-none text-xs font-bold hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
           title="Execute the entire script (Run All)"
         >
-          {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+          {isExecuting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Play className="w-3.5 h-3.5 fill-current" />
+          )}
           {isExecuting ? 'Running...' : 'Run All'}
         </button>
 
         {isExecuting && (
-          <button 
-            onClick={onCancel} 
+          <button
+            onClick={onCancel}
             className="flex items-center gap-2 bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1.5 rounded-none text-xs font-bold hover:bg-destructive/20 transition-colors shadow-sm"
           >
             <Square className="w-3 h-3 fill-current" /> Stop
@@ -100,12 +112,14 @@ export function EditorToolbar({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <button 
-          onClick={() => setShowLayoutMenu(!showLayoutMenu)} 
+      <div className="flex items-center gap-2 p-0.5 bg-muted/30 rounded-lg border border-border/50">
+        <button
+          onClick={() => setShowLayoutMenu(!showLayoutMenu)}
           className={cn(
-            "p-1.5 hover:bg-muted rounded-none transition-colors", 
-            showLayoutMenu && "bg-muted text-primary"
+            'p-1.5 rounded-md transition-all duration-200',
+            showLayoutMenu
+              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 dark:bg-blue-500/20 shadow-sm'
+              : 'text-muted-foreground hover:bg-blue-500/10 hover:text-blue-500',
           )}
           title="Toggle Panels"
         >

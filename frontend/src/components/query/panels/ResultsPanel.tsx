@@ -19,12 +19,13 @@ interface ResultsPanelProps {
   sortedRows: DbRow[]
   updateTabResults: (tabId: string, updates: Partial<QueryTab>) => void
   handlePageChange: (page: number) => void
+  setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void
 }
 
 export function ResultsPanel({
   activeTab, panels, togglePanel, editingCell, setEditingCell,
   handleSave, setShowResultModal, requestSort, sortConfig,
-  sortedRows, updateTabResults, handlePageChange
+  sortedRows, updateTabResults, handlePageChange, setContextMenuSql
 }: ResultsPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
@@ -212,6 +213,10 @@ export function ResultsPanel({
                         )}
                         onClick={() => setSelectedRowIndex(i)}
                         onDoubleClick={() => setSelectedRowIndex(i)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenuSql({ x: e.pageX, y: e.pageY, row });
+                        }}
                       >
                         {/* Celda del Índice */}
                         <td className={cn(

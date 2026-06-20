@@ -37,6 +37,9 @@ export function useQueryEditor() {
   const [prevRect, setPrevRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
   const [isInteracting, setIsInteracting] = useState(false)
+  const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
+  const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
+  const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({ isOpen: false, sql: '' })
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -221,11 +224,11 @@ export function useQueryEditor() {
     }
   }, [activeTabId, activeConnection, updateTabResults])
 
-  const handleSave = useCallback(async () => {
-    if (!editingCell || !activeTab?.results || !activeConnection) return
+  const updateCell = useCallback(async (rowIndex: number, column: string, newValue: DbValue, isUndoRedo: boolean = false) => {
+    if (!activeTab?.results || !activeConnection) return
 
-    const { rowIndex, column, value: newValue } = editingCell
     const row = activeTab.results.rows[rowIndex]
+    const prevValue = row[column]
     
     // Use primary_keys metadata from backend if available, fallback to 'id'
     const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0 
@@ -296,16 +299,133 @@ export function useQueryEditor() {
             query: finalSql
         })
         updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
+        
+        if (!isUndoRedo) {
+          setTabHistory(prev => {
+            const state = prev[activeTab.id] || { history: [], historyIndex: -1 }
+            const newHistory = state.history.slice(0, state.historyIndex + 1)
+            newHistory.push({ rowIndex, col: column, prev: prevValue, next: newValue })
+            return { ...prev, [activeTab.id]: { history: newHistory, historyIndex: newHistory.length - 1 } }
+          })
+        }
     } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update record'
         updateTabResults(activeTab.id, { 
             status: ExecutionStatus.ERROR, 
             error: errorMessage 
         })
+        // Revert local state on error
+        updateTabResults(activeTab.id, { 
+          results: { ...activeTab.results, rows: activeTab.results.rows },
+        })
     }
     
     setEditingCell(null)
-  }, [editingCell, activeTab, activeConnection, updateTabResults])
+  }, [activeTab, activeConnection, updateTabResults])
+
+  const handleSave = useCallback(async () => {
+    if (!editingCell) return
+    await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
+  }, [editingCell, updateCell])
+
+  const undo = useCallback(() => {
+    if (!activeTabId) return;
+    const { history, historyIndex } = tabHistory[activeTabId] || { history: [], historyIndex: -1 }
+    if (historyIndex >= 0) {
+      const change = history[historyIndex];
+      updateCell(change.rowIndex, change.col, change.prev, true);
+      setTabHistory(prev => ({
+        ...prev,
+        [activeTabId]: { history, historyIndex: historyIndex - 1 }
+      }))
+    }
+  }, [activeTabId, tabHistory, updateCell]);
+
+  const redo = useCallback(() => {
+    if (!activeTabId) return;
+    const { history, historyIndex } = tabHistory[activeTabId] || { history: [], historyIndex: -1 }
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const change = history[nextIndex];
+      updateCell(change.rowIndex, change.col, change.next, true);
+      setTabHistory(prev => ({
+        ...prev,
+        [activeTabId]: { history, historyIndex: nextIndex }
+      }))
+    }
+  }, [activeTabId, tabHistory, updateCell]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === 'y' || (e.key === 'z' && e.shiftKey))
+      ) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
+  const handleGenerateSql = useCallback(async (action: string) => {
+    if (!contextMenuSql || !activeConnection || !activeTab?.results) return;
+
+    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+    let tableName = tableNameMatch ? tableNameMatch[1] : null
+    
+    if (!tableName) {
+      updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot generate SQL: Table name not found in query.' 
+      })
+      setContextMenuSql(null)
+      return
+    }
+
+    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
+        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
+    }
+
+    const pks = activeTab.results.primary_keys || [];
+    const primary_keys = pks.reduce(
+      (acc, pk) => {
+        if (contextMenuSql.row[pk] !== undefined) acc[pk] = contextMenuSql.row[pk];
+        return acc;
+      },
+      {} as Record<string, DbValue>,
+    );
+
+    try {
+      if (action === 'json') {
+        const jsonStr = JSON.stringify(contextMenuSql.row, null, 2);
+        setSqlModal({ isOpen: true, sql: jsonStr });
+      } else {
+        const sql = await tauriApi.invoke<string>('generate_sql', {
+          id: activeConnection.id,
+          action,
+          context: {
+            table: tableName,
+            primary_keys,
+            data: contextMenuSql.row,
+          },
+        });
+        setSqlModal({ isOpen: true, sql });
+      }
+    } catch (e) {
+      console.error('Failed to generate SQL:', e);
+    } finally {
+      setContextMenuSql(null);
+    }
+  }, [contextMenuSql, activeConnection, activeTab, updateTabResults]);
 
   const handleEditorWillMount = useCallback((monacoInstance: Monaco) => {
     const languages = monacoInstance.languages as typeof monacoInstance.languages & { sqlProviderRegistered?: boolean };
@@ -479,6 +599,11 @@ export function useQueryEditor() {
     clearTabResults,
     isInteracting,
     draggingRef,
-    resizingRef
+    resizingRef,
+    contextMenuSql,
+    setContextMenuSql,
+    sqlModal,
+    setSqlModal,
+    handleGenerateSql
   }
 }

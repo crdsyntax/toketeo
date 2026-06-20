@@ -53,33 +53,33 @@ The system already includes:
 
 ## Phase 3: Row-Level SQL Generation Engine
 
-* [ ] Right-click on row → actions:
+* [x] Right-click on row → actions:
 
 ### SELECT Builder
 
-* [ ] Generate `SELECT col1, col2, col3 FROM table WHERE primary_key = X`
-* [ ] Never use `SELECT *`
+* [x] Generate `SELECT col1, col2, col3 FROM table WHERE primary_key = X`
+* [x] Never use `SELECT *`
 
 ### UPDATE Builder
 
-* [ ] Generate parameterized UPDATE statement:
+* [x] Generate parameterized UPDATE statement:
 
   * only changed fields included
   * WHERE based on primary key(s)
 
 ### INSERT Builder
 
-* [ ] Generate full insert statement (all columns explicit)
-* [ ] Optional: exclude null/default columns toggle
+* [x] Generate full insert statement (all columns explicit)
+* [x] Optional: exclude null/default columns toggle
 
 ### DELETE Builder
 
-* [ ] Generate safe DELETE with PK-based WHERE clause
+* [x] Generate safe DELETE with PK-based WHERE clause
 
 ### JSON Export
 
-* [ ] Export selected row as structured JSON
-* [ ] Respect type decoding rules from driver layer
+* [x] Export selected row as structured JSON
+* [x] Respect type decoding rules from driver layer
 
 ### Model export
 

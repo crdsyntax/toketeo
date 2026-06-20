@@ -9,7 +9,7 @@ import type {
   DbValue,
 } from '@/types/database';
 import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database';
-import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary, X } from 'lucide-react';
+import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary, X, Code } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ColumnsTab } from './tabs/ColumnsTab';
@@ -18,7 +18,9 @@ import { ForeignKeysTab } from './tabs/ForeignKeysTab';
 import { ConstraintsTab } from './tabs/ConstraintsTab';
 import { DataTab } from './tabs/DataTab';
 import { DdlTab } from './tabs/DdlTab';
+import { ModelExportModal } from './ModelExportModal';
 import type { ExplorerTabState } from '@/store/useAppStore';
+import { useState } from 'react';
 
 interface ObjectDetailProps {
   explorerTabs: Record<string, ExplorerTabState>;
@@ -60,6 +62,7 @@ interface ObjectDetailProps {
   dropConstraintMutation: UseMutationResult<unknown, Error, string>;
   filter: string;
   setFilter: (f: string) => void;
+  currentSchema?: string;
 }
 
 export function ObjectDetail(props: ObjectDetailProps) {
@@ -102,6 +105,10 @@ export function ObjectDetail(props: ObjectDetailProps) {
     dropForeignKeyMutation,
     dropConstraintMutation,
   } = props;
+  
+  const [modelModalOpen, setModelModalOpen] = useState(false);
+  const currentSchema = props.currentSchema;
+  
   const handleAddObject = (type: string) => {
     setActiveTab(ExplorerTab.DDL);
     setEditableDdl(
@@ -281,6 +288,17 @@ export function ObjectDetail(props: ObjectDetailProps) {
             <Terminal className="w-3.5 h-3.5" />
             Definition
           </button>
+          
+          {selectedItem?.type === DatabaseObjectType.TABLE && (
+            <button
+              onClick={() => setModelModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors hover:bg-background/50 text-secondary-foreground ml-auto"
+              title="Export Model"
+            >
+              <Code className="w-3.5 h-3.5" />
+              Export Model
+            </button>
+          )}
         </div>
       </div>
 
@@ -358,6 +376,15 @@ export function ObjectDetail(props: ObjectDetailProps) {
           />
         )}
       </div>
+
+      {selectedItem?.type === DatabaseObjectType.TABLE && (
+        <ModelExportModal 
+          isOpen={modelModalOpen} 
+          onClose={() => setModelModalOpen(false)} 
+          tableName={selectedItem.name} 
+          schema={currentSchema}
+        />
+      )}
     </>
   );
 }

@@ -18,6 +18,7 @@ import type {
   DbValue,
 } from '@/types/database';
 import { SqlGeneratorModal } from '../../query/SqlGeneratorModal';
+import { ModelExportModal } from '../ModelExportModal';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -61,7 +62,7 @@ export function DataTab({
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
 
-  const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE']
+  const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
   // Historial para Undo/Redo
   const [history, setHistory] = useState<
@@ -78,6 +79,7 @@ export function DataTab({
     isOpen: false,
     sql: '',
   });
+  const [modelModalOpen, setModelModalOpen] = useState(false);
   const activeConnection = useAppStore((state) => state.activeConnection);
 
   const handleStartEdit = (
@@ -170,16 +172,21 @@ export function DataTab({
     );
 
     try {
-      const sql = await invoke<string>('generate_sql', {
-        id: activeConnection.id,
-        action,
-        context: {
-          table: selectedItem.name,
-          primary_keys,
-          data: contextMenu.row,
-        },
-      });
-      setSqlModal({ isOpen: true, sql });
+      if (action === 'json') {
+        const jsonStr = JSON.stringify(contextMenu.row, null, 2);
+        setSqlModal({ isOpen: true, sql: jsonStr });
+      } else {
+        const sql = await invoke<string>('generate_sql', {
+          id: activeConnection.id,
+          action,
+          context: {
+            table: selectedItem.name,
+            primary_keys,
+            data: contextMenu.row,
+          },
+        });
+        setSqlModal({ isOpen: true, sql });
+      }
     } catch (e) {
       console.error('Failed to generate SQL:', e);
     } finally {
@@ -252,8 +259,24 @@ export function DataTab({
               </button>
             ))}
           </div>
+          <hr className="border-slate-700/50 my-1" />
+          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
+            Row Actions
+          </div>
+          <button
+            onClick={() => { setModelModalOpen(true); setContextMenu(null); }}
+            className="w-full text-left px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700 hover:text-white transition-colors duration-150 font-medium"
+          >
+            Export Model...
+          </button>
         </div>
       )}
+
+      <ModelExportModal
+        isOpen={modelModalOpen}
+        onClose={() => setModelModalOpen(false)}
+        tableName={selectedItem.name}
+      />
 
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">

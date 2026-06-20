@@ -191,6 +191,7 @@ export default function Explorer() {
             dropConstraintMutation={dropConstraintMutation}
             filter={filter}
             setFilter={setFilter}
+            currentSchema={currentSchema}
           />
         </div>
       </div>

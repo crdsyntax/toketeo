@@ -2,6 +2,7 @@ use crate::application::audit_service::AuditService;
 use crate::application::connection_service::ConnectionService;
 use crate::application::explorer_service::ExplorerService;
 use crate::application::sql_generator_service::SqlGeneratorService;
+use crate::application::model_generator_service::ModelGeneratorService;
 use crate::error::{AppError, AppResult};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext};
 use crate::state::AppState;
@@ -25,6 +26,18 @@ pub async fn generate_sql(
         "delete" => Ok(SqlGeneratorService::generate_delete(db_type, &context)),
         _ => Err(AppError::Validation("Invalid action".into())),
     }
+}
+
+#[tauri::command]
+pub async fn generate_model(
+    id: String,
+    framework: String,
+    table: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let columns = ExplorerService::get_columns(&state, &id, &table, schema).await?;
+    ModelGeneratorService::generate_model(&framework, &table, &columns)
 }
 
 #[tauri::command]
