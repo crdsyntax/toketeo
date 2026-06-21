@@ -636,6 +636,27 @@ export function useExplorer() {
     },
   });
 
+  const renameForeignKeyMutation = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      schemaService.renameForeignKey(
+        activeConnection!.id,
+        selectedItem!.name,
+        oldName,
+        newName,
+        currentSchema,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          'foreign-keys',
+          activeConnection?.id,
+          selectedItem,
+          currentSchema,
+        ],
+      });
+    },
+  });
+
   const dropConstraintMutation = useMutation({
     mutationFn: (constraintName: string) =>
       schemaService.dropConstraint(
@@ -886,6 +907,7 @@ export function useExplorer() {
     dropIndexMutation,
     renameIndexMutation,
     dropForeignKeyMutation,
+    renameForeignKeyMutation,
     dropConstraintMutation,
     updateCell,
     handleExecute,

@@ -445,63 +445,118 @@ pub async fn rollback_transaction(id: String, state: State<'_, AppState>) -> App
 
 #[tauri::command]
 pub async fn edit_column(
-    _id: String,
+    id: String,
     _table: String,
-    _sql: String,
-    _state: State<'_, AppState>,
+    sql: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]
 pub async fn drop_column(
-    _id: String,
-    _table: String,
-    _column: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    column: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    let sql = format!("ALTER TABLE {} DROP COLUMN {}", table, column);
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]
 pub async fn drop_index(
-    _id: String,
-    _table: String,
-    _index: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    index: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    let driver = state.get_connection(&id).await?;
+    let sql = match driver.db_type() {
+        crate::db::DbType::Postgres => format!("DROP INDEX {}", index),
+        _ => format!("ALTER TABLE {} DROP INDEX {}", table, index),
+    };
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]
 pub async fn rename_index(
-    _id: String,
-    _table: String,
-    _old_name: String,
-    _new_name: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    old_name: String,
+    new_name: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    let driver = state.get_connection(&id).await?;
+    let sql = match driver.db_type() {
+        crate::db::DbType::Postgres => format!("ALTER INDEX {} RENAME TO {}", old_name, new_name),
+        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => format!("ALTER TABLE {} RENAME INDEX {} TO {}", table, old_name, new_name),
+        _ => return Err(crate::error::AppError::Validation(format!("Rename index not supported for {:?}", driver.db_type()))),
+    };
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]
 pub async fn drop_foreign_key(
-    _id: String,
-    _table: String,
-    _constraint: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    constraint: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    let driver = state.get_connection(&id).await?;
+    let sql = match driver.db_type() {
+        crate::db::DbType::Postgres => format!("ALTER TABLE {} DROP CONSTRAINT {}", table, constraint),
+        _ => format!("ALTER TABLE {} DROP FOREIGN KEY {}", table, constraint),
+    };
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]
 pub async fn drop_constraint(
-    _id: String,
-    _table: String,
-    _constraint: String,
-    _state: State<'_, AppState>,
+    id: String,
+    table: String,
+    constraint: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
 ) -> AppResult<()> {
-    Ok(()) // TODO
+    let sql = format!("ALTER TABLE {} DROP CONSTRAINT {}", table, constraint);
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
+}
+
+#[tauri::command]
+pub async fn rename_foreign_key(
+    id: String,
+    table: String,
+    old_name: String,
+    new_name: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = state.get_connection(&id).await?;
+    let sql = match driver.db_type() {
+        crate::db::DbType::Postgres => format!("ALTER TABLE {} RENAME CONSTRAINT {} TO {}", table, old_name, new_name),
+        _ => return Err(crate::error::AppError::Validation(format!("Rename constraint not supported for {:?}", driver.db_type()))),
+    };
+    ExplorerService::execute_query(&state, &id, &sql)
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]

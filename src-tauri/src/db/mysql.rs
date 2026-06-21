@@ -16,8 +16,17 @@ use crate::db::common::{
     decode_time,
 };
 use sqlx::{ Column, MySqlPool, Row, mysql::MySqlPoolOptions, mysql::MySqlRow, TypeInfo };
-use std::time::Instant;
+use std::time::{ Duration, Instant };
 use serde_json::Value;
+
+/// Minimum warm connections kept alive for non-transactional pool.
+const POOL_MIN_CONNECTIONS: u32 = 1;
+/// Maximum concurrent connections per non-transactional pool.
+const POOL_MAX_CONNECTIONS: u32 = 5;
+/// Close idle connections after 10 minutes to avoid exhausting server limits.
+const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// Fail fast if a connection cannot be acquired within 5 seconds.
+const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
 
 pub struct MySqlDriver {
@@ -28,9 +37,24 @@ impl MySqlDriver {
     pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
         let pool = (
             if transactional {
-                MySqlPoolOptions::new().max_connections(1).connect(url).await
+                // Transactional sessions use a single connection to guarantee
+                // that START TRANSACTION / COMMIT / ROLLBACK operate on the same connection.
+                MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
+                    .connect(url)
+                    .await
             } else {
-                MySqlPool::connect(url).await
+                // Phase 8: Explicit pool options for non-transactional DBA usage.
+                // min_connections keeps one connection warm to eliminate cold-start latency.
+                // max_connections caps concurrent load from metadata introspection.
+                MySqlPoolOptions::new()
+                    .min_connections(POOL_MIN_CONNECTIONS)
+                    .max_connections(POOL_MAX_CONNECTIONS)
+                    .idle_timeout(POOL_IDLE_TIMEOUT)
+                    .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
+                    .connect(url)
+                    .await
             }
         ).map_err(|e| {
             let app_err: AppError = e.into();

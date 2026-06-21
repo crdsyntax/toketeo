@@ -49,6 +49,14 @@ impl ExplorerService {
                     None,
                 )
                 .await;
+
+                if Self::is_destructive_query(query) {
+                    let mut conns = state.connections.write().await;
+                    if let Some(session) = conns.get_mut(id) {
+                        session.metadata_cache.clear();
+                    }
+                }
+
                 Ok(result)
             }
             Err(e) => {

@@ -111,6 +111,10 @@ export const schemaService = {
     await tauriApi.invoke<void>('drop_foreign_key', { id, table, constraint, schema })
   },
 
+  renameForeignKey: async (id: string, table: string, oldName: string, newName: string, schema?: string) => {
+    await tauriApi.invoke<void>('rename_foreign_key', { id, table, oldName, newName, schema })
+  },
+
   dropConstraint: async (id: string, table: string, constraint: string, schema?: string) => {
     await tauriApi.invoke<void>('drop_constraint', { id, table, constraint, schema })
   },

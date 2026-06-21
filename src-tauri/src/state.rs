@@ -35,16 +35,30 @@ impl AppState {
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<Arc<dyn DbDriver>> {
-        let mut conns = self.connections.write().await;
-        if let Some(session) = conns.get_mut(id) {
-            session.touch();
-            Ok(session.driver.clone())
-        } else {
-            Err(crate::error::AppError::Internal(format!(
-                "Connection {} not found",
-                id
-            )))
+        // Phase 8: Use read lock to retrieve the driver — avoids blocking concurrent
+        // metadata fetches and queries that only need to read the driver Arc.
+        let driver = {
+            let conns = self.connections.read().await;
+            match conns.get(id) {
+                Some(session) => session.driver.clone(),
+                None => {
+                    return Err(crate::error::AppError::Internal(format!(
+                        "Connection {} not found",
+                        id
+                    )));
+                }
+            }
+        };
+
+        // Minimal write lock just to update last_access timestamp.
+        {
+            let mut conns = self.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+            }
         }
+
+        Ok(driver)
     }
 
     pub async fn is_read_only(&self, id: &str) -> AppResult<bool> {

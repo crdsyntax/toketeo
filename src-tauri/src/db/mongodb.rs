@@ -180,7 +180,7 @@ impl DbDriver for MongoDbDriver {
                 .and_then(|v| {
                     if let Some(s) = v.as_str() {
                         Some(mongodb::options::Hint::Name(s.to_string()))
-                    } else if let Some(o) = v.as_object() {
+                    } else if let Some(_o) = v.as_object() {
                         let doc = mongodb::bson::to_document(v).unwrap_or_default();
                         Some(mongodb::options::Hint::Keys(doc))
                     } else {

@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { DatabaseObject, QueryResult } from '@/types/database'
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType, DatabaseType } from '@/types/database'
-import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database } from 'lucide-react'
+import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ContextMenu } from '@/components/ui/ContextMenu'
 
 interface SidebarProps {
   sidebarTab: SidebarTab
@@ -33,6 +34,7 @@ export function Sidebar({
   setParamsValues, setActiveTab, isCollapsed, onToggle, dbType
 }: SidebarProps) {
   const isMongoDB = dbType === DatabaseType.MONGODB
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: { name: string; type: DatabaseObjectType } } | null>(null);
 
   // For MongoDB only show Collections (= Tables) and Views (if any)
   const visibleTabs = isMongoDB
@@ -131,43 +133,85 @@ export function Sidebar({
               <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                 Results ({filteredItems?.length || 0})
               </div>
-              {filteredItems?.map((item) => (
-                <button key={item.name} onClick={() => {
-                  let type: DatabaseObjectType
-                  switch (sidebarTab) {
-                    case SidebarTab.TABLES: type = DatabaseObjectType.TABLE; break
-                    case SidebarTab.VIEWS: type = DatabaseObjectType.VIEW; break
-                    case SidebarTab.PROCEDURES: type = DatabaseObjectType.PROCEDURE; break
-                    case SidebarTab.TRIGGERS: type = DatabaseObjectType.TRIGGER; break
-                    case SidebarTab.FUNCTIONS: type = DatabaseObjectType.FUNCTION; break
-                  }
-                  
-                  setSelectedItem({ name: item.name, type })
-                  setPage(0)
-                  setSocketResults(null)
-                  setExecutionStatus(ExecutionStatus.IDLE)
-                  setExecutionError(null)
-                  setParamsValues({})
-                  setActiveTab((type === DatabaseObjectType.TABLE || type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL)
-                }} className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
-                  (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
-                )}>
-                  {isMongoDB && sidebarTab === SidebarTab.TABLES
-                    ? <Database className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-orange-400" : "text-muted-foreground")} />
-                    : (() => {
-                        const Icon = getTabIcon(sidebarTab)
-                        return <Icon className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />
-                      })()
-                  }
-                  <span className="truncate flex-1">{item.name}</span>
-                  <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
-                </button>
-              ))}
+              {filteredItems?.map((item) => {
+                let type: DatabaseObjectType
+                switch (sidebarTab) {
+                  case SidebarTab.TABLES: type = DatabaseObjectType.TABLE; break
+                  case SidebarTab.VIEWS: type = DatabaseObjectType.VIEW; break
+                  case SidebarTab.PROCEDURES: type = DatabaseObjectType.PROCEDURE; break
+                  case SidebarTab.TRIGGERS: type = DatabaseObjectType.TRIGGER; break
+                  case SidebarTab.FUNCTIONS: type = DatabaseObjectType.FUNCTION; break
+                }
+                return (
+                  <button 
+                    key={item.name} 
+                    onClick={() => {
+                      setSelectedItem({ name: item.name, type })
+                      setPage(0)
+                      setSocketResults(null)
+                      setExecutionStatus(ExecutionStatus.IDLE)
+                      setExecutionError(null)
+                      setParamsValues({})
+                      setActiveTab((type === DatabaseObjectType.TABLE || type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL)
+                    }} 
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.pageX, y: e.pageY, item: { name: item.name, type } });
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
+                      (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                    )}
+                  >
+                    {isMongoDB && sidebarTab === SidebarTab.TABLES
+                      ? <Database className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-orange-400" : "text-muted-foreground")} />
+                      : (() => {
+                          const Icon = getTabIcon(sidebarTab)
+                          return <Icon className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />
+                        })()
+                    }
+                    <span className="truncate flex-1">{item.name}</span>
+                    <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDismiss={() => setContextMenu(null)}
+          groups={[
+            {
+              title: contextMenu.item.type,
+              items: [
+                {
+                  label: 'Copy Name',
+                  icon: <Copy className="w-3.5 h-3.5" />,
+                  onClick: () => navigator.clipboard.writeText(contextMenu.item.name)
+                },
+                {
+                  label: 'Select Object',
+                  icon: <ChevronRight className="w-3.5 h-3.5" />,
+                  onClick: () => {
+                    setSelectedItem(contextMenu.item);
+                    setPage(0);
+                    setSocketResults(null);
+                    setExecutionStatus(ExecutionStatus.IDLE);
+                    setExecutionError(null);
+                    setParamsValues({});
+                    setActiveTab((contextMenu.item.type === DatabaseObjectType.TABLE || contextMenu.item.type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL);
+                  }
+                }
+              ]
+            }
+          ]}
+        />
+      )}
     </div>
   )
 }

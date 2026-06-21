@@ -81,6 +81,7 @@ pub fn run() {
             commands::drop_index,
             commands::rename_index,
             commands::drop_foreign_key,
+            commands::rename_foreign_key,
             commands::drop_constraint,
             commands::switch_schema,
             commands::export_connection,

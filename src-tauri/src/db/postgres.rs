@@ -3,7 +3,17 @@ use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use sqlx::{Column, PgPool, Row, postgres::PgPoolOptions};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Minimum warm connections kept alive for non-transactional pool.
+const POOL_MIN_CONNECTIONS: u32 = 1;
+/// Maximum concurrent connections per non-transactional pool.
+/// A DBA client rarely needs more than 5 simultaneous connections per engine.
+const POOL_MAX_CONNECTIONS: u32 = 5;
+/// Close idle connections after 10 minutes to avoid exhausting server limits.
+const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// Fail fast if a connection cannot be acquired within 5 seconds.
+const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct PostgresDriver {
     pool: PgPool,
@@ -12,9 +22,24 @@ pub struct PostgresDriver {
 impl PostgresDriver {
     pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
         let pool = if transactional {
-            PgPoolOptions::new().max_connections(1).connect(url).await
+            // Transactional sessions use a single connection to guarantee
+            // that BEGIN / COMMIT / ROLLBACK operate on the same connection.
+            PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
+                .connect(url)
+                .await
         } else {
-            PgPool::connect(url).await
+            // Phase 8: Explicit pool options for non-transactional DBA usage.
+            // min_connections keeps one connection warm to eliminate cold-start latency.
+            // max_connections caps concurrent load from metadata introspection.
+            PgPoolOptions::new()
+                .min_connections(POOL_MIN_CONNECTIONS)
+                .max_connections(POOL_MAX_CONNECTIONS)
+                .idle_timeout(POOL_IDLE_TIMEOUT)
+                .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
+                .connect(url)
+                .await
         }
         .map_err(|e| {
             let app_err: AppError = e.into();

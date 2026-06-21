@@ -8,9 +8,14 @@ import {
   Code,
   Play,
   Check,
-  X
+  X,
+  Copy,
+  FileCode,
+  Diff,
+  ArrowRightLeft,
+  Terminal,
 } from 'lucide-react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type {
   QueryResult,
   ExecutionStatus,
@@ -18,10 +23,11 @@ import type {
   DbRow,
   DbValue,
 } from '@/types/database';
-import { SqlGeneratorModal } from '../../query/SqlGeneratorModal';
 import { ModelExportModal } from '../ModelExportModal';
+import { ContextMenu } from '@/components/ui/ContextMenu';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
+import { cn } from '@/lib/utils';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -43,17 +49,33 @@ interface DataTabProps {
 const formatCellValue = (value: DbValue): string => {
   if (value === null || value === undefined) return '';
   if (typeof value === 'object') {
-    if (value.$oid) return `ObjectId("${value.$oid}")`;
-    if (value.$date) {
-      const d = value.$date;
-      if (typeof d === 'string') return new Date(d).toISOString();
-      if (d.$numberLong) return new Date(Number(d.$numberLong)).toISOString();
-      return new Date(d as string | number).toISOString();
+    if ((value as Record<string, unknown>).$oid) return `ObjectId("${(value as Record<string, string>).$oid}")`;
+    const dateVal = (value as Record<string, unknown>).$date;
+    if (dateVal) {
+      if (typeof dateVal === 'string') return new Date(dateVal).toISOString();
+      if ((dateVal as Record<string, string>).$numberLong)
+        return new Date(Number((dateVal as Record<string, string>).$numberLong)).toISOString();
+      return new Date(dateVal as string | number).toISOString();
     }
     return JSON.stringify(value);
   }
   return String(value);
 };
+
+/** State for the visual diff confirmation panel. */
+interface PendingCellEdit {
+  row: DbRow;
+  column: string;
+  prevValue: DbValue;
+  nextValue: string;
+}
+
+/** State for the inline SQL preview panel. */
+interface SqlPreviewState {
+  isOpen: boolean;
+  sql: string;
+  title: string;
+}
 
 export function DataTab({
   selectedItem,
@@ -78,27 +100,39 @@ export function DataTab({
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
 
-  const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
+  const SQL_ACTIONS = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON'] as const;
+  type SqlAction = (typeof SQL_ACTIONS)[number];
 
-  // Historial para Undo/Redo
+  // Undo/Redo history
   const [history, setHistory] = useState<
     { row: DbRow; col: string; prev: DbValue; next: DbValue }[]
   >([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Context menu state
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     row: DbRow;
+    rowIndex: number;
   } | null>(null);
 
-  const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({
+  // Phase 9 — Inline SQL preview panel (replaces SqlGeneratorModal)
+  const [sqlPreview, setSqlPreview] = useState<SqlPreviewState>({
     isOpen: false,
     sql: '',
+    title: '',
   });
+
+  // Phase 9 — Visual diff before committing a cell edit
+  const [pendingEdit, setPendingEdit] = useState<PendingCellEdit | null>(null);
+
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const activeConnection = useAppStore((state) => state.activeConnection);
   const isMongo = activeConnection?.type === 'mongodb';
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
+  const sqlPreviewRef = useRef<HTMLDivElement>(null);
+
 
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
@@ -140,30 +174,48 @@ export function DataTab({
     column: string,
     value: DbValue,
   ) => {
-    if (selectedItem.type !== 'table') return; // Only tables are editable for now
+    if (selectedItem.type !== 'table') return;
     setEditingCell({ rowIndex, column });
     setEditValue(value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value));
   };
 
+  /**
+   * Phase 9 — Visual Diff: instead of immediately calling updateCell,
+   * we stage the edit in pendingEdit so the user can review the diff panel
+   * before confirming. This prevents accidental mutations in production.
+   */
   const handleSaveEdit = (row: DbRow) => {
     if (!editingCell) return;
-
     const prevValue = row[editingCell.column];
-    updateCell(row, editingCell.column, editValue);
+    // Stage for diff review
+    setPendingEdit({
+      row,
+      column: editingCell.column,
+      prevValue,
+      nextValue: editValue,
+    });
+    setEditingCell(null);
+  };
 
-    // Guardar en historial
+  /** Phase 9 — Confirm a staged pending cell edit after visual diff review. */
+  const confirmPendingEdit = () => {
+    if (!pendingEdit) return;
+    updateCell(pendingEdit.row, pendingEdit.column, pendingEdit.nextValue);
+    // Persist in undo/redo history
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push({
-      row,
-      col: editingCell.column,
-      prev: prevValue,
-      next: editValue,
+      row: pendingEdit.row,
+      col: pendingEdit.column,
+      prev: pendingEdit.prevValue,
+      next: pendingEdit.nextValue,
     });
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
-
-    setEditingCell(null);
+    setPendingEdit(null);
   };
+
+  const discardPendingEdit = () => setPendingEdit(null);
+
 
   const undo = useCallback(() => {
     if (historyIndex >= 0) {
@@ -212,7 +264,7 @@ export function DataTab({
     }
   };
 
-  const handleGenerateSql = async (action: string) => {
+  const handleGenerateSql = async (action: SqlAction) => {
     if (!contextMenu || !activeConnection || !queryData) return;
 
     const pks = queryData.primary_keys || [];
@@ -225,27 +277,28 @@ export function DataTab({
     );
 
     try {
-      if (action === 'json') {
+      if (action === 'JSON') {
         const jsonStr = JSON.stringify(contextMenu.row, null, 2);
-        setSqlModal({ isOpen: true, sql: jsonStr });
+        // Phase 9: show inline preview panel, not a blocking modal
+        setSqlPreview({ isOpen: true, sql: jsonStr, title: 'Row — JSON Export' });
       } else {
         const sql = await invoke<string>('generate_sql', {
           id: activeConnection.id,
-          action,
+          action: action.toLowerCase(),
           context: {
             table: selectedItem.name,
             primary_keys,
             data: contextMenu.row,
           },
         });
-        setSqlModal({ isOpen: true, sql });
+        // Phase 9: show inline preview panel
+        setSqlPreview({ isOpen: true, sql, title: `Generated ${action}` });
       }
     } catch (e) {
       console.error('Failed to generate SQL:', e);
-    } finally {
-      setContextMenu(null);
     }
   };
+
 
   if (
     (selectedItem.type === 'view' || selectedItem.type === 'procedure') &&
@@ -280,49 +333,36 @@ export function DataTab({
 
   return (
     <div
-      className="flex-1 flex flex-col min-h-0 min-w-0"
+      className="flex-1 flex flex-col min-h-0 min-w-0 relative"
       onClick={() => setContextMenu(null)}
     >
-      <SqlGeneratorModal
-        isOpen={sqlModal.isOpen}
-        onClose={() => setSqlModal({ isOpen: false, sql: '' })}
-        initialSql={sqlModal.sql}
-      />
-
       {contextMenu && (
-        <div
-          className="fixed z-[200] min-w-[160px] bg-slate-800 border border-slate-700/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-        >
-          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
-            {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
-          </div>
-          <hr className="border-slate-700/50 my-1" />
-          <div className="space-y-0.5">
-            {SQL_ACTIONS.map((action) => (
-              <button
-                key={action}
-                onClick={() => handleGenerateSql(action.toLowerCase())}
-                className="w-full text-left px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700 hover:text-white transition-colors duration-150 flex items-center justify-between font-medium"
-              >
-                <span>Generate {action}</span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  ⌘{action[0]}
-                </span>
-              </button>
-            ))}
-          </div>
-          <hr className="border-slate-700/50 my-1" />
-          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
-            Row Actions
-          </div>
-          <button
-            onClick={() => { setModelModalOpen(true); setContextMenu(null); }}
-            className="w-full text-left px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700 hover:text-white transition-colors duration-150 font-medium"
-          >
-            Export Model...
-          </button>
-        </div>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDismiss={() => setContextMenu(null)}
+          groups={[
+            {
+              title: isMongo ? 'Schema Query Actions' : 'SQL Actions',
+              items: SQL_ACTIONS.map(action => ({
+                label: `Generate ${action}`,
+                shortcut: `⌘${action[0]}`,
+                icon: <FileCode className="w-3.5 h-3.5" />,
+                onClick: () => handleGenerateSql(action)
+              }))
+            },
+            {
+              title: 'Row Actions',
+              items: [
+                {
+                  label: 'Export Model...',
+                  icon: <Code className="w-3.5 h-3.5" />,
+                  onClick: () => { setModelModalOpen(true); setContextMenu(null); }
+                }
+              ]
+            }
+          ]}
+        />
       )}
 
       <ModelExportModal
@@ -609,6 +649,91 @@ export function DataTab({
             </div>
           </div>
         )}
+
+      {/* Phase 9: Visual Diff Panel for cell edits */}
+      {pendingEdit && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col w-[400px] animate-in slide-in-from-bottom-4">
+          <div className="bg-muted/50 px-3 py-2 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Diff className="w-4 h-4 text-primary" />
+              <span className="text-xs font-bold uppercase tracking-wider">Review Change</span>
+            </div>
+            <button onClick={discardPendingEdit} className="text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-3 text-xs space-y-2 font-mono bg-muted/10">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Column</span>
+              <span className="font-bold text-foreground">{pendingEdit.column}</span>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pt-2 border-t border-border/50">
+              <div className="p-2 bg-destructive/10 text-destructive rounded overflow-x-auto whitespace-nowrap">
+                {formatCellValue(pendingEdit.prevValue) || <span className="italic opacity-50">NULL</span>}
+              </div>
+              <ArrowRightLeft className="w-3 h-3 text-muted-foreground" />
+              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded overflow-x-auto whitespace-nowrap">
+                {pendingEdit.nextValue || <span className="italic opacity-50">EMPTY</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-2 bg-muted/30 border-t border-border flex justify-end gap-2">
+            <button
+              onClick={discardPendingEdit}
+              className="px-3 py-1.5 text-xs font-medium hover:bg-muted rounded"
+            >
+              Discard
+            </button>
+            <button
+              onClick={confirmPendingEdit}
+              className="px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded flex items-center gap-1.5 shadow-sm"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Commit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 9: Inline SQL Preview Panel */}
+      <div
+        ref={sqlPreviewRef}
+        className={cn(
+          "absolute bottom-0 left-0 right-0 bg-background border-t border-border shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.5)] transition-all duration-300 ease-in-out z-40 flex flex-col",
+          sqlPreview.isOpen ? "h-[40%] opacity-100 translate-y-0" : "h-0 opacity-0 translate-y-full pointer-events-none"
+        )}
+      >
+        <div className="bg-muted/30 px-4 py-2 border-b border-border flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-primary" />
+            <span className="text-xs font-bold tracking-wide">{sqlPreview.title}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(sqlPreview.sql);
+                // Optional: show small toast here
+              }}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              title="Copy to clipboard"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <button
+              onClick={() => setSqlPreview(prev => ({ ...prev, isOpen: false }))}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto bg-[#0d1117] p-4">
+          <pre className="text-xs font-mono text-[#c9d1d9] whitespace-pre-wrap break-all leading-relaxed">
+            {sqlPreview.sql}
+          </pre>
+        </div>
+      </div>
     </div>
   );
 }

@@ -155,21 +155,29 @@ The system already includes:
 * [x] Fix unnecessary re-fetch on tab switching
 * [x] Introduce memoized metadata layer
 * [x] Prevent duplicated schema queries
-* [ ] Reduce driver round-trips on explorer navigation
-* [ ] Connection pool reuse optimization per engine
+* [x] Reduce driver round-trips on explorer navigation
+  * `get_connection()` downgraded from `write().await` to `read().await` for driver retrieval
+  * Separate minimal `write().await` only for `touch()` — eliminates read-lock contention
+* [x] Connection pool reuse optimization per engine
+  * `PostgresDriver` + `MySqlDriver` non-transactional pools now use explicit `PoolOptions`:
+    * `min_connections = 1` (one warm connection, eliminates cold-start latency)
+    * `max_connections = 5` (caps concurrent DBA load)
+    * `idle_timeout = 10 min` (releases idle connections to avoid exhausting server limits)
+    * `acquire_timeout = 5 s` (fail-fast on congestion instead of hanging)
+  * Transactional pools also get explicit `acquire_timeout = 5 s`
 
 ---
 
 ## Phase 9: UX Enhancements
 
-* [ ] Context-aware right-click menu per entity type:
+* [x] Context-aware right-click menu per entity type:
 
   * table
   * row
   * column
   * index
-* [ ] Inline SQL preview panel for generated queries
-* [ ] Visual diff for row edits before commit
+* [x] Inline SQL preview panel for generated queries
+* [x] Visual diff for row edits before commit
 
 ---
 

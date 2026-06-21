@@ -1,7 +1,9 @@
-import { Trash2, Plus, Edit2, Check, X } from 'lucide-react';
+import { Trash2, Plus, Edit2, Check, X, Copy } from 'lucide-react';
 import { useState } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { IndexResponse } from '@/types/database';
+import { ContextMenu } from '@/components/ui/ContextMenu';
+import { toast } from 'react-hot-toast';
 
 interface IndexesTabProps {
   indexes?: IndexResponse[];
@@ -20,6 +22,7 @@ export function IndexesTab({
 }: IndexesTabProps) {
   const [editingIndex, setEditingIndex] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; indexName: string } | null>(null);
 
   const handleStartEdit = (name: string) => {
     setEditingIndex(name);
@@ -28,8 +31,15 @@ export function IndexesTab({
 
   const handleSaveEdit = (oldName: string) => {
     if (newName && newName !== oldName) {
+      const loadingToast = toast.loading('Renaming index...');
       renameIndexMutation.mutate({ oldName, newName }, {
-        onSuccess: () => setEditingIndex(null)
+        onSuccess: () => {
+          setEditingIndex(null);
+          toast.success('Index renamed successfully', { id: loadingToast });
+        },
+        onError: (err: Error) => {
+          toast.error(`Failed to rename index: ${err.message || 'Unknown error'}`, { id: loadingToast });
+        }
       });
     } else {
       setEditingIndex(null);
@@ -75,7 +85,14 @@ export function IndexesTab({
                 const isUnique = idx.isUnique || idx.NON_UNIQUE === 0 || idx.non_unique === 0;
 
                 return (
-                  <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                  <tr 
+                    key={i} 
+                    className="border-b border-border/50 hover:bg-muted/30 transition-colors"
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.pageX, y: e.pageY, indexName: name });
+                    }}
+                  >
                     <td className="py-3 px-2">
                       {editingIndex === name ? (
                         <div className="flex items-center gap-2">
@@ -134,6 +151,37 @@ export function IndexesTab({
           </table>
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDismiss={() => setContextMenu(null)}
+          groups={[
+            {
+              title: 'Index Actions',
+              items: [
+                {
+                  label: 'Rename Index',
+                  icon: <Edit2 className="w-3.5 h-3.5" />,
+                  onClick: () => handleStartEdit(contextMenu.indexName)
+                },
+                {
+                  label: 'Copy Name',
+                  icon: <Copy className="w-3.5 h-3.5" />,
+                  onClick: () => navigator.clipboard.writeText(contextMenu.indexName)
+                },
+                {
+                  label: 'Drop Index',
+                  icon: <Trash2 className="w-3.5 h-3.5" />,
+                  variant: 'destructive',
+                  onClick: () => dropIndexMutation.mutate(contextMenu.indexName)
+                }
+              ]
+            }
+          ]}
+        />
+      )}
     </div>
   );
 }

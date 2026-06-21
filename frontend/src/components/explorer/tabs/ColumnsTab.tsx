@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Trash2, Plus, Check, X, Key, Info } from 'lucide-react';
+import { Trash2, Plus, Check, X, Key, Info, Edit2, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ColumnResponse } from '@/types/database';
 import type { UseMutationResult } from '@tanstack/react-query';
+import { ContextMenu } from '@/components/ui/ContextMenu';
 
 interface ColumnsTabProps {
   tableName: string;
@@ -36,6 +37,7 @@ export function ColumnsTab({
 }: ColumnsTabProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [editedColData, setEditedColData] = useState<ColumnResponse | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; col: ColumnResponse } | null>(null);
 
   const startEdit = (col: ColumnResponse) => {
     setEditingColumn(col.name);
@@ -108,7 +110,14 @@ export function ColumnsTab({
             {columns?.map((col) => {
               const isEditing = editingColumn === col.name;
               return (
-                <tr key={col.name} className={cn("group hover:bg-muted transition-colors", isEditing && "bg-primary")}>
+                <tr 
+                  key={col.name} 
+                  className={cn("group hover:bg-muted transition-colors", isEditing && "bg-primary")}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.pageX, y: e.pageY, col });
+                  }}
+                >
                   <td className="py-2 px-2">
                     {isEditing ? (
                       <input
@@ -217,6 +226,37 @@ export function ColumnsTab({
           </tbody>
         </table>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDismiss={() => setContextMenu(null)}
+          groups={[
+            {
+              title: 'Column Actions',
+              items: [
+                {
+                  label: 'Edit Column',
+                  icon: <Edit2 className="w-3.5 h-3.5" />,
+                  onClick: () => startEdit(contextMenu.col)
+                },
+                {
+                  label: 'Copy Name',
+                  icon: <Copy className="w-3.5 h-3.5" />,
+                  onClick: () => navigator.clipboard.writeText(contextMenu.col.name)
+                },
+                {
+                  label: 'Drop Column',
+                  icon: <Trash2 className="w-3.5 h-3.5" />,
+                  variant: 'destructive',
+                  onClick: () => handleDelete(contextMenu.col.name)
+                }
+              ]
+            }
+          ]}
+        />
+      )}
     </div>
   );
 }

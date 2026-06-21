@@ -59,6 +59,7 @@ interface ObjectDetailProps {
   dropIndexMutation: UseMutationResult<unknown, Error, string>;
   renameIndexMutation: UseMutationResult<unknown, Error, { oldName: string; newName: string }>;
   dropForeignKeyMutation: UseMutationResult<unknown, Error, string>;
+  renameForeignKeyMutation: UseMutationResult<unknown, Error, { oldName: string; newName: string }>;
   dropConstraintMutation: UseMutationResult<unknown, Error, string>;
   filter: string;
   setFilter: (f: string) => void;
@@ -104,6 +105,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
     dropIndexMutation,
     renameIndexMutation,
     dropForeignKeyMutation,
+    renameForeignKeyMutation,
     dropConstraintMutation,
     filter,
     setFilter,
@@ -343,6 +345,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
             isLoading={isLoadingForeignKeys}
             onAdd={() => handleAddObject('foreign key')}
             dropForeignKeyMutation={dropForeignKeyMutation}
+            renameForeignKeyMutation={renameForeignKeyMutation}
           />
         )}
 

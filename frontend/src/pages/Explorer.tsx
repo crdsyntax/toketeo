@@ -52,6 +52,7 @@ export default function Explorer() {
     dropIndexMutation,
     renameIndexMutation,
     dropForeignKeyMutation,
+    renameForeignKeyMutation,
     dropConstraintMutation,
     updateCell,
     errorDDL,
@@ -191,6 +192,7 @@ export default function Explorer() {
             dropIndexMutation={dropIndexMutation}
             renameIndexMutation={renameIndexMutation}
             dropForeignKeyMutation={dropForeignKeyMutation}
+            renameForeignKeyMutation={renameForeignKeyMutation}
             dropConstraintMutation={dropConstraintMutation}
             filter={filter}
             setFilter={setFilter}

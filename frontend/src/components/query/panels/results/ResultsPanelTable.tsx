@@ -164,8 +164,8 @@ export function ResultsPanelTable({
                         ) : (
                           (() => {
                             if (typeof row[col] === 'object') {
-                              if (row[col] && typeof row[col] === 'object' && '$date' in (row[col] as any)) {
-                                const d = new Date((row[col] as any).$date);
+                              if (row[col] && typeof row[col] === 'object' && '$date' in (row[col] as Record<string, unknown>)) {
+                                const d = new Date((row[col] as Record<string, unknown>).$date as string | number);
                                 if (!isNaN(d.getTime())) return d.toUTCString();
                               }
                               return JSON.stringify(row[col]);
