@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { MISSIONS, MissionType } from '../lib/missions';
+import { MISSIONS } from '../lib/missions';
+import type { MissionType } from '../lib/missions';
+import { calculateLevel, GAMIFICATION_CONFIG } from '../lib/gamificationConfig';
+import { APP_PERKS } from '../lib/perks';
 import toast from 'react-hot-toast';
 
 interface GamificationState {
@@ -12,25 +15,13 @@ interface GamificationState {
   // Progress tracking
   progress: Record<MissionType, number>;
   completedMissions: string[];
+  unlockedPerks: string[];
 
   // Actions
   addXP: (amount: number, reason?: string) => void;
   trackAction: (type: MissionType, amount?: number) => void;
   checkStreak: () => void;
 }
-
-const calculateLevel = (xp: number) => {
-  // Level 1: 0-499, Level 2: 500-1199, Level 3: 1200-2099...
-  // Simple exponential curve: Level = floor(sqrt(xp / 100)) + 1
-  if (xp < 500) return 1;
-  return Math.floor(Math.sqrt(xp / 100)) + 1;
-};
-
-export const getXPForNextLevel = (level: number) => {
-  if (level === 1) return 500;
-  // Reverse the formula: xp = ((level - 1)^2) * 100
-  return Math.pow(level, 2) * 100;
-};
 
 export const useGamificationStore = create<GamificationState>()(
   persist(
@@ -47,23 +38,43 @@ export const useGamificationStore = create<GamificationState>()(
         EXPORT_DATA: 0,
       },
       completedMissions: [],
+      unlockedPerks: [],
 
       addXP: (amount: number, reason?: string) => {
-        const { xp, level } = get();
+        const { xp, level, unlockedPerks } = get();
         const newXp = xp + amount;
         const newLevel = calculateLevel(newXp);
         
+        let newUnlockedPerks = [...(unlockedPerks || [])];
+
         if (newLevel > level) {
           toast.success(`🎉 Level Up! You reached Level ${newLevel}!`, { 
             duration: 5000, 
             position: 'bottom-right',
             style: { background: '#10b981', color: '#fff' }
           });
+
+          // Check if any new perks are unlocked at this level
+          const newlyUnlocked = APP_PERKS.filter(
+            perk => perk.requiredLevel <= newLevel && !newUnlockedPerks.includes(perk.id)
+          );
+
+          if (newlyUnlocked.length > 0) {
+            newlyUnlocked.forEach(perk => {
+              newUnlockedPerks.push(perk.id);
+              toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
+                duration: 6000,
+                position: 'bottom-right',
+                style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+                icon: '✨'
+              });
+            });
+          }
         } else if (reason) {
           // Optional: silent mini-toast for normal XP gains could be added here
         }
 
-        set({ xp: newXp, level: newLevel });
+        set({ xp: newXp, level: newLevel, unlockedPerks: newUnlockedPerks });
       },
 
       trackAction: (type: MissionType, amount: number = 1) => {
@@ -110,7 +121,7 @@ export const useGamificationStore = create<GamificationState>()(
 
         if (!lastLoginDate) {
           set({ lastLoginDate: today, streak: 1 });
-          addXP(10, 'Daily Login');
+          addXP(GAMIFICATION_CONFIG.STREAK_BASE_XP, 'Daily Login');
           return;
         }
 
@@ -122,13 +133,24 @@ export const useGamificationStore = create<GamificationState>()(
           const newStreak = streak + 1;
           set({ lastLoginDate: today, streak: newStreak });
           
-          const streakXp = 10 + (newStreak * 5);
+          const rawStreakXp = GAMIFICATION_CONFIG.STREAK_BASE_XP + (newStreak * GAMIFICATION_CONFIG.STREAK_BONUS_PER_DAY);
+          const streakXp = Math.min(rawStreakXp, GAMIFICATION_CONFIG.STREAK_MAX_BONUS);
           addXP(streakXp, `Daily Login Streak: ${newStreak}🔥`);
-          toast.success(`🔥 Streak: ${newStreak} days! +${streakXp} XP`);
+          
+          toast.success(`Streak: ${newStreak} days!\n+${streakXp} XP`, {
+            duration: 5000,
+            position: 'bottom-right',
+            style: { background: '#f97316', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+            icon: '🔥'
+          });
         } else if (diffDays > 1) {
           set({ lastLoginDate: today, streak: 1 });
-          addXP(10, 'Daily Login');
-          toast('Streak broken. Back to 1 🔥', { icon: '🥺' });
+          addXP(GAMIFICATION_CONFIG.STREAK_BASE_XP, 'Daily Login');
+          toast('Streak broken. Back to day 1.', { 
+            icon: '🥺',
+            position: 'bottom-right',
+            style: { background: '#3f3f46', color: '#fff', padding: '12px' }
+          });
         }
       }
     }),

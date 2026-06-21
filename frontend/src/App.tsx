@@ -4,13 +4,12 @@ import Connections from '@/pages/Connections'
 import Explorer from '@/pages/Explorer'
 import QueryEditor from '@/pages/QueryEditor'
 import AuditLog from '@/pages/AuditLog'
-import { AuthProvider } from '@/components/layout/AuthProvider'
-
+import { AppBootstrap } from '@/components/layout/AppBootstrap'
 import { Toaster } from 'react-hot-toast'
 
 function App() {
   return (
-    <AuthProvider>
+    <AppBootstrap>
       <Toaster position="bottom-right" />
       <Routes>
         <Route path="/" element={<MainLayout />}>
@@ -21,9 +20,8 @@ function App() {
           <Route path="settings" element={<div className="p-4">Settings Placeholder</div>} />
         </Route>
       </Routes>
-    </AuthProvider>
+    </AppBootstrap>
   )
 }
-
 
 export default App

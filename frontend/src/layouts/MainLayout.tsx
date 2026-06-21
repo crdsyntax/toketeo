@@ -6,8 +6,11 @@ import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
+import { LevelBadge } from '@/components/gamification/LevelBadge'
+import { GamificationModal } from '@/components/gamification/GamificationModal'
+import { useGamificationStore } from '@/store/gamificationStore'
 
 export default function MainLayout() {
   const location = useLocation()
@@ -22,6 +25,12 @@ export default function MainLayout() {
     queryFn: () => connectionService.getAll(),
   })
 
+  const checkStreak = useGamificationStore(state => state.checkStreak)
+  
+  useEffect(() => {
+    checkStreak()
+  }, [checkStreak])
+
   const handleDisconnect = async (id: string) => {
     try {
       await connectionService.disconnect(id)
@@ -35,6 +44,7 @@ export default function MainLayout() {
   }
 
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isGamificationModalOpen, setIsGamificationModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [testMessage, setTestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -69,6 +79,8 @@ export default function MainLayout() {
     }
   }
 
+  const { trackAction, addXP } = useGamificationStore();
+
   const saveMutation = useMutation({
     mutationFn: (payload: CreateConnectionDto) => {
       if (editingConnection?.id) {
@@ -77,6 +89,10 @@ export default function MainLayout() {
       return connectionService.create(payload)
     },
     onSuccess: () => {
+      if (!editingConnection?.id) {
+        addXP(50); // XP for connection
+        trackAction('CREATE_CONNECTION')
+      }
       queryClient.invalidateQueries({ queryKey: ['connections'] })
       setIsModalOpen(false)
       setTestMessage(null)
@@ -163,6 +179,11 @@ export default function MainLayout() {
         </div>
 
         <div className="flex items-center gap-3">
+          <LevelBadge 
+            className="mr-2" 
+            onClick={() => setIsGamificationModalOpen(true)} 
+          />
+          
           {isProduction && (
             <div className="flex items-center gap-2 px-3 py-1 bg-destructive/10 border border-destructive/20 rounded-full animate-pulse">
               <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
@@ -222,6 +243,11 @@ export default function MainLayout() {
         isSaving={saveMutation.isPending}
         isTesting={isTesting}
         testMessage={testMessage}
+      />
+
+      <GamificationModal 
+        isOpen={isGamificationModalOpen} 
+        onClose={() => setIsGamificationModalOpen(false)} 
       />
     </div>
   )

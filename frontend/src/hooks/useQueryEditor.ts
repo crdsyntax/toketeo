@@ -9,6 +9,8 @@ import { connectionService } from '@/services/connection.service'
 import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
+import { useGamificationStore } from '@/store/gamificationStore'
+import { calculateQueryXp } from '@/lib/gamificationConfig'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -181,6 +183,8 @@ export function useQueryEditor() {
     return false
   }, [])
 
+  const { trackAction, addXP } = useGamificationStore()
+
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
     if (activeTab?.query && activeConnection) {
       if (checkDangerousQuery(activeTab.query)) return
@@ -230,6 +234,9 @@ export function useQueryEditor() {
           results: result,
           error: null
         });
+        const xpEarned = calculateQueryXp(sql);
+        addXP(xpEarned);
+        trackAction('EXECUTE_QUERY');
         const histEntry: QueryHistoryEntry = {
           id: Math.random().toString(36).substring(2),
           query: activeTab.query.trim(),
@@ -341,6 +348,9 @@ export function useQueryEditor() {
         results: result,
         error: null
       })
+      const xpEarned = calculateQueryXp(sqlSnippet);
+      addXP(xpEarned);
+      trackAction('EXECUTE_QUERY');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       updateTabResults(activeTab.id, {
@@ -461,6 +471,8 @@ export function useQueryEditor() {
         }
         
         updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
+        addXP(10); // Base XP for edit
+        trackAction('EDIT_ROW');
         
         if (!isUndoRedo) {
           setTabHistory(prev => {

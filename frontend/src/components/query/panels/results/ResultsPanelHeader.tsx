@@ -4,6 +4,7 @@ import type { QueryTab } from '@/store/useAppStore';
 import { ExecutionStatus } from '@/types/database';
 import type { DbRow, DbValue } from '@/types/database';
 import { invoke } from '@tauri-apps/api/core';
+import { useGamificationStore } from '@/store/gamificationStore';
 
 interface ResultsPanelHeaderProps {
   activeTab: QueryTab | null;
@@ -48,6 +49,8 @@ export function ResultsPanelHeader({
 }: ResultsPanelHeaderProps) {
   const currentLimitLabel = LIMIT_OPTIONS.find(o => o.value === queryLimit)?.label ?? `${queryLimit} rows`;
 
+  const { trackAction, addXP } = useGamificationStore();
+
   const handleExportJSON = async () => {
     if (!activeTab?.results) return;
     setShowExportMenu(false);
@@ -59,6 +62,8 @@ export function ResultsPanelHeader({
         filterName: 'JSON Files',
         filterExt: 'json',
       });
+      addXP(25); // XP for export
+      trackAction('EXPORT_DATA');
     } catch (e) {
       console.error('Failed to export JSON:', e);
     }
@@ -68,6 +73,8 @@ export function ResultsPanelHeader({
     if (!activeTab?.results) return;
     setShowExportMenu(false);
     await downloadCSV(sortedRows, activeTab.results.columns, `${activeTab.name}-results.csv`);
+    addXP(25); // XP for export
+    trackAction('EXPORT_DATA');
   };
 
   return (
