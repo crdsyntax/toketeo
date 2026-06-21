@@ -1,12 +1,10 @@
+import { useState } from 'react';
 import {
   Table2,
   Minus,
   Copy,
   Maximize2,
   X,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -14,8 +12,13 @@ import {
 } from 'lucide-react';
 import { cn, downloadCSV } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
+import { DatabaseType, ExecutionStatus } from '@/types/database';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+
+import { ResultsPanelTable } from './panels/results/ResultsPanelTable';
+import { ResultsPanelJsonView } from './panels/results/ResultsPanelJsonView';
 
 interface ResultsModalProps {
   isOpen: boolean;
@@ -72,6 +75,11 @@ export function ResultsModal({
   isInteracting,
   setContextMenuSql,
 }: ResultsModalProps) {
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
+  const { activeConnection } = useAppStore();
+  const isMongo = activeConnection?.type === DatabaseType.MONGODB;
+
   if (!isOpen || !activeTab?.results) return null;
 
   return (
@@ -112,7 +120,7 @@ export function ResultsModal({
                 <button
                   disabled={
                     activeTab.results.page <= 1 ||
-                    activeTab.status === 'executing'
+                    activeTab.status === ExecutionStatus.EXECUTING
                   }
                   onClick={() => handlePageChange(activeTab.results!.page! - 1)}
                   className="p-1 hover:bg-muted rounded disabled:opacity-30"
@@ -125,7 +133,7 @@ export function ResultsModal({
                 <button
                   disabled={
                     !activeTab.results.hasMore ||
-                    activeTab.status === 'executing'
+                    activeTab.status === ExecutionStatus.EXECUTING
                   }
                   onClick={() => handlePageChange(activeTab.results!.page! + 1)}
                   className="p-1 hover:bg-muted rounded disabled:opacity-30"
@@ -150,6 +158,28 @@ export function ResultsModal({
           </div>
 
           <div className="flex items-center h-full">
+            {isMongo && (
+              <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40 mr-2">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={cn(
+                    "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                    viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Table
+                </button>
+                <button
+                  onClick={() => setViewMode('json')}
+                  className={cn(
+                    "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                    viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  JSON
+                </button>
+              </div>
+            )}
             <button
               onClick={() => void downloadCSV(
                   sortedRows,
@@ -196,100 +226,29 @@ export function ResultsModal({
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-auto relative">
-          <table className="w-full text-left text-sm border-collapse">
-            <thead className="sticky top-0 bg-background border-b border-border z-10">
-              <tr>
-                {activeTab.results.columns.map((col: string) => (
-                  <th
-                    key={col}
-                    onClick={() => requestSort(col)}
-                    className="p-3 font-bold bg-muted/50 border-r border-border cursor-pointer hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      {col}
-                      {sortConfig?.key === col ? (
-                        sortConfig?.direction === 'asc' ? (
-                          <ArrowUp className="w-3 h-3" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 opacity-30" />
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRows.map((row, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap"
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContextMenuSql({ x: e.pageX, y: e.pageY, row });
-                  }}
-                >
-                  {activeTab.results!.columns.map((col: string) => (
-                    <td
-                      key={col}
-                      onDoubleClick={() =>
-                        setEditingCell({
-                          rowIndex: i,
-                          column: col,
-                          value: row[col],
-                        })
-                      }
-                      className="p-3 border-r border-border last:border-0 relative cursor-pointer"
-                    >
-                      {editingCell?.rowIndex === i &&
-                      editingCell?.column === col ? (
-                        <input
-                          autoFocus
-                          className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-3 z-20"
-                          value={
-                            typeof editingCell.value === 'boolean'
-                              ? String(editingCell.value)
-                              : (editingCell.value ?? '')
-                          }
-                          onChange={(e) =>
-                            setEditingCell({
-                              ...editingCell,
-                              value: e.target.value,
-                            })
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleSave();
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setEditingCell(null);
-                            }
-                          }}
-                        />
-                      ) : row[col] === null ? (
-                        <span className="text-muted-foreground italic">
-                          NULL
-                        </span>
-                      ) : (
-                        String(row[col])
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex-1 overflow-hidden relative flex flex-col">
+          {isMongo && viewMode === 'json' ? (
+            <ResultsPanelJsonView sortedRows={sortedRows} />
+          ) : (
+            <ResultsPanelTable
+              activeTab={activeTab}
+              sortedRows={sortedRows}
+              sortConfig={sortConfig}
+              requestSort={requestSort}
+              editingCell={editingCell}
+              setEditingCell={setEditingCell}
+              handleSave={handleSave}
+              setContextMenuSql={setContextMenuSql}
+              selectedRowIndex={selectedRowIndex}
+              setSelectedRowIndex={setSelectedRowIndex}
+              setShowExportMenu={() => {}}
+              setShowLimitMenu={() => {}}
+            />
+          )}
 
           {!isMaximized && (
             <div
-              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-end justify-end p-0.5 hover:text-primary transition-colors"
+              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-end justify-end p-0.5 hover:text-primary transition-colors z-50"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 resizingRef.current = {

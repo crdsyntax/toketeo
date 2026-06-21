@@ -152,11 +152,7 @@ impl DbDriver for MongoDbDriver {
 
             let filter = obj
                 .get("find")
-                .and_then(|v| v.as_object())
-                .map(|o| {
-                    serde_json::from_value::<Document>(serde_json::Value::Object(o.clone()))
-                        .unwrap_or_default()
-                })
+                .and_then(|v| mongodb::bson::to_document(v).ok())
                 .unwrap_or_default();
 
             let limit = obj.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
@@ -164,19 +160,11 @@ impl DbDriver for MongoDbDriver {
 
             let sort = obj
                 .get("sort")
-                .and_then(|v| v.as_object())
-                .map(|o| {
-                    serde_json::from_value::<Document>(serde_json::Value::Object(o.clone()))
-                        .unwrap_or_default()
-                });
+                .and_then(|v| mongodb::bson::to_document(v).ok());
 
             let project = obj
                 .get("project")
-                .and_then(|v| v.as_object())
-                .map(|o| {
-                    serde_json::from_value::<Document>(serde_json::Value::Object(o.clone()))
-                        .unwrap_or_default()
-                });
+                .and_then(|v| mongodb::bson::to_document(v).ok());
 
             let collation = obj
                 .get("collation")
@@ -193,7 +181,7 @@ impl DbDriver for MongoDbDriver {
                     if let Some(s) = v.as_str() {
                         Some(mongodb::options::Hint::Name(s.to_string()))
                     } else if let Some(o) = v.as_object() {
-                        let doc = serde_json::from_value::<Document>(serde_json::Value::Object(o.clone())).unwrap_or_default();
+                        let doc = mongodb::bson::to_document(v).unwrap_or_default();
                         Some(mongodb::options::Hint::Keys(doc))
                     } else {
                         None

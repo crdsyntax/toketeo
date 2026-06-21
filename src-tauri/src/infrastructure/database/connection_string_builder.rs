@@ -156,6 +156,7 @@ mod tests {
             direct_connection: None,
             ssl: None,
             ssh_tunnel: None,
+            read_only: false,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         assert_eq!(
@@ -190,6 +191,7 @@ mod tests {
                 passphrase: None,
                 key_path: None,
             }),
+            read_only: false,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         // Should use 127.0.0.1 when SSH tunnel is active

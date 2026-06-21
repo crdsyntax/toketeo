@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_session_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None, false);
+        let mut session = ConnectionSession::new(driver, None, false, false);
 
         // Initial state
         assert!(!session.is_expired(Duration::from_secs(3600)));
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn test_session_ttl_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None, false);
+        let mut session = ConnectionSession::new(driver, None, false, false);
         session.max_ttl = Some(Duration::from_secs(10));
 
         // Fake old creation

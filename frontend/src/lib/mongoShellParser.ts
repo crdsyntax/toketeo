@@ -269,6 +269,7 @@ function parseStatement(statement: string): MongoShellProtocol | null {
     case 'find':
     case 'findOne': {
       proto.operation = operation;
+      if (operation === 'findOne') proto.limit = 1;
       // find(filter, projection?)
       const filterStr = rawArgs;
       if (filterStr) proto.find = parseJsValue(filterStr) as Record<string, unknown> ?? {};

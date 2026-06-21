@@ -173,6 +173,432 @@ The system already includes:
 
 ---
 
+# Phase 10: Gamification Engine (Toketeo RPG)
+
+## Backend (Rust)
+
+### Core Architecture
+
+Nueva estructura:
+
+```txt
+crates/
+│
+├── toketeo-core
+│   ├── sql-analyzer
+│   ├── event-engine
+│   ├── xp-engine
+│   ├── achievement-engine
+│   ├── class-engine
+│   └── mission-engine
+│
+├── toketeo-storage
+│   ├── sqlite
+│   └── repositories
+│
+└── toketeo-api
+```
+
+---
+
+### SQLite Progress Database
+
+Archivo:
+
+```txt
+data/gamification.db
+```
+
+Tablas:
+
+```txt
+achievements
+user_achievements
+user_stats
+user_events
+missions
+user_missions
+user_class
+```
+
+---
+
+### Event Engine
+
+Todo debe generarse mediante eventos.
+
+```rust
+pub enum DomainEvent {
+    QueryExecuted(QueryAnalysis),
+    QuerySucceeded,
+    QueryFailed,
+    ViewCreated,
+    IndexCreated,
+    TableCreated,
+    AchievementUnlocked(String),
+    LevelUp(u32),
+}
+```
+
+---
+
+### SQL Analyzer
+
+Basado en:
+
+```toml
+sqlparser = "*"
+```
+
+Detectar:
+
+```txt
+SELECT
+INSERT
+UPDATE
+DELETE
+JOIN
+UNION
+CTE
+WINDOW
+SUBQUERY
+GROUP BY
+```
+
+Clasificar:
+
+```txt
+Simple
+Intermediate
+Complex
+Expert
+```
+
+---
+
+### XP Engine
+
+Reglas iniciales:
+
+```txt
+Simple Query          +1 XP
+Intermediate Query    +3 XP
+Complex Query         +5 XP
+Expert Query          +10 XP
+
+JOIN                  +1 XP
+CTE                   +3 XP
+WINDOW                +5 XP
+```
+
+---
+
+### Achievement Engine
+
+Configuración mediante JSON.
+
+```json
+{
+  "id": "DRUID_SIMPLE",
+  "title": "Druida de los Hechizos Simples",
+  "condition": {
+    "simple_queries": 10
+  },
+  "xp_reward": 50
+}
+```
+
+---
+
+### Class Engine
+
+Determina especialización.
+
+```txt
+Druida
+Hechicero
+Alquimista
+Nigromante
+Guardián
+Arquimago
+```
+
+Ejemplo:
+
+```txt
+80% SELECT
+```
+
+↓
+
+```txt
+Druida
+```
+
+---
+
+### Mission Engine
+
+Misiones dinámicas.
+
+Ejemplos:
+
+```txt
+Realiza 5 JOINs
+```
+
+```txt
+Crea tu primera VIEW
+```
+
+```txt
+Optimiza una consulta
+```
+
+---
+
+## Frontend
+
+### Player Profile
+
+Nueva sección lateral:
+
+```txt
+Explorer
+Connections
+Queries
+RPG Profile
+Settings
+```
+
+---
+
+### Profile Panel
+
+Mostrar:
+
+```txt
+Nivel
+
+XP Actual
+
+Clase
+
+Título
+
+Logros
+```
+
+Ejemplo:
+
+```txt
+Nivel 8
+
+Clase:
+Hechicero
+
+Título:
+Tejedor de Tablas
+```
+
+---
+
+### XP Bar
+
+Visible en la barra superior.
+
+```txt
+[████████░░░░]
+420 / 600 XP
+```
+
+---
+
+### Achievement Toasts
+
+Cuando se desbloquee un logro.
+
+```txt
+═══════════════════════
+ LOGRO DESBLOQUEADO
+
+ Druida de los
+ Hechizos Simples
+
+ +50 XP
+═══════════════════════
+```
+
+---
+
+### Achievements View
+
+Categorías:
+
+```txt
+Consultas
+Modelado
+Performance
+Producción
+Ocultos
+```
+
+---
+
+### Missions Panel
+
+Mostrar:
+
+```txt
+Misiones activas
+
+[3/5] Ejecuta JOINs
+
+[1/1] Crea una VIEW
+```
+
+---
+
+### Query Result Integration
+
+Después de ejecutar una consulta:
+
+```txt
+Consulta ejecutada
+
++5 XP
+
+Complejidad:
+Complex
+
+Nivel actual:
+7
+```
+
+---
+
+### Statistics Dashboard
+
+Mostrar:
+
+```txt
+Total Queries
+
+Simple Queries
+
+Complex Queries
+
+JOIN Count
+
+Views Created
+
+Indexes Created
+
+Achievements Unlocked
+```
+
+---
+
+## Hidden Achievements
+
+Ejemplos:
+
+```txt
+DELETE sin WHERE
+```
+
+↓
+
+```txt
+Invocador del Caos
+```
+
+---
+
+```txt
+100 SELECT *
+```
+
+↓
+
+```txt
+Bárbaro de Producción
+```
+
+---
+
+```txt
+Consulta a las 3 AM
+```
+
+↓
+
+```txt
+Necromante Nocturno
+```
+
+---
+
+## Constraints
+
+* Gamificación nunca debe bloquear ejecución SQL.
+* SQLite debe ser completamente independiente de las conexiones de usuario.
+* Toda la lógica debe ejecutarse de forma asíncrona.
+* Logros deben ser configurables sin recompilar.
+* El sistema debe funcionar offline.
+
+---
+
+# Phase 11: Community Features (Future)
+
+## Rankings
+
+```txt
+Top XP
+Top Druidas
+Top Guardianes
+Top Logros
+```
+
+---
+
+## Cloud Sync
+
+Sincronización opcional.
+
+```txt
+SQLite Local
+      ↓
+ Sync
+      ↓
+ Cloud
+```
+
+---
+
+## Guilds
+
+```txt
+Orden de los JOINs
+Hijos del Índice
+Hermandad del Explain Analyze
+```
+
+---
+
+## Challenge Dungeons
+
+Bases de datos simuladas con problemas reales.
+
+```txt
+Deadlocks
+Missing Indexes
+N+1 Queries
+Slow Queries
+```
+
+---
+
 ## Critical Constraints (Must Not Break)
 
 * Engine fidelity must be preserved (no cross-db normalization)
@@ -182,6 +608,9 @@ The system already includes:
 * No implicit query execution without explicit user action
 
 ---
+
+
+
 
 ## Golden Rule
 

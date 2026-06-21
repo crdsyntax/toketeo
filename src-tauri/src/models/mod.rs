@@ -176,6 +176,7 @@ mod tests {
             direct_connection: None,
             ssl: None,
             ssh_tunnel: None,
+            read_only: false,
         };
 
         let json = serde_json::to_string(&config).unwrap();
