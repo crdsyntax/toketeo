@@ -10,7 +10,7 @@ import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
-import { calculateQueryXp } from '@/lib/gamificationConfig'
+import { calculateQueryXp } from '@/lib/gamification'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 

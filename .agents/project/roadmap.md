@@ -607,13 +607,6 @@ Slow Queries
 
 ---
 
-## Critical Constraints (Must Not Break)
-
-* Engine fidelity must be preserved (no cross-db normalization)
-* PostgreSQL must remain engine-correct (no forced MariaDB-style assumptions)
-* No SELECT * in generated queries
-* No UI state loss on navigation
-* No implicit query execution without explicit user action
 
 ---
 

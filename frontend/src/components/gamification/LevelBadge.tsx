@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGamificationStore } from '@/store/gamificationStore';
-import { getXPForNextLevel, getThematicLevelName } from '@/lib/gamificationConfig';
+import { getXPForNextLevel, getThematicLevelName } from '@/lib/gamification';
 import { cn } from '@/lib/utils';
 import { Trophy, Flame } from 'lucide-react';
 

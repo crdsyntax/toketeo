@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { useGamificationStore } from '@/store/gamificationStore';
-import { getXPForNextLevel, getThematicLevelName } from '@/lib/gamificationConfig';
-import { MISSIONS } from '@/lib/missions';
-import { APP_PERKS } from '@/lib/perks';
+import { getXPForNextLevel, getThematicLevelName, MISSIONS, APP_PERKS } from '@/lib/gamification';
 import { 
   X, Trophy, Flame, CheckCircle2, CircleDashed, Lock, Unlock, 
   Swords, Crosshair, Wand2, Zap, Skull, Hammer, Wrench, Anvil, 

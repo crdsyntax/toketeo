@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { MISSIONS } from '../lib/missions';
-import type { MissionType } from '../lib/missions';
-import { calculateLevel, GAMIFICATION_CONFIG } from '../lib/gamificationConfig';
-import { APP_PERKS } from '../lib/perks';
+import { 
+  MISSIONS, 
+  type MissionType, 
+  calculateLevel, 
+  GAMIFICATION_CONFIG, 
+  APP_PERKS 
+} from '../lib/gamification';
 import toast from 'react-hot-toast';
 
 interface GamificationState {
@@ -45,7 +48,7 @@ export const useGamificationStore = create<GamificationState>()(
         const newXp = xp + amount;
         const newLevel = calculateLevel(newXp);
         
-        let newUnlockedPerks = [...(unlockedPerks || [])];
+        const newUnlockedPerks = [...(unlockedPerks || [])];
 
         if (newLevel > level) {
           toast.success(`🎉 Level Up! You reached Level ${newLevel}!`, { 
