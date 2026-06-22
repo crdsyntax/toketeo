@@ -41,10 +41,8 @@ impl ExplorerService {
 
         let final_query = if let Some(ref s) = schema {
             if s.is_empty() {
-                println!("[toketeo] execute_query: schema is empty string, skipping USE");
                 query.to_string()
             } else {
-                println!("[toketeo] execute_query: applying schema '{}' for {:?}", s, db_type);
                 match db_type {
                     // MySQL/MariaDB: pool is rebuilt by switch_schema with DB in URL, no USE needed
                     crate::db::DbType::Mysql | crate::db::DbType::Mariadb => query.to_string(),
@@ -56,12 +54,8 @@ impl ExplorerService {
                 }
             }
         } else {
-            println!("[toketeo] execute_query: no schema provided, using connection default");
             query.to_string()
         };
-
-        println!("[toketeo] execute_query >> connection={} | db_type={:?} | schema={:?} | sql_preview={}", id, db_type, schema, &query[..query.len().min(200)]);
-        println!("[toketeo] execute_query >> final_sql_preview={}", &final_query[..final_query.len().min(200)]);
 
         match driver.execute(&final_query).await {
             Ok(result) => {

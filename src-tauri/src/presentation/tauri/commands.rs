@@ -238,12 +238,7 @@ pub async fn execute_query(
     schema: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
-    let result = ExplorerService::execute_query(&state, &id, &query, schema).await;
-    match &result {
-        Ok(r) => println!("[toketeo] execute_query OK: {} columns, {} rows, {}ms", r.columns.len(), r.rows.len(), r.execution_time_ms),
-        Err(e) => println!("[toketeo] execute_query ERROR: {:?}", e),
-    }
-    result
+    ExplorerService::execute_query(&state, &id, &query, schema).await
 }
 
 #[tauri::command]

@@ -104,7 +104,7 @@ impl Default for PoolConfig {
         Self {
             max_connections: 5,
             idle_timeout: Some(Duration::from_secs(600)),
-            acquire_timeout: Duration::from_secs(5),
+            acquire_timeout: Duration::from_secs(30),
             max_lifetime: Some(Duration::from_secs(28800)),
             keep_alive: None,
         }
@@ -126,7 +126,7 @@ impl From<&crate::models::DbConnectionConfig> for Option<PoolConfig> {
         Some(PoolConfig {
             max_connections: if max > 0 { max as u32 } else { 5 },
             idle_timeout: if idle > 0 { Some(Duration::from_secs(idle as u64)) } else { None },
-            acquire_timeout: if acq > 0 { Duration::from_secs(acq as u64) } else { Duration::from_secs(5) },
+            acquire_timeout: if acq > 0 { Duration::from_secs(acq as u64) } else { Duration::from_secs(30) },
             max_lifetime: if life > 0 { Some(Duration::from_secs(life as u64)) } else { None },
             keep_alive: if ka > 0 { Some(Duration::from_secs(ka as u64)) } else { None },
         })

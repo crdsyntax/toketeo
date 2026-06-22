@@ -15,20 +15,81 @@ export const GAMIFICATION_CONFIG = {
 };
 
 /**
- * Calculates XP rewarded based on the complexity of the SQL query.
+ * Simple hash for a query string (used to detect first-time execution).
  */
-export const calculateQueryXp = (sql: string): number => {
-  const upperSql = sql.toUpperCase();
-  let xp = 2; // Simple query base XP
+export const hashQuery = (sql: string): string => {
+  const normalized = sql.trim().replace(/\s+/g, ' ').toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash.toString(36);
+};
 
-  if (upperSql.includes('JOIN')) xp += 25;
-  if (upperSql.includes('WITH ')) xp += 50; // CTE
-  if (upperSql.includes('CREATE VIEW')) xp += 100;
-  if (upperSql.includes('CREATE INDEX')) xp += 150;
-  
-  // Other potential complexities
-  if (upperSql.includes('OVER (')) xp += 15; // Window function
-  if (upperSql.split('SELECT').length > 2) xp += 10; // Subquery
+/**
+ * Calculates XP rewarded based on the complexity of the SQL query.
+ * If `isFirstTime` is true and the query is complex, a discovery bonus is added.
+ */
+export const calculateQueryXp = (sql: string, isFirstTime: boolean = false): number => {
+  const upperSql = sql.toUpperCase();
+  const normalized = upperSql.replace(/\s+/g, ' ');
+  let xp = 2; // Simple query base XP
+  let complexityScore = 0;
+
+  // JOINs (count them, more JOINs = more complex)
+  const joinCount = (normalized.match(/\bJOIN\b/g) || []).length;
+  if (joinCount === 1) { xp += 25; complexityScore += 1; }
+  else if (joinCount >= 2) { xp += 25 + (joinCount - 1) * 15; complexityScore += joinCount; }
+
+  // CTE (WITH)
+  if (upperSql.includes('WITH ') && normalized.match(/\bWITH\b/g)!.length > 1) {
+    xp += 50; complexityScore += 2;
+  } else if (upperSql.includes('WITH ')) {
+    xp += 50; complexityScore += 2;
+  }
+
+  // CREATE VIEW / CREATE OR REPLACE VIEW
+  if (/\bCREATE\s+(OR\s+REPLACE\s+)?VIEW\b/i.test(sql)) { xp += 100; complexityScore += 4; }
+
+  // CREATE INDEX
+  if (/\bCREATE\s+(UNIQUE\s+)?INDEX\b/i.test(sql)) { xp += 150; complexityScore += 5; }
+
+  // CREATE TABLE AS SELECT
+  if (/\bCREATE\s+TABLE.*\bAS\b\s*$/i.test(sql.trim().replace(/[\n\r]/g, ' '))) { xp += 80; complexityScore += 3; }
+
+  // ALTER TABLE (complex DDL)
+  if (/\bALTER\s+TABLE\b/i.test(sql)) { xp += 40; complexityScore += 2; }
+
+  // DROP TABLE / VIEW / INDEX
+  if (/\bDROP\s+(TABLE|VIEW|INDEX|PROCEDURE|FUNCTION|TRIGGER)\b/i.test(sql)) { xp += 30; complexityScore += 1; }
+
+  // Window functions
+  if (/\bOVER\s*\(/i.test(sql)) { xp += 15; complexityScore += 1; }
+
+  // Subqueries (more than 2 SELECTs)
+  const selectCount = upperSql.split('SELECT').length - 1;
+  if (selectCount > 2) { xp += 10 * (selectCount - 1); complexityScore += selectCount - 1; }
+
+  // UNION / INTERSECT / EXCEPT
+  if (/\bUNION(\s+ALL)?\b/i.test(sql)) { xp += 20; complexityScore += 1; }
+  if (/\bINTERSECT\b/i.test(sql)) { xp += 15; complexityScore += 1; }
+  if (/\bEXCEPT\b/i.test(sql)) { xp += 15; complexityScore += 1; }
+
+  // GROUP BY + HAVING
+  if (/\bGROUP\s+BY\b/i.test(sql)) { xp += 10; complexityScore += 1; }
+  if (/\bHAVING\b/i.test(sql)) { xp += 10; complexityScore += 1; }
+
+  // DISTINCT
+  if (/\bDISTINCT\b/i.test(sql)) { xp += 5; }
+
+  // INSERT INTO ... SELECT
+  if (/\bINSERT\s+INTO\b.*\bSELECT\b/i.test(sql)) { xp += 30; complexityScore += 1; }
+
+  // First-time discovery bonus: if it's a genuinely complex query
+  if (isFirstTime && complexityScore >= 3) {
+    xp = Math.round(xp * 1.5);
+  }
 
   return xp;
 };

@@ -20,10 +20,15 @@ interface GamificationState {
   completedMissions: string[];
   unlockedPerks: string[];
 
+  // Track already-executed queries (hash → first execution already rewarded)
+  executedQueryHashes: string[];
+
   // Actions
   addXP: (amount: number, reason?: string) => void;
   trackAction: (type: MissionType, amount?: number) => void;
   checkStreak: () => void;
+  isQueryFirstTime: (hash: string) => boolean;
+  markQueryExecuted: (hash: string) => void;
 }
 
 export const useGamificationStore = create<GamificationState>()(
@@ -42,6 +47,7 @@ export const useGamificationStore = create<GamificationState>()(
       },
       completedMissions: [],
       unlockedPerks: [],
+      executedQueryHashes: [],
 
       addXP: (amount: number, reason?: string) => {
         const { xp, level, unlockedPerks } = get();
@@ -155,7 +161,18 @@ export const useGamificationStore = create<GamificationState>()(
             style: { background: '#3f3f46', color: '#fff', padding: '12px' }
           });
         }
-      }
+      },
+
+      isQueryFirstTime: (hash: string) => {
+        return !get().executedQueryHashes.includes(hash);
+      },
+
+      markQueryExecuted: (hash: string) => {
+        const { executedQueryHashes } = get();
+        if (!executedQueryHashes.includes(hash)) {
+          set({ executedQueryHashes: [...executedQueryHashes, hash] });
+        }
+      },
     }),
     {
       name: 'toketeo-gamification-storage',

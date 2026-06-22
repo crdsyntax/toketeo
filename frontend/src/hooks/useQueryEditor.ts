@@ -10,7 +10,7 @@ import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
-import { calculateQueryXp } from '@/lib/gamification'
+import { calculateQueryXp, hashQuery } from '@/lib/gamification'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -183,7 +183,7 @@ export function useQueryEditor() {
     return false
   }, [])
 
-  const { trackAction, addXP } = useGamificationStore()
+  const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
     if (activeTab?.query && activeConnection) {
@@ -205,19 +205,6 @@ export function useQueryEditor() {
         }
       }
       if (!isMongo) sql = sql.endsWith(';') ? sql : `${sql};`;
-
-      console.log('[toketeo] handleExecuteAll >>', JSON.stringify({
-        tabId: activeTab.id,
-        connectionId: activeConnection.id,
-        connectionName: activeConnection.name,
-        database: activeConnection.database ?? null,
-        schema: targetConnection?.database ?? null,
-        page,
-        limit: effectiveLimit,
-        isMongo,
-        originalSqlPreview: activeTab.query.substring(0, 200),
-        modifiedSqlPreview: sql.substring(0, 200),
-      }));
 
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
@@ -249,8 +236,11 @@ export function useQueryEditor() {
           results: result,
           error: null
         });
-        const xpEarned = calculateQueryXp(sql);
+        const qHash = hashQuery(sql);
+        const isFirstTime = isQueryFirstTime(qHash);
+        const xpEarned = calculateQueryXp(sql, isFirstTime);
         addXP(xpEarned);
+        if (isFirstTime) markQueryExecuted(qHash);
         trackAction('EXECUTE_QUERY');
         const histEntry: QueryHistoryEntry = {
           id: Math.random().toString(36).substring(2),
@@ -365,8 +355,11 @@ export function useQueryEditor() {
         results: result,
         error: null
       })
-      const xpEarned = calculateQueryXp(sqlSnippet);
+      const qHash = hashQuery(sqlSnippet);
+      const isFirstTime = isQueryFirstTime(qHash);
+      const xpEarned = calculateQueryXp(sqlSnippet, isFirstTime);
       addXP(xpEarned);
+      if (isFirstTime) markQueryExecuted(qHash);
       trackAction('EXECUTE_QUERY');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

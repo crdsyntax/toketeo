@@ -23,7 +23,7 @@ use serde_json::Value;
 /// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
 /// Fail fast if a connection cannot be acquired within 5 seconds.
-const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
 
 pub struct MySqlDriver {
