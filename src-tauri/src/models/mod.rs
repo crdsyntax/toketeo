@@ -31,6 +31,18 @@ pub struct DbConnectionConfig {
     pub ssh_tunnel: Option<SshConfig>,
     #[serde(rename = "readOnly")]
     pub read_only: Option<bool>,
+    #[serde(rename = "maxPoolSize")]
+    pub max_pool_size: Option<i32>,
+    #[serde(rename = "idleTimeout")]
+    pub idle_timeout: Option<i32>,
+    #[serde(rename = "acquireTimeout")]
+    pub acquire_timeout: Option<i32>,
+    #[serde(rename = "maxLifetime")]
+    pub max_lifetime: Option<i32>,
+    #[serde(rename = "keepAlive")]
+    pub keep_alive: Option<i32>,
+    #[serde(rename = "metadataCacheTtl")]
+    pub metadata_cache_ttl: Option<i32>,
 }
 
 impl fmt::Debug for DbConnectionConfig {
@@ -47,6 +59,12 @@ impl fmt::Debug for DbConnectionConfig {
             .field("auth_source", &self.auth_source)
             .field("replica_set", &self.replica_set)
             .field("direct_connection", &self.direct_connection)
+            .field("max_pool_size", &self.max_pool_size)
+            .field("idle_timeout", &self.idle_timeout)
+            .field("acquire_timeout", &self.acquire_timeout)
+            .field("max_lifetime", &self.max_lifetime)
+            .field("keep_alive", &self.keep_alive)
+            .field("metadata_cache_ttl", &self.metadata_cache_ttl)
             .finish()
     }
 }
@@ -176,7 +194,13 @@ mod tests {
             direct_connection: None,
             ssl: None,
             ssh_tunnel: None,
-            read_only: false,
+            read_only: None,
+            max_pool_size: None,
+            idle_timeout: None,
+            acquire_timeout: None,
+            max_lifetime: None,
+            keep_alive: None,
+            metadata_cache_ttl: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();

@@ -1,8 +1,10 @@
+use crate::db::PoolConfig;
 use crate::error::AppResult;
 use crate::models::DbConnectionConfig;
 use crate::state::AppState;
 use secrecy::ExposeSecret;
 use serde_json;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::infrastructure::database::connection_string_builder::ConnectionStringBuilder;
@@ -170,11 +172,12 @@ impl ConnectionService {
         tracing::debug!("Connection string built successfully (sensitive data hidden)");
 
         let is_transactional = config.environment.to_lowercase() == "production";
+        let pool_config: Option<PoolConfig> = (&config).into();
 
         tracing::debug!("Initializing driver for {:?}", config.db_type);
 
         let driver =
-            match DriverFactory::create(config.db_type.clone(), &url, is_transactional).await {
+            match DriverFactory::create(config.db_type.clone(), &url, is_transactional, pool_config).await {
                 Ok(d) => {
                     tracing::info!("Driver created successfully and connection verified");
                     d
@@ -201,8 +204,11 @@ impl ConnectionService {
             }
         }
 
+        let max_ttl = config.max_lifetime.map(|s| Duration::from_secs(s as u64));
+        let metadata_cache_ttl = Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
+
         state
-            .add_connection(id.clone(), driver, ssh_tunnel, is_transactional, config.read_only.unwrap_or(false))
+            .add_connection(id.clone(), driver, ssh_tunnel, is_transactional, config.read_only.unwrap_or(false), max_ttl, metadata_cache_ttl)
             .await;
         tracing::info!("Connection session established: {}", id);
         Ok(id)
@@ -212,7 +218,7 @@ impl ConnectionService {
         let config = state.storage.get_connection(id).await?;
         let url = ConnectionStringBuilder::build(&config)?;
 
-        let driver = DriverFactory::create(config.db_type, &url, false).await?;
+        let driver = DriverFactory::create(config.db_type, &url, false, None).await?;
 
         let dbs = driver.fetch_databases().await?;
         let schemas = driver.fetch_schemas().await?;
@@ -229,11 +235,15 @@ impl ConnectionService {
 
         // Re-establish connection with new DB
         let url = ConnectionStringBuilder::build(&config)?;
-        let driver = DriverFactory::create(config.db_type, &url, false).await?;
+        let pool_config: Option<PoolConfig> = (&config).into();
+        let driver = DriverFactory::create(config.db_type, &url, false, pool_config).await?;
+
+        let max_ttl = config.max_lifetime.map(|s| Duration::from_secs(s as u64));
+        let metadata_cache_ttl = Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
 
         // Replace existing driver in state
         state
-            .add_connection(id.to_string(), driver, None, false, config.read_only.unwrap_or(false))
+            .add_connection(id.to_string(), driver, None, false, config.read_only.unwrap_or(false), max_ttl, metadata_cache_ttl)
             .await;
 
         Ok(())

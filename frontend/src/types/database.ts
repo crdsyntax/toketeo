@@ -174,6 +174,12 @@ export interface Connection {
   ssl?: string
   ssh?: SshConfig
   readOnly?: boolean
+  maxPoolSize?: number
+  idleTimeout?: number
+  acquireTimeout?: number
+  maxLifetime?: number
+  keepAlive?: number
+  metadataCacheTtl?: number
   createdAt: string
   updatedAt: string
 }

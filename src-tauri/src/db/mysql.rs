@@ -1,4 +1,5 @@
 use crate::db::DbDriver;
+use crate::db::PoolConfig;
 use crate::error::{ AppError, AppResult };
 use crate::models::QueryResult;
 use async_trait::async_trait;
@@ -21,10 +22,6 @@ use serde_json::Value;
 
 /// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
-/// Maximum concurrent connections per non-transactional pool.
-const POOL_MAX_CONNECTIONS: u32 = 5;
-/// Close idle connections after 10 minutes to avoid exhausting server limits.
-const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Fail fast if a connection cannot be acquired within 5 seconds.
 const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -34,7 +31,7 @@ pub struct MySqlDriver {
 }
 
 impl MySqlDriver {
-    pub async fn new(url: &str, transactional: bool) -> AppResult<Self> {
+    pub async fn new(url: &str, transactional: bool, pool_config: Option<PoolConfig>) -> AppResult<Self> {
         let pool = (
             if transactional {
                 // Transactional sessions use a single connection to guarantee
@@ -45,16 +42,18 @@ impl MySqlDriver {
                     .connect(url)
                     .await
             } else {
-                // Phase 8: Explicit pool options for non-transactional DBA usage.
-                // min_connections keeps one connection warm to eliminate cold-start latency.
-                // max_connections caps concurrent load from metadata introspection.
-                MySqlPoolOptions::new()
+                let config = pool_config.unwrap_or_default();
+                let mut opts = MySqlPoolOptions::new()
                     .min_connections(POOL_MIN_CONNECTIONS)
-                    .max_connections(POOL_MAX_CONNECTIONS)
-                    .idle_timeout(POOL_IDLE_TIMEOUT)
-                    .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
-                    .connect(url)
-                    .await
+                    .max_connections(config.max_connections)
+                    .acquire_timeout(config.acquire_timeout);
+                if let Some(idle) = config.idle_timeout {
+                    opts = opts.idle_timeout(idle);
+                }
+                if let Some(lifetime) = config.max_lifetime {
+                    opts = opts.max_lifetime(lifetime);
+                }
+                opts.connect(url).await
             }
         ).map_err(|e| {
             let app_err: AppError = e.into();

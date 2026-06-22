@@ -1,4 +1,5 @@
 use crate::db::DbDriver;
+use crate::db::PoolConfig;
 use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
 use async_trait::async_trait;
@@ -16,7 +17,7 @@ pub struct MongoDbDriver {
 }
 
 impl MongoDbDriver {
-    pub async fn new(url: &str) -> AppResult<Self> {
+    pub async fn new(url: &str, pool_config: Option<PoolConfig>) -> AppResult<Self> {
         let sanitized_url = if let Some(idx) = url.find('@') {
             format!("{}@{}", "mongodb://***", &url[idx + 1..])
         } else {
@@ -60,6 +61,17 @@ impl MongoDbDriver {
             "MongoDB client options final Direct Connection: {:?}",
             client_options.direct_connection
         );
+
+        // Apply pool config if provided
+        if let Some(ref cfg) = pool_config {
+            client_options.max_pool_size = Some(cfg.max_connections);
+            if let Some(idle) = cfg.idle_timeout {
+                client_options.max_idle_time = Some(idle);
+            }
+            if let Some(ka) = cfg.keep_alive {
+                client_options.heartbeat_freq = Some(ka);
+            }
+        }
 
         // Set longer timeouts for SSH tunnel latency
         client_options.server_selection_timeout = Some(std::time::Duration::from_secs(10));

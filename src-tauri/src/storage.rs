@@ -75,6 +75,30 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN max_pool_size INTEGER")
+            .execute(&pool)
+            .await;
+
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN idle_timeout INTEGER")
+            .execute(&pool)
+            .await;
+
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN acquire_timeout INTEGER")
+            .execute(&pool)
+            .await;
+
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN max_lifetime INTEGER")
+            .execute(&pool)
+            .await;
+
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN keep_alive INTEGER")
+            .execute(&pool)
+            .await;
+
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN metadata_cache_ttl INTEGER")
+            .execute(&pool)
+            .await;
+
         Ok(Self { pool })
     }
 
@@ -156,6 +180,12 @@ impl Storage {
             ssl: row.get("ssl"),
             ssh_tunnel,
             read_only: row.try_get::<Option<i64>, _>("read_only").unwrap_or(None).map(|v| v != 0),
+            max_pool_size: row.try_get::<Option<i64>, _>("max_pool_size").unwrap_or(None).map(|v| v as i32),
+            idle_timeout: row.try_get::<Option<i64>, _>("idle_timeout").unwrap_or(None).map(|v| v as i32),
+            acquire_timeout: row.try_get::<Option<i64>, _>("acquire_timeout").unwrap_or(None).map(|v| v as i32),
+            max_lifetime: row.try_get::<Option<i64>, _>("max_lifetime").unwrap_or(None).map(|v| v as i32),
+            keep_alive: row.try_get::<Option<i64>, _>("keep_alive").unwrap_or(None).map(|v| v as i32),
+            metadata_cache_ttl: row.try_get::<Option<i64>, _>("metadata_cache_ttl").unwrap_or(None).map(|v| v as i32),
         })
     }
 
@@ -177,8 +207,8 @@ impl Storage {
             .map(|p| p.expose_secret().to_string());
 
         sqlx::query(
-            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, direct_connection, ssl, ssh, read_only)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_source, replica_set, direct_connection, ssl, ssh, read_only, max_pool_size, idle_timeout, acquire_timeout, max_lifetime, keep_alive, metadata_cache_ttl)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 environment = excluded.environment,
@@ -196,6 +226,12 @@ impl Storage {
                 direct_connection = excluded.direct_connection,
                 ssl = excluded.ssl,
                 read_only = excluded.read_only,
+                max_pool_size = excluded.max_pool_size,
+                idle_timeout = excluded.idle_timeout,
+                acquire_timeout = excluded.acquire_timeout,
+                max_lifetime = excluded.max_lifetime,
+                keep_alive = excluded.keep_alive,
+                metadata_cache_ttl = excluded.metadata_cache_ttl,
                 ssh = CASE 
                     WHEN excluded.ssh IS NOT NULL THEN excluded.ssh 
                     ELSE connections.ssh 
@@ -258,6 +294,12 @@ impl Storage {
                 ssl: row.get("ssl"),
                 ssh_tunnel,
                 read_only: row.try_get::<Option<i64>, _>("read_only").unwrap_or(None).map(|v| v != 0),
+                max_pool_size: row.try_get::<Option<i64>, _>("max_pool_size").unwrap_or(None).map(|v| v as i32),
+                idle_timeout: row.try_get::<Option<i64>, _>("idle_timeout").unwrap_or(None).map(|v| v as i32),
+                acquire_timeout: row.try_get::<Option<i64>, _>("acquire_timeout").unwrap_or(None).map(|v| v as i32),
+                max_lifetime: row.try_get::<Option<i64>, _>("max_lifetime").unwrap_or(None).map(|v| v as i32),
+                keep_alive: row.try_get::<Option<i64>, _>("keep_alive").unwrap_or(None).map(|v| v as i32),
+                metadata_cache_ttl: row.try_get::<Option<i64>, _>("metadata_cache_ttl").unwrap_or(None).map(|v| v as i32),
             });
         }
         Ok(connections)

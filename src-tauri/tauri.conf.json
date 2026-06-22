@@ -5,7 +5,7 @@
   "identifier": "com.toketeo.app",
   "build": {
     "frontendDist": "../frontend/dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:8565",
     "beforeDevCommand": "bun run frontend:dev",
     "beforeBuildCommand": "bun run frontend:build"
   },

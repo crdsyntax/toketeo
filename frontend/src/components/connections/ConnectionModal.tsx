@@ -1,4 +1,4 @@
-import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff } from 'lucide-react'
+import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment, SshAuthType } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
@@ -30,12 +30,18 @@ const INITIAL_FORM: CreateConnectionDto = {
   directConnection: true,
   ssl: 'false',
   readOnly: false,
+  maxPoolSize: 5,
+  idleTimeout: 600,
+  acquireTimeout: 5,
+  maxLifetime: 28800,
+  keepAlive: 0,
+  metadataCacheTtl: 300,
 }
 
 export function ConnectionModal({
   isOpen, onClose, onSave, onTest, editingConnection, isSaving, isTesting, testMessage
 }: ConnectionModalProps) {
-  const [activeTab, setActiveTab] = useState<'general' | 'ssh'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'ssh' | 'pool'>('general')
   const [form, setForm] = useState<CreateConnectionDto>(INITIAL_FORM)
   const [storePassword, setStorePassword] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
@@ -83,6 +89,12 @@ export function ConnectionModal({
           directConnection: fullConnection.directConnection ?? true,
           ssl: fullConnection.ssl || 'false',
           readOnly: fullConnection.readOnly ?? false,
+          maxPoolSize: fullConnection.maxPoolSize ?? 5,
+          idleTimeout: fullConnection.idleTimeout ?? 600,
+          acquireTimeout: fullConnection.acquireTimeout ?? 5,
+          maxLifetime: fullConnection.maxLifetime ?? 28800,
+          keepAlive: fullConnection.keepAlive ?? 0,
+          metadataCacheTtl: fullConnection.metadataCacheTtl ?? 300,
           ssh: fullConnection.ssh ? {
             ...fullConnection.ssh,
             authType: fullConnection.ssh.authType || (fullConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
@@ -106,6 +118,12 @@ export function ConnectionModal({
           directConnection: editingConnection.directConnection ?? true,
           ssl: editingConnection.ssl || 'false',
           readOnly: editingConnection.readOnly ?? false,
+          maxPoolSize: editingConnection.maxPoolSize ?? 5,
+          idleTimeout: editingConnection.idleTimeout ?? 600,
+          acquireTimeout: editingConnection.acquireTimeout ?? 5,
+          maxLifetime: editingConnection.maxLifetime ?? 28800,
+          keepAlive: editingConnection.keepAlive ?? 0,
+          metadataCacheTtl: editingConnection.metadataCacheTtl ?? 300,
           ssh: editingConnection.ssh ? {
             ...editingConnection.ssh,
             authType: editingConnection.ssh.authType || (editingConnection.ssh.privateKey ? SshAuthType.KEY : SshAuthType.PASSWORD)
@@ -177,11 +195,12 @@ export function ConnectionModal({
           <div className="flex gap-2">
             {[
               { id: 'general', label: 'General', icon: Cpu },
+              { id: 'pool', label: 'Pool & Timeout', icon: Clock },
               { id: 'ssh', label: 'SSH Tunnel', icon: Lock }
             ].map((tab) => (
               <button 
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'general' | 'ssh')}
+                onClick={() => setActiveTab(tab.id as 'general' | 'ssh' | 'pool')}
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all",
                   activeTab === tab.id 
@@ -438,6 +457,88 @@ export function ConnectionModal({
                   </div>
                 </div>
               )}
+            </div>
+          ) : activeTab === 'pool' ? (
+            <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+              <div className="p-4 border border-primary/20 bg-primary/5 space-y-6">
+                <h4 className="text-[9px] font-bold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
+                  <Server className="w-3 h-3" />
+                  Connection Pool
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Max Pool Size</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      value={form.maxPoolSize ?? 5}
+                      onChange={(e) => setForm({ ...form, maxPoolSize: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Acquire Timeout (s)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      value={form.acquireTimeout ?? 5}
+                      onChange={(e) => setForm({ ...form, acquireTimeout: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border border-border bg-muted/20 space-y-6">
+                <h4 className="text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground flex items-center gap-2">
+                  <Clock className="w-3 h-3" />
+                  Timeouts &amp; TTL
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Idle Timeout (s)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      value={form.idleTimeout ?? 600}
+                      onChange={(e) => setForm({ ...form, idleTimeout: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Max Lifetime (s)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      value={form.maxLifetime ?? 28800}
+                      onChange={(e) => setForm({ ...form, maxLifetime: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Keep Alive (s)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      value={form.keepAlive ?? 0}
+                      onChange={(e) => setForm({ ...form, keepAlive: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Metadata Cache TTL (s)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      value={form.metadataCacheTtl ?? 300}
+                      onChange={(e) => setForm({ ...form, metadataCacheTtl: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="space-y-6 animate-in slide-in-from-right-2 duration-300">

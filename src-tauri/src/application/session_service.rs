@@ -36,23 +36,22 @@ pub struct MetadataCacheEntry {
     pub cached_at: Instant,
 }
 
-/// TTL for metadata cache entries: 5 minutes.
-const METADATA_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
-
 pub struct MetadataCache {
     entries: HashMap<MetadataCacheKey, MetadataCacheEntry>,
+    ttl: Duration,
 }
 
 impl MetadataCache {
-    pub fn new() -> Self {
+    pub fn new(ttl: Duration) -> Self {
         Self {
             entries: HashMap::new(),
+            ttl,
         }
     }
 
     pub fn get(&self, key: &MetadataCacheKey) -> Option<&Vec<serde_json::Value>> {
         self.entries.get(key).and_then(|entry| {
-            if entry.cached_at.elapsed() < METADATA_CACHE_TTL {
+            if entry.cached_at.elapsed() < self.ttl {
                 Some(&entry.data)
             } else {
                 None
@@ -87,7 +86,7 @@ impl MetadataCache {
     }
 
     pub fn evict_expired(&mut self) {
-        self.entries.retain(|_, v| v.cached_at.elapsed() < METADATA_CACHE_TTL);
+        self.entries.retain(|_, v| v.cached_at.elapsed() < self.ttl);
     }
 }
 
@@ -108,6 +107,8 @@ impl ConnectionSession {
         ssh_tunnel: Option<SshTunnel>,
         transactional: bool,
         read_only: bool,
+        max_ttl: Option<Duration>,
+        metadata_cache_ttl: Duration,
     ) -> Self {
         let now = Instant::now();
         Self {
@@ -117,8 +118,8 @@ impl ConnectionSession {
             read_only,
             created_at: now,
             last_access: now,
-            max_ttl: Some(Duration::from_secs(3600 * 8)), // 8 hours default TTL
-            metadata_cache: MetadataCache::new(),
+            max_ttl,
+            metadata_cache: MetadataCache::new(metadata_cache_ttl),
         }
     }
 
@@ -292,7 +293,7 @@ mod tests {
     #[test]
     fn test_session_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None, false, false);
+        let mut session = ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
 
         // Initial state
         assert!(!session.is_expired(Duration::from_secs(3600)));
@@ -309,7 +310,7 @@ mod tests {
     #[test]
     fn test_session_ttl_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None, false, false);
+        let mut session = ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
         session.max_ttl = Some(Duration::from_secs(10));
 
         // Fake old creation
@@ -325,14 +326,14 @@ mod tests {
             filter: None,
             kind: MetadataKind::Columns,
         };
-        let mut cache = MetadataCache::new();
+        let mut cache = MetadataCache::new(Duration::from_secs(300));
         cache.set(key.clone(), vec![serde_json::json!({"name": "id"})]);
         assert!(cache.get(&key).is_some());
     }
 
     #[test]
     fn test_metadata_cache_invalidation() {
-        let mut cache = MetadataCache::new();
+        let mut cache = MetadataCache::new(Duration::from_secs(300));
         let key = MetadataCacheKey {
             object: "users".into(),
             schema: Some("public".into()),

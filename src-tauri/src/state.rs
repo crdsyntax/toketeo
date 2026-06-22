@@ -4,6 +4,7 @@ use crate::error::AppResult;
 use crate::storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 pub struct AppState {
@@ -26,11 +27,13 @@ impl AppState {
         ssh_tunnel: Option<crate::ssh::SshTunnel>,
         transactional: bool,
         read_only: bool,
+        max_ttl: Option<Duration>,
+        metadata_cache_ttl: Duration,
     ) {
         let mut conns = self.connections.write().await;
         conns.insert(
             id,
-            ConnectionSession::new(driver, ssh_tunnel, transactional, read_only),
+            ConnectionSession::new(driver, ssh_tunnel, transactional, read_only, max_ttl, metadata_cache_ttl),
         );
     }
 
