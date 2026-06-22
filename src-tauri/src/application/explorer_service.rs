@@ -29,16 +29,41 @@ impl ExplorerService {
         upper.contains(".DELETE") ||
         upper.contains(".DROP")
     }
-    pub async fn execute_query(state: &AppState, id: &str, query: &str) -> AppResult<QueryResult> {
+    pub async fn execute_query(state: &AppState, id: &str, query: &str, schema: Option<String>) -> AppResult<QueryResult> {
         let is_read_only = state.is_read_only(id).await.unwrap_or(false);
         if is_read_only && Self::is_destructive_query(query) {
             return Err(AppError::Validation("Connection is in read-only mode. Destructive queries are disabled.".to_string()));
         }
 
         let driver = state.get_connection(id).await?;
+        let db_type = driver.db_type();
         let start = std::time::Instant::now();
 
-        match driver.execute(query).await {
+        let final_query = if let Some(ref s) = schema {
+            if s.is_empty() {
+                println!("[toketeo] execute_query: schema is empty string, skipping USE");
+                query.to_string()
+            } else {
+                println!("[toketeo] execute_query: applying schema '{}' for {:?}", s, db_type);
+                match db_type {
+                    // MySQL/MariaDB: pool is rebuilt by switch_schema with DB in URL, no USE needed
+                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb => query.to_string(),
+                    crate::db::DbType::Postgres => {
+                        driver.execute(&format!("SET search_path TO \"{}\";", s)).await?;
+                        query.to_string()
+                    }
+                    _ => query.to_string(),
+                }
+            }
+        } else {
+            println!("[toketeo] execute_query: no schema provided, using connection default");
+            query.to_string()
+        };
+
+        println!("[toketeo] execute_query >> connection={} | db_type={:?} | schema={:?} | sql_preview={}", id, db_type, schema, &query[..query.len().min(200)]);
+        println!("[toketeo] execute_query >> final_sql_preview={}", &final_query[..final_query.len().min(200)]);
+
+        match driver.execute(&final_query).await {
             Ok(result) => {
                 let _ = AuditService::log_query(
                     state,
@@ -648,14 +673,25 @@ impl ExplorerService {
         let driver = state.get_connection(id).await?;
         let schemas = driver.fetch_schemas().await?;
 
-        if schemas.contains(&schema) {
-            Ok(())
-        } else {
-            Err(AppError::Validation(format!(
+        if !schemas.contains(&schema) {
+            return Err(AppError::Validation(format!(
                 "Database '{}' not found",
                 schema
-            )))
+            )));
         }
+
+        // For MySQL/MariaDB, schema == database. Rebuild the pool with the new database
+        // in the connection URL so all pool connections start on the right database.
+        // For other databases, SET search_path / USE would need a single-connection approach.
+        match driver.db_type() {
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                drop(driver);
+                crate::application::connection_service::ConnectionService::switch_database(state, id, &schema).await?;
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     pub async fn get_mongo_structure(state: &AppState, id: &str) -> AppResult<serde_json::Value> {

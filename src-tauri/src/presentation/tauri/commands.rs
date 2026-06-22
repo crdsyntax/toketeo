@@ -57,7 +57,7 @@ pub async fn update_cell(
 ) -> AppResult<QueryResult> {
     let driver = state.get_connection(&id).await?;
     let sql = SqlGeneratorService::generate_cell_update(driver.db_type(), &input)?;
-    ExplorerService::execute_query(&state, &id, &sql).await
+    ExplorerService::execute_query(&state, &id, &sql, None).await
 }
 
 #[tauri::command]
@@ -235,9 +235,15 @@ pub async fn import_connections_dialog(
 pub async fn execute_query(
     id: String,
     query: String,
+    schema: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
-    ExplorerService::execute_query(&state, &id, &query).await
+    let result = ExplorerService::execute_query(&state, &id, &query, schema).await;
+    match &result {
+        Ok(r) => println!("[toketeo] execute_query OK: {} columns, {} rows, {}ms", r.columns.len(), r.rows.len(), r.execution_time_ms),
+        Err(e) => println!("[toketeo] execute_query ERROR: {:?}", e),
+    }
+    result
 }
 
 #[tauri::command]
@@ -451,7 +457,7 @@ pub async fn edit_column(
     schema: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }
@@ -465,7 +471,7 @@ pub async fn drop_column(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let sql = format!("ALTER TABLE {} DROP COLUMN {}", table, column);
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }
@@ -483,7 +489,7 @@ pub async fn drop_index(
         crate::db::DbType::Postgres => format!("DROP INDEX {}", index),
         _ => format!("ALTER TABLE {} DROP INDEX {}", table, index),
     };
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }
@@ -503,7 +509,7 @@ pub async fn rename_index(
         crate::db::DbType::Mysql | crate::db::DbType::Mariadb => format!("ALTER TABLE {} RENAME INDEX {} TO {}", table, old_name, new_name),
         _ => return Err(crate::error::AppError::Validation(format!("Rename index not supported for {:?}", driver.db_type()))),
     };
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }
@@ -521,7 +527,7 @@ pub async fn drop_foreign_key(
         crate::db::DbType::Postgres => format!("ALTER TABLE {} DROP CONSTRAINT {}", table, constraint),
         _ => format!("ALTER TABLE {} DROP FOREIGN KEY {}", table, constraint),
     };
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }
@@ -535,7 +541,7 @@ pub async fn drop_constraint(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let sql = format!("ALTER TABLE {} DROP CONSTRAINT {}", table, constraint);
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }
@@ -554,7 +560,7 @@ pub async fn rename_foreign_key(
         crate::db::DbType::Postgres => format!("ALTER TABLE {} RENAME CONSTRAINT {} TO {}", table, old_name, new_name),
         _ => return Err(crate::error::AppError::Validation(format!("Rename constraint not supported for {:?}", driver.db_type()))),
     };
-    ExplorerService::execute_query(&state, &id, &sql)
+    ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
 }

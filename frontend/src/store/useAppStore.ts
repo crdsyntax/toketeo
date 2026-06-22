@@ -240,6 +240,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         theme: state.theme,
         accessToken: state.accessToken,
+        activeConnection: state.activeConnection ? { ...state.activeConnection, password: undefined } : null,
         tabs: state.tabs.map(tab => ({ ...tab, results: null })),
         activeTabId: state.activeTabId,
         panels: state.panels,

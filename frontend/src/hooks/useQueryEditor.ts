@@ -205,13 +205,28 @@ export function useQueryEditor() {
         }
       }
       if (!isMongo) sql = sql.endsWith(';') ? sql : `${sql};`;
-      
+
+      console.log('[toketeo] handleExecuteAll >>', JSON.stringify({
+        tabId: activeTab.id,
+        connectionId: activeConnection.id,
+        connectionName: activeConnection.name,
+        database: activeConnection.database ?? null,
+        schema: targetConnection?.database ?? null,
+        page,
+        limit: effectiveLimit,
+        isMongo,
+        originalSqlPreview: activeTab.query.substring(0, 200),
+        modifiedSqlPreview: sql.substring(0, 200),
+      }));
+
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
       const startTime = Date.now();
       try {
         const targetConnectionId = activeTab.connectionId || activeConnection.id;
-        const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+        const targetConnection = activeConnection.id === targetConnectionId
+          ? activeConnection
+          : (connections.find(c => c.id === targetConnectionId) || activeConnection);
         
         let result;
         try {
@@ -326,7 +341,9 @@ export function useQueryEditor() {
     
     try {
       const targetConnectionId = activeTab.connectionId || activeConnection.id;
-      const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+      const targetConnection = activeConnection.id === targetConnectionId
+        ? activeConnection
+        : (connections.find(c => c.id === targetConnectionId) || activeConnection);
       
       let result;
       try {
@@ -459,7 +476,9 @@ export function useQueryEditor() {
             const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
             if (isConnNotFound) {
                 const targetConnectionId = activeTab.connectionId || activeConnection.id;
-                const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+                const targetConnection = activeConnection.id === targetConnectionId
+                  ? activeConnection
+                  : (connections.find(c => c.id === targetConnectionId) || activeConnection);
                 await connectionService.connect(targetConnection);
                 await tauriApi.invoke('execute_query', {
                     id: activeConnection.id,
