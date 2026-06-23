@@ -100,11 +100,7 @@ export function SqlEditorPanel({
   const handleChange = useCallback((val: string | undefined) => {
     const query = val ?? '';
     updateTabQuery(activeTab.id, query);
-    // Live detect shell mode as user types
-    if (isMongo) {
-      setIsShellMode(isMongoShellSyntax(query));
-    }
-  }, [activeTab.id, isMongo, updateTabQuery]);
+  }, [activeTab.id, updateTabQuery]);
 
   // Compute editor language
   const editorLanguage = isShellMode

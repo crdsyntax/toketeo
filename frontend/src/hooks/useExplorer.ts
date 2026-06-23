@@ -204,13 +204,6 @@ export function useExplorer() {
 
       if (explorerTabs[tabId]) {
         setExplorerState({ activeExplorerTabId: tabId });
-        updateExplorerTab(tabId, {
-          activeTab: nextActiveTab,
-          executionStatus: ExecutionStatus.IDLE,
-          executionError: null,
-          socketResults: null,
-          page: 0,
-        });
       } else {
         addExplorerTab({
           id: tabId,
@@ -788,9 +781,11 @@ export function useExplorer() {
       executionStatus === ExecutionStatus.IDLE;
 
     if (needsExecution) {
+      let cancelled = false;
       queueMicrotask(() => {
-        handleExecute();
+        if (!cancelled) handleExecute();
       });
+      return () => { cancelled = true; };
     }
   }, [
     activeTab,

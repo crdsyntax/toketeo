@@ -19,26 +19,27 @@ export function ModelExportModal({ isOpen, onClose, tableName, schema }: ModelEx
   const activeConnection = useAppStore((state) => state.activeConnection);
 
   useEffect(() => {
-    if (isOpen && activeConnection) {
-      const fetchModel = async () => {
-        setIsLoading(true);
-        try {
-          const code = await invoke<string>('generate_model', {
-            id: activeConnection.id,
-            framework: selectedFramework.toLowerCase(),
-            table: tableName,
-            schema: schema ?? null,
-          });
-          setModelCode(code);
-        } catch (e) {
-          console.error(e);
-          setModelCode(`// Error generating model:\n${e}`);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchModel();
-    }
+    if (!isOpen || !activeConnection) return;
+    let cancelled = false;
+    const fetchModel = async () => {
+      setIsLoading(true);
+      try {
+        const code = await invoke<string>('generate_model', {
+          id: activeConnection.id,
+          framework: selectedFramework.toLowerCase(),
+          table: tableName,
+          schema: schema ?? null,
+        });
+        if (!cancelled) setModelCode(code);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setModelCode(`// Error generating model:\n${e}`);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    fetchModel();
+    return () => { cancelled = true; };
   }, [isOpen, selectedFramework, activeConnection, tableName, schema]);
 
   if (!isOpen) return null;

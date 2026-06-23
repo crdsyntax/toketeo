@@ -12,7 +12,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use url::Url;
 
 pub struct SqlServerDriver {
-    client: Arc<Mutex<Client<Compat<TcpStream>>>>,
+    client: Arc<Mutex<Option<Client<Compat<TcpStream>>>>>,
 }
 
 impl SqlServerDriver {
@@ -38,7 +38,7 @@ impl SqlServerDriver {
             .map_err(|e| AppError::Connection(format!("Could not connect to SQL Server: {}", e)))?;
 
         Ok(Self {
-            client: Arc::new(Mutex::new(client)),
+            client: Arc::new(Mutex::new(Some(client))),
         })
     }
 
@@ -114,7 +114,10 @@ impl SqlServerDriver {
     }
 
     async fn run_query(&self, query: &str) -> AppResult<Vec<serde_json::Value>> {
-        let mut client = self.client.lock().await;
+        let mut guard = self.client.lock().await;
+        let client = guard.as_mut().ok_or_else(|| {
+            AppError::Internal("SQL Server client is closed".into())
+        })?;
         let mut stream = client
             .query(query, &[])
             .await
@@ -415,6 +418,12 @@ impl DbDriver for SqlServerDriver {
     }
 
     async fn close(&self) -> AppResult<()> {
+        let mut guard = self.client.lock().await;
+        if let Some(client) = guard.take() {
+            client.close().await.map_err(|e| {
+                AppError::Internal(format!("SQL Server close error: {}", e))
+            })?;
+        }
         Ok(())
     }
 }

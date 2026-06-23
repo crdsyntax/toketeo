@@ -252,4 +252,15 @@ impl ConnectionService {
     pub async fn disconnect(state: &AppState, id: &str) -> AppResult<()> {
         state.remove_connection(id).await
     }
+
+    pub async fn disconnect_all(state: &AppState) -> AppResult<()> {
+        let ids: Vec<String> = {
+            let conns = state.connections.read().await;
+            conns.keys().cloned().collect()
+        };
+        for id in ids {
+            let _ = state.remove_connection(&id).await;
+        }
+        Ok(())
+    }
 }

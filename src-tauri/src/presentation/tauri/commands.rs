@@ -149,6 +149,11 @@ pub async fn disconnect(id: String, state: State<'_, AppState>) -> AppResult<()>
 }
 
 #[tauri::command]
+pub async fn disconnect_all(state: State<'_, AppState>) -> AppResult<()> {
+    ConnectionService::disconnect_all(&state).await
+}
+
+#[tauri::command]
 pub async fn export_connection(
     id: String,
     file_path: String,

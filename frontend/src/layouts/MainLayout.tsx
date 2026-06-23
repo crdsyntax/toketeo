@@ -34,7 +34,11 @@ export default function MainLayout() {
   const handleDisconnect = async (id: string) => {
     try {
       await connectionService.disconnect(id)
-      if (activeConnection?.id === id) setActiveConnection(null)
+      if (activeConnection?.id === id) {
+        setActiveConnection(null)
+        const { setExplorerState } = useAppStore.getState()
+        setExplorerState({ activeExplorerTabId: null })
+      }
       queryClient.invalidateQueries({ queryKey: ['connections'] })
       setMiniToast(id, { type: 'success', text: 'Disconnected' })
     } catch (error) {

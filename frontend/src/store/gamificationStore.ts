@@ -170,7 +170,11 @@ export const useGamificationStore = create<GamificationState>()(
       markQueryExecuted: (hash: string) => {
         const { executedQueryHashes } = get();
         if (!executedQueryHashes.includes(hash)) {
-          set({ executedQueryHashes: [...executedQueryHashes, hash] });
+          const MAX_HASHES = 1000;
+          const updated = executedQueryHashes.length >= MAX_HASHES
+            ? [...executedQueryHashes.slice(1), hash]
+            : [...executedQueryHashes, hash];
+          set({ executedQueryHashes: updated });
         }
       },
     }),

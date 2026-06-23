@@ -6,16 +6,27 @@ import './index.css'
 import App from './App.tsx'
 import { loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { connectionService } from './services/connection.service'
 
 loader.config({ monaco })
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
       refetchOnWindowFocus: false,
     },
   },
+})
+
+// Gracefully close all DB connections before window closes
+getCurrentWindow().onCloseRequested(async () => {
+  try {
+    await connectionService.disconnectAll()
+  } catch {
+    // best-effort cleanup
+  }
 })
 
 createRoot(document.getElementById('root')!).render(

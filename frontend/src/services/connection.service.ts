@@ -45,6 +45,10 @@ export const connectionService = {
     await tauriApi.invoke<void>('disconnect', { id })
   },
 
+  disconnectAll: async (): Promise<void> => {
+    await tauriApi.invoke<void>('disconnect_all', {})
+  },
+
   commit: async (id: string): Promise<void> => {
     await tauriApi.invoke<void>('commit_transaction', { id })
   },

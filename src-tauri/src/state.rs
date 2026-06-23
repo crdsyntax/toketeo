@@ -77,84 +77,102 @@ impl AppState {
     }
 
     pub async fn begin_transaction(&self, id: &str) -> AppResult<()> {
-        let mut conns = self.connections.write().await;
-        if let Some(session) = conns.get_mut(id) {
+        let db_type;
+        let driver;
+        {
+            let mut conns = self.connections.write().await;
+            let session = conns.get_mut(id).ok_or_else(|| {
+                crate::error::AppError::Internal(format!("Connection {} not found", id))
+            })?;
             session.touch();
-            if session.driver.db_type() == DbType::Mongodb {
+            db_type = session.driver.db_type();
+            if db_type == DbType::Mongodb {
                 return Ok(());
             }
-            let begin_sql = match session.driver.db_type() {
+            driver = session.driver.clone();
+        }
+        let begin_sql = match db_type {
+            DbType::Postgres => "BEGIN",
+            DbType::Mysql | DbType::Mariadb => "START TRANSACTION",
+            DbType::Sqlserver => "BEGIN TRANSACTION",
+            _ => "BEGIN",
+        };
+        driver.execute(begin_sql).await?;
+        Ok(())
+    }
+
+    pub async fn commit_transaction(&self, id: &str) -> AppResult<()> {
+        let db_type;
+        let transactional;
+        let driver;
+        {
+            let mut conns = self.connections.write().await;
+            let session = conns.get_mut(id).ok_or_else(|| {
+                crate::error::AppError::Internal(format!("Connection {} not found", id))
+            })?;
+            session.touch();
+            db_type = session.driver.db_type();
+            transactional = session.transactional;
+            if db_type == DbType::Mongodb {
+                return Ok(());
+            }
+            driver = session.driver.clone();
+        }
+        driver.execute("COMMIT").await?;
+        if transactional {
+            let begin_sql = match db_type {
                 DbType::Postgres => "BEGIN",
                 DbType::Mysql | DbType::Mariadb => "START TRANSACTION",
                 DbType::Sqlserver => "BEGIN TRANSACTION",
                 _ => "BEGIN",
             };
-            session.driver.execute(begin_sql).await?;
-            Ok(())
-        } else {
-            Err(crate::error::AppError::Internal(format!(
-                "Connection {} not found",
-                id
-            )))
+            driver.execute(begin_sql).await?;
         }
-    }
-
-    pub async fn commit_transaction(&self, id: &str) -> AppResult<()> {
-        let mut conns = self.connections.write().await;
-        if let Some(session) = conns.get_mut(id) {
-            session.touch();
-            if session.driver.db_type() == DbType::Mongodb {
-                return Ok(());
-            }
-            session.driver.execute("COMMIT").await?;
-            if session.transactional {
-                let begin_sql = match session.driver.db_type() {
-                    DbType::Postgres => "BEGIN",
-                    DbType::Mysql | DbType::Mariadb => "START TRANSACTION",
-                    DbType::Sqlserver => "BEGIN TRANSACTION",
-                    _ => "BEGIN",
-                };
-                session.driver.execute(begin_sql).await?;
-            }
-            Ok(())
-        } else {
-            Err(crate::error::AppError::Internal(format!(
-                "Connection {} not found",
-                id
-            )))
-        }
+        Ok(())
     }
 
     pub async fn rollback_transaction(&self, id: &str) -> AppResult<()> {
-        let mut conns = self.connections.write().await;
-        if let Some(session) = conns.get_mut(id) {
+        let db_type;
+        let transactional;
+        let driver;
+        {
+            let mut conns = self.connections.write().await;
+            let session = conns.get_mut(id).ok_or_else(|| {
+                crate::error::AppError::Internal(format!("Connection {} not found", id))
+            })?;
             session.touch();
-            if session.driver.db_type() == DbType::Mongodb {
+            db_type = session.driver.db_type();
+            transactional = session.transactional;
+            if db_type == DbType::Mongodb {
                 return Ok(());
             }
-            session.driver.execute("ROLLBACK").await?;
-            if session.transactional {
-                let begin_sql = match session.driver.db_type() {
-                    DbType::Postgres => "BEGIN",
-                    DbType::Mysql | DbType::Mariadb => "START TRANSACTION",
-                    DbType::Sqlserver => "BEGIN TRANSACTION",
-                    _ => "BEGIN",
-                };
-                session.driver.execute(begin_sql).await?;
-            }
-            Ok(())
-        } else {
-            Err(crate::error::AppError::Internal(format!(
-                "Connection {} not found",
-                id
-            )))
+            driver = session.driver.clone();
         }
+        driver.execute("ROLLBACK").await?;
+        if transactional {
+            let begin_sql = match db_type {
+                DbType::Postgres => "BEGIN",
+                DbType::Mysql | DbType::Mariadb => "START TRANSACTION",
+                DbType::Sqlserver => "BEGIN TRANSACTION",
+                _ => "BEGIN",
+            };
+            driver.execute(begin_sql).await?;
+        }
+        Ok(())
     }
 
     pub async fn remove_connection(&self, id: &str) -> AppResult<()> {
-        let mut conns = self.connections.write().await;
-        if let Some(session) = conns.remove(id) {
-            session.driver.close().await?;
+        let driver;
+        {
+            let mut conns = self.connections.write().await;
+            if let Some(session) = conns.remove(id) {
+                driver = Some(session.driver);
+            } else {
+                driver = None;
+            }
+        }
+        if let Some(d) = driver {
+            d.close().await?;
         }
         Ok(())
     }

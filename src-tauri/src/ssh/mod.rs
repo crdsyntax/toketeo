@@ -107,9 +107,12 @@ impl SshTunnel {
 
             loop {
                 // Check for shutdown signal
-                if shutdown_rx.try_recv().is_ok() {
-                    tracing::info!("SSH Tunnel shutdown signal received");
-                    break;
+                match shutdown_rx.try_recv() {
+                    Ok(()) | Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+                        tracing::info!("SSH Tunnel shutdown signal received");
+                        break;
+                    }
+                    Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
                 }
 
                 if let Ok((mut local_stream, _addr)) = listener.accept() {

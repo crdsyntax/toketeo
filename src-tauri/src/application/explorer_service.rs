@@ -733,6 +733,10 @@ impl ExplorerService {
         use tokio::io::{AsyncBufReadExt, BufReader};
 
         let driver = state.get_connection(id).await?;
+
+        // Begin transaction for atomic restore when possible (Postgres DDL is transactional)
+        let _ = driver.execute("BEGIN").await;
+
         let file = File::open(file_path)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to open dump file: {}", e)))?;
@@ -740,6 +744,7 @@ impl ExplorerService {
         let mut reader = BufReader::new(file);
         let mut line = String::new();
         let mut current_query = String::new();
+        let mut errors = Vec::new();
 
         while reader.read_line(&mut line).await? > 0 {
             let trimmed = line.trim();
@@ -751,7 +756,7 @@ impl ExplorerService {
             current_query.push_str(&line);
             if trimmed.ends_with(';') {
                 if let Err(e) = driver.execute(&current_query).await {
-                    eprintln!("Error executing restore chunk: {:?}", e);
+                    errors.push(format!("Error in statement near '{}': {}", &trimmed[..trimmed.len().min(80)], e));
                 }
                 current_query.clear();
             }
@@ -759,9 +764,21 @@ impl ExplorerService {
         }
 
         if !current_query.trim().is_empty() {
-            let _ = driver.execute(&current_query).await;
+            if let Err(e) = driver.execute(&current_query).await {
+                errors.push(format!("Error in trailing statement: {}", e));
+            }
         }
 
+        if !errors.is_empty() {
+            let _ = driver.execute("ROLLBACK").await;
+            return Err(AppError::Internal(format!(
+                "Restore completed with {} error(s). First error: {}",
+                errors.len(),
+                errors[0]
+            )));
+        }
+
+        let _ = driver.execute("COMMIT").await;
         Ok(())
     }
 
@@ -946,11 +963,13 @@ impl ExplorerService {
 
         let driver = state.get_connection(id).await?;
 
+        let _ = driver.execute("BEGIN").await;
+
         let mut current_query = String::new();
+        let mut errors = Vec::new();
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with("--") || trimmed.starts_with("/*") {
-                line.to_string().push('\n');
                 current_query.clear();
                 continue;
             }
@@ -969,7 +988,7 @@ impl ExplorerService {
 
                 if should_execute {
                     if let Err(e) = driver.execute(&current_query).await {
-                        eprintln!("Error executing restore chunk: {:?}", e);
+                        errors.push(format!("Error in statement near '{}': {}", &trimmed[..trimmed.len().min(80)], e));
                     }
                 }
                 current_query.clear();
@@ -985,10 +1004,22 @@ impl ExplorerService {
                         || upper_stmt.contains(&format!("`{}`", t))
                 });
             if should_execute {
-                let _ = driver.execute(&current_query).await;
+                if let Err(e) = driver.execute(&current_query).await {
+                    errors.push(format!("Error in trailing statement: {}", e));
+                }
             }
         }
 
+        if !errors.is_empty() {
+            let _ = driver.execute("ROLLBACK").await;
+            return Err(AppError::Internal(format!(
+                "Restore completed with {} error(s). First error: {}",
+                errors.len(),
+                errors[0]
+            )));
+        }
+
+        let _ = driver.execute("COMMIT").await;
         Ok(())
     }
 }

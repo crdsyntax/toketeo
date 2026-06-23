@@ -142,19 +142,22 @@ pub struct SessionService;
 
 impl SessionService {
     pub async fn cleanup_sessions(state: &AppState, idle_timeout: Duration) -> AppResult<()> {
-        let mut conns = state.connections.write().await;
+        let to_remove: Vec<String>;
+        let drivers: Vec<(String, Arc<dyn DbDriver>)>;
+        {
+            let mut conns = state.connections.write().await;
+            to_remove = conns.iter()
+                .filter(|(_, session)| session.is_expired(idle_timeout))
+                .map(|(id, _)| id.clone())
+                .collect();
+            drivers = to_remove.iter()
+                .filter_map(|id| conns.remove(id).map(|s| (id.clone(), s.driver)))
+                .collect();
+        }
 
-        let to_remove: Vec<String> = conns
-            .iter()
-            .filter(|(_, session)| session.is_expired(idle_timeout))
-            .map(|(id, _)| id.clone())
-            .collect();
-
-        for id in to_remove {
-            if let Some(session) = conns.remove(&id) {
-                if let Err(e) = session.driver.close().await {
-                    eprintln!("Error closing driver for session {}: {:?}", id, e);
-                }
+        for (id, driver) in drivers {
+            if let Err(e) = driver.close().await {
+                eprintln!("Error closing driver for session {}: {:?}", id, e);
             }
         }
         Ok(())

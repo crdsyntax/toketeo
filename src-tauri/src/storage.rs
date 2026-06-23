@@ -17,6 +17,10 @@ impl Storage {
         let url = format!("sqlite:{}", db_path.to_string_lossy());
         let pool = SqlitePool::connect(&url).await?;
 
+        // WAL mode for concurrent reads + busy timeout to retry on contention
+        sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
+        sqlx::query("PRAGMA busy_timeout=5000").execute(&pool).await?;
+
         // Create tables if not exists
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS connections (
