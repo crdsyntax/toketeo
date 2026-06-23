@@ -3,12 +3,7 @@ import { useGamificationStore } from '@/store/gamificationStore';
 import { getXPForNextLevel, getThematicLevelName } from '@/lib/gamification';
 import { cn } from '@/lib/utils';
 import { Trophy, Flame } from 'lucide-react';
-
-interface LevelBadgeProps {
-  className?: string;
-  onClick?: () => void;
-  collapsed?: boolean;
-}
+import { WizardPixelArt } from './WizardPixelArt';
 
 export function LevelBadge({ className, onClick, collapsed }: LevelBadgeProps) {
   const { level, xp, streak } = useGamificationStore();
@@ -28,27 +23,30 @@ export function LevelBadge({ className, onClick, collapsed }: LevelBadgeProps) {
       )}
       title={`Level ${level} - ${xp} XP (${streak} day streak)`}
     >
-      <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
-        <svg className="absolute inset-0 w-full h-full -rotate-90">
-          <circle
-            cx="20"
-            cy="20"
-            r="18"
-            className="stroke-muted/30 fill-none"
-            strokeWidth="3"
-          />
-          <circle
-            cx="20"
-            cy="20"
-            r="18"
-            className="stroke-primary fill-none transition-all duration-1000 ease-out"
-            strokeWidth="3"
-            strokeDasharray={2 * Math.PI * 18}
-            strokeDashoffset={2 * Math.PI * 18 * (1 - progressPercentage / 100)}
-            strokeLinecap="round"
-          />
-        </svg>
-        <span className="text-xs font-bold text-primary">{level}</span>
+      <div className="flex items-center gap-2">
+        <WizardPixelArt />
+        <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
+          <svg className="absolute inset-0 w-full h-full -rotate-90">
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              className="stroke-muted/30 fill-none"
+              strokeWidth="3"
+            />
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              className="stroke-primary fill-none transition-all duration-1000 ease-out"
+              strokeWidth="3"
+              strokeDasharray={2 * Math.PI * 18}
+              strokeDashoffset={2 * Math.PI * 18 * (1 - progressPercentage / 100)}
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="text-xs font-bold text-primary">{level}</span>
+        </div>
       </div>
 
       {!collapsed && (

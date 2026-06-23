@@ -1,7 +1,7 @@
-import { Plus, Edit2, Globe, Shield, ChevronDown, ChevronRight, Database, Upload, Download } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
@@ -20,13 +20,38 @@ interface ConnectionsSidebarProps {
   onDisconnect?: (id: string) => void
 }
 
-function PostgresContent({ conn, onSelect, onSchemaContextMenu }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void }) {
-  const { data: databases = [] } = useQuery({
+const DB_TYPE_COLORS: Record<string, string> = {
+  postgres: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
+  mysql: 'text-orange-400 border-orange-500/30 bg-orange-500/10',
+  mariadb: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10',
+  mongodb: 'text-green-400 border-green-500/30 bg-green-500/10',
+  mssql: 'text-red-400 border-red-500/30 bg-red-500/10',
+}
+
+function TypeBadge({ type }: { type: string }) {
+  return (
+    <span className={cn(
+      'px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border',
+      DB_TYPE_COLORS[type] || 'text-muted-foreground border-border bg-muted'
+    )}>
+      {type === 'postgres' ? 'PG' :
+       type === 'mysql' ? 'MY' :
+       type === 'mariadb' ? 'MA' :
+       type === 'mongodb' ? 'MO' :
+       type === 'mssql' ? 'MS' :
+       type?.slice(0, 2).toUpperCase()}
+    </span>
+  )
+}
+
+function PostgresContent({ conn, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+  const { data: databases = [], isFetched } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
     enabled: !!conn.id,
     staleTime: 5 * 60 * 1000,
   })
+  useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
   return (
     <>
       {databases.map((db) => (
@@ -36,17 +61,18 @@ function PostgresContent({ conn, onSelect, onSchemaContextMenu }: { conn: Connec
   )
 }
 
-function SchemaContent({ conn, onSelect, onSchemaContextMenu }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void }) {
-  const { data: schemas = [] } = useQuery({
+function SchemaContent({ conn, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+  const { data: schemas = [], isFetched } = useQuery({
     queryKey: ['schemas', conn.id],
     queryFn: () => schemaService.getSchemas(conn.id),
     enabled: !!conn.id,
     staleTime: 5 * 60 * 1000,
   })
+  useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
   return (
     <>
       {schemas.map((s) => (
-        <SchemaItem key={s} conn={conn} schema={s} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
+        <SchemaItem key={s} conn={conn} schema={s} isSelected={conn.database === s} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
@@ -54,6 +80,7 @@ function SchemaContent({ conn, onSelect, onSchemaContextMenu }: { conn: Connecti
 
 export function ConnectionsSidebar({ connections, activeConnection, onConnect, onEdit, onNew, onDisconnect }: ConnectionsSidebarProps) {
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
+  const [loadingConnId, setLoadingConnId] = useState<string | null>(null)
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, connId?: string }>({ visible: false, x: 0, y: 0 })
   const [schemaMenu, setSchemaMenu] = useState<{
@@ -173,103 +200,147 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     switchSchemaMutation.mutate({ connectionId: conn.id, schema })
   }
 
+  const handleContentLoaded = useCallback((connId: string) => {
+    setLoadingConnId((prev) => prev === connId ? null : prev)
+  }, [])
+
   return (
-    <div className="w-72 border-r border-border bg-secondary/50 flex flex-col h-full">
-      <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
-        <h2 onDoubleClick={() => navigate('/')} className="cursor-pointer text-[10px] font-bold flex items-center gap-2 uppercase tracking-[0.2em] text-muted-foreground">
+    <div className="w-72 border-r border-border bg-background flex flex-col h-full">
+      <div className="px-3 py-3 border-b border-border flex items-center justify-between">
+        <h2
+          onDoubleClick={() => navigate('/')}
+          className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase select-none"
+        >
           Connections
         </h2>
-        <button 
-          onClick={onNew} 
-          className="p-1.5 hover:bg-accent/10 text-muted-foreground hover:text-accent transition-colors"
+        <button
+          onClick={onNew}
+          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="flex-1 overflow-auto p-2 space-y-1 scrollbar-thin">
-          {connections.map((conn) => (
-          <div 
-            key={conn.id}
-            className={cn(
-              "group transition-all border-l-2",
-              activeConnection?.id === conn.id 
-                ? "border-l-emerald-500 bg-accent/5" 
-                : "border-l-transparent",
-              selectedConnId === conn.id
-                ? "bg-accent/10 border-l-primary"
-                : "hover:bg-accent/5"
-            )}
-          >
-            <div 
-              className="p-2 cursor-pointer flex justify-between items-center" 
-              onClick={() => { setSelectedConnId(conn.id); onConnect(conn); }}
-              onDoubleClick={() => setExpandedConnId(expandedConnId === conn.id ? null : conn.id)}
-              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
+      <div className="flex-1 overflow-y-auto py-2 scrollbar-thin">
+        {connections.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+            <Server className="w-8 h-8 text-muted-foreground/30 mb-3" />
+            <p className="text-xs text-muted-foreground/50 mb-3">No connections yet</p>
+            <button
+              onClick={onNew}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md hover:bg-primary/20 transition-all"
             >
-              <div className="flex-1 truncate">
-                <div className="flex items-center gap-2">
-                    {activeConnection?.id === conn.id && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    )}
+              <Plus className="w-3 h-3" />
+              Add Connection
+            </button>
+          </div>
+        )}
+        <div className="space-y-0.5 px-2">
+          {connections.map((conn) => (
+            <div
+              key={conn.id}
+              className={cn(
+                'group relative rounded-lg transition-all duration-200',
+                activeConnection?.id === conn.id
+                  ? 'bg-accent/5 ring-1 ring-primary/10'
+                  : 'hover:bg-muted/50',
+                selectedConnId === conn.id && 'bg-accent/10 ring-1 ring-primary/20'
+              )}
+            >
+              {activeConnection?.id === conn.id && (
+                <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-emerald-500/70" />
+              )}
+              <div
+                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none"
+                title="Double click to list schemas"
+                onClick={() => { setSelectedConnId(conn.id); onConnect(conn); }}
+                onDoubleClick={() => {
+                  const willExpand = expandedConnId !== conn.id
+                  setExpandedConnId(willExpand ? conn.id : null)
+                  if (willExpand) setLoadingConnId(conn.id)
+                }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
+              >
+                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted/80 shrink-0">
+                  <Database className={cn(
+                    'w-3 h-3',
+                    selectedConnId === conn.id ? 'text-primary' : 'text-muted-foreground'
+                  )} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
                     <span className={cn(
-                      "text-xs font-bold truncate block",
-                      selectedConnId === conn.id ? "text-primary" : "text-foreground"
+                      'text-xs font-semibold truncate',
+                      selectedConnId === conn.id ? 'text-foreground' : 'text-foreground/90'
                     )}>
                       {conn.name}
                     </span>
+                    {loadingConnId === conn.id && (
+                      <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
+                    )}
+                    <TypeBadge type={conn.type} />
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {conn.ssh ? (
+                      <Shield className="w-2.5 h-2.5 text-blue-400" />
+                    ) : (
+                      <Wifi className="w-2.5 h-2.5 text-muted-foreground/40" />
+                    )}
+                    <span className="text-[10px] text-muted-foreground/60 font-mono truncate">
+                      {conn.host}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mt-0.5 ml-3.5">
-                  {conn.ssh ? <Shield className="w-2.5 h-2.5 text-blue-400" /> : <Globe className="w-2.5 h-2.5 opacity-50" />}
-                  <span className="truncate opacity-70">{conn.host}</span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEdit(conn); }}
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (activeConnection?.id !== conn.id) onConnect(conn);
+                      setExpandedConnId(expandedConnId === conn.id ? null : conn.id);
+                    }}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                  >
+                    <ChevronDown className={cn(
+                      'w-3.5 h-3.5 transition-transform duration-200',
+                      expandedConnId === conn.id && 'rotate-180'
+                    )} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-0.5">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onEdit(conn); }} 
-                  className="p-1 opacity-0 group-hover:opacity-100 hover:text-accent transition-all"
-                >
-                  <Edit2 className="w-3 h-3" />
-                </button>
-                <button 
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    if (activeConnection?.id !== conn.id) onConnect(conn);
-                    setExpandedConnId(expandedConnId === conn.id ? null : conn.id); 
-                  }}
-                  className="p-1 hover:text-accent transition-colors"
-                >
-                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", expandedConnId === conn.id && "rotate-180")} />
-                </button>
-              </div>
+
+              {expandedConnId === conn.id && (
+                <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
+                  <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
+                    {conn.type === 'postgres' ? (
+                      <PostgresContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
+                    ) : (
+                      <SchemaContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {expandedConnId === conn.id && (
-              <div className="pb-2 px-2 animate-in slide-in-from-top-1 duration-200">
-                <div className="pl-3 ml-1 border-l border-border/50 space-y-0.5">
-                  {conn.type === 'postgres' ? (
-                    <PostgresContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} />
-                  ) : (
-                    <SchemaContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
         {contextMenu.visible && contextMenu.connId === activeConnection?.id && (
           <div
             style={{ left: contextMenu.x, top: contextMenu.y }}
-            className="absolute z-50 bg-background border border-border rounded-md shadow-md"
+            className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
             onClick={() => setContextMenu({ visible: false, x: 0, y: 0 })}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="p-2 text-sm">
-              <button
-                className="w-full text-left px-3 py-1 hover:bg-muted"
-                onClick={(e) => { e.stopPropagation(); setContextMenu({ visible: false, x: 0, y: 0 }); if (contextMenu.connId && typeof onDisconnect === 'function') onDisconnect(contextMenu.connId) }}
-              >
-                Disconnect
-              </button>
-            </div>
+            <button
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+              onClick={(e) => { e.stopPropagation(); setContextMenu({ visible: false, x: 0, y: 0 }); if (contextMenu.connId && typeof onDisconnect === 'function') onDisconnect(contextMenu.connId) }}
+            >
+              <Unplug className="w-3.5 h-3.5 text-slate-400" />
+              Disconnect
+            </button>
           </div>
         )}
 
@@ -277,27 +348,27 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
           <div
             ref={schemaMenuRef}
             style={{ left: schemaMenu.x, top: schemaMenu.y }}
-            className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-lg shadow-2xl shadow-black/50 py-1 select-none"
+            className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="relative group">
-              <div className="flex items-center justify-between px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/70 cursor-pointer rounded-sm mx-1">
+              <div className="flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white cursor-pointer transition-colors">
                 <span className="flex items-center gap-2">
                   <Database className="w-3.5 h-3.5 text-slate-400" />
                   Tools
                 </span>
-                <ChevronRight className="w-3 h-3 text-slate-500" />
+                <ChevronDown className="w-3 h-3 text-slate-500 -rotate-90" />
               </div>
-              <div className="absolute left-full top-0 ml-0.5 hidden group-hover:block min-w-[140px] bg-slate-900 border border-slate-700/60 rounded-lg shadow-2xl shadow-black/50 py-1">
+              <div className="absolute left-full top-0 ml-1 hidden group-hover:block min-w-[140px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in duration-100">
                 <button
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/70 cursor-pointer rounded-sm"
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
                   onClick={() => handleDumpClick(schemaMenu.conn, schemaMenu.schema)}
                 >
                   <Upload className="w-3.5 h-3.5 text-slate-400" />
                   Dump
                 </button>
                 <button
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/70 cursor-pointer rounded-sm"
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
                   onClick={() => handleRestoreClick(schemaMenu.conn, schemaMenu.schema)}
                 >
                   <Download className="w-3.5 h-3.5 text-slate-400" />
