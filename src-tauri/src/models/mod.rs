@@ -172,6 +172,15 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct DumpSelection {
+    pub tables: Vec<String>,
+    pub views: Vec<String>,
+    pub triggers: Vec<String>,
+    pub procedures: Vec<String>,
+    pub functions: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

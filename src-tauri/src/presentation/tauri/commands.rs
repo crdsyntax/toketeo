@@ -6,6 +6,7 @@ use crate::application::model_generator_service::ModelGeneratorService;
 use crate::error::{AppError, AppResult};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext};
 use crate::state::AppState;
+use std::process::Command;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -38,6 +39,57 @@ pub async fn generate_model(
 ) -> AppResult<String> {
     let columns = ExplorerService::get_columns(&state, &id, &table, schema).await?;
     ModelGeneratorService::generate_model(&framework, &table, &columns)
+}
+
+#[tauri::command]
+pub async fn get_table_sizes(
+    id: String,
+    schema: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<Vec<serde_json::Value>>> {
+    let sizes = ExplorerService::get_table_sizes(&state, &id, &schema).await?;
+    Ok(sizes
+        .into_iter()
+        .map(|(name, size)| {
+            vec![
+                serde_json::Value::String(name),
+                serde_json::Value::Number(serde_json::Number::from(size)),
+            ]
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn open_in_file_manager(
+    path: String,
+) -> AppResult<()> {
+    let parent = std::path::Path::new(&path)
+        .parent()
+        .ok_or_else(|| AppError::Internal("Invalid file path".into()))?;
+
+    let status = {
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("xdg-open").arg(parent).status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open").arg(parent).status()
+        }
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("explorer").arg(parent).status()
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "unsupported platform"))
+        }
+    };
+
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        _ => Err(AppError::Internal("Failed to open file manager".into())),
+    }
 }
 
 #[tauri::command]
@@ -610,4 +662,96 @@ pub async fn get_mongo_structure(
     state: State<'_, AppState>,
 ) -> AppResult<serde_json::Value> {
     ExplorerService::get_mongo_structure(&state, &id).await
+}
+
+#[tauri::command]
+pub async fn dump_schema_dialog(
+    id: String,
+    schema: String,
+    selection: crate::models::DumpSelection,
+    default_file_name: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<Option<serde_json::Value>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Save schema dump")
+        .set_file_name(default_file_name)
+        .add_filter("SQL Files", &["sql"])
+        .add_filter("All Files", &["*"])
+        .blocking_save_file();
+
+    let path = match file_path {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let file_path = path.display().to_string();
+
+    let total_tables = selection.tables.len()
+        + selection.views.len()
+        + selection.triggers.len()
+        + selection.procedures.len()
+        + selection.functions.len();
+
+    ExplorerService::dump_schema(&state, &id, &schema, &selection, &file_path).await?;
+
+    let integrity = ExplorerService::verify_dump_integrity(&file_path, total_tables)?;
+
+    Ok(Some(serde_json::json!({
+        "filePath": file_path,
+        "integrity": integrity,
+    })))
+}
+
+#[tauri::command]
+pub async fn pick_and_parse_dump_file(
+    app_handle: AppHandle,
+) -> AppResult<Option<serde_json::Value>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Select SQL dump file to restore")
+        .add_filter("SQL Files", &["sql"])
+        .add_filter("All Files", &["*"])
+        .blocking_pick_file();
+
+    let path = match file_path {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let file_path_str = path.display().to_string();
+    let content = std::fs::read_to_string(&file_path_str)
+        .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
+
+    let tables = ExplorerService::parse_dump_tables(&content);
+
+    Ok(Some(serde_json::json!({
+        "filePath": file_path_str,
+        "tables": tables,
+    })))
+}
+
+#[tauri::command]
+pub async fn restore_database_selected(
+    id: String,
+    schema: String,
+    file_path: String,
+    tables: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = state.get_connection(&id).await?;
+    if matches!(driver.db_type(), crate::db::DbType::Postgres) {
+        let schema_quoted = format!("\"{}\"", schema);
+        driver.execute(&format!("SET search_path TO {};", schema_quoted)).await?;
+    }
+    drop(driver);
+
+    ExplorerService::restore_database_selected(&state, &id, &file_path, &tables).await
 }

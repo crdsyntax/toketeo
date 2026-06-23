@@ -5,13 +5,15 @@ interface SchemaItemProps {
   conn: Connection
   schema: string
   onSelect: (conn: Connection, schema: string) => void
+  onContextMenu?: (e: React.MouseEvent, conn: Connection, schema: string) => void
 }
 
-export function SchemaItem({ conn, schema, onSelect }: SchemaItemProps) {
+export function SchemaItem({ conn, schema, onSelect, onContextMenu }: SchemaItemProps) {
   return (
     <div 
       className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-accent/10 hover:text-accent transition-colors rounded-sm"
       onDoubleClick={() => onSelect(conn, schema)}
+      onContextMenu={(e) => onContextMenu?.(e, conn, schema)}
       title={schema}
     >
       <Database className="w-3 h-3 text-muted-foreground" />

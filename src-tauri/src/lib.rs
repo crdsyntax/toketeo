@@ -103,6 +103,11 @@ pub fn run() {
             commands::generate_model,
             commands::get_db_type,
             commands::get_mongo_structure,
+            commands::get_table_sizes,
+            commands::open_in_file_manager,
+            commands::dump_schema_dialog,
+            commands::pick_and_parse_dump_file,
+            commands::restore_database_selected,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

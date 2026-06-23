@@ -185,3 +185,29 @@ export interface Connection {
 }
 
 export type CreateConnectionDto = Omit<Connection, 'id' | 'createdAt' | 'updatedAt'>
+
+export interface DumpSelection {
+  tables: string[]
+  views: string[]
+  triggers: string[]
+  procedures: string[]
+  functions: string[]
+}
+
+export interface IntegrityResult {
+  fileSizeBytes: number
+  fileSizeKB: number
+  createStatements: number
+  insertStatements: number
+  totalStatements: number
+  expectedTables: number
+  passed: boolean
+}
+
+export interface DumpObjects {
+  tables: string[]
+  views: string[]
+  triggers: string[]
+  procedures: string[]
+  functions: string[]
+}

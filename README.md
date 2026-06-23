@@ -1,122 +1,185 @@
-# 🔱 TOKETEO - Database Administration Panel
+# 🔱 Toketeo — Gamified Database Administration
 
-Toketeo es un cliente de bases de datos multiplataforma y panel de administración avanzado construido con **NestJS**, **React** y **Electron**. Está diseñado para ofrecer una experiencia fluida, segura y eficiente en la gestión de múltiples motores de bases de datos.
+**Toketeo** is a cross-platform database client built with **Rust + Tauri** and **React**. It turns everyday database administration into an RPG-like progression system — execute queries, earn XP, level up, unlock perks, and complete quests while managing your databases.
 
 ![Toketeo Logo](./frontend/public/logo.svg)
 
-## ✨ Características Principales
-
--   **Soporte Multi-motor**: MariaDB, MySQL, PostgreSQL, MongoDB y SQL Server.
--   **Túneles SSH**: Conexión segura a bases de datos remotas mediante saltos SSH integrados.
--   **Editor SQL Avanzado**: Basado en Monaco Editor (VS Code) con resaltado de sintaxis, autocompletado y múltiples pestañas.
--   **Explorador de Objetos**: Visualización detallada de tablas, vistas, columnas, índices, claves foráneas y DDL.
--   **Exportación**: Descarga de resultados en formato CSV.
--   **Logs en Tiempo Real**: Visualización de eventos del servidor mediante WebSockets.
--   **Auditoría**: Registro automático de acciones de usuario y ejecuciones de consultas.
--   **Multiplataforma**: Instaladores nativos para Linux (.deb) y Windows (.zip portable).
-
 ---
 
-## 🛠️ Arquitectura Técnica
+## 🎮 The Gamification System
 
-### Backend (NestJS)
+Toketeo makes database work feel like a game. Every action awards experience points (XP) that raise your level and unlock new features.
 
-El backend sigue una arquitectura modular y escalable, utilizando el runtime **Bun** para máxima velocidad.
+| Action | XP | Details |
+|--------|----|---------|
+| **Execute SQL** | *Dynamic* (2–150+) | Complex queries (JOINs, CTEs, DDL) earn more XP. First-time queries get a **1.5x bonus**. |
+| **Edit a row** | 10 XP | Direct inline edits in the data browser. |
+| **Export data** | 25 XP | Export results as CSV or JSON. |
+| **Create a connection** | 50 XP | Every new database connection. |
+| **Daily login** | 25–200 XP | Consecutive daily logins award increasing XP (capped at 200). |
 
-#### Módulos Core:
--   **`connection`**: Gestiona las conexiones y el ciclo de vida de los drivers. Implementa un sistema de fábricas para instanciar el driver adecuado según el tipo de BD.
--   **`query`**: Ejecución de consultas asíncronas. Utiliza WebSockets (Socket.io) para manejar consultas pesadas sin bloquear la interfaz.
--   **`schema`**: Extracción de metadatos y generación de DDL.
--   **`auth`**: Seguridad basada en **JWT**. Incluye un flujo de login automático para el entorno de escritorio.
--   **`storage`**: Capa de persistencia local utilizando **SQLite** (vía `@libsql/client`) para guardar conexiones, historial y favoritos.
--   **`logs`**: Sistema de logging global que emite eventos en tiempo real hacia el frontend.
+### 📊 Levels & Ranks
 
-### Frontend (React + Zustand)
-
-Interfaz moderna y reactiva construida con **Tailwind CSS**.
-
--   **Estado Global**: Gestionado con **Zustand**, permitiendo una persistencia selectiva en el almacenamiento local.
--   **Hooks Personalizados**:
-    -   `useQueryEditor`: Lógica compleja para la gestión de pestañas, ejecución de SQL y manejo de resultados.
-    -   `useExplorer`: Orquestación de la navegación por el esquema de la base de datos.
--   **Componentes**: Librería de componentes propia optimizada para una estética "Admin Dashboard" profesional.
-
----
-
-## 🔐 Seguridad y Autenticación
-
-Toketeo utiliza un sistema de **JWT (JSON Web Tokens)**. En la versión de escritorio, se ha implementado un `AuthProvider` que realiza un login automático silencioso al iniciar la aplicación, garantizando que todas las peticiones a la API estén firmadas sin requerir intervención manual del usuario local.
-
----
-
-## 🚀 Instalación y Desarrollo
-
-### Requisitos
--   [Bun](https://bun.sh/) (Runtime de JavaScript recomendado)
-
-### Pasos
-1.  **Clonar el repositorio**:
-    ```bash
-    git clone https://github.com/crdsyntax/toketeo.git
-    cd toketeo
-    ```
-2.  **Configurar variables de entorno**:
-    Crea un archivo `.env` en la raíz (usa como base el ejemplo):
-    ```env
-    PORT=3000
-    JWT_SECRET=tu-secreto-seguro
-    ```
-3.  **Instalar dependencias**:
-    ```bash
-    bun install
-    cd frontend && bun install && cd ..
-    ```
-4.  **Ejecutar en modo desarrollo**:
-    ```bash
-    bun run electron:dev
-    ```
-
----
-
-## 📦 Compilación y Empaquetado
-
-Toketeo utiliza `electron-builder` para generar binarios de producción.
-
-### Linux (.deb)
-```bash
-bun run electron:pack
 ```
-El instalador se generará en `dist-electron/`.
-
-### Windows (.zip portable)
-```bash
-bun run electron:pack:win
+Level 1–4     Data Novice
+Level 5–9     Query Scrapper
+Level 10–14   Schema Explorer
+Level 15–19   Query Knight
+Level 20–29   Database Artisan
+Level 30–39   Query Architect
+Level 40–49   Data Wizard
+Level 50–74   DBA Overlord
+Level 75–99   Grandmaster of Data
+Level 100+    God of Data
 ```
-El archivo comprimido se generará en `dist-electron/`.
+
+The XP curve is exponential — early levels fly by, but reaching the endgame requires dedication.
+
+### 🎯 Quests
+
+21 missions across 5 categories track your progress and award bonus XP on completion:
+
+- Execute queries (1 → 10,000)
+- Edit rows (1 → 1,000)
+- Create connections (1 → 10)
+- Export data (1 → 200)
+- Daily logins (1 → 365)
+
+### 🔓 Unlockable Perks
+
+Level up to unlock features permanently:
+
+| Perk | Unlocks At |
+|------|-----------|
+| Advanced Theming | Level 5 |
+| AI Query Assistant | Level 10 |
+| Data Visualizer | Level 15 |
+| Query Scheduler | Level 20 |
+| Cross-DB Sync | Level 30 |
 
 ---
 
-## 📁 Estructura del Proyecto
+## ✨ Core Features
 
-```text
+- **Multi-engine support** — MariaDB, MySQL, PostgreSQL, MongoDB, SQL Server
+- **SSH Tunnels** — Secure connections via SSH jump hosts
+- **Monaco SQL Editor** — Full-featured editor with syntax highlighting, autocompletion, multi-tab
+- **Object Explorer** — Browse tables, views, columns, indexes, foreign keys, DDL generation
+- **Dump & Restore** — Select specific objects (tables, views, triggers, procedures, functions) via tabbed UI, run integrity checks after dump, open file location straight from the toast
+- **Export** — Download query results as CSV or JSON
+- **Real-time Logs** — WebSocket-powered server event streaming
+- **Audit Trail** — Automatic logging of user actions and query execution
+- **Cross-platform** — Native installers for Linux (.deb, .AppImage) and Windows (.zip portable)
+
+---
+
+## 🏗️ Architecture
+
+### Backend (Rust)
+
+The desktop backend runs as a **Tauri** application written in Rust.
+
+```
+src-tauri/src/
+├── application/explorer_service.rs   # Dump, restore, table sizes, integrity, SQL parsing
+├── presentation/tauri/commands.rs    # Tauri IPC commands
+├── models/                           # Shared structs (DumpSelection, etc.)
+├── lib.rs                            # Plugin registration, invoke_handler
+└── main.rs                           # Entry point
+```
+
+The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgres` / `mysql` / `sqlx` for database connectivity. Dump operations generate full DDL + data for tables and DDL-only for views, triggers, procedures, and functions.
+
+### Frontend (React + TypeScript)
+
+```
+frontend/src/
+├── components/         # UI components
+│   ├── connections/    # Connection tree, DumpRestoreModal
+│   ├── gamification/   # LevelBadge, GamificationModal
+│   └── query/          # SQL editor, results grid
+├── store/              # Zustand stores (gamification, connections, etc.)
+├── hooks/              # Custom hooks (useQueryEditor, etc.)
+├── services/           # Tauri IPC service wrappers
+├── lib/                # Gamification core (config, missions, unlocks)
+└── types/              # TypeScript type definitions
+```
+
+State management uses **Zustand** with persistence (localStorage). The gamification store saves XP, level, quest progress, unlocked perks, and query hashes across sessions.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- [Bun](https://bun.sh/) (JavaScript runtime)
+- [Rust](https://rustup.rs/) (stable toolchain)
+
+### Setup
+
+```bash
+git clone https://github.com/crdsyntax/toketeo.git
+cd toketeo
+
+# Install backend & frontend dependencies
+bun install
+cd frontend && bun install && cd ..
+cd src-tauri && cargo check && cd ..
+```
+
+### Development
+
+```bash
+bun run tauri:dev
+```
+
+This starts the Vite dev server and launches the Tauri window with hot-reload.
+
+---
+
+## 📦 Building for Production
+
+### Linux
+
+```bash
+bun run tauri:build
+```
+
+Artifacts are generated in `src-tauri/target/release/bundle/`.
+
+### Windows
+
+```bash
+bun run tauri:build -- --target x86_64-pc-windows-msvc
+```
+
+---
+
+## 📁 Project Structure
+
+```
 toketeo/
-├── electron/          # Código del proceso principal de Electron
-├── frontend/          # Aplicación React (Vite)
-│   ├── src/
-│   │   ├── components/ # Componentes UI reutilizables
-│   │   ├── hooks/      # Lógica de negocio en React
-│   │   ├── store/      # Estado global (Zustand)
-│   │   └── types/      # Definiciones de TypeScript
-├── src/               # Backend NestJS
-│   ├── connection/    # Drivers y gestión de BD
-│   ├── query/         # Ejecución de SQL y Gateways
-│   ├── modules/       # Capa de almacenamiento local
-│   └── main.ts        # Punto de entrada del servidor
-├── package.json       # Scripts y dependencias
-└── README.md          # Esta documentación
+├── src-tauri/              # Rust/Tauri backend
+│   └── src/
+│       ├── application/    # Business logic (dump, restore, integrity)
+│       ├── presentation/   # Tauri commands
+│       ├── models/         # Data structures
+│       ├── lib.rs          # Plugin & command registration
+│       └── main.rs         # App entry point
+├── frontend/               # React + Vite app
+│   └── src/
+│       ├── components/     # React components
+│       ├── store/          # Zustand state stores
+│       ├── hooks/          # Custom React hooks
+│       ├── services/       # Tauri IPC wrappers (schema.service.ts, etc.)
+│       └── lib/            # Gamification engine
+├── package.json            # Root scripts
+└── README.md               # You are here
 ```
 
 ---
 
-## ✒️ Autor
-**crdsyntax** - *Desarrollo Integral* - [GitHub](https://github.com/crdsyntax)
+## ✒️ Author
+
+**crdsyntax** — *Full-stack development* — [GitHub](https://github.com/crdsyntax)

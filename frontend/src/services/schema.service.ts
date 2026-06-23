@@ -7,6 +7,8 @@ import type {
   ConstraintResponse,
   ParameterResponse,
   QueryResult,
+  DumpSelection,
+  DumpObjects,
 } from '@/types/database'
 
 export const schemaService = {
@@ -154,5 +156,47 @@ executeExplorer: async (payload: {
 
   getDbType: async (id: string): Promise<string> => {
     return await tauriApi.invoke<string>('get_db_type', { id })
+  },
+
+  getDumpObjects: async (id: string, schema: string): Promise<DumpObjects> => {
+    const [tables, views, triggers, procedures, functions] = await Promise.all([
+      tauriApi.invoke<string[]>('get_tables', { id, schema }),
+      tauriApi.invoke<string[]>('get_views', { id, schema }),
+      tauriApi.invoke<string[]>('get_triggers', { id, schema }),
+      tauriApi.invoke<string[]>('get_procedures', { id, schema }),
+      tauriApi.invoke<string[]>('get_functions', { id, schema }),
+    ])
+    return { tables, views, triggers, procedures, functions }
+  },
+
+  getTableSizes: async (id: string, schema: string): Promise<Record<string, number>> => {
+    const rows = await tauriApi.invoke<[string, number][]>('get_table_sizes', { id, schema })
+    return Object.fromEntries(rows)
+  },
+
+  openInFileManager: async (path: string): Promise<void> => {
+    return await tauriApi.invoke<void>('open_in_file_manager', { path })
+  },
+
+  dumpSchema: async (id: string, schema: string, selection: DumpSelection): Promise<{ filePath: string; integrity: IntegrityResult } | null> => {
+    return await tauriApi.invoke<{ filePath: string; integrity: IntegrityResult } | null>('dump_schema_dialog', {
+      id,
+      schema,
+      selection,
+      defaultFileName: `${schema}.sql`,
+    })
+  },
+
+  pickAndParseDumpFile: async (): Promise<{ filePath: string; tables: string[] } | null> => {
+    return await tauriApi.invoke<{ filePath: string; tables: string[] } | null>('pick_and_parse_dump_file')
+  },
+
+  restoreSchemaSelected: async (id: string, schema: string, filePath: string, tables: string[]): Promise<void> => {
+    return await tauriApi.invoke<void>('restore_database_selected', {
+      id,
+      schema,
+      filePath,
+      tables,
+    })
   },
 }

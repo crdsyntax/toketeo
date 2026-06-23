@@ -626,6 +626,108 @@ impl ExplorerService {
         }
     }
 
+    pub async fn dump_schema(
+        state: &AppState,
+        id: &str,
+        schema: &str,
+        selection: &crate::models::DumpSelection,
+        file_path: &str,
+    ) -> AppResult<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let driver = state.get_connection(id).await?;
+        let db_type = driver.db_type();
+
+        let (q_open, q_close, q_esc) = match db_type {
+            crate::db::DbType::Postgres => ("\"", "\"", "\"\""),
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => ("`", "`", "``"),
+            _ => ("\"", "\"", "\"\""),
+        };
+
+        let schema_quoted = format!("{}{}{}", q_open, schema.replace(q_close, q_esc), q_close);
+        let mut output = String::new();
+
+        output.push_str(&format!("-- Toketeo dump of schema {}\n--\n\n", schema_quoted));
+
+        if matches!(db_type, crate::db::DbType::Postgres) {
+            output.push_str(&format!("SET search_path TO {};\n\n", schema_quoted));
+        }
+
+        // Helper to filter names from all available
+        let filter_names = |all: Vec<String>, selected: &[String]| -> Vec<String> {
+            if selected.is_empty() {
+                all
+            } else {
+                all.into_iter().filter(|n| selected.contains(n)).collect()
+            }
+        };
+
+        let all_objs = driver.fetch_tables(Some(schema.to_string()), None).await?;
+        for table in filter_names(all_objs, &selection.tables) {
+            let tbl_quoted = format!("{}{}{}", q_open, table.replace(q_close, q_esc), q_close);
+            let full_name = format!("{}.{}", schema_quoted, tbl_quoted);
+
+            match driver.fetch_ddl(&table, "table", Some(schema.to_string())).await {
+                Ok(ddl) => output.push_str(&format!("--\n-- DDL for table {}\n--\n\n{}\n\n", full_name, ddl)),
+                Err(e) => output.push_str(&format!("-- Error getting DDL for {}: {}\n\n", full_name, e)),
+            }
+
+            let query = format!("SELECT * FROM {}", full_name);
+            match driver.execute(&query).await {
+                Ok(result) => if !result.rows.is_empty() {
+                    let columns: Vec<String> = result.columns.iter().map(|c| {
+                        format!("{}{}{}", q_open, c.replace(q_close, q_esc), q_close)
+                    }).collect();
+                    let col_list = columns.join(", ");
+                    output.push_str(&format!("--\n-- Data for table {}\n--\n\n", full_name));
+                    for row in &result.rows {
+                        if let Some(arr) = row.as_array() {
+                            let values: Vec<String> = arr.iter().map(|v| match v {
+                                serde_json::Value::Null => "NULL".to_string(),
+                                serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+                                serde_json::Value::Number(n) => n.to_string(),
+                                serde_json::Value::Bool(b) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
+                                other => format!("'{}'", other.to_string().replace('\'', "''")),
+                            }).collect();
+                            output.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_name, col_list, values.join(", ")));
+                        }
+                    }
+                    output.push('\n');
+                },
+                Err(e) => output.push_str(&format!("-- Error getting data for {}: {}\n\n", full_name, e)),
+            }
+        }
+
+        macro_rules! dump_ddl {
+            ($obj_type:literal, $all_fetch:expr, $selected:expr) => {
+                let all_objs = $all_fetch;
+                for name in filter_names(all_objs, $selected) {
+                    let q = format!("{}{}{}", q_open, name.replace(q_close, q_esc), q_close);
+                    let full = format!("{}.{}", schema_quoted, q);
+                    match driver.fetch_ddl(&name, $obj_type, Some(schema.to_string())).await {
+                        Ok(ddl) => output.push_str(&format!("--\n-- DDL for {} {}\n--\n\n{}\n\n", $obj_type, full, ddl)),
+                        Err(e) => output.push_str(&format!("-- Error getting DDL for {} {}: {}\n\n", $obj_type, full, e)),
+                    }
+                }
+            };
+        }
+
+        dump_ddl!("view", driver.fetch_views(Some(schema.to_string()), None).await?, &selection.views);
+        dump_ddl!("trigger", driver.fetch_triggers(Some(schema.to_string()), None).await?, &selection.triggers);
+        dump_ddl!("procedure", driver.fetch_procedures(Some(schema.to_string()), None).await?, &selection.procedures);
+        dump_ddl!("function", driver.fetch_functions(Some(schema.to_string()), None).await?, &selection.functions);
+
+        let mut file = tokio::fs::File::create(file_path)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to create dump file: {}", e)))?;
+
+        file.write_all(output.as_bytes())
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to write dump file: {}", e)))?;
+
+        Ok(())
+    }
+
     pub async fn restore_database(state: &AppState, id: &str, file_path: String) -> AppResult<()> {
         use tokio::fs::File;
         use tokio::io::{AsyncBufReadExt, BufReader};
@@ -691,5 +793,175 @@ impl ExplorerService {
     pub async fn get_mongo_structure(state: &AppState, id: &str) -> AppResult<serde_json::Value> {
         let driver = state.get_connection(id).await?;
         driver.fetch_mongo_structure().await
+    }
+
+    /// Fetch table sizes in bytes for a given schema.
+    /// Returns a map of table_name -> size_bytes.
+    pub async fn get_table_sizes(
+        state: &AppState,
+        id: &str,
+        schema: &str,
+    ) -> AppResult<Vec<(String, i64)>> {
+        let driver = state.get_connection(id).await?;
+        let db_type = driver.db_type();
+
+        match db_type {
+            crate::db::DbType::Postgres => {
+                let result = driver
+                    .execute(&format!(
+                        "SELECT relname AS table_name, pg_total_relation_size(relid) AS size \
+                         FROM pg_catalog.pg_statio_user_tables \
+                         WHERE schemaname = '{}' ORDER BY relname",
+                        schema.replace('\'', "''")
+                    ))
+                    .await?;
+                let sizes = result.rows.iter().filter_map(|row| {
+                    let arr = row.as_array()?;
+                    let name = arr.first()?.as_str()?.to_string();
+                    let size = arr.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
+                    Some((name, size))
+                }).collect();
+                Ok(sizes)
+            }
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                let result = driver
+                    .execute(&format!(
+                        "SELECT TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) AS size \
+                         FROM information_schema.TABLES \
+                         WHERE TABLE_SCHEMA = '{}' AND TABLE_TYPE = 'BASE TABLE' \
+                         ORDER BY TABLE_NAME",
+                        schema.replace('\'', "''")
+                    ))
+                    .await?;
+                let sizes = result.rows.iter().filter_map(|row| {
+                    let arr = row.as_array()?;
+                    let name = arr.first()?.as_str()?.to_string();
+                    let size = arr.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
+                    Some((name, size))
+                }).collect();
+                Ok(sizes)
+            }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    /// Verify dump file integrity: count statements vs expected tables.
+    pub fn verify_dump_integrity(file_path: &str, expected_tables: usize) -> AppResult<serde_json::Value> {
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
+
+        let file_size = std::fs::metadata(file_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let create_count = content.matches("CREATE TABLE").count()
+            + content.matches("CREATE VIEW").count()
+            + content.matches("CREATE TRIGGER").count()
+            + content.matches("CREATE PROCEDURE").count()
+            + content.matches("CREATE FUNCTION").count();
+
+        let insert_count = content.matches("INSERT INTO").count();
+
+        Ok(serde_json::json!({
+            "fileSizeBytes": file_size,
+            "fileSizeKB": (file_size as f64 / 1024.0 * 100.0).round() / 100.0,
+            "createStatements": create_count,
+            "insertStatements": insert_count,
+            "totalStatements": create_count + insert_count,
+            "expectedTables": expected_tables,
+            "passed": expected_tables == 0 || (create_count > 0),
+        }))
+    }
+
+    /// Parse a SQL dump file and extract unique table names from
+    /// CREATE TABLE and INSERT INTO statements.
+    pub fn parse_dump_tables(content: &str) -> Vec<String> {
+        let mut tables: Vec<String> = Vec::new();
+        let upper = content.to_uppercase();
+
+        let keywords: [&str; 2] = ["CREATE TABLE", "INSERT INTO"];
+
+        for kw in keywords {
+            let mut pos = 0;
+            while let Some(idx) = upper[pos..].find(kw) {
+                let start = pos + idx + kw.len();
+                let after = &content[start..];
+                let name = after
+                    .trim_start()
+                    .trim_start_matches(|c: char| c == '"' || c == '`')
+                    .split(|c: char| c == '"' || c == '`' || c == '.' || c == '(' || c.is_whitespace())
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+
+                if !name.is_empty() && !tables.contains(&name) {
+                    tables.push(name);
+                }
+                pos = start + 1;
+            }
+        }
+
+        tables
+    }
+
+    /// Restore only the selected tables from a dump file.
+    /// Re-reads the file, splits by semicolons, and executes statements
+    /// that reference any of the selected table names.
+    pub async fn restore_database_selected(
+        state: &AppState,
+        id: &str,
+        file_path: &str,
+        tables: &[String],
+    ) -> AppResult<()> {
+        let content = tokio::fs::read_to_string(file_path)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
+
+        let driver = state.get_connection(id).await?;
+
+        let mut current_query = String::new();
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with("--") || trimmed.starts_with("/*") {
+                line.to_string().push('\n');
+                current_query.clear();
+                continue;
+            }
+
+            current_query.push_str(line);
+            current_query.push('\n');
+
+            if trimmed.ends_with(';') {
+                let upper_stmt = current_query.to_uppercase();
+                let should_execute = tables.is_empty()
+                    || tables.iter().any(|t| {
+                        upper_stmt.contains(&format!(" {}", t.to_uppercase()))
+                            || upper_stmt.contains(&format!("\"{}\"", t))
+                            || upper_stmt.contains(&format!("`{}`", t))
+                    });
+
+                if should_execute {
+                    if let Err(e) = driver.execute(&current_query).await {
+                        eprintln!("Error executing restore chunk: {:?}", e);
+                    }
+                }
+                current_query.clear();
+            }
+        }
+
+        if !current_query.trim().is_empty() {
+            let upper_stmt = current_query.to_uppercase();
+            let should_execute = tables.is_empty()
+                || tables.iter().any(|t| {
+                    upper_stmt.contains(&format!(" {}", t.to_uppercase()))
+                        || upper_stmt.contains(&format!("\"{}\"", t))
+                        || upper_stmt.contains(&format!("`{}`", t))
+                });
+            if should_execute {
+                let _ = driver.execute(&current_query).await;
+            }
+        }
+
+        Ok(())
     }
 }

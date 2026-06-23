@@ -1,13 +1,15 @@
-import { Plus, Edit2, Globe, Shield, ChevronDown} from 'lucide-react'
+import { Plus, Edit2, Globe, Shield, ChevronDown, ChevronRight, Database, Upload, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Connection } from '@/types/database'
-import { useState } from 'react'
+import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
 import { DatabaseItem } from './DatabaseItem'
 import { SchemaItem } from './SchemaItem'
+import { DumpRestoreModal } from './DumpRestoreModal'
+import toast from 'react-hot-toast'
 
 interface ConnectionsSidebarProps {
   connections: Connection[]
@@ -18,7 +20,7 @@ interface ConnectionsSidebarProps {
   onDisconnect?: (id: string) => void
 }
 
-function PostgresContent({ conn, onSelect }: { conn: Connection, onSelect: (c: Connection, s: string) => void }) {
+function PostgresContent({ conn, onSelect, onSchemaContextMenu }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void }) {
   const { data: databases = [] } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
@@ -28,13 +30,13 @@ function PostgresContent({ conn, onSelect }: { conn: Connection, onSelect: (c: C
   return (
     <>
       {databases.map((db) => (
-        <DatabaseItem key={db} conn={conn} dbName={db} onSelect={onSelect} />
+        <DatabaseItem key={db} conn={conn} dbName={db} onSelect={onSelect} onSchemaContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
 }
 
-function SchemaContent({ conn, onSelect }: { conn: Connection, onSelect: (c: Connection, s: string) => void }) {
+function SchemaContent({ conn, onSelect, onSchemaContextMenu }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void }) {
   const { data: schemas = [] } = useQuery({
     queryKey: ['schemas', conn.id],
     queryFn: () => schemaService.getSchemas(conn.id),
@@ -44,7 +46,7 @@ function SchemaContent({ conn, onSelect }: { conn: Connection, onSelect: (c: Con
   return (
     <>
       {schemas.map((s) => (
-        <SchemaItem key={s} conn={conn} schema={s} onSelect={onSelect} />
+        <SchemaItem key={s} conn={conn} schema={s} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
@@ -54,6 +56,20 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, connId?: string }>({ visible: false, x: 0, y: 0 })
+  const [schemaMenu, setSchemaMenu] = useState<{
+    x: number
+    y: number
+    conn: Connection
+    schema: string
+  } | null>(null)
+  const schemaMenuRef = useRef<HTMLDivElement>(null)
+  const [tableSelection, setTableSelection] = useState<{
+    mode: 'dump' | 'restore'
+    conn: Connection
+    schema: string
+    objects: DumpObjects
+    filePath?: string
+  } | null>(null)
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase } = useAppStore()
   const navigate = useNavigate()
@@ -72,6 +88,83 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
       navigate('/explorer')
     }
   })
+
+  const handleDumpClick = async (conn: Connection, schema: string) => {
+    setSchemaMenu(null)
+    try {
+      const objects = await schemaService.getDumpObjects(conn.id, schema)
+      setTableSelection({ mode: 'dump', conn, schema, objects })
+    } catch (e) {
+      toast.error(`Failed to fetch objects: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleRestoreClick = async (conn: Connection, schema: string) => {
+    setSchemaMenu(null)
+    try {
+      const result = await schemaService.pickAndParseDumpFile()
+      if (result) {
+        setTableSelection({
+          mode: 'restore',
+          conn,
+          schema,
+          filePath: result.filePath,
+          objects: { tables: result.tables, views: [], triggers: [], procedures: [], functions: [] },
+        })
+      }
+    } catch (e) {
+      toast.error(`Failed to pick dump file: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleDumpStart = async (selection: DumpSelection) => {
+    if (!tableSelection) return
+    try {
+      const result = await schemaService.dumpSchema(tableSelection.conn.id, tableSelection.schema, selection)
+      if (result) {
+        return { filePath: result.filePath, integrity: result.integrity }
+      }
+    } catch (e) {
+      toast.error(`Dump failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      setTableSelection(null)
+    }
+  }
+
+  const handleRestoreStart = async (selection: DumpSelection) => {
+    if (!tableSelection || !tableSelection.filePath) return
+    const selectedTables = selection.tables
+    if (selectedTables.length === 0) return
+    try {
+      await schemaService.restoreSchemaSelected(tableSelection.conn.id, tableSelection.schema, tableSelection.filePath, selectedTables)
+      toast.success(`Schema "${tableSelection.schema}" restored successfully`)
+      setTableSelection(null)
+    } catch (e) {
+      toast.error(`Restore failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleSchemaContextMenu = (e: React.MouseEvent, conn: Connection, schema: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSchemaMenu({ x: e.clientX, y: e.clientY, conn, schema })
+  }
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (schemaMenuRef.current && !schemaMenuRef.current.contains(e.target as Node)) {
+        setSchemaMenu(null)
+      }
+    }
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSchemaMenu(null)
+    }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('keydown', keyHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', keyHandler)
+    }
+  }, [])
 
   const handleSchemaDoubleClick = async (conn: Connection, schema: string) => {
     if (activeConnection?.id !== conn.id) {
@@ -154,9 +247,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               <div className="pb-2 px-2 animate-in slide-in-from-top-1 duration-200">
                 <div className="pl-3 ml-1 border-l border-border/50 space-y-0.5">
                   {conn.type === 'postgres' ? (
-                    <PostgresContent conn={conn} onSelect={handleSchemaDoubleClick} />
+                    <PostgresContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} />
                   ) : (
-                    <SchemaContent conn={conn} onSelect={handleSchemaDoubleClick} />
+                    <SchemaContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} />
                   )}
                 </div>
               </div>
@@ -178,6 +271,63 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               </button>
             </div>
           </div>
+        )}
+
+        {schemaMenu && (
+          <div
+            ref={schemaMenuRef}
+            style={{ left: schemaMenu.x, top: schemaMenu.y }}
+            className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-lg shadow-2xl shadow-black/50 py-1 select-none"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="relative group">
+              <div className="flex items-center justify-between px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/70 cursor-pointer rounded-sm mx-1">
+                <span className="flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5 text-slate-400" />
+                  Tools
+                </span>
+                <ChevronRight className="w-3 h-3 text-slate-500" />
+              </div>
+              <div className="absolute left-full top-0 ml-0.5 hidden group-hover:block min-w-[140px] bg-slate-900 border border-slate-700/60 rounded-lg shadow-2xl shadow-black/50 py-1">
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/70 cursor-pointer rounded-sm"
+                  onClick={() => handleDumpClick(schemaMenu.conn, schemaMenu.schema)}
+                >
+                  <Upload className="w-3.5 h-3.5 text-slate-400" />
+                  Dump
+                </button>
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/70 cursor-pointer rounded-sm"
+                  onClick={() => handleRestoreClick(schemaMenu.conn, schemaMenu.schema)}
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-400" />
+                  Restore
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tableSelection && tableSelection.mode === 'dump' && (
+          <DumpRestoreModal
+            mode="dump"
+            schema={tableSelection.schema}
+            connId={tableSelection.conn.id}
+            objects={tableSelection.objects}
+            onStart={handleDumpStart}
+            onClose={() => setTableSelection(null)}
+          />
+        )}
+
+        {tableSelection && tableSelection.mode === 'restore' && (
+          <DumpRestoreModal
+            mode="restore"
+            schema={tableSelection.schema}
+            connId={tableSelection.conn.id}
+            objects={tableSelection.objects}
+            onStart={handleRestoreStart}
+            onClose={() => setTableSelection(null)}
+          />
         )}
       </div>
     </div>
