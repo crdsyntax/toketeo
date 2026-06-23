@@ -506,7 +506,7 @@ export function DataTab({
                     onClick={() => setSelectedRowIndex(i)}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      setContextMenu({ x: e.pageX, y: e.pageY, row });
+                      setContextMenu({ x: e.pageX, y: e.pageY, row, rowIndex: i });
                     }}
                   >
                     <td className="p-2 border-r cursor-pointer border-border text-center text-muted-foreground font-mono">

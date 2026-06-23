@@ -271,7 +271,7 @@ export function useQueryEditor() {
         addQueryHistory(histEntry);
       }
     }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
     if (!editorRef.current || !activeTab || !activeConnection) return
@@ -368,7 +368,7 @@ export function useQueryEditor() {
         error: message
       })
     }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction])
 
   // Use refs to avoid stale closures in Monaco addCommand
   const executeCurrentRef = useRef(handleExecuteCurrent)
@@ -507,7 +507,7 @@ export function useQueryEditor() {
     }
     
     setEditingCell(null)
-  }, [activeTab, activeConnection, connections, updateTabResults])
+  }, [activeTab, activeConnection, connections, updateTabResults, addXP, trackAction])
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return

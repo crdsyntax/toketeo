@@ -10,6 +10,7 @@ import type {
   DumpSelection,
   DumpObjects,
   SchemaDiagramData,
+  IntegrityResult,
 } from '@/types/database'
 
 export const schemaService = {

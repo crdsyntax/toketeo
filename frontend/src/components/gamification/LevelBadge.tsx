@@ -5,6 +5,12 @@ import { cn } from '@/lib/utils';
 import { Trophy, Flame } from 'lucide-react';
 import { WizardPixelArt } from './WizardPixelArt';
 
+interface LevelBadgeProps {
+  className?: string;
+  onClick?: () => void;
+  collapsed?: boolean;
+}
+
 export function LevelBadge({ className, onClick, collapsed }: LevelBadgeProps) {
   const { level, xp, streak } = useGamificationStore();
   
