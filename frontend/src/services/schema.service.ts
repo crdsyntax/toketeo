@@ -9,6 +9,7 @@ import type {
   QueryResult,
   DumpSelection,
   DumpObjects,
+  SchemaDiagramData,
 } from '@/types/database'
 
 export const schemaService = {
@@ -156,6 +157,10 @@ executeExplorer: async (payload: {
 
   getDbType: async (id: string): Promise<string> => {
     return await tauriApi.invoke<string>('get_db_type', { id })
+  },
+
+  getSchemaDiagramData: async (id: string, schema: string, tableNames: string[]): Promise<SchemaDiagramData> => {
+    return await tauriApi.invoke<SchemaDiagramData>('get_schema_diagram_data', { id, schema, tableNames })
   },
 
   getDumpObjects: async (id: string, schema: string): Promise<DumpObjects> => {

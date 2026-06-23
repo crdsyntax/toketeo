@@ -708,6 +708,16 @@ pub async fn dump_schema_dialog(
 }
 
 #[tauri::command]
+pub async fn get_schema_diagram_data(
+    id: String,
+    schema: String,
+    table_names: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<serde_json::Value> {
+    ExplorerService::get_schema_diagram_data(&state, &id, &schema, table_names).await
+}
+
+#[tauri::command]
 pub async fn pick_and_parse_dump_file(
     app_handle: AppHandle,
 ) -> AppResult<Option<serde_json::Value>> {

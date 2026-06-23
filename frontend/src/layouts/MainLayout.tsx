@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen, CheckCircle, RotateCcw, AlertTriangle } from 'lucide-react'
+import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen, CheckCircle, RotateCcw, AlertTriangle, GitBranch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
@@ -127,6 +127,7 @@ export default function MainLayout() {
 
   const navItems = [
     { name: 'Explorer', icon: LayoutGrid, path: '/explorer' },
+    { name: 'Diagram', icon: GitBranch, path: '/diagram' },
     { name: 'Query Editor', icon: Terminal, path: '/query' },
     { name: 'Audit', icon: FileText, path: '/audit' },
   ]

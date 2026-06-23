@@ -104,6 +104,7 @@ pub fn run() {
             commands::get_db_type,
             commands::get_mongo_structure,
             commands::get_table_sizes,
+            commands::get_schema_diagram_data,
             commands::open_in_file_manager,
             commands::dump_schema_dialog,
             commands::pick_and_parse_dump_file,

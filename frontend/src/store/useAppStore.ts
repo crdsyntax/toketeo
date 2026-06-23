@@ -258,6 +258,16 @@ export const useAppStore = create<AppState>()(
         ),
         queryHistory: state.queryHistory,
       }),
+      version: 1,
+      migrate: (persisted: Record<string, unknown> & { version?: number }) => {
+        if (persisted.version === undefined || persisted.version < 1) {
+          const explorer = persisted.explorer as { sidebarTab?: string } | undefined
+          if (explorer && !Object.values(SidebarTab).includes(explorer.sidebarTab as SidebarTab)) {
+            explorer.sidebarTab = SidebarTab.TABLES
+          }
+        }
+        return persisted as AppState
+      },
     },
   ),
 )

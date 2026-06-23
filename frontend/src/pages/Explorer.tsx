@@ -66,7 +66,7 @@ export default function Explorer() {
     explorerTabs,
     activeExplorerTabId,
     removeExplorerTab,
-    setExplorerState
+    setExplorerState,
   } = useExplorer()
 
   if (!activeConnection) {

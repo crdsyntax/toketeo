@@ -49,6 +49,7 @@ export function Sidebar({
       case SidebarTab.PROCEDURES: return 'Procedures'
       case SidebarTab.TRIGGERS: return 'Triggers'
       case SidebarTab.FUNCTIONS: return 'Functions'
+      default: return 'Tables'
     }
   }
 
@@ -60,6 +61,7 @@ export function Sidebar({
       case SidebarTab.PROCEDURES: return Terminal
       case SidebarTab.TRIGGERS: return Zap
       case SidebarTab.FUNCTIONS: return Binary
+      default: return Table2
     }
   }
 

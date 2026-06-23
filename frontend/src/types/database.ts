@@ -211,3 +211,15 @@ export interface DumpObjects {
   procedures: string[]
   functions: string[]
 }
+
+export type EdgeCardinality = '1:1' | '1:N' | 'N:M'
+
+export interface DiagramTable {
+  name: string
+  columns: ColumnResponse[]
+  foreign_keys: ForeignKeyResponse[]
+}
+
+export interface SchemaDiagramData {
+  tables: DiagramTable[]
+}

@@ -795,6 +795,33 @@ impl ExplorerService {
         driver.fetch_mongo_structure().await
     }
 
+    /// Fetch metadata for selected tables in a schema diagram.
+    /// Only fetches columns + foreign keys for the specified table names.
+    /// Returns tables with columns + foreign keys.
+    pub async fn get_schema_diagram_data(
+        state: &AppState,
+        id: &str,
+        schema: &str,
+        table_names: Vec<String>,
+    ) -> AppResult<serde_json::Value> {
+        let mut tables_data = Vec::with_capacity(table_names.len());
+        for name in &table_names {
+            let (columns, foreign_keys) = tokio::join!(
+                Self::get_columns(state, id, name, Some(schema.to_string())),
+                Self::get_foreign_keys(state, id, name, Some(schema.to_string())),
+            );
+            tables_data.push(serde_json::json!({
+                "name": name,
+                "columns": columns.unwrap_or_default(),
+                "foreign_keys": foreign_keys.unwrap_or_default(),
+            }));
+        }
+
+        Ok(serde_json::json!({
+            "tables": tables_data,
+        }))
+    }
+
     /// Fetch table sizes in bytes for a given schema.
     /// Returns a map of table_name -> size_bytes.
     pub async fn get_table_sizes(
