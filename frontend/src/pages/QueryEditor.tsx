@@ -1,4 +1,4 @@
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Sparkles, X } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -8,6 +8,8 @@ import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
+import { AIAssistantPanel } from '@/components/query/panels/AIAssistantPanel';
+import { FeatureGate } from '@/components/gamification/FeatureGate';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef, useState } from 'react';
 import { ExecutionStatus, Environment } from '@/types/database';
@@ -15,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { connectionService } from '@/services/connection.service';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'react-hot-toast';
+import { cn } from '@/lib/utils';
 
 export default function QueryEditor() {
   const { data: connections = [] } = useQuery({
@@ -77,6 +80,7 @@ export default function QueryEditor() {
   } = useQueryEditor()
 
   const [showHistory, setShowHistory] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
@@ -276,6 +280,19 @@ export default function QueryEditor() {
         togglePanel={togglePanel}
       />
 
+      <button
+        onClick={() => setShowAI((v) => !v)}
+        className={cn(
+          "absolute bottom-4 right-4 z-50 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all",
+          showAI
+            ? "bg-primary text-primary-foreground"
+            : "bg-card text-muted-foreground hover:text-foreground border border-border"
+        )}
+        title="AI Assistant"
+      >
+        <Sparkles className="w-5 h-5" />
+      </button>
+
       <EditorTabs 
         tabs={tabs}
         activeTabId={activeTabId}
@@ -286,61 +303,85 @@ export default function QueryEditor() {
         activeConnection={activeConnection}
       />
 
-      <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {panels.editor && (
-          <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px] flex flex-col">
-            {isMongo && activeTab && (
-              <MongoFilterBar
-                filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
-                onChange={(f) => updateTabMongoFilter(activeTab.id, f)}
-                onExecute={() => handleExecuteAll()}
-              />
-            )}
-            {(() => {
-              const targetConnectionId = activeTab?.connectionId || activeConnection.id;
-              const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
-              return (
-                <SqlEditorPanel 
-                  activeTab={activeTab}
-                  onToggle={() => togglePanel('editor')}
-                  updateTabQuery={updateTabQuery}
-                  handleEditorWillMount={handleEditorWillMount}
-                  handleEditorDidMount={handleEditorDidMount}
-                  connectionName={targetConnection.name}
-                  connectionType={targetConnection.type}
-                  updateTabViewState={updateTabViewState}
+      <div className="flex-1 flex min-h-0">
+        <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {panels.editor && (
+            <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px] flex flex-col">
+              {isMongo && activeTab && (
+                <MongoFilterBar
+                  filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
+                  onChange={(f) => updateTabMongoFilter(activeTab.id, f)}
+                  onExecute={() => handleExecuteAll()}
                 />
-              );
-            })()}
-          </div>
-        )}
+              )}
+              {(() => {
+                const targetConnectionId = activeTab?.connectionId || activeConnection.id;
+                const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
+                return (
+                  <SqlEditorPanel 
+                    activeTab={activeTab}
+                    onToggle={() => togglePanel('editor')}
+                    updateTabQuery={updateTabQuery}
+                    handleEditorWillMount={handleEditorWillMount}
+                    handleEditorDidMount={handleEditorDidMount}
+                    connectionName={targetConnection.name}
+                    connectionType={targetConnection.type}
+                    updateTabViewState={updateTabViewState}
+                  />
+                );
+              })()}
+            </div>
+          )}
 
-        {panels.editor && panels.results && (
-          <div 
-            className="h-1 w-full cursor-row-resize bg-border hover:bg-primary transition-colors shrink-0 z-50"
-            onMouseDown={() => { splitterRef.current.isDragging = true }}
-          />
-        )}
-
-        {panels.results && (
-          <div className="flex-1 min-h-[100px] flex flex-col overflow-hidden">
-            <ResultsPanel
-              activeTab={activeTab}
-              panels={panels}
-              togglePanel={togglePanel}
-              updateTabResults={updateTabResults}
-              handleSave={handleSave}
-              setShowResultModal={setShowResultModal}
-              sortConfig={sortConfig}
-              requestSort={requestSort}
-              sortedRows={sortedRows}
-              editingCell={editingCell}
-              setEditingCell={setEditingCell}
-              handlePageChange={handlePageChange}
-              setContextMenuSql={setContextMenuSql}
-              queryLimit={queryLimit}
-              setQueryLimit={setQueryLimit}
+          {panels.editor && panels.results && (
+            <div 
+              className="h-1 w-full cursor-row-resize bg-border hover:bg-primary transition-colors shrink-0 z-50"
+              onMouseDown={() => { splitterRef.current.isDragging = true }}
             />
+          )}
+
+          {panels.results && (
+            <div className="flex-1 min-h-[100px] flex flex-col overflow-hidden">
+              <ResultsPanel
+                activeTab={activeTab}
+                panels={panels}
+                togglePanel={togglePanel}
+                updateTabResults={updateTabResults}
+                handleSave={handleSave}
+                setShowResultModal={setShowResultModal}
+                sortConfig={sortConfig}
+                requestSort={requestSort}
+                sortedRows={sortedRows}
+                editingCell={editingCell}
+                setEditingCell={setEditingCell}
+                handlePageChange={handlePageChange}
+                setContextMenuSql={setContextMenuSql}
+                queryLimit={queryLimit}
+                setQueryLimit={setQueryLimit}
+              />
+            </div>
+          )}
+        </div>
+
+        {showAI && (
+          <div className="w-72 border-l border-border bg-card shrink-0 overflow-hidden flex flex-col">
+            <div className="h-11 border-b border-border flex items-center justify-between px-3 shrink-0">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                AI Assistant
+              </span>
+              <button
+                onClick={() => setShowAI(false)}
+                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <FeatureGate perkId="ai_assistant">
+                <AIAssistantPanel />
+              </FeatureGate>
+            </div>
           </div>
         )}
       </div>

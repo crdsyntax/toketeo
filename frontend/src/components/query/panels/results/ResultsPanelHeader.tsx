@@ -1,4 +1,4 @@
-import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, ChevronLeft, ChevronRight, FileJson, FileText } from 'lucide-react';
+import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, ChevronLeft, ChevronRight, FileJson, FileText, BarChart3 } from 'lucide-react';
 import { cn, downloadCSV } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
 import { ExecutionStatus } from '@/types/database';
@@ -18,8 +18,8 @@ interface ResultsPanelHeaderProps {
   handleSave: () => void;
   setShowResultModal: (show: boolean) => void;
   isMongo: boolean;
-  viewMode: 'table' | 'json';
-  setViewMode: (mode: 'table' | 'json') => void;
+  viewMode: 'table' | 'json' | 'visualize';
+  setViewMode: (mode: 'table' | 'json' | 'visualize') => void;
   showExportMenu: boolean;
   setShowExportMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showLimitMenu: boolean;
@@ -168,28 +168,35 @@ export function ResultsPanelHeader({
           <div className="h-4 w-[1px] bg-border mx-1" />
 
           <div className="flex items-center gap-1">
-            {isMongo && (
-              <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40 mr-1">
-                <button
-                  onClick={() => setViewMode('table')}
-                  className={cn(
-                    "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
-                    viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Table
-                </button>
-                <button
-                  onClick={() => setViewMode('json')}
-                  className={cn(
-                    "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
-                    viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  JSON
-                </button>
-              </div>
-            )}
+            <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40 mr-1">
+              <button
+                onClick={() => setViewMode('table')}
+                className={cn(
+                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Table2 className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => setViewMode('json')}
+                className={cn(
+                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <FileJson className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => setViewMode('visualize')}
+                className={cn(
+                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  viewMode === 'visualize' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <BarChart3 className="w-3 h-3" />
+              </button>
+            </div>
             {editingCell && (
               <button
                 onClick={handleSave}

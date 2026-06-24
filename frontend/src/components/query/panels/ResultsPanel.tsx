@@ -11,6 +11,7 @@ import { ResultsPanelError } from './results/ResultsPanelError';
 import { ResultsPanelTable } from './results/ResultsPanelTable';
 import { ResultsPanelSkeleton } from './results/ResultsPanelSkeleton';
 import { ResultsPanelJsonView } from './results/ResultsPanelJsonView';
+import { VisualizePanel } from './VisualizePanel';
 
 const LIMIT_OPTIONS = [
   { label: '100 rows', value: 100 },
@@ -58,7 +59,7 @@ export function ResultsPanel({
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showLimitMenu, setShowLimitMenu] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
 
   const { activeConnection } = useAppStore();
   const isMongo = activeConnection?.type === DatabaseType.MONGODB;
@@ -98,10 +99,12 @@ export function ResultsPanel({
           <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} />
 
           {activeTab?.results && sortedRows.length > 0 ? (
-            isMongo && viewMode === 'json' ? (
+            viewMode === 'json' ? (
               <div className="flex-1 overflow-auto relative h-full">
                 <ResultsPanelJsonView sortedRows={sortedRows} />
               </div>
+            ) : viewMode === 'visualize' ? (
+              <VisualizePanel sortedRows={sortedRows} />
             ) : (
               <ResultsPanelTable
                 activeTab={activeTab}

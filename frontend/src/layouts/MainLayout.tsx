@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen, CheckCircle, RotateCcw, AlertTriangle, GitBranch } from 'lucide-react'
+import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen, CheckCircle, RotateCcw, AlertTriangle, GitBranch, Palette, CalendarClock, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
@@ -11,6 +11,7 @@ import { ConnectionModal } from '@/components/connections/ConnectionModal'
 import { LevelBadge } from '@/components/gamification/LevelBadge'
 import { GamificationModal } from '@/components/gamification/GamificationModal'
 import { useGamificationStore } from '@/store/gamificationStore'
+import { useFeatureLock } from '@/components/gamification/FeatureGate'
 
 export default function MainLayout() {
   const location = useLocation()
@@ -130,10 +131,13 @@ export default function MainLayout() {
   }
 
   const navItems = [
-    { name: 'Explorer', icon: LayoutGrid, path: '/explorer' },
-    { name: 'Diagram', icon: GitBranch, path: '/diagram' },
-    { name: 'Query Editor', icon: Terminal, path: '/query' },
-    { name: 'Audit', icon: FileText, path: '/audit' },
+    { name: 'Explorer', icon: LayoutGrid, path: '/explorer', perkId: null },
+    { name: 'Diagram', icon: GitBranch, path: '/diagram', perkId: null },
+    { name: 'Query Editor', icon: Terminal, path: '/query', perkId: null },
+    { name: 'Audit', icon: FileText, path: '/audit', perkId: null },
+    { name: 'Settings', icon: Palette, path: '/settings', perkId: null },
+    { name: 'Scheduler', icon: CalendarClock, path: '/scheduler', perkId: 'query_scheduler' },
+    { name: 'Cross-DB Sync', icon: Sparkles, path: '/cross-db-sync', perkId: 'multi_connection' },
   ]
 
   return (
@@ -164,22 +168,36 @@ export default function MainLayout() {
               </span>
             </div>
           </div>
-          <nav className="flex items-center ml-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 transition-all text-sm font-medium rounded-md",
-                  location.pathname === item.path 
-                    ? "bg-primary/10 text-primary border-b-2 border-primary" 
-                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <item.icon className="w-4 h-4" />
-                <span>{item.name}</span>
-              </Link>
-            ))}
+          <nav className="flex items-center ml-4 gap-1">
+            {navItems.map((item) => {
+              const { isUnlocked, requiredLevel } = useFeatureLock(item.perkId ?? '')
+              const isLocked = item.perkId !== null && !isUnlocked
+              const active = location.pathname === item.path
+              return (
+                <Link
+                  key={item.path}
+                  to={isLocked ? location.pathname : item.path}
+                  onClick={(e) => { if (isLocked) e.preventDefault() }}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 transition-all text-sm font-medium rounded-md relative group",
+                    active
+                      ? "bg-primary/10 text-primary border-b-2 border-primary"
+                      : isLocked
+                        ? "text-muted-foreground/40 cursor-not-allowed"
+                        : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                  )}
+                  title={isLocked ? `Unlock at Level ${requiredLevel}` : item.name}
+                >
+                  <item.icon className={cn("w-4 h-4", isLocked && "opacity-40")} />
+                  <span className={isLocked ? "opacity-40" : ""}>{item.name}</span>
+                  {isLocked && (
+                    <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/30 ml-0.5 border border-muted-foreground/20 rounded px-1 py-0.5">
+                      L{requiredLevel}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
           </nav>
         </div>
 

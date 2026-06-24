@@ -48,9 +48,25 @@ export interface ExplorerTabState {
   filter: string;
 }
 
+export interface CustomColors {
+  primary: string
+  secondary: string
+  accent: string
+  background: string
+}
+
+export const DEFAULT_COLORS: CustomColors = {
+  primary: '#6366f1',
+  secondary: '#8b5cf6',
+  accent: '#06b6d4',
+  background: '#09090b',
+}
+
 interface AppState {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
+  customColors: CustomColors
+  setCustomColors: (colors: Partial<CustomColors>) => void
   accessToken: string | null
   setAccessToken: (token: string | null) => void
   activeConnection: Connection | null
@@ -100,6 +116,10 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
+      customColors: DEFAULT_COLORS,
+      setCustomColors: (colors) => set((state) => ({
+        customColors: { ...state.customColors, ...colors },
+      })),
       accessToken: null,
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,

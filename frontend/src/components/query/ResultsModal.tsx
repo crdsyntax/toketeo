@@ -9,6 +9,8 @@ import {
   ChevronRight,
   Trash2,
   Download,
+  BarChart3,
+  FileJson,
 } from 'lucide-react';
 import { cn, downloadCSV } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
@@ -19,6 +21,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { ResultsPanelTable } from './panels/results/ResultsPanelTable';
 import { ResultsPanelJsonView } from './panels/results/ResultsPanelJsonView';
+import { VisualizePanel } from './panels/VisualizePanel';
 
 interface ResultsModalProps {
   isOpen: boolean;
@@ -76,7 +79,7 @@ export function ResultsModal({
   setContextMenuSql,
 }: ResultsModalProps) {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
   const { activeConnection } = useAppStore();
   const isMongo = activeConnection?.type === DatabaseType.MONGODB;
 
@@ -158,28 +161,38 @@ export function ResultsModal({
           </div>
 
           <div className="flex items-center h-full">
-            {isMongo && (
-              <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40 mr-2">
-                <button
-                  onClick={() => setViewMode('table')}
-                  className={cn(
-                    "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
-                    viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Table
-                </button>
-                <button
-                  onClick={() => setViewMode('json')}
-                  className={cn(
-                    "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
-                    viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  JSON
-                </button>
-              </div>
-            )}
+            <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40 mr-2">
+              <button
+                onClick={() => setViewMode('table')}
+                className={cn(
+                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Table View"
+              >
+                <Table2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode('json')}
+                className={cn(
+                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="JSON View"
+              >
+                <FileJson className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode('visualize')}
+                className={cn(
+                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  viewMode === 'visualize' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Visualize"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <button
               onClick={() => void downloadCSV(
                   sortedRows,
@@ -227,8 +240,10 @@ export function ResultsModal({
           </div>
         </div>
         <div className="flex-1 overflow-hidden relative flex flex-col">
-          {isMongo && viewMode === 'json' ? (
+          {viewMode === 'json' ? (
             <ResultsPanelJsonView sortedRows={sortedRows} />
+          ) : viewMode === 'visualize' ? (
+            <VisualizePanel sortedRows={sortedRows} />
           ) : (
             <ResultsPanelTable
               activeTab={activeTab}
