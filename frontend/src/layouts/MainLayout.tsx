@@ -11,7 +11,7 @@ import { ConnectionModal } from '@/components/connections/ConnectionModal'
 import { LevelBadge } from '@/components/gamification/LevelBadge'
 import { GamificationModal } from '@/components/gamification/GamificationModal'
 import { useGamificationStore } from '@/store/gamificationStore'
-import { useFeatureLock } from '@/components/gamification/FeatureGate'
+import { APP_PERKS } from '@/lib/gamification'
 
 export default function MainLayout() {
   const location = useLocation()
@@ -19,6 +19,7 @@ export default function MainLayout() {
   const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
   const setMiniToast = useAppStore((state) => state.setMiniToast)
 
+  const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
   const isProduction = activeConnection?.environment?.toLowerCase() === 'production'
 
   const { data: connections = [] } = useQuery({
@@ -135,6 +136,7 @@ export default function MainLayout() {
     { name: 'Diagram', icon: GitBranch, path: '/diagram', perkId: null },
     { name: 'Query Editor', icon: Terminal, path: '/query', perkId: null },
     { name: 'Audit', icon: FileText, path: '/audit', perkId: null },
+    { name: 'Assistant', icon: Sparkles, path: '/assistant', perkId: 'ai_assistant' },
     { name: 'Settings', icon: Palette, path: '/settings', perkId: null },
     { name: 'Scheduler', icon: CalendarClock, path: '/scheduler', perkId: 'query_scheduler' },
     { name: 'Cross-DB Sync', icon: Sparkles, path: '/cross-db-sync', perkId: 'multi_connection' },
@@ -168,10 +170,12 @@ export default function MainLayout() {
               </span>
             </div>
           </div>
-          <nav className="flex items-center ml-4 gap-1">
+          <nav className="flex items-center ml-4 gap-0.5">
             {navItems.map((item) => {
-              const { isUnlocked, requiredLevel } = useFeatureLock(item.perkId ?? '')
+              const isUnlocked = item.perkId ? unlockedPerks.includes(item.perkId) : true
               const isLocked = item.perkId !== null && !isUnlocked
+              const perk = item.perkId ? APP_PERKS.find((p) => p.id === item.perkId) : null
+              const requiredLevel = perk?.requiredLevel ?? 0
               const active = location.pathname === item.path
               return (
                 <Link
@@ -179,21 +183,22 @@ export default function MainLayout() {
                   to={isLocked ? location.pathname : item.path}
                   onClick={(e) => { if (isLocked) e.preventDefault() }}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 transition-all text-sm font-medium rounded-md relative group",
+                    "flex items-center justify-center w-10 h-10 transition-all rounded-xl relative group",
                     active
-                      ? "bg-primary/10 text-primary border-b-2 border-primary"
+                      ? "bg-primary/10 text-primary"
                       : isLocked
-                        ? "text-muted-foreground/40 cursor-not-allowed"
+                        ? "text-muted-foreground/30 cursor-not-allowed"
                         : "hover:bg-muted text-muted-foreground hover:text-foreground"
                   )}
-                  title={isLocked ? `Unlock at Level ${requiredLevel}` : item.name}
+                  title={
+                    isLocked
+                      ? `${item.name} — Unlock at Level ${requiredLevel}`
+                      : item.name
+                  }
                 >
-                  <item.icon className={cn("w-4 h-4", isLocked && "opacity-40")} />
-                  <span className={isLocked ? "opacity-40" : ""}>{item.name}</span>
-                  {isLocked && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/30 ml-0.5 border border-muted-foreground/20 rounded px-1 py-0.5">
-                      L{requiredLevel}
-                    </span>
+                  <item.icon className={cn("w-5 h-5", isLocked && "opacity-40")} />
+                  {active && (
+                    <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
                   )}
                 </Link>
               )

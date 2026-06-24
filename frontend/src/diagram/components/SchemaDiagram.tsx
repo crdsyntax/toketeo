@@ -12,7 +12,6 @@ import {
   useEdgesState,
   useNodesState,
   ReactFlowProvider,
-  MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { TableNode } from './nodes/TableNode'
@@ -118,12 +117,6 @@ function Flow({ data }: SchemaDiagramProps) {
       )
       if (existing) return
 
-      const sourceEl = document.querySelector(
-        `[data-id="${connection.source}"]`,
-      )
-      const targetEl = document.querySelector(
-        `[data-id="${connection.target}"]`,
-      )
       const flowRect = reactFlowRef.current?.getBoundingClientRect()
 
       let position = { x: 200, y: 200 }
@@ -242,7 +235,7 @@ function Flow({ data }: SchemaDiagramProps) {
             maxZoom={2}
             attributionPosition="bottom-left"
             deleteKeyCode={['Backspace', 'Delete']}
-            onEdgesDelete={(deleted) => {
+            onEdgesDelete={() => {
               setSelectedEdge(null)
             }}
             connectionLineStyle={{

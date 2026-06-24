@@ -1,6 +1,4 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { ColumnResponse, ForeignKeyResponse } from '@/types/database'
-import type { TableNodeData } from './components/nodes/TableNode'
 
 export type DiagramNodeType = 'table' | 'view' | 'function' | 'procedure' | 'trigger'
 

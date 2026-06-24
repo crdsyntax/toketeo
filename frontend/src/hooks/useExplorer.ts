@@ -227,7 +227,6 @@ export function useExplorer() {
       explorerTabs,
       addExplorerTab,
       setExplorerState,
-      updateExplorerTab,
     ],
   );
 

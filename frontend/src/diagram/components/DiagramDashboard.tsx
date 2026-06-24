@@ -1,5 +1,5 @@
 import { useDiagramStore } from '../store'
-import { GitBranch, FileJson, Download, Trash2, Plus, Database, Upload } from 'lucide-react'
+import { GitBranch, Download, Trash2, Plus, Database, Upload } from 'lucide-react'
 
 interface DiagramDashboardProps {
   onOpen: (id: string) => void

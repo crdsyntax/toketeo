@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ReactFlowProvider,
@@ -11,7 +11,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { schemaService } from '@/services/schema.service'
 import { invoke } from '@tauri-apps/api/core'
 import {
-  AlertCircle, Plus, X, Table2, Loader2, GitBranch,
+  Plus, X, Table2, Loader2, GitBranch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useDiagramStore } from './store'
@@ -117,13 +117,13 @@ function EditorInner() {
     if (diagram && diagram.nodes.length > 0) return diagram.nodes
     if (diagramData && isSchemaMode) return buildNodesFromSchema(diagramData)
     return []
-  }, [diagram?.nodes, diagramData, isSchemaMode, editorKey])
+  }, [diagram, diagramData, isSchemaMode])
 
   const initialEdges: Edge[] = useMemo(() => {
     if (diagram && diagram.edges.length > 0) return diagram.edges
     if (diagramData && isSchemaMode) return buildEdgesFromSchema(diagramData)
     return []
-  }, [diagram?.edges, diagramData, isSchemaMode, editorKey])
+  }, [diagram, diagramData, isSchemaMode])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -420,7 +420,6 @@ function EditorInner() {
 
 export default function DiagramPage() {
   const activeConnection = useAppStore((s) => s.activeConnection)
-  const diagrams = useDiagramStore((s) => s.diagrams)
   const activeDiagramId = useDiagramStore((s) => s.activeDiagramId)
   const createDiagram = useDiagramStore((s) => s.createDiagram)
   const setActiveDiagram = useDiagramStore((s) => s.setActiveDiagram)

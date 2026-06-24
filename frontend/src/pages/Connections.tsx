@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Download, UploadCloud } from 'lucide-react'
+import { Plus, Download, UploadCloud, Sparkles } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 import { useState } from 'react'
@@ -7,6 +7,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
 import { ConnectionCard } from '@/components/connections/ConnectionCard'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
+import { ConnectionWizard } from '@/components/connections/ConnectionWizard'
 
 export default function Connections() {
   const queryClient = useQueryClient()
@@ -15,6 +16,7 @@ export default function Connections() {
   const activeConnection = useAppStore((state) => state.activeConnection)
   const setMiniToast = useAppStore((state) => state.setMiniToast)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [showWizard, setShowWizard] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [connectingId, setConnectingId] = useState<string | null>(null)
@@ -187,12 +189,19 @@ export default function Connections() {
             <Download className="w-4 h-4" />
             Export All
           </button>
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
           >
             <Plus className="w-4 h-4" />
             New Connection
+          </button>
+          <button
+            onClick={() => setShowWizard(true)}
+            className="flex items-center gap-2 bg-muted text-foreground px-3 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all rounded-md"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Wizard
           </button>
         </div>
       </div>
@@ -252,6 +261,7 @@ export default function Connections() {
         isTesting={isTesting}
         testMessage={testMessage}
       />
+      {showWizard && <ConnectionWizard onClose={() => setShowWizard(false)} />}
     </div>
   )
 }

@@ -11,7 +11,6 @@ import {
   type Connection,
   type OnNodesChange,
   type OnEdgesChange,
-  MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { TableNode } from './nodes/TableNode'

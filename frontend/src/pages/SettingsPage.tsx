@@ -34,7 +34,7 @@ export function SettingsPage() {
       if (parsed.primary && parsed.secondary && parsed.accent && parsed.background) {
         setCustomColors(parsed)
       }
-    } catch {}
+    } catch { /* invalid JSON, silently ignore */ }
   }
 
   return (

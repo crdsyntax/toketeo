@@ -50,7 +50,8 @@ export const useGamificationStore = create<GamificationState>()(
       executedQueryHashes: [],
 
       addXP: (amount: number, reason?: string) => {
-        const { xp, level, unlockedPerks } = get();
+        void reason;
+        const { xp, level, unlockedPerks, completedMissions } = get();
         const newXp = xp + amount;
         const newLevel = calculateLevel(newXp);
         
@@ -62,32 +63,33 @@ export const useGamificationStore = create<GamificationState>()(
             position: 'bottom-right',
             style: { background: '#10b981', color: '#fff' }
           });
+        }
 
-          // Check if any new perks are unlocked at this level
-          const newlyUnlocked = APP_PERKS.filter(
-            perk => perk.requiredLevel <= newLevel && !newUnlockedPerks.includes(perk.id)
-          );
+        // Check if any new perks are unlocked (level-up or quest-completion triggered)
+        const newlyUnlocked = APP_PERKS.filter(
+          perk =>
+            perk.requiredLevel <= newLevel &&
+            perk.requiredQuests.every(q => completedMissions.includes(q)) &&
+            !newUnlockedPerks.includes(perk.id)
+        );
 
-          if (newlyUnlocked.length > 0) {
-            newlyUnlocked.forEach(perk => {
-              newUnlockedPerks.push(perk.id);
-              toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
-                duration: 6000,
-                position: 'bottom-right',
-                style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
-                icon: '✨'
-              });
+        if (newlyUnlocked.length > 0) {
+          newlyUnlocked.forEach(perk => {
+            newUnlockedPerks.push(perk.id);
+            toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
+              duration: 6000,
+              position: 'bottom-right',
+              style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+              icon: '✨'
             });
-          }
-        } else if (reason) {
-          // Optional: silent mini-toast for normal XP gains could be added here
+          });
         }
 
         set({ xp: newXp, level: newLevel, unlockedPerks: newUnlockedPerks });
       },
 
       trackAction: (type: MissionType, amount: number = 1) => {
-        const { progress, completedMissions, addXP } = get();
+        const { progress, completedMissions, level, unlockedPerks, addXP } = get();
         const currentProgress = progress[type] || 0;
         const newProgress = currentProgress + amount;
 
@@ -119,6 +121,28 @@ export const useGamificationStore = create<GamificationState>()(
 
         if (totalXpGained > 0) {
           addXP(totalXpGained);
+        }
+
+        // Re-check perks now that quests may have been completed
+        const newUnlockedPerks = [...(unlockedPerks || [])];
+        const newlyUnlocked = APP_PERKS.filter(
+          perk =>
+            perk.requiredLevel <= level &&
+            perk.requiredQuests.every(q => newCompletedMissions.includes(q)) &&
+            !newUnlockedPerks.includes(perk.id)
+        );
+
+        if (newlyUnlocked.length > 0) {
+          newlyUnlocked.forEach(perk => {
+            newUnlockedPerks.push(perk.id);
+            toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
+              duration: 6000,
+              position: 'bottom-right',
+              style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+              icon: '✨'
+            });
+          });
+          set({ unlockedPerks: newUnlockedPerks });
         }
       },
 

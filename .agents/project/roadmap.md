@@ -557,7 +557,69 @@ Necromante Nocturno
 
 ---
 
-# Phase 11: Community Features (Future)
+# Phase 12: Smart Assistant Hub
+
+## Overview
+
+El Smart Assistant Hub unifica 5 áreas de ayuda en una sola interfaz accesible desde un botón flotante `Sparkles` en QueryEditor o desde la ruta `/assistant`. El asistente se expande progresivamente según el nivel del usuario.
+
+### Architecture
+
+```
+frontend/src/
+├── components/
+│   ├── assistant/
+│   │   ├── AssistantLayout.tsx      # Hub layout (sidebar + 5 pestañas)
+│   │   └── panels/
+│   │       ├── QueriesPanel.tsx     # Conversacional AI (reemplaza AIAssistantPanel)
+│   │       ├── PerformancePanel.tsx  # Dashboard de rendimiento
+│   │       ├── StructuresPanel.tsx   # Insights de estructura
+│   │       ├── UsagePanel.tsx        # Tips + stats de uso + gamificación
+│   │       └── ConnectHelpPanel.tsx  # FAQ + ayuda de conexión
+│   ├── connections/
+│   │   └── ConnectionWizard.tsx     # Wizard de conexión guiada (3 pasos)
+│   ├── layout/
+│   │   └── OnboardingTour.tsx       # Tour guiado de 7 pasos al primer inicio
+│   └── ui/
+│       ├── ContextualTip.tsx        # Tips contextuales en línea (reutilizable)
+│       └── KeyboardShortcutsModal.tsx # Modal de atajos de teclado (reutilizable)
+├── store/
+│   ├── assistantStore.ts            # Estado del asistente (persist partial)
+│   └── performanceStore.ts          # Registro de rendimiento de queries
+```
+
+### Features Implemented
+
+- [x] **AssistantLayout** — Hub con 5 tabs (Queries, Performance, Structures, Usage, Connect) + FeatureGate por perk
+- [x] **Queries Panel** — Chat conversacional con ejemplos predefinidos, respuestas SQL, botón copiar, sugerencias de ejemplo
+- [x] **Performance Panel** — Dashboard con avg/max duration, slow queries, total rows, historial reciente por query
+- [x] **Structures Panel** — Insights de esquema, checklist de salud (PKs, FKs, índices), acceso al Schema Explorer
+- [x] **Usage Panel** — Stats de gamificación (level, XP, streak, queries), tips rápidos de uso
+- [x] **ConnectHelp Panel** — FAQ expandible, acceso al Connection Wizard
+- [x] **Connection Wizard** — Modal multi-paso (3 pasos: engine → credentials → test & confirm)
+- [x] **Onboarding Tour** — 7 pasos guiados al primer inicio con recompensa XP
+- [x] **Contextual Tips** — Tips inline en QueryEditor (SELECT *, etc.) con dismiss persistente
+- [x] **Keyboard Shortcuts** — Modal con atajos (`?` para abrir, `Ctrl+I` para toggle assistant)
+- [x] **Performance Tracking** — Registro automático de duración, filas, SQL en performanceStore
+- [x] **Assistant nav entry** — Ruta `/assistant` + nav item gated por perk `ai_assistant`
+- [x] **Ruta /assistant** — Página full con AssistantLayout lateral
+
+### Gatificación por Perk
+
+| Perk | Nivel | Desbloquea |
+|---|---|---|
+| `theme_customizer` | 5 | Tips contextuales + ConnectHelp |
+| `ai_assistant` | 10 | Pestaña Queries (conversacional) + nav Assistant + ruta /assistant |
+| `data_visualizer` | 15 | Pestañas Performance + Structures |
+
+### Dependencias
+
+- Sin dependencias externas nuevas (react-joyride no necesario, tour implementado con estado local + modales)
+- Reutiliza stores Zustand existentes (gamificationStore, useAppStore)
+
+---
+
+# Phase 13: Community Features (Future)
 
 ## Rankings
 

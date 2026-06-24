@@ -17,7 +17,6 @@ interface ResultsPanelHeaderProps {
   editingCell: { rowIndex: number; column: string; value: DbValue } | null;
   handleSave: () => void;
   setShowResultModal: (show: boolean) => void;
-  isMongo: boolean;
   viewMode: 'table' | 'json' | 'visualize';
   setViewMode: (mode: 'table' | 'json' | 'visualize') => void;
   showExportMenu: boolean;
@@ -38,7 +37,6 @@ export function ResultsPanelHeader({
   editingCell,
   handleSave,
   setShowResultModal,
-  isMongo,
   viewMode,
   setViewMode,
   showExportMenu,

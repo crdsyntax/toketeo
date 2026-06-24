@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { ArrowLeft, Save, Download, Upload, Plus, Table2, Eye, Keyboard } from 'lucide-react'
+import { ArrowLeft, Save, Download, Upload, Plus, Table2, Eye } from 'lucide-react'
 
 interface DiagramToolbarProps {
   diagramName: string
@@ -28,9 +28,10 @@ export function DiagramToolbar({
   const [name, setName] = useState(diagramName)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
+  const startEditing = () => {
     setName(diagramName)
-  }, [diagramName])
+    setEditing(true)
+  }
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -75,7 +76,7 @@ export function DiagramToolbar({
         />
       ) : (
         <button
-          onClick={() => setEditing(true)}
+          onClick={startEditing}
           className="text-sm font-semibold text-foreground hover:text-primary transition-colors px-1 py-0.5 rounded hover:bg-muted/50"
           title="Click to rename"
         >

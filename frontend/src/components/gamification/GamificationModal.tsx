@@ -187,48 +187,86 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
           {activeTab === 'perks' && (
             <div className="space-y-3 animate-in fade-in slide-in-from-right-4 duration-200">
               {APP_PERKS.map((perk) => {
-                const isUnlocked = unlockedPerks?.includes(perk.id) || level >= perk.requiredLevel;
+                const isUnlocked = unlockedPerks?.includes(perk.id);
                 const Icon = ICONS[perk.icon] || Trophy;
-
                 return (
                   <div 
                     key={perk.id}
                     className={cn(
-                      "flex items-center gap-4 p-4 rounded-xl border transition-all",
+                      "p-4 rounded-xl border transition-all",
                       isUnlocked 
                         ? "bg-card border-primary/30 shadow-sm" 
-                        : "bg-muted/50 border-border/50 opacity-60 grayscale-[0.5]"
+                        : "bg-muted/50 border-border/50 opacity-60"
                     )}
                   >
-                    <div className={cn(
-                      "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
-                      isUnlocked ? "bg-primary/10 text-primary" : "bg-muted-foreground/10 text-muted-foreground"
-                    )}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <h4 className={cn("font-bold truncate", isUnlocked ? "text-foreground" : "text-muted-foreground")}>
-                          {perk.title}
-                        </h4>
-                        {!isUnlocked && (
-                          <span className="text-xs font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
-                            <Lock className="w-3 h-3" />
-                            Requires Lvl {perk.requiredLevel}
-                          </span>
-                        )}
-                        {isUnlocked && (
-                          <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
-                            <Unlock className="w-3 h-3" />
-                            Unlocked
-                          </span>
-                        )}
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
+                        isUnlocked ? "bg-primary/10 text-primary" : "bg-muted-foreground/10 text-muted-foreground"
+                      )}>
+                        <Icon className="w-6 h-6" />
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {perk.description}
-                      </p>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className={cn("font-bold truncate", isUnlocked ? "text-foreground" : "text-muted-foreground")}>
+                            {perk.title}
+                          </h4>
+                          {!isUnlocked && (
+                            <span className="text-xs font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
+                              <Lock className="w-3 h-3" />
+                              Lvl {perk.requiredLevel}
+                            </span>
+                          )}
+                          {isUnlocked && (
+                            <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
+                              <Unlock className="w-3 h-3" />
+                              Unlocked
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {perk.description}
+                        </p>
+                      </div>
                     </div>
+
+                    {/* Required quests */}
+                    {!isUnlocked && perk.requiredQuests.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                          Required Quests
+                        </p>
+                        {perk.requiredQuests.map(qId => {
+                          const mission = MISSIONS.find(m => m.id === qId);
+                          const done = completedMissions.includes(qId);
+                          return (
+                            <div key={qId} className="flex items-center gap-2">
+                              {done ? (
+                                <CheckCircle2 className="w-3 h-3 text-primary" />
+                              ) : (
+                                <CircleDashed className="w-3 h-3 text-muted-foreground/30" />
+                              )}
+                              <span className={cn(
+                                "text-[10px]",
+                                done ? "text-primary/80" : "text-muted-foreground/50"
+                              )}>
+                                {mission?.title ?? qId}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {isUnlocked && (
+                      <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-primary" />
+                        <span className="text-[10px] text-primary/80 font-medium">
+                          All requirements met
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

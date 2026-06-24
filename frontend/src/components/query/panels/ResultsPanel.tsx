@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { Table2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
-import { useAppStore } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
-import { ExecutionStatus, DatabaseType } from '@/types/database';
+import { ExecutionStatus } from '@/types/database';
 
 import { ResultsPanelHeader } from './results/ResultsPanelHeader';
 import { ResultsPanelError } from './results/ResultsPanelError';
@@ -61,8 +60,6 @@ export function ResultsPanel({
   const [showLimitMenu, setShowLimitMenu] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
 
-  const { activeConnection } = useAppStore();
-  const isMongo = activeConnection?.type === DatabaseType.MONGODB;
   const isResultsPanelVisible = panels?.results ?? false;
 
   return (
@@ -84,7 +81,6 @@ export function ResultsPanel({
         editingCell={editingCell}
         handleSave={handleSave}
         setShowResultModal={setShowResultModal}
-        isMongo={isMongo}
         viewMode={viewMode}
         setViewMode={setViewMode}
         showExportMenu={showExportMenu}

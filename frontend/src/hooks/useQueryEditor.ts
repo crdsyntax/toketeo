@@ -10,6 +10,7 @@ import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
+import { usePerformanceStore } from '@/store/performanceStore'
 import { calculateQueryXp, hashQuery } from '@/lib/gamification'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
@@ -252,6 +253,14 @@ export function useQueryEditor() {
           rowCount: result.rows.length,
         };
         addQueryHistory(histEntry);
+        usePerformanceStore.getState().addRecord({
+          id: histEntry.id,
+          connectionId: targetConnection.id,
+          sql: activeTab.query.trim(),
+          durationMs,
+          rowsReturned: result.rows.length,
+          executedAt: Date.now(),
+        });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         const durationMs = Date.now() - startTime;

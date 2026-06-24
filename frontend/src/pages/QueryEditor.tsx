@@ -1,4 +1,4 @@
-import { AlertCircle, Sparkles, X } from 'lucide-react';
+import { AlertCircle, Sparkles } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -8,8 +8,10 @@ import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
-import { AIAssistantPanel } from '@/components/query/panels/AIAssistantPanel';
-import { FeatureGate } from '@/components/gamification/FeatureGate';
+import { AssistantLayout } from '@/components/assistant/AssistantLayout';
+import { ContextualTip } from '@/components/ui/ContextualTip';
+import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
+import { useAssistantStore } from '@/store/assistantStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef, useState } from 'react';
 import { ExecutionStatus, Environment } from '@/types/database';
@@ -80,8 +82,24 @@ export default function QueryEditor() {
   } = useQueryEditor()
 
   const [showHistory, setShowHistory] = useState(false);
-  const [showAI, setShowAI] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const showAssistant = useAssistantStore((s) => s.showAssistant);
+  const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        setShowShortcuts(true)
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault()
+        setShowAssistant(!showAssistant)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [showAssistant, setShowAssistant])
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
   const isMongo = activeConnection?.type === 'mongodb'
@@ -232,6 +250,18 @@ export default function QueryEditor() {
         isTransactional={!!isTransactional}
       />
 
+      {/* Contextual tips */}
+      {activeConnection && activeTab && (
+        <div className="px-4 pt-2">
+          {activeTab.query.includes('SELECT *') && (
+            <ContextualTip
+              id="select-star"
+              message="Tip: Selecting specific columns instead of * improves performance and clarity."
+            />
+          )}
+        </div>
+      )}
+
       {/* History panel floating dropdown */}
       {showHistory && (
         <div className="relative">
@@ -281,14 +311,14 @@ export default function QueryEditor() {
       />
 
       <button
-        onClick={() => setShowAI((v) => !v)}
+        onClick={() => setShowAssistant(!showAssistant)}
         className={cn(
           "absolute bottom-4 right-4 z-50 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all",
-          showAI
+          showAssistant
             ? "bg-primary text-primary-foreground"
             : "bg-card text-muted-foreground hover:text-foreground border border-border"
         )}
-        title="AI Assistant"
+        title="Assistant"
       >
         <Sparkles className="w-5 h-5" />
       </button>
@@ -363,28 +393,14 @@ export default function QueryEditor() {
           )}
         </div>
 
-        {showAI && (
-          <div className="w-72 border-l border-border bg-card shrink-0 overflow-hidden flex flex-col">
-            <div className="h-11 border-b border-border flex items-center justify-between px-3 shrink-0">
-              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
-                AI Assistant
-              </span>
-              <button
-                onClick={() => setShowAI(false)}
-                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <FeatureGate perkId="ai_assistant">
-                <AIAssistantPanel />
-              </FeatureGate>
-            </div>
+        {showAssistant && (
+          <div className="w-72 border-l border-border shrink-0 overflow-hidden">
+            <AssistantLayout />
           </div>
         )}
       </div>
+
+      {showShortcuts && <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />}
     </div>
   )
 }

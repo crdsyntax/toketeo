@@ -1,37 +1,48 @@
 import { useEffect, useState } from 'react'
 import { SplashScreen } from './SplashScreen'
+import { OnboardingTour } from '@/components/layout/OnboardingTour'
+import { useAssistantStore } from '@/store/assistantStore'
 
 interface AppBootstrapProps {
   children: React.ReactNode
 }
 
-// Tiempo mínimo que el splash es visible (ms)
 const MIN_SPLASH_DURATION = 1800
 
 export function AppBootstrap({ children }: AppBootstrapProps) {
   const [isReady, setIsReady] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const onboardingCompleted = useAssistantStore((s) => s.onboardingCompleted)
 
   useEffect(() => {
     const startTime = Date.now()
 
-    // Esperamos el tiempo mínimo para que el splash sea perceptible
-    // independientemente de qué tan rápido cargue la app
     const minDelay = new Promise<void>((resolve) => {
       setTimeout(resolve, MIN_SPLASH_DURATION)
     })
 
-    // Aquí podríamos añadir otras promesas de inicialización en el futuro
     Promise.all([minDelay]).then(() => {
       const elapsed = Date.now() - startTime
-      // Si por algún motivo ya pasó más tiempo, mostramos directamente
       const remaining = Math.max(0, MIN_SPLASH_DURATION - elapsed)
-      setTimeout(() => setIsReady(true), remaining)
+      setTimeout(() => {
+        setIsReady(true)
+        if (!onboardingCompleted) {
+          setTimeout(() => setShowOnboarding(true), 500)
+        }
+      }, remaining)
     })
-  }, [])
+  }, [onboardingCompleted])
 
   if (!isReady) {
     return <SplashScreen />
   }
 
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      {showOnboarding && (
+        <OnboardingTour onClose={() => setShowOnboarding(false)} />
+      )}
+    </>
+  )
 }

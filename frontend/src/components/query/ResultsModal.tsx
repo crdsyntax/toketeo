@@ -14,9 +14,8 @@ import {
 } from 'lucide-react';
 import { cn, downloadCSV } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
-import { useAppStore } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
-import { DatabaseType, ExecutionStatus } from '@/types/database';
+import { ExecutionStatus } from '@/types/database';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { ResultsPanelTable } from './panels/results/ResultsPanelTable';
@@ -80,8 +79,6 @@ export function ResultsModal({
 }: ResultsModalProps) {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
-  const { activeConnection } = useAppStore();
-  const isMongo = activeConnection?.type === DatabaseType.MONGODB;
 
   if (!isOpen || !activeTab?.results) return null;
 

@@ -49,13 +49,13 @@ The XP curve is exponential — early levels fly by, but reaching the endgame re
 
 Level up to unlock features permanently:
 
-| Perk | Unlocks At |
-|------|-----------|
-| Advanced Theming | Level 5 |
-| AI Query Assistant | Level 10 |
-| Data Visualizer | Level 15 |
-| Query Scheduler | Level 20 |
-| Cross-DB Sync | Level 30 |
+| Perk | Unlocks At | What You Get |
+|------|-----------|-------------|
+| Advanced Theming | Level 5 | Custom colors, contextual tips, connection help |
+| AI Query Assistant | Level 10 | Conversational SQL generation, /assistant page, keyboard shortcuts |
+| Data Visualizer | Level 15 | Performance dashboard, schema insights |
+| Query Scheduler | Level 20 | Scheduled query execution |
+| Cross-DB Sync | Level 30 | Multi-engine data synchronization |
 
 ---
 
@@ -69,6 +69,11 @@ Level up to unlock features permanently:
 - **Export** — Download query results as CSV or JSON
 - **Real-time Logs** — WebSocket-powered server event streaming
 - **Audit Trail** — Automatic logging of user actions and query execution
+- **Smart Assistant Hub** — AI query generation, performance insights, schema analysis, app tips, and connection help — all in one place
+- **Onboarding Tour** — Guided 7-step walkthrough on first launch with XP rewards
+- **Connection Wizard** — Step-by-step guided connection setup
+- **Performance Dashboard** — Track query duration, slow queries, and execution trends
+- **Keyboard Shortcuts** — Full shortcut reference (`?` to open)
 - **Cross-platform** — Native installers for Linux (.deb, .AppImage) and Windows (.zip portable)
 
 ---
@@ -95,10 +100,11 @@ The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgr
 ```
 frontend/src/
 ├── components/         # UI components
+│   ├── assistant/      # Smart Assistant Hub (panels, wizard, tour, shortcuts)
 │   ├── connections/    # Connection tree, DumpRestoreModal
-│   ├── gamification/   # LevelBadge, GamificationModal
+│   ├── gamification/   # LevelBadge, GamificationModal, FeatureGate, ThemeProvider
 │   └── query/          # SQL editor, results grid
-├── store/              # Zustand stores (gamification, connections, etc.)
+├── store/              # Zustand stores (app, gamification, assistant, performance)
 ├── hooks/              # Custom hooks (useQueryEditor, etc.)
 ├── services/           # Tauri IPC service wrappers
 ├── lib/                # Gamification core (config, missions, unlocks)

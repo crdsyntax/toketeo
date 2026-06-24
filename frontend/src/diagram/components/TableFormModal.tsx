@@ -38,8 +38,6 @@ const COMMON_TYPES = [
   'BLOB', 'JSON', 'UUID',
 ]
 
-const COMMON_FK_TYPES = ['INT', 'BIGINT', 'UUID', 'VARCHAR(36)', 'VARCHAR(255)']
-
 export function TableFormModal({
   isOpen,
   onClose,

@@ -8,6 +8,7 @@ import { DiagramPage } from '@/diagram'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SchedulerPage } from '@/pages/SchedulerPage'
 import { CrossDbSyncPage } from '@/pages/CrossDbSyncPage'
+import { AssistantPage } from '@/pages/AssistantPage'
 import { ThemeProvider } from '@/components/gamification/ThemeProvider'
 import { AppBootstrap } from '@/components/layout/AppBootstrap'
 import { Toaster } from 'react-hot-toast'
@@ -27,6 +28,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="scheduler" element={<SchedulerPage />} />
           <Route path="cross-db-sync" element={<CrossDbSyncPage />} />
+          <Route path="assistant" element={<AssistantPage />} />
         </Route>
       </Routes>
       </ThemeProvider>
