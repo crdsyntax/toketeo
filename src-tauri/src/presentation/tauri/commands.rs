@@ -206,6 +206,38 @@ pub async fn export_connection_dialog(
 }
 
 #[tauri::command]
+pub async fn open_file_dialog(
+    filter_name: Option<String>,
+    filter_ext: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    let mut dialog = app_handle
+        .dialog()
+        .file()
+        .set_title("Open File");
+
+    if let (Some(name), Some(ext)) = (filter_name, filter_ext) {
+        dialog = dialog.add_filter(name, &[&ext]);
+    }
+
+    dialog = dialog.add_filter("All Files", &["*"]);
+
+    let file_path = dialog.blocking_pick_file();
+
+    let path = match file_path {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+
+    Ok(Some(content))
+}
+
+#[tauri::command]
 pub async fn save_file_dialog(
     content: String,
     default_file_name: String,

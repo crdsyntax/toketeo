@@ -4,7 +4,7 @@ import Connections from '@/pages/Connections'
 import Explorer from '@/pages/Explorer'
 import QueryEditor from '@/pages/QueryEditor'
 import AuditLog from '@/pages/AuditLog'
-import DiagramPage from '@/pages/DiagramPage'
+import { DiagramPage } from '@/diagram'
 import { AppBootstrap } from '@/components/layout/AppBootstrap'
 import { Toaster } from 'react-hot-toast'
 

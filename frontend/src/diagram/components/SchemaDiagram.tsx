@@ -15,8 +15,8 @@ import {
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { TableNode } from './TableNode'
-import { CardinalityEdge } from './CardinalityEdge'
+import { TableNode } from './nodes/TableNode'
+import { CardinalityEdge } from './edges/CardinalityEdge'
 import type { SchemaDiagramData, EdgeCardinality } from '@/types/database'
 
 interface SchemaDiagramProps {

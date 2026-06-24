@@ -123,7 +123,7 @@ export const useGamificationStore = create<GamificationState>()(
       },
 
       checkStreak: () => {
-        const { lastLoginDate, streak, addXP } = get();
+        const { lastLoginDate, streak, addXP, trackAction } = get();
         const today = new Date().toISOString().split('T')[0];
         
         if (lastLoginDate === today) return; // Already logged in today
@@ -131,6 +131,7 @@ export const useGamificationStore = create<GamificationState>()(
         if (!lastLoginDate) {
           set({ lastLoginDate: today, streak: 1 });
           addXP(GAMIFICATION_CONFIG.STREAK_BASE_XP, 'Daily Login');
+          trackAction('DAILY_LOGIN');
           return;
         }
 
@@ -145,6 +146,7 @@ export const useGamificationStore = create<GamificationState>()(
           const rawStreakXp = GAMIFICATION_CONFIG.STREAK_BASE_XP + (newStreak * GAMIFICATION_CONFIG.STREAK_BONUS_PER_DAY);
           const streakXp = Math.min(rawStreakXp, GAMIFICATION_CONFIG.STREAK_MAX_BONUS);
           addXP(streakXp, `Daily Login Streak: ${newStreak}🔥`);
+          trackAction('DAILY_LOGIN');
           
           toast.success(`Streak: ${newStreak} days!\n+${streakXp} XP`, {
             duration: 5000,
@@ -155,6 +157,7 @@ export const useGamificationStore = create<GamificationState>()(
         } else if (diffDays > 1) {
           set({ lastLoginDate: today, streak: 1 });
           addXP(GAMIFICATION_CONFIG.STREAK_BASE_XP, 'Daily Login');
+          trackAction('DAILY_LOGIN');
           toast('Streak broken. Back to day 1.', { 
             icon: '🥺',
             position: 'bottom-right',
