@@ -9,11 +9,12 @@ import { SchemaItem } from './SchemaItem'
 interface DatabaseItemProps {
   conn: Connection
   dbName: string
+  activeConnection: Connection | null
   onSelect: (conn: Connection, schema: string) => void
   onSchemaContextMenu?: (e: React.MouseEvent, conn: Connection, schema: string) => void
 }
 
-export function DatabaseItem({ conn, dbName, onSelect, onSchemaContextMenu }: DatabaseItemProps) {
+export function DatabaseItem({ conn, dbName, activeConnection, onSelect, onSchemaContextMenu }: DatabaseItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const { data: schemas = [], refetch } = useQuery({
@@ -45,7 +46,7 @@ export function DatabaseItem({ conn, dbName, onSelect, onSchemaContextMenu }: Da
       {isExpanded && (
         <div className="pl-6 ml-1 border-l border-border/50 space-y-0.5">
           {schemas.map(schema => (
-            <SchemaItem key={schema} conn={conn} schema={schema} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
+            <SchemaItem key={schema} conn={conn} schema={schema} isSelected={activeConnection?.id === conn.id && activeConnection?.database === schema} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
           ))}
         </div>
       )}

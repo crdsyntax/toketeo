@@ -23,7 +23,7 @@ use serde_json::Value;
 /// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
 /// Fail fast if a connection cannot be acquired within 5 seconds.
-const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
+const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(15);
 
 
 pub struct MySqlDriver {
@@ -43,10 +43,11 @@ impl MySqlDriver {
                     .await
             } else {
                 let config = pool_config.unwrap_or_default();
+                let acquire_timeout = config.acquire_timeout.min(POOL_ACQUIRE_TIMEOUT);
                 let mut opts = MySqlPoolOptions::new()
                     .min_connections(POOL_MIN_CONNECTIONS)
                     .max_connections(config.max_connections)
-                    .acquire_timeout(config.acquire_timeout);
+                    .acquire_timeout(acquire_timeout);
                 if let Some(idle) = config.idle_timeout {
                     opts = opts.idle_timeout(idle);
                 }

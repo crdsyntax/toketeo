@@ -30,11 +30,22 @@ impl AppState {
         max_ttl: Option<Duration>,
         metadata_cache_ttl: Duration,
     ) {
-        let mut conns = self.connections.write().await;
-        conns.insert(
-            id,
-            ConnectionSession::new(driver, ssh_tunnel, transactional, read_only, max_ttl, metadata_cache_ttl),
-        );
+        // Remove the old session first so the old driver's pool is NOT dropped
+        // inside HashMap::insert (which would trigger Pool::drop → close_inner
+        // and leave concurrent Arc holders with a closed pool).
+        let old_driver = {
+            let mut conns = self.connections.write().await;
+            let old = conns.remove(&id);
+            conns.insert(
+                id,
+                ConnectionSession::new(driver, ssh_tunnel, transactional, read_only, max_ttl, metadata_cache_ttl),
+            );
+            old.map(|s| s.driver)
+        };
+        // Drop old driver outside the write lock so the pool is closed gracefully.
+        if let Some(d) = old_driver {
+            let _ = d.close().await;
+        }
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<Arc<dyn DbDriver>> {

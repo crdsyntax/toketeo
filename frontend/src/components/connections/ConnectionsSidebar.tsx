@@ -2,7 +2,7 @@ import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, U
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
@@ -44,35 +44,35 @@ function TypeBadge({ type }: { type: string }) {
   )
 }
 
-function PostgresContent({ conn, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+function PostgresContent({ conn, activeConnection, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
   const { data: databases = [], isFetched } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
-    enabled: !!conn.id,
+    enabled: activeConnection?.id === conn.id,
     staleTime: 5 * 60 * 1000,
   })
   useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
   return (
     <>
       {databases.map((db) => (
-        <DatabaseItem key={db} conn={conn} dbName={db} onSelect={onSelect} onSchemaContextMenu={onSchemaContextMenu} />
+        <DatabaseItem key={db} conn={conn} dbName={db} activeConnection={activeConnection} onSelect={onSelect} onSchemaContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
 }
 
-function SchemaContent({ conn, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+function SchemaContent({ conn, activeConnection, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
   const { data: schemas = [], isFetched } = useQuery({
     queryKey: ['schemas', conn.id],
     queryFn: () => schemaService.getSchemas(conn.id),
-    enabled: !!conn.id,
+    enabled: activeConnection?.id === conn.id,
     staleTime: 5 * 60 * 1000,
   })
   useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
   return (
     <>
       {schemas.map((s) => (
-        <SchemaItem key={s} conn={conn} schema={s} isSelected={conn.database === s} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
+        <SchemaItem key={s} conn={conn} schema={s} isSelected={activeConnection?.id === conn.id && activeConnection?.database === s} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
@@ -100,21 +100,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase } = useAppStore()
   const navigate = useNavigate()
-
-  const switchSchemaMutation = useMutation({
-    mutationFn: ({ connectionId, schema }: { connectionId: string, schema: string }) =>
-      schemaService.switchSchema(connectionId, schema),
-    onSuccess: (_, { schema }) => {
-      setActiveConnectionDatabase(schema)
-      queryClient.invalidateQueries({ queryKey: ['schemas'] })
-      queryClient.invalidateQueries({ queryKey: ['tables'] })
-      queryClient.invalidateQueries({ queryKey: ['views'] })
-      queryClient.invalidateQueries({ queryKey: ['procedures'] })
-      queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      queryClient.invalidateQueries({ queryKey: ['functions'] })
-      navigate('/explorer')
-    }
-  })
 
   const handleDumpClick = async (conn: Connection, schema: string) => {
     setSchemaMenu(null)
@@ -194,10 +179,43 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   }, [])
 
   const handleSchemaDoubleClick = async (conn: Connection, schema: string) => {
-    if (activeConnection?.id !== conn.id) {
-      await onConnect(conn)
+    try {
+      if (activeConnection?.id !== conn.id) {
+        await onConnect(conn)
+      }
+      // Optimistic update: update frontend state immediately so the UI
+      // reflects the selected schema without waiting for the backend.
+      setActiveConnectionDatabase(schema)
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      queryClient.invalidateQueries({ queryKey: ['schemas'] })
+      queryClient.invalidateQueries({ queryKey: ['tables'] })
+      queryClient.invalidateQueries({ queryKey: ['views'] })
+      queryClient.invalidateQueries({ queryKey: ['procedures'] })
+      queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      queryClient.invalidateQueries({ queryKey: ['functions'] })
+      navigate('/explorer')
+      // Fire the backend call in the background so the pool is updated,
+      // but don't block the UI if it fails (explorer queries use explicit
+      // schema parameters and work regardless of the pool's default db).
+      schemaService.switchSchema(conn.id, schema).catch((e) => {
+        console.error('Backend schema switch failed (non-critical):', e)
+      })
+    } catch (e) {
+      toast.error(`Failed to switch schema: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
-    switchSchemaMutation.mutate({ connectionId: conn.id, schema })
+  }
+
+  const handleConnectionDoubleClick = async (conn: Connection) => {
+    const willExpand = expandedConnId !== conn.id
+    if (willExpand && activeConnection?.id !== conn.id) {
+      try {
+        await onConnect(conn)
+      } catch {
+        return
+      }
+    }
+    setExpandedConnId(willExpand ? conn.id : null)
+    if (willExpand) setLoadingConnId(conn.id)
   }
 
   const handleContentLoaded = useCallback((connId: string) => {
@@ -252,12 +270,8 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               <div
                 className="flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none"
                 title="Double click to list schemas"
-                onClick={() => { setSelectedConnId(conn.id); onConnect(conn); }}
-                onDoubleClick={() => {
-                  const willExpand = expandedConnId !== conn.id
-                  setExpandedConnId(willExpand ? conn.id : null)
-                  if (willExpand) setLoadingConnId(conn.id)
-                }}
+                onClick={async () => { setSelectedConnId(conn.id); try { await onConnect(conn); } catch { /* handled by caller */ } }}
+                onDoubleClick={() => handleConnectionDoubleClick(conn)}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
               >
                 <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted/80 shrink-0">
@@ -298,9 +312,16 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                     <Edit2 className="w-3 h-3" />
                   </button>
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      if (activeConnection?.id !== conn.id) onConnect(conn);
+                      const willExpand = expandedConnId !== conn.id;
+                      if (willExpand && activeConnection?.id !== conn.id) {
+                        try {
+                          await onConnect(conn);
+                        } catch {
+                          return;
+                        }
+                      }
                       setExpandedConnId(expandedConnId === conn.id ? null : conn.id);
                     }}
                     className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
@@ -317,9 +338,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                 <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
                   <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
                     {conn.type === 'postgres' ? (
-                      <PostgresContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
+                      <PostgresContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                     ) : (
-                      <SchemaContent conn={conn} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
+                      <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                     )}
                   </div>
                 </div>

@@ -44,8 +44,10 @@ impl ExplorerService {
                 query.to_string()
             } else {
                 match db_type {
-                    // MySQL/MariaDB: pool is rebuilt by switch_schema with DB in URL, no USE needed
-                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb => query.to_string(),
+                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                        driver.execute(&format!("USE `{}`;", s)).await?;
+                        query.to_string()
+                    }
                     crate::db::DbType::Postgres => {
                         driver.execute(&format!("SET search_path TO \"{}\";", s)).await?;
                         query.to_string()

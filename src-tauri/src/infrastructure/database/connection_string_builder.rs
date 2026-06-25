@@ -51,6 +51,7 @@ impl ConnectionStringBuilder {
                     params.push("ssl-mode=REQUIRED");
                 }
                 params.push("multiStatements=true");
+                params.push("connect_timeout=10");
 
                 if !params.is_empty() {
                     url.push_str("?");

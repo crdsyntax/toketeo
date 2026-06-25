@@ -1,5 +1,37 @@
 import { invoke } from '@tauri-apps/api/core';
 
+function extractError(error: unknown): string {
+  if (typeof error === 'string') return error;
+
+  if (error && typeof error === 'object') {
+    // Tauri serialises Rust enums as { Variant: "message" }
+    const keys = Object.keys(error);
+    if (keys.length === 1) {
+      const variant = keys[0];
+      const content = (error as Record<string, unknown>)[variant];
+      if (typeof content === 'string') return content;
+      return JSON.stringify(content);
+    }
+
+    // Tauri v2 sometimes wraps in an Error-like object
+    if ('message' in error) {
+      const msg = (error as { message: unknown }).message;
+      if (typeof msg === 'string') return msg;
+    }
+
+    // Everything else – try toString or JSON
+    const str = String(error);
+    if (str !== '[object Object]') return str;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown error (see console for details)';
+    }
+  }
+
+  return 'Internal Rust Error';
+}
+
 export const tauriApi = {
   invoke: async <T>(
     command: string,
@@ -9,24 +41,8 @@ export const tauriApi = {
       const response = await invoke<T>(command, args);
       return response;
     } catch (error: unknown) {
-      console.error(`[Tauri Error] Command ${command} failed:`, error);
-
-      let message = 'Internal Rust Error';
-
-      if (typeof error === 'string') {
-        message = error;
-      } else if (error && typeof error === 'object') {
-        const keys = Object.keys(error);
-        if (keys.length === 1) {
-          const variant = keys[0];
-          const content = (error as Record<string, unknown>)[variant];
-          message =
-            typeof content === 'string' ? content : JSON.stringify(content);
-        } else if ('message' in error) {
-          message = String(error.message);
-        }
-      }
-
+      const message = extractError(error);
+      console.error(`[Tauri Error] Command ${command} failed:`, message, error);
       throw new Error(message, { cause: error });
     }
   },

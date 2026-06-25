@@ -12,6 +12,7 @@ import { AssistantLayout } from '@/components/assistant/AssistantLayout';
 import { ContextualTip } from '@/components/ui/ContextualTip';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
 import { useAssistantStore } from '@/store/assistantStore';
+import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef, useState } from 'react';
 import { ExecutionStatus, Environment } from '@/types/database';
@@ -81,6 +82,7 @@ export default function QueryEditor() {
     clearQueryHistory,
   } = useQueryEditor()
 
+  const setActiveConnection = useAppStore((s) => s.setActiveConnection)
   const [showHistory, setShowHistory] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const showAssistant = useAssistantStore((s) => s.showAssistant);
@@ -241,7 +243,11 @@ export default function QueryEditor() {
         setShowLayoutMenu={setShowLayoutMenu}
         connections={connections}
         currentConnectionId={activeTab?.connectionId || activeConnection?.id}
-        onConnectionChange={(id) => updateTabConnection(activeTab.id, id)}
+        onConnectionChange={(id) => {
+          updateTabConnection(activeTab.id, id)
+          const conn = connections.find(c => c.id === id)
+          if (conn) setActiveConnection(conn)
+        }}
         onHistoryToggle={() => setShowHistory((v) => !v)}
         showHistory={showHistory}
         historyCount={currentHistory.length}

@@ -25,7 +25,10 @@ export function EditorTabs({
   return (
     <div className="flex items-center gap-1 overflow-x-auto min-h-[40px] border-b border-border/50">
       {tabs.map((tab) => {
-        const tabConnection = connections.find(c => c.id === tab.connectionId) || activeConnection;
+        const tabConnection = activeConnection?.id === tab.connectionId
+          ? activeConnection
+          : connections.find(c => c.id === tab.connectionId) || activeConnection;
+        const dbSuffix = tabConnection?.database ? ` / ${tabConnection.database}` : '';
         return (
         <div 
           key={tab.id}
@@ -39,8 +42,8 @@ export function EditorTabs({
           <div className="flex flex-col items-start gap-0.5">
             <span className="truncate max-w-[120px]">{tab.name}</span>
             {tabConnection && (
-              <span className="truncate max-w-[120px] text-[9px] opacity-70" title={tabConnection.name}>
-                {tabConnection.name}
+              <span className="truncate max-w-[120px] text-[9px] opacity-70" title={`${tabConnection.name}${dbSuffix}`}>
+                {tabConnection.name}{dbSuffix}
               </span>
             )}
           </div>

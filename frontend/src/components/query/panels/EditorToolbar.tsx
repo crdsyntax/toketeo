@@ -102,7 +102,7 @@ export function EditorToolbar({
             title="New Script with specific connection"
           >
             <option value="" disabled>▾</option>
-            {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {connections.map(c => <option key={c.id} value={c.id}>{c.database ? `${c.name} / ${c.database}` : c.name}</option>)}
           </select>
         </div>
 
@@ -132,7 +132,7 @@ export function EditorToolbar({
           className="appearance-none bg-background border border-border text-foreground px-3 py-1 rounded text-xs font-bold mr-2 outline-none cursor-pointer hover:border-primary/50 transition-colors"
           title="Connection for this query tab"
         >
-          {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {connections.map(c => <option key={c.id} value={c.id}>{c.database ? `${c.name} / ${c.database}` : c.name}</option>)}
         </select>
 
         {connections.find(c => c.id === currentConnectionId)?.readOnly && (

@@ -233,7 +233,6 @@ impl ConnectionService {
         let mut config = state.storage.get_connection(id).await?;
         config.database = Some(new_db.to_string());
 
-        // Re-establish connection with new DB
         let url = ConnectionStringBuilder::build(&config)?;
         let pool_config: Option<PoolConfig> = (&config).into();
         let driver = DriverFactory::create(config.db_type, &url, false, pool_config).await?;
