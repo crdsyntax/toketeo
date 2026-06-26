@@ -1,4 +1,5 @@
 use crate::db::DbType;
+use chrono::{DateTime, Utc};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -20,6 +21,8 @@ pub struct DbConnectionConfig {
     )]
     pub password: Option<SecretString>,
     pub database: Option<String>,
+    #[serde(rename = "authEnabled")]
+    pub auth_enabled: Option<bool>,
     #[serde(rename = "authSource")]
     pub auth_source: Option<String>,
     #[serde(rename = "replicaSet")]
@@ -56,6 +59,7 @@ impl fmt::Debug for DbConnectionConfig {
             .field("user", &"***")
             .field("password", &self.password)
             .field("database", &self.database)
+            .field("auth_enabled", &self.auth_enabled)
             .field("auth_source", &self.auth_source)
             .field("replica_set", &self.replica_set)
             .field("direct_connection", &self.direct_connection)
@@ -172,6 +176,51 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum JobType {
+    Backup,
+    Report,
+    CsvExport,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScheduledJob {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(rename = "connectionId")]
+    pub connection_id: Uuid,
+    #[serde(rename = "jobType")]
+    pub job_type: JobType,
+    #[serde(rename = "cronExpression")]
+    pub cron_expression: String,
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    #[serde(rename = "lastRun")]
+    pub last_run: Option<DateTime<Utc>>,
+    #[serde(rename = "nextRun")]
+    pub next_run: Option<DateTime<Utc>>,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JobExecutionLog {
+    pub id: Uuid,
+    #[serde(rename = "jobId")]
+    pub job_id: Uuid,
+    #[serde(rename = "startedAt")]
+    pub started_at: DateTime<Utc>,
+    #[serde(rename = "finishedAt")]
+    pub finished_at: DateTime<Utc>,
+    pub status: String,
+    #[serde(rename = "outputPath")]
+    pub output_path: Option<String>,
+    pub error: Option<String>,
+    #[serde(rename = "rowsAffected")]
+    pub rows_affected: Option<i64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct DumpSelection {
     pub tables: Vec<String>,
@@ -198,6 +247,7 @@ mod tests {
             user: "admin".into(),
             password: Some(SecretString::new("super-secret".into())),
             database: Some("main".into()),
+            auth_enabled: None,
             auth_source: None,
             replica_set: None,
             direct_connection: None,

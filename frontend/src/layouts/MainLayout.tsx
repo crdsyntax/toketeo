@@ -133,7 +133,7 @@ export default function MainLayout() {
 
   const navItems = [
     { name: 'Explorer', icon: LayoutGrid, path: '/explorer', perkId: null },
-    { name: 'Diagram', icon: GitBranch, path: '/diagram', perkId: null },
+    { name: 'Diagram', icon: GitBranch, path: '/diagram', perkId: 'schema_diagram' },
     { name: 'Query Editor', icon: Terminal, path: '/query', perkId: null },
     { name: 'Audit', icon: FileText, path: '/audit', perkId: null },
     { name: 'Assistant', icon: Sparkles, path: '/assistant', perkId: 'ai_assistant' },
@@ -153,21 +153,16 @@ export default function MainLayout() {
             <div className="relative mb-[-16px] z-10">
               <div className="absolute inset-0 bg-white/10 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <img 
-                src="./logo2.svg" 
+                src="./logoOriginal.svg" 
                 alt="Toketeo Logo" 
                 className="relative w-12 h-12 object-contain brightness-0 invert transition-all duration-300 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.6)] drop-shadow-[0_0_10px_rgba(255,255,255,0.25)] group-hover:scale-110" 
               />
             </div>
             <div className="flex items-end justify-center leading-none mt-2">
-              <span className="text-2xl font-black tracking-tighter text-foreground transition-all duration-300 group-hover:text-primary group-hover:scale-105">
-                T
-              </span>
               <span className="text-sm font-black tracking-[0.2em] text-foreground/80 mb-[3px] mx-[1px] transition-all duration-300 group-hover:text-foreground group-hover:tracking-[0.3em]">
-                OKETE
+                TOKETEO
               </span>
-              <span className="text-2xl font-black tracking-tighter text-foreground transition-all duration-300 group-hover:text-primary group-hover:scale-105">
-                O
-              </span>
+
             </div>
           </div>
           <nav className="flex items-center ml-4 gap-0.5">

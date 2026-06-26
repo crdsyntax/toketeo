@@ -4,11 +4,14 @@ use crate::application::explorer_service::ExplorerService;
 use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::model_generator_service::ModelGeneratorService;
 use crate::error::{AppError, AppResult};
-use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext};
+use crate::infrastructure::scheduler::job_engine;
+use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
 use crate::state::AppState;
 use std::process::Command;
+use std::str::FromStr;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
+use uuid::Uuid;
 
 #[tauri::command]
 pub async fn generate_sql(
@@ -801,4 +804,99 @@ pub async fn restore_database_selected(
     drop(driver);
 
     ExplorerService::restore_database_selected(&state, &id, &file_path, &tables).await
+}
+
+// ===================== Scheduled Jobs =====================
+
+#[tauri::command]
+pub async fn create_scheduled_job(
+    name: String,
+    connection_id: String,
+    job_type: JobType,
+    cron_expression: String,
+    config: serde_json::Value,
+    state: State<'_, AppState>,
+) -> AppResult<ScheduledJob> {
+    let now = chrono::Utc::now();
+    let schedule = cron::Schedule::from_str(&cron_expression)
+        .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
+
+    let next_run = schedule.after(&now).next();
+
+    let job = ScheduledJob {
+        id: Uuid::new_v4(),
+        name,
+        connection_id: Uuid::parse_str(&connection_id)
+            .map_err(|e| AppError::Validation(format!("Invalid connection ID: {}", e)))?,
+        job_type,
+        cron_expression,
+        config,
+        enabled: true,
+        last_run: None,
+        next_run,
+        created_at: now,
+    };
+
+    state.storage.save_scheduled_job(&job).await?;
+    Ok(job)
+}
+
+#[tauri::command]
+pub async fn update_scheduled_job(
+    id: String,
+    name: Option<String>,
+    cron_expression: Option<String>,
+    config: Option<serde_json::Value>,
+    enabled: Option<bool>,
+    state: State<'_, AppState>,
+) -> AppResult<ScheduledJob> {
+    let mut job = state.storage.get_scheduled_job(&id).await?;
+
+    if let Some(name) = name {
+        job.name = name;
+    }
+
+    if let Some(cron_expression) = cron_expression {
+        let _ = cron::Schedule::from_str(&cron_expression)
+            .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
+        job.cron_expression = cron_expression;
+        job.next_run = cron::Schedule::from_str(&job.cron_expression)
+            .ok()
+            .and_then(|s| s.after(&chrono::Utc::now()).next());
+    }
+
+    if let Some(config) = config {
+        job.config = config;
+    }
+
+    if let Some(enabled) = enabled {
+        job.enabled = enabled;
+    }
+
+    state.storage.save_scheduled_job(&job).await?;
+    Ok(job)
+}
+
+#[tauri::command]
+pub async fn delete_scheduled_job(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.storage.delete_scheduled_job(&id).await
+}
+
+#[tauri::command]
+pub async fn get_scheduled_jobs(state: State<'_, AppState>) -> AppResult<Vec<ScheduledJob>> {
+    state.storage.get_all_scheduled_jobs().await
+}
+
+#[tauri::command]
+pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: AppHandle) -> AppResult<()> {
+    let storage = state.storage.clone();
+    let app_handle = Some(app_handle);
+
+    tokio::spawn(async move {
+        if let Err(e) = job_engine::execute_job_now(&storage, &app_handle, &id).await {
+            eprintln!("[run_job_now] Error: {}", e);
+        }
+    });
+
+    Ok(())
 }

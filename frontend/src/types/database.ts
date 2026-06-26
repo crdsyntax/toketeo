@@ -168,6 +168,7 @@ export interface Connection {
   user: string
   password?: string
   database?: string
+  authEnabled?: boolean
   authSource?: string
   replicaSet?: string
   directConnection?: boolean
@@ -222,4 +223,47 @@ export interface DiagramTable {
 
 export interface SchemaDiagramData {
   tables: DiagramTable[]
+}
+
+export enum JobType {
+  Backup = 'backup',
+  Report = 'report',
+  CsvExport = 'csv_export',
+}
+
+export interface ScheduledJob {
+  id: string
+  name: string
+  connectionId: string
+  jobType: JobType
+  cronExpression: string
+  config: Record<string, unknown>
+  enabled: boolean
+  lastRun: string | null
+  nextRun: string | null
+  createdAt: string
+}
+
+export interface CreateScheduledJobDto {
+  name: string
+  connectionId: string
+  jobType: JobType
+  cronExpression: string
+  config: Record<string, unknown>
+}
+
+export interface UpdateScheduledJobDto {
+  name?: string
+  cronExpression?: string
+  config?: Record<string, unknown>
+  enabled?: boolean
+}
+
+export interface JobCompletedPayload {
+  jobId: string
+  jobName: string
+  status: string
+  outputPath: string | null
+  error: string | null
+  rowsAffected: number | null
 }

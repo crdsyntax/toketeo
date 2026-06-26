@@ -9,14 +9,14 @@ use tokio::sync::RwLock;
 
 pub struct AppState {
     pub connections: RwLock<HashMap<String, ConnectionSession>>,
-    pub storage: Storage,
+    pub storage: Arc<Storage>,
 }
 
 impl AppState {
     pub async fn new(storage: Storage) -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
-            storage,
+            storage: Arc::new(storage),
         }
     }
 

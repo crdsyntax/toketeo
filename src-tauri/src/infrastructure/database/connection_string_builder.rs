@@ -60,20 +60,37 @@ impl ConnectionStringBuilder {
                 Ok(url)
             }
             DbType::Mongodb => {
-                let mut url = format!(
-                    "mongodb://{}:{}@{}:{}/{}",
-                    user, password, host, port, database
-                );
+                let auth_disabled = config.auth_enabled == Some(false);
+                let has_credentials = !user.is_empty() || !password.is_empty();
+                let needs_auth = !auth_disabled && has_credentials;
+
+                let db_path = if database.is_empty() {
+                    String::new()
+                } else {
+                    format!("/{}", database)
+                };
+
+                let mut url = if needs_auth {
+                    format!(
+                        "mongodb://{}:{}@{}:{}{}",
+                        user, password, host, port, db_path
+                    )
+                } else {
+                    format!("mongodb://{}:{}{}", host, port, db_path)
+                };
+
                 let mut params = Vec::new();
 
                 if ssl_enabled {
                     params.push("tls=true".to_string());
                 }
 
-                if let Some(ref auth_source) = config.auth_source {
-                    params.push(format!("authSource={}", auth_source));
-                } else {
-                    params.push("authSource=admin".to_string());
+                if needs_auth {
+                    if let Some(ref auth_source) = config.auth_source {
+                        params.push(format!("authSource={}", auth_source));
+                    } else {
+                        params.push("authSource=admin".to_string());
+                    }
                 }
                 if let Some(ref replica_set) = config.replica_set {
                     if !replica_set.is_empty() {
@@ -152,12 +169,19 @@ mod tests {
             user: "user".into(),
             password: Some(SecretString::new("pass@word".into())),
             database: Some("db".into()),
+            auth_enabled: None,
             auth_source: None,
             replica_set: None,
             direct_connection: None,
             ssl: None,
             ssh_tunnel: None,
-            read_only: false,
+            read_only: Some(false),
+            max_pool_size: None,
+            idle_timeout: None,
+            acquire_timeout: None,
+            max_lifetime: None,
+            keep_alive: None,
+            metadata_cache_ttl: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         assert_eq!(
@@ -178,6 +202,7 @@ mod tests {
             user: "user".into(),
             password: Some(SecretString::new("pass".into())),
             database: Some("db".into()),
+            auth_enabled: None,
             auth_source: None,
             replica_set: None,
             direct_connection: None,
@@ -192,7 +217,13 @@ mod tests {
                 passphrase: None,
                 key_path: None,
             }),
-            read_only: false,
+            read_only: Some(false),
+            max_pool_size: None,
+            idle_timeout: None,
+            acquire_timeout: None,
+            max_lifetime: None,
+            keep_alive: None,
+            metadata_cache_ttl: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         // Should use 127.0.0.1 when SSH tunnel is active

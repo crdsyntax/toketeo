@@ -6,7 +6,7 @@ import {
   Swords, Crosshair, Wand2, Zap, Skull, Hammer, Wrench, Anvil, 
   Pickaxe, Sparkles, Map, Compass, Castle, ScrollText, BookOpen, 
   Backpack, Gem, Sunrise, Hourglass, CalendarClock, Crown,
-  Palette, Bot, LineChart, Clock, Network
+  Palette, Bot, LineChart, Clock, Network, GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +21,7 @@ const ICONS: Record<string, React.ElementType> = {
   Map, Compass, Castle,
   ScrollText, BookOpen, Backpack, Gem,
   Sunrise, Hourglass, CalendarClock, Crown,
-  Palette, Bot, LineChart, Clock, Network,
+  Palette, Bot, LineChart, Clock, Network, GitBranch,
 };
 
 export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {

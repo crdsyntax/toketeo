@@ -14,6 +14,7 @@ import {
   Plus, X, Table2, Loader2, GitBranch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { FeatureGate } from '@/components/gamification/FeatureGate'
 import { useDiagramStore } from './store'
 import { DiagramDashboard } from './components/DiagramDashboard'
 import { DiagramToolbar } from './components/DiagramToolbar'
@@ -418,7 +419,7 @@ function EditorInner() {
   )
 }
 
-export default function DiagramPage() {
+function DiagramPageInner() {
   const activeConnection = useAppStore((s) => s.activeConnection)
   const activeDiagramId = useDiagramStore((s) => s.activeDiagramId)
   const createDiagram = useDiagramStore((s) => s.createDiagram)
@@ -493,5 +494,13 @@ export default function DiagramPage() {
     <ReactFlowProvider>
       <EditorInner key={editorKey} />
     </ReactFlowProvider>
+  )
+}
+
+export default function DiagramPage() {
+  return (
+    <FeatureGate perkId="schema_diagram">
+      <DiagramPageInner />
+    </FeatureGate>
   )
 }

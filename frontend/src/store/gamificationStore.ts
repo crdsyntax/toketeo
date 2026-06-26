@@ -9,6 +9,12 @@ import {
 } from '../lib/gamification';
 import toast from 'react-hot-toast';
 
+function calculateUnlockedPerks(level: number, completedMissions: string[]): string[] {
+  return APP_PERKS
+    .filter(p => p.requiredLevel <= level && p.requiredQuests.every(q => completedMissions.includes(q)))
+    .map(p => p.id);
+}
+
 interface GamificationState {
   level: number;
   xp: number;
@@ -46,7 +52,7 @@ export const useGamificationStore = create<GamificationState>()(
         EXPORT_DATA: 0,
       },
       completedMissions: [],
-      unlockedPerks: [],
+      unlockedPerks: calculateUnlockedPerks(1, []),
       executedQueryHashes: [],
 
       addXP: (amount: number, reason?: string) => {
@@ -55,8 +61,6 @@ export const useGamificationStore = create<GamificationState>()(
         const newXp = xp + amount;
         const newLevel = calculateLevel(newXp);
         
-        const newUnlockedPerks = [...(unlockedPerks || [])];
-
         if (newLevel > level) {
           toast.success(`🎉 Level Up! You reached Level ${newLevel}!`, { 
             duration: 5000, 
@@ -65,25 +69,20 @@ export const useGamificationStore = create<GamificationState>()(
           });
         }
 
-        // Check if any new perks are unlocked (level-up or quest-completion triggered)
-        const newlyUnlocked = APP_PERKS.filter(
-          perk =>
-            perk.requiredLevel <= newLevel &&
-            perk.requiredQuests.every(q => completedMissions.includes(q)) &&
-            !newUnlockedPerks.includes(perk.id)
-        );
+        const newUnlockedPerks = calculateUnlockedPerks(newLevel, completedMissions);
+        const freshlyUnlocked = newUnlockedPerks.filter(p => !unlockedPerks.includes(p));
 
-        if (newlyUnlocked.length > 0) {
-          newlyUnlocked.forEach(perk => {
-            newUnlockedPerks.push(perk.id);
+        freshlyUnlocked.forEach(perkId => {
+          const perk = APP_PERKS.find(p => p.id === perkId);
+          if (perk) {
             toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
               duration: 6000,
               position: 'bottom-right',
               style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
               icon: '✨'
             });
-          });
-        }
+          }
+        });
 
         set({ xp: newXp, level: newLevel, unlockedPerks: newUnlockedPerks });
       },
@@ -124,23 +123,20 @@ export const useGamificationStore = create<GamificationState>()(
         }
 
         // Re-check perks now that quests may have been completed
-        const newUnlockedPerks = [...(unlockedPerks || [])];
-        const newlyUnlocked = APP_PERKS.filter(
-          perk =>
-            perk.requiredLevel <= level &&
-            perk.requiredQuests.every(q => newCompletedMissions.includes(q)) &&
-            !newUnlockedPerks.includes(perk.id)
-        );
+        const newUnlockedPerks = calculateUnlockedPerks(level, newCompletedMissions);
+        const freshlyUnlocked = newUnlockedPerks.filter(p => !unlockedPerks.includes(p));
 
-        if (newlyUnlocked.length > 0) {
-          newlyUnlocked.forEach(perk => {
-            newUnlockedPerks.push(perk.id);
-            toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
-              duration: 6000,
-              position: 'bottom-right',
-              style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
-              icon: '✨'
-            });
+        if (freshlyUnlocked.length > 0) {
+          freshlyUnlocked.forEach(perkId => {
+            const perk = APP_PERKS.find(p => p.id === perkId);
+            if (perk) {
+              toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
+                duration: 6000,
+                position: 'bottom-right',
+                style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+                icon: '✨'
+              });
+            }
           });
           set({ unlockedPerks: newUnlockedPerks });
         }
@@ -207,6 +203,15 @@ export const useGamificationStore = create<GamificationState>()(
     }),
     {
       name: 'toketeo-gamification-storage',
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (error || !state) return;
+          const calculated = calculateUnlockedPerks(state.level, state.completedMissions);
+          if (JSON.stringify(state.unlockedPerks) !== JSON.stringify(calculated)) {
+            state.unlockedPerks = calculated;
+          }
+        };
+      },
     }
   )
 );

@@ -54,7 +54,7 @@ Level up to unlock features permanently:
 | Advanced Theming | Level 5 | Custom colors, contextual tips, connection help |
 | AI Query Assistant | Level 10 | Conversational SQL generation, /assistant page, keyboard shortcuts |
 | Data Visualizer | Level 15 | Performance dashboard, schema insights |
-| Query Scheduler | Level 20 | Scheduled query execution |
+| Query Scheduler | Level 1 | Scheduled query execution (backup, report, CSV export) |
 | Cross-DB Sync | Level 30 | Multi-engine data synchronization |
 
 ---
@@ -66,6 +66,7 @@ Level up to unlock features permanently:
 - **Monaco SQL Editor** — Full-featured editor with syntax highlighting, autocompletion, multi-tab
 - **Object Explorer** — Browse tables, views, columns, indexes, foreign keys, DDL generation
 - **Dump & Restore** — Select specific objects (tables, views, triggers, procedures, functions) via tabbed UI, run integrity checks after dump, open file location straight from the toast
+- **Query Scheduler** — Schedule recurring backups, reports, and CSV exports via cron expressions. Three job types: Backup (pg_dump/mysqldump/sqlite3), Report (query → JSON), CSV Export (query → CSV). Real-time notifications on completion.
 - **Export** — Download query results as CSV or JSON
 - **Real-time Logs** — WebSocket-powered server event streaming
 - **Audit Trail** — Automatic logging of user actions and query execution
@@ -87,8 +88,12 @@ The desktop backend runs as a **Tauri** application written in Rust.
 ```
 src-tauri/src/
 ├── application/explorer_service.rs   # Dump, restore, table sizes, integrity, SQL parsing
-├── presentation/tauri/commands.rs    # Tauri IPC commands
-├── models/                           # Shared structs (DumpSelection, etc.)
+├── infrastructure/scheduler/         # Job engine, executors (backup, report, CSV)
+│   ├── job_engine.rs                 # Polling loop, cron calculation, event emission
+│   └── executors.rs                  # BackupExecutor, ReportExecutor, CsvExportExecutor
+├── presentation/tauri/commands.rs    # Tauri IPC commands (incl. scheduler CRUD)
+├── models/                           # Shared structs (ScheduledJob, DumpSelection, etc.)
+├── storage.rs                        # SQLite persistence (connections, jobs, logs)
 ├── lib.rs                            # Plugin registration, invoke_handler
 └── main.rs                           # Entry point
 ```
@@ -103,8 +108,9 @@ frontend/src/
 │   ├── assistant/      # Smart Assistant Hub (panels, wizard, tour, shortcuts)
 │   ├── connections/    # Connection tree, DumpRestoreModal
 │   ├── gamification/   # LevelBadge, GamificationModal, FeatureGate, ThemeProvider
+│   ├── scheduler/      # JobCard, JobFormModal
 │   └── query/          # SQL editor, results grid
-├── store/              # Zustand stores (app, gamification, assistant, performance)
+├── store/              # Zustand stores (app, gamification, assistant, performance, scheduler)
 ├── hooks/              # Custom hooks (useQueryEditor, etc.)
 ├── services/           # Tauri IPC service wrappers
 ├── lib/                # Gamification core (config, missions, unlocks)
@@ -169,16 +175,18 @@ toketeo/
 ├── src-tauri/              # Rust/Tauri backend
 │   └── src/
 │       ├── application/    # Business logic (dump, restore, integrity)
+│       ├── infrastructure/ # Scheduler engine, executors
 │       ├── presentation/   # Tauri commands
 │       ├── models/         # Data structures
+│       ├── storage.rs      # SQLite persistence
 │       ├── lib.rs          # Plugin & command registration
 │       └── main.rs         # App entry point
 ├── frontend/               # React + Vite app
 │   └── src/
-│       ├── components/     # React components
+│       ├── components/     # React components (incl. scheduler/)
 │       ├── store/          # Zustand state stores
 │       ├── hooks/          # Custom React hooks
-│       ├── services/       # Tauri IPC wrappers (schema.service.ts, etc.)
+│       ├── services/       # Tauri IPC wrappers
 │       └── lib/            # Gamification engine
 ├── package.json            # Root scripts
 └── README.md               # You are here

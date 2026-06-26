@@ -16,8 +16,10 @@ impl ConnectionService {
     async fn merge_sensitive_data(state: &AppState, config: &mut DbConnectionConfig) {
         if let Some(id) = config.id {
             if let Ok(db_config) = state.storage.get_connection(&id.to_string()).await {
-                // Merge main password
-                if config.password.is_none()
+                // When auth is explicitly disabled, clear password and skip merge
+                if config.auth_enabled == Some(false) {
+                    config.password = None;
+                } else if config.password.is_none()
                     || config
                         .password
                         .as_ref()

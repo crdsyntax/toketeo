@@ -1,48 +1,156 @@
-import { CalendarClock } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { CalendarClock, Plus, RefreshCw, AlertCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
+import { JobCard } from '@/components/scheduler/JobCard'
+import { JobFormModal } from '@/components/scheduler/JobFormModal'
+import { useSchedulerStore } from '@/store/schedulerStore'
+import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload } from '@/types/database'
+import toast from 'react-hot-toast'
+import { listen } from '@tauri-apps/api/event'
 
 export function SchedulerPage() {
+  const { jobs, loading, error, fetchJobs, createJob, updateJob, deleteJob, runJobNow, setLastCompleted } = useSchedulerStore()
+  const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetchJobs()
+  }, [fetchJobs])
+
+  useEffect(() => {
+    const unlisten = listen<JobCompletedPayload>('scheduler:job-completed', (event) => {
+      const p = event.payload
+      setLastCompleted(p)
+      if (p.status === 'success') {
+        toast.success(`Job "${p.jobName}" completed`, { duration: 4000 })
+      } else {
+        toast.error(`Job "${p.jobName}" failed: ${p.error ?? 'Unknown error'}`, { duration: 6000 })
+      }
+      fetchJobs()
+    })
+    return () => { unlisten.then((f) => f()) }
+  }, [fetchJobs, setLastCompleted])
+
+  const handleSave = useCallback(async (dto: CreateScheduledJobDto) => {
+    setSaving(true)
+    try {
+      if (editingJob) {
+        await updateJob(editingJob.id, {
+          name: dto.name,
+          cronExpression: dto.cronExpression,
+          config: dto.config,
+        })
+        toast.success('Job updated')
+      } else {
+        await createJob(dto)
+        toast.success('Job created')
+      }
+      setShowForm(false)
+      setEditingJob(null)
+    } catch (e) {
+      toast.error(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }, [editingJob, createJob, updateJob])
+
+  const handleEdit = useCallback((job: ScheduledJob) => {
+    setEditingJob(job)
+    setShowForm(true)
+  }, [])
+
+  const handleDelete = useCallback(async (job: ScheduledJob) => {
+    if (!confirm(`Delete job "${job.name}"?`)) return
+    try {
+      await deleteJob(job.id)
+      toast.success('Job deleted')
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }, [deleteJob])
+
+  const handleRunNow = useCallback(async (job: ScheduledJob) => {
+    try {
+      await runJobNow(job.id)
+      toast.success(`"${job.name}" triggered`, { icon: '🚀' })
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }, [runJobNow])
+
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <CalendarClock className="w-5 h-5 text-primary" />
-            Query Scheduler
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Schedule queries to run on a recurring basis</p>
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+              <CalendarClock className="w-5 h-5 text-primary" />
+              Query Scheduler
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">Schedule queries to run on a recurring basis</p>
+          </div>
+          <button
+            onClick={fetchJobs}
+            className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+          </button>
         </div>
 
         <FeatureGate perkId="query_scheduler">
-          <div className="flex flex-col items-center justify-center text-muted-foreground p-12 text-center border border-dashed border-border rounded-xl bg-muted/20">
-            <CalendarClock className="w-12 h-12 mb-4 opacity-30" />
-            <h3 className="text-base font-semibold text-foreground mb-1">Scheduled Queries</h3>
-            <p className="text-sm max-w-md">
-              Create, manage, and monitor recurring query executions. Get notified when results are ready.
-            </p>
-            <div className="mt-6 grid grid-cols-1 gap-2 w-full max-w-sm">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border text-left">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <CalendarClock className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-foreground">Daily Sales Report</p>
-                  <p className="text-[10px] text-muted-foreground">Every day at 08:00 — coming soon</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border text-left">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <CalendarClock className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-foreground">Weekly Health Check</p>
-                  <p className="text-[10px] text-muted-foreground">Every Monday at 06:00 — coming soon</p>
-                </div>
-              </div>
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
             </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">{jobs.length} job{jobs.length !== 1 ? 's' : ''} scheduled</p>
+            <button
+              onClick={() => { setEditingJob(null); setShowForm(true) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Job
+            </button>
           </div>
+
+          {jobs.length === 0 && !loading ? (
+            <div className="flex flex-col items-center justify-center text-muted-foreground p-12 text-center border border-dashed border-border rounded-xl bg-muted/20">
+              <CalendarClock className="w-12 h-12 mb-4 opacity-30" />
+              <h3 className="text-base font-semibold text-foreground mb-1">No scheduled jobs yet</h3>
+              <p className="text-sm max-w-md">
+                Create your first backup, report, or CSV export schedule.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {jobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onRunNow={handleRunNow}
+                />
+              ))}
+            </div>
+          )}
         </FeatureGate>
       </div>
+
+      {showForm && (
+        <JobFormModal
+          job={editingJob}
+          onClose={() => { setShowForm(false); setEditingJob(null) }}
+          onSave={handleSave}
+          saving={saving}
+        />
+      )}
     </div>
   )
 }

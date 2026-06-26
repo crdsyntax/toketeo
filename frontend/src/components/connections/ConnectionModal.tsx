@@ -25,6 +25,7 @@ const INITIAL_FORM: CreateConnectionDto = {
   user: 'root',
   password: '',
   database: '',
+  authEnabled: true,
   authSource: '',
   replicaSet: '',
   directConnection: true,
@@ -84,6 +85,7 @@ export function ConnectionModal({
           user: fullConnection.user,
           password: fullConnection.password || '',
           database: fullConnection.database || '',
+          authEnabled: fullConnection.authEnabled ?? true,
           authSource: fullConnection.authSource || '',
           replicaSet: fullConnection.replicaSet || '',
           directConnection: fullConnection.directConnection ?? true,
@@ -113,6 +115,7 @@ export function ConnectionModal({
           user: editingConnection.user,
           password: editingConnection.password || '',
           database: editingConnection.database || '',
+          authEnabled: editingConnection.authEnabled ?? true,
           authSource: editingConnection.authSource || '',
           replicaSet: editingConnection.replicaSet || '',
           directConnection: editingConnection.directConnection ?? true,
@@ -414,46 +417,73 @@ export function ConnectionModal({
                     <Database className="w-3 h-3" />
                     MongoDB Advanced
                   </h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Auth Source</label>
-                      <input 
-                        className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
-                        value={form.authSource}
-                        onChange={(e) => setForm({ ...form, authSource: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Replica Set</label>
-                      <input 
-                        className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
-                        value={form.replicaSet}
-                        onChange={(e) => setForm({ ...form, replicaSet: e.target.value })}
-                      />
-                    </div>
-                  </div>
+
                   <div className="flex items-center justify-between p-3 bg-background/50 border border-border">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-primary/5 border border-primary/10 flex items-center justify-center text-primary">
-                        <Globe className="w-4 h-4" />
+                        <Lock className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Direct Connection</h4>
-                        <p className="text-[9px] text-muted-foreground uppercase tracking-tight">Force single node connection</p>
+                        <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Authentication Required</h4>
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-tight">Requires username &amp; password</p>
                       </div>
                     </div>
                     <button 
-                      onClick={() => setForm({ ...form, directConnection: !form.directConnection })}
+                      onClick={() => setForm({ ...form, authEnabled: !form.authEnabled, password: !form.authEnabled ? '' : form.password })}
                       className={cn(
                         "w-10 h-5 transition-all relative border p-0.5",
-                        form.directConnection ? "bg-primary border-primary" : "bg-muted border-border"
+                        form.authEnabled ? "bg-primary border-primary" : "bg-muted border-border"
                       )}
                     >
                       <div className={cn(
                         "w-3.5 h-3.5 transition-all",
-                        form.directConnection ? "translate-x-5 bg-background" : "translate-x-0 bg-muted-foreground"
+                        form.authEnabled ? "translate-x-5 bg-background" : "translate-x-0 bg-muted-foreground"
                       )} />
                     </button>
+                  </div>
+
+                  <div className={cn("space-y-4", !form.authEnabled && "opacity-40 pointer-events-none")}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Auth Source</label>
+                        <input 
+                          className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                          value={form.authSource}
+                          onChange={(e) => setForm({ ...form, authSource: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Replica Set</label>
+                        <input 
+                          className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                          value={form.replicaSet}
+                          onChange={(e) => setForm({ ...form, replicaSet: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-background/50 border border-border">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-primary/5 border border-primary/10 flex items-center justify-center text-primary">
+                          <Globe className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Direct Connection</h4>
+                          <p className="text-[9px] text-muted-foreground uppercase tracking-tight">Force single node connection</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setForm({ ...form, directConnection: !form.directConnection })}
+                        className={cn(
+                          "w-10 h-5 transition-all relative border p-0.5",
+                          form.directConnection ? "bg-primary border-primary" : "bg-muted border-border"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-3.5 h-3.5 transition-all",
+                          form.directConnection ? "translate-x-5 bg-background" : "translate-x-0 bg-muted-foreground"
+                        )} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -714,12 +744,16 @@ export function ConnectionModal({
             </button>
             <button 
               onClick={() => {
-                const payload = { ...form, password: storePassword ? form.password : '' };
+                const payload = { ...form, password: form.authEnabled === false ? '' : (storePassword ? form.password : '') };
                 // Cleanup legacy fields to avoid Serde duplicate errors
                 if (payload.ssh) {
                   const cleanedSsh = { ...payload.ssh } as Record<string, unknown>;
                   delete cleanedSsh.authMethod;
                   payload.ssh = cleanedSsh as unknown as SshConfig;
+                }
+                if (payload.authEnabled === false) {
+                  payload.user = '';
+                  payload.authSource = '';
                 }
                 onSave(payload);
               }}

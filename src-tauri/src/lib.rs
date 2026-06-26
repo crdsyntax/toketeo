@@ -9,6 +9,7 @@ pub mod ssh;
 pub mod state;
 pub mod storage;
 
+use infrastructure::scheduler::job_engine::JobEngine;
 use state::AppState;
 use std::fs;
 use storage::Storage;
@@ -45,7 +46,14 @@ pub fn run() {
             });
 
             let state = tauri::async_runtime::block_on(AppState::new(storage));
+            let storage_arc = state.storage.clone();
+
             app.manage(state);
+
+            let engine = Box::new(JobEngine::new(storage_arc.clone()));
+            let engine: &'static mut JobEngine = Box::leak(engine);
+            engine.set_app_handle(app.handle().clone());
+            engine.start();
 
             crate::application::session_service::SessionService::spawn_cleanup_task(
                 app.handle().clone(),
@@ -111,6 +119,11 @@ pub fn run() {
             commands::dump_schema_dialog,
             commands::pick_and_parse_dump_file,
             commands::restore_database_selected,
+            commands::create_scheduled_job,
+            commands::update_scheduled_job,
+            commands::delete_scheduled_job,
+            commands::get_scheduled_jobs,
+            commands::run_job_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
