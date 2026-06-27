@@ -5378,6 +5378,7 @@ dependencies = [
  "cron",
  "futures",
  "mongodb",
+ "regex",
  "rust_decimal",
  "secrecy",
  "serde",

@@ -40,3 +40,4 @@ futures = "0.3"
 secrecy = { version = "0.10.3", features = ["serde"] }
 zeroize = "1.8.2"
 cron = "0.15"
+regex = "1"

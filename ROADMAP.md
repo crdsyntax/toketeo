@@ -17,34 +17,34 @@ Sincronizar datos entre motores de base de datos heterogéneos (MySQL, MariaDB, 
 
 ---
 
-## Fase 2: Estrategias + Extractores
+## Fase 2: Estrategias + Extractores (completada)
 
 **Objetivo:** Motor de sincronización con paginación por keyset.
 
-- [ ] Trait `SyncStrategy` + `FullSync` e `IncrementalSync`
-- [ ] `SqlExtractor`: keyset pagination (`WHERE pk > ? ORDER BY pk LIMIT ?`)
-- [ ] `MongoExtractor`: cursor pagination (`{ _id: { $gt: last_id } }`)
-- [ ] Trait `DataExtractor` + registro de extractores por engine
+- [x] Trait `SyncStrategy` + `FullSync` e `IncrementalSync`
+- [x] `SqlExtractor`: keyset pagination (`WHERE pk > ? ORDER BY pk LIMIT ?`)
+- [x] `MongoExtractor`: cursor pagination (`{ _id: { $gt: last_id } }`)
+- [x] Trait `DataExtractor` + registro de extractores por engine
 
 ---
 
-## Fase 3: Transformadores
+## Fase 3: Transformadores (completada)
 
 **Objetivo:** Mapeo de esquemas y transformaciones de columnas.
 
-- [ ] `SchemaMapper`: mapeo de tipos entre engines
-- [ ] `ColumnMapper`: mapeo columna-a-columna
-- [ ] `ColumnTransforms`: `trim()`, `uppercase()`, `lowercase()`, `default_value`, `regex`, `concat`, `cast`, `date_format`
+- [x] `SchemaMapper`: mapeo de tipos entre engines
+- [x] `ColumnMapper`: mapeo columna-a-columna
+- [x] `ColumnTransforms`: `trim()`, `uppercase()`, `lowercase()`, `default_value`, `regex`, `concat`, `cast`, `date_format`
 
 ---
 
-## Fase 4: Cargadores (Upsert)
+## Fase 4: Cargadores (Upsert) (completada)
 
 **Objetivo:** Carga con upsert específico por engine.
 
-- [ ] Trait `DataLoader` + `SqlLoader` (ON CONFLICT / ON DUPLICATE KEY / MERGE)
-- [ ] `MongoLoader` (`updateOne` con `upsert: true`)
-- [ ] Batch commit configurable
+- [x] Trait `DataWriter` con `upsert_rows` (ON CONFLICT / ON DUPLICATE KEY / MERGE / upsert:true)
+- [x] `MongoLoader` (`updateOne` con `upsert: true`)
+- [x] Batch commit configurable
 
 ---
 

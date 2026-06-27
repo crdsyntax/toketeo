@@ -2,5 +2,6 @@ pub mod audit_service;
 pub mod connection_service;
 pub mod explorer_service;
 pub mod session_service;
+pub mod sync;
 pub mod sql_generator_service;
 pub mod model_generator_service;
