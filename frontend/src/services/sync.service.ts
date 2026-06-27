@@ -1,0 +1,67 @@
+import { tauriApi } from '@/lib/api';
+import type {
+  SyncPipeline,
+  SyncRun,
+  SyncBatch,
+  SyncRowError,
+  SyncCheckpoint,
+  ValidationReport,
+  CreateSyncPipelineDto,
+} from '@/types/sync';
+
+export const syncService = {
+  /** Crear o actualizar un pipeline. */
+  save: async (pipeline: CreateSyncPipelineDto): Promise<SyncPipeline> => {
+    return await tauriApi.invoke<SyncPipeline>('save_sync_pipeline', { pipeline });
+  },
+
+  /** Listar todos los pipelines. */
+  list: async (): Promise<SyncPipeline[]> => {
+    return await tauriApi.invoke<SyncPipeline[]>('list_sync_pipelines');
+  },
+
+  /** Obtener un pipeline por ID. */
+  get: async (id: string): Promise<SyncPipeline> => {
+    return await tauriApi.invoke<SyncPipeline>('get_sync_pipeline', { id });
+  },
+
+  /** Eliminar un pipeline. */
+  remove: async (id: string): Promise<void> => {
+    return await tauriApi.invoke<void>('delete_sync_pipeline', { id });
+  },
+
+  /** Validar configuración del pipeline. */
+  validate: async (pipeline: CreateSyncPipelineDto): Promise<ValidationReport> => {
+    return await tauriApi.invoke<ValidationReport>('validate_sync_pipeline', { pipeline });
+  },
+
+  /** Iniciar ejecución de un pipeline. */
+  start: async (id: string): Promise<void> => {
+    return await tauriApi.invoke<void>('start_sync', { id });
+  },
+
+  /** Listar ejecuciones de un pipeline. */
+  listRuns: async (pipelineId: string): Promise<SyncRun[]> => {
+    return await tauriApi.invoke<SyncRun[]>('list_sync_runs', { pipelineId });
+  },
+
+  /** Obtener una ejecución por ID. */
+  getRun: async (id: string): Promise<SyncRun> => {
+    return await tauriApi.invoke<SyncRun>('get_sync_run', { id });
+  },
+
+  /** Listar batches de una ejecución. */
+  listBatches: async (runId: string): Promise<SyncBatch[]> => {
+    return await tauriApi.invoke<SyncBatch[]>('list_sync_batches', { runId });
+  },
+
+  /** Listar errores de un batch. */
+  listRowErrors: async (batchId: string): Promise<SyncRowError[]> => {
+    return await tauriApi.invoke<SyncRowError[]>('list_sync_row_errors', { batchId });
+  },
+
+  /** Obtener checkpoint de un pipeline. */
+  getCheckpoint: async (pipelineId: string): Promise<SyncCheckpoint | null> => {
+    return await tauriApi.invoke<SyncCheckpoint | null>('get_checkpoint', { pipelineId });
+  },
+};

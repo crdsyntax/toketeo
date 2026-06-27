@@ -1,6 +1,6 @@
 use crate::db::DbType;
 use crate::error::AppResult;
-use crate::models::sync::{SyncCheckpoint, SyncPipeline, SyncRun, SyncMode, PipelineStatus, SyncTableConfig};
+use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, SyncMode, PipelineStatus, SyncTableConfig};
 use crate::models::{DbConnectionConfig, SshConfig, ScheduledJob, JobType, JobExecutionLog};
 use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;
@@ -182,6 +182,35 @@ impl Storage {
                 table_name TEXT NOT NULL,
                 last_processed_key TEXT,
                 batch_number INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS sync_batches (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                batch_number INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                rows_extracted INTEGER NOT NULL DEFAULT 0,
+                rows_loaded INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                error_message TEXT
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS sync_row_errors (
+                id TEXT PRIMARY KEY,
+                batch_id TEXT NOT NULL,
+                row_key TEXT,
+                column_name TEXT,
+                error_message TEXT NOT NULL,
+                raw_value TEXT
             )",
         )
         .execute(&pool)
@@ -742,6 +771,101 @@ impl Storage {
             .await?;
         Ok(())
     }
+
+    pub async fn get_latest_checkpoint(&self, pipeline_id: &str) -> AppResult<Option<SyncCheckpoint>> {
+        let result = sqlx::query(
+            "SELECT * FROM sync_checkpoints WHERE pipeline_id = ? ORDER BY batch_number DESC LIMIT 1"
+        )
+        .bind(pipeline_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match result {
+            Some(row) => Ok(Some(row_to_sync_checkpoint(row)?)),
+            None => Ok(None),
+        }
+    }
+
+    // ── Sync Batches ──
+
+    pub async fn save_sync_batch(&self, batch: &SyncBatch) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO sync_batches (id, run_id, batch_number, table_name, rows_extracted, rows_loaded, duration_ms, status, error_message)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                rows_extracted = excluded.rows_extracted,
+                rows_loaded = excluded.rows_loaded,
+                duration_ms = excluded.duration_ms,
+                status = excluded.status,
+                error_message = excluded.error_message"
+        )
+        .bind(&batch.id)
+        .bind(&batch.run_id)
+        .bind(batch.batch_number as i64)
+        .bind(&batch.table_name)
+        .bind(batch.rows_extracted as i64)
+        .bind(batch.rows_loaded as i64)
+        .bind(batch.duration_ms as i64)
+        .bind(&batch.status)
+        .bind(&batch.error_message)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn list_sync_batches(&self, run_id: &str) -> AppResult<Vec<SyncBatch>> {
+        let rows = sqlx::query(
+            "SELECT * FROM sync_batches WHERE run_id = ? ORDER BY batch_number ASC"
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut batches = Vec::new();
+        for row in rows {
+            if let Ok(b) = row_to_sync_batch(row) {
+                batches.push(b);
+            }
+        }
+        Ok(batches)
+    }
+
+    // ── Sync Row Errors ──
+
+    pub async fn save_sync_row_error(&self, err: &SyncRowError) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO sync_row_errors (id, batch_id, row_key, column_name, error_message, raw_value)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&err.id)
+        .bind(&err.batch_id)
+        .bind(&err.row_key)
+        .bind(&err.column_name)
+        .bind(&err.error_message)
+        .bind(&err.raw_value)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn list_sync_row_errors(&self, batch_id: &str) -> AppResult<Vec<SyncRowError>> {
+        let rows = sqlx::query(
+            "SELECT * FROM sync_row_errors WHERE batch_id = ? ORDER BY row_key ASC"
+        )
+        .bind(batch_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut errors = Vec::new();
+        for row in rows {
+            if let Ok(e) = row_to_sync_row_error(row) {
+                errors.push(e);
+            }
+        }
+        Ok(errors)
+    }
 }
 
 fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline> {
@@ -784,6 +908,31 @@ fn row_to_sync_run(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncRun> {
         processed_rows: row.get::<i64, _>("processed_rows") as u64,
         error_count: row.get::<i64, _>("error_count") as u64,
         batch_count: row.get::<i64, _>("batch_count") as u64,
+    })
+}
+
+fn row_to_sync_batch(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncBatch> {
+    Ok(SyncBatch {
+        id: row.get("id"),
+        run_id: row.get("run_id"),
+        batch_number: row.get::<i64, _>("batch_number") as u64,
+        table_name: row.get("table_name"),
+        rows_extracted: row.get::<i64, _>("rows_extracted") as u64,
+        rows_loaded: row.get::<i64, _>("rows_loaded") as u64,
+        duration_ms: row.get::<i64, _>("duration_ms") as u64,
+        status: row.get("status"),
+        error_message: row.get("error_message"),
+    })
+}
+
+fn row_to_sync_row_error(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncRowError> {
+    Ok(SyncRowError {
+        id: row.get("id"),
+        batch_id: row.get("batch_id"),
+        row_key: row.get("row_key"),
+        column_name: row.get("column_name"),
+        error_message: row.get("error_message"),
+        raw_value: row.get("raw_value"),
     })
 }
 

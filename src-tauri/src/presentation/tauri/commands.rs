@@ -7,7 +7,7 @@ use crate::application::sync::sync_service::SyncService;
 use crate::application::sync::strategies::SyncEvent;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::scheduler::job_engine;
-use crate::models::sync::{SyncPipeline, SyncRun};
+use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
 use crate::state::AppState;
 use std::process::Command;
@@ -991,4 +991,28 @@ pub async fn list_sync_runs(
 #[tauri::command]
 pub async fn get_sync_run(id: String, state: State<'_, AppState>) -> AppResult<SyncRun> {
     state.storage.get_sync_run(&id).await
+}
+
+#[tauri::command]
+pub async fn list_sync_batches(
+    run_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SyncBatch>> {
+    state.storage.list_sync_batches(&run_id).await
+}
+
+#[tauri::command]
+pub async fn list_sync_row_errors(
+    batch_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SyncRowError>> {
+    state.storage.list_sync_row_errors(&batch_id).await
+}
+
+#[tauri::command]
+pub async fn get_checkpoint(
+    pipeline_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<SyncCheckpoint>> {
+    state.storage.get_latest_checkpoint(&pipeline_id).await
 }

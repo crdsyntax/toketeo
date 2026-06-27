@@ -132,6 +132,9 @@ pub fn run() {
             commands::validate_sync_pipeline,
             commands::list_sync_runs,
             commands::get_sync_run,
+            commands::list_sync_batches,
+            commands::list_sync_row_errors,
+            commands::get_checkpoint,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
