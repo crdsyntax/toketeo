@@ -753,8 +753,9 @@ export function ConnectionModal({
                 }
                 if (payload.authEnabled === false) {
                   payload.user = '';
-                  payload.authSource = '';
+                  payload.authSource = undefined;
                 }
+                if (!payload.authSource) payload.authSource = undefined;
                 onSave(payload);
               }}
               disabled={isSaving}

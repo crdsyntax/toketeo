@@ -87,9 +87,9 @@ impl ConnectionStringBuilder {
 
                 if needs_auth {
                     if let Some(ref auth_source) = config.auth_source {
-                        params.push(format!("authSource={}", auth_source));
-                    } else {
-                        params.push("authSource=admin".to_string());
+                        if !auth_source.is_empty() {
+                            params.push(format!("authSource={}", auth_source));
+                        }
                     }
                 }
                 if let Some(ref replica_set) = config.replica_set {
