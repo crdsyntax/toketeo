@@ -1,3 +1,5 @@
+pub mod sync;
+
 use crate::db::DbType;
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;

@@ -1,6 +1,8 @@
+use crate::db::CapabilityProvider;
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::error::{AppError, AppResult};
+use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -539,5 +541,22 @@ impl DbDriver for MongoDbDriver {
 
     async fn close(&self) -> AppResult<()> {
         Ok(()) // Client is dropped automatically
+    }
+}
+
+impl CapabilityProvider for MongoDbDriver {
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            supports_transactions: false,
+            supports_savepoints: false,
+            supports_upsert: true,
+            upsert_strategy: Some(UpsertStrategy::UpsertDoc),
+            supports_keyset_pagination: true,
+            supports_streaming: true,
+            supports_json: false,
+            supports_arrays: true,
+            supports_returning: false,
+            max_batch_size: 1000,
+        }
     }
 }

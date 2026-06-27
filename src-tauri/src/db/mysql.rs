@@ -1,6 +1,8 @@
+use crate::db::CapabilityProvider;
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::error::{ AppError, AppResult };
+use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use crate::db::common::{
@@ -575,5 +577,22 @@ impl MySqlDriver {
         let column = &row.columns()[index];
 
         Value::from(format!("Un-decodable: {}", column.type_info().name()))
+    }
+}
+
+impl CapabilityProvider for MySqlDriver {
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            supports_transactions: true,
+            supports_savepoints: true,
+            supports_upsert: true,
+            upsert_strategy: Some(UpsertStrategy::OnDuplicateKey),
+            supports_keyset_pagination: true,
+            supports_streaming: true,
+            supports_json: true,
+            supports_arrays: false,
+            supports_returning: false,
+            max_batch_size: 1000,
+        }
     }
 }

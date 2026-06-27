@@ -1,5 +1,6 @@
-use crate::db::{DbDriver, DbType};
+use crate::db::{CapabilityProvider, DbDriver, DbType};
 use crate::error::{AppError, AppResult};
+use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use futures::TryStreamExt;
@@ -425,5 +426,22 @@ impl DbDriver for SqlServerDriver {
             })?;
         }
         Ok(())
+    }
+}
+
+impl CapabilityProvider for SqlServerDriver {
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            supports_transactions: true,
+            supports_savepoints: true,
+            supports_upsert: true,
+            upsert_strategy: Some(UpsertStrategy::Merge),
+            supports_keyset_pagination: true,
+            supports_streaming: false,
+            supports_json: false,
+            supports_arrays: false,
+            supports_returning: false,
+            max_batch_size: 500,
+        }
     }
 }

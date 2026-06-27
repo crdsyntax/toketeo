@@ -1,5 +1,6 @@
 use crate::error::AppResult;
 use crate::models::QueryResult;
+use crate::models::sync::DriverCapabilities;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -82,6 +83,44 @@ pub trait DbDriver: Send + Sync {
         Err(crate::error::AppError::Validation("Not supported for this database type".to_string()))
     }
     async fn close(&self) -> AppResult<()>;
+}
+
+/// Capacidades del driver para sync.
+pub trait CapabilityProvider: Send + Sync {
+    fn capabilities(&self) -> DriverCapabilities;
+}
+
+/// Lectura de datos con paginación por keyset.
+#[async_trait]
+pub trait DataReader: Send + Sync {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>>;
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64>;
+}
+
+/// Escritura de datos con upsert.
+#[async_trait]
+pub trait DataWriter: Send + Sync {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64>;
 }
 
 pub mod mongodb;

@@ -1,6 +1,8 @@
+use crate::db::CapabilityProvider;
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::error::{AppError, AppResult};
+use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use sqlx::{Column, PgPool, Row, postgres::PgPoolOptions};
@@ -644,5 +646,22 @@ impl PostgresDriver {
 
         let def: Option<String> = row.try_get(0)?;
         Ok(def.unwrap_or_default())
+    }
+}
+
+impl CapabilityProvider for PostgresDriver {
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            supports_transactions: true,
+            supports_savepoints: true,
+            supports_upsert: true,
+            upsert_strategy: Some(UpsertStrategy::OnConflict),
+            supports_keyset_pagination: true,
+            supports_streaming: true,
+            supports_json: true,
+            supports_arrays: true,
+            supports_returning: true,
+            max_batch_size: 1000,
+        }
     }
 }
