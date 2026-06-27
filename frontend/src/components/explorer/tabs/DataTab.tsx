@@ -28,6 +28,7 @@ import { ContextMenu } from '@/components/ui/ContextMenu';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
+import { formatCellValue } from '@/lib/formatCellValue';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -45,22 +46,6 @@ interface DataTabProps {
   filter: string;
   setFilter: (f: string) => void;
 }
-
-const formatCellValue = (value: DbValue): string => {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') {
-    if ((value as Record<string, unknown>).$oid) return `ObjectId("${(value as Record<string, string>).$oid}")`;
-    const dateVal = (value as Record<string, unknown>).$date;
-    if (dateVal) {
-      if (typeof dateVal === 'string') return new Date(dateVal).toISOString();
-      if ((dateVal as Record<string, string>).$numberLong)
-        return new Date(Number((dateVal as Record<string, string>).$numberLong)).toISOString();
-      return new Date(dateVal as string | number).toISOString();
-    }
-    return JSON.stringify(value);
-  }
-  return String(value);
-};
 
 /** State for the visual diff confirmation panel. */
 interface PendingCellEdit {

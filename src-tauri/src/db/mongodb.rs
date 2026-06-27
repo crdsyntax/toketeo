@@ -6,10 +6,53 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use mongodb::{
     Client,
-    bson::{Document, doc},
+    bson::{Bson, Document, doc},
     options::ClientOptions,
 };
 use std::time::Instant;
+
+fn bson_to_json(value: &Bson) -> serde_json::Value {
+    match value {
+        Bson::Int32(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
+        Bson::Int64(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
+        Bson::Double(f) => {
+            serde_json::Number::from_f64(*f)
+                .map_or(serde_json::Value::Null, serde_json::Value::Number)
+        }
+        Bson::Boolean(b) => serde_json::Value::Bool(*b),
+        Bson::String(s) => serde_json::Value::String(s.clone()),
+        Bson::Array(arr) => {
+            serde_json::Value::Array(arr.iter().map(bson_to_json).collect())
+        }
+        Bson::Document(doc) => {
+            let map = doc
+                .iter()
+                .map(|(k, v)| (k.clone(), bson_to_json(v)))
+                .collect();
+            serde_json::Value::Object(map)
+        }
+        Bson::Null => serde_json::Value::Null,
+        Bson::DateTime(dt) => {
+            let millis = dt.timestamp_millis();
+            let date_obj = doc! { "$date": doc! { "$numberLong": millis.to_string() } };
+            serde_json::to_value(&date_obj).unwrap_or(serde_json::Value::Null)
+        }
+        Bson::ObjectId(oid) => {
+            let obj = doc! { "$oid": oid.to_hex() };
+            serde_json::to_value(&obj).unwrap_or(serde_json::Value::Null)
+        }
+        Bson::Binary(bin) => serde_json::Value::String(format!(
+            "<binary: {} bytes>",
+            bin.bytes.len()
+        )),
+        Bson::RegularExpression(re) => serde_json::Value::String(format!(
+            "/{}/{}",
+            re.pattern,
+            re.options
+        )),
+        _ => serde_json::to_value(value).unwrap_or(serde_json::Value::Null),
+    }
+}
 
 pub struct MongoDbDriver {
     client: Client,
@@ -228,7 +271,7 @@ impl DbDriver for MongoDbDriver {
             while let Some(result) = cursor.next().await {
                 let doc = result
                     .map_err(|e| AppError::Database(format!("Error fetching document: {}", e)))?;
-                let json_val = serde_json::to_value(&doc).unwrap_or(serde_json::Value::Null);
+                let json_val = bson_to_json(&Bson::Document(doc));
 
                 if let Some(obj) = json_val.as_object() {
                     for key in obj.keys() {
@@ -260,7 +303,7 @@ impl DbDriver for MongoDbDriver {
             .await
             .map_err(|e| AppError::Database(format!("MongoDB command failed: {}", e)))?;
 
-        let json_result = serde_json::to_value(&result).unwrap_or(serde_json::Value::Null);
+        let json_result = bson_to_json(&Bson::Document(result));
 
         Ok(QueryResult {
             columns: vec!["result".to_string()],

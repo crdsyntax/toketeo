@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { formatCellValue } from '@/lib/formatCellValue';
 
 interface ResultsPanelTableProps {
   activeTab: QueryTab;
@@ -161,26 +162,8 @@ export function ResultsPanelTable({
                           <span className="inline-block bg-muted/60 border border-border/80 rounded-[4px] px-1.5 py-0.5 text-[10px] text-muted-foreground/70 italic select-none">
                             NULL
                           </span>
-                        ) : (
-                          (() => {
-                            if (typeof row[col] === 'object') {
-                              if (row[col] && typeof row[col] === 'object' && '$date' in (row[col] as Record<string, unknown>)) {
-                                const d = new Date((row[col] as Record<string, unknown>).$date as string | number);
-                                if (!isNaN(d.getTime())) return d.toUTCString();
-                              }
-                              return JSON.stringify(row[col]);
-                            }
-                            const valStr = String(row[col]);
-                            const dateRegex = /^\d{4}-\d{2}-\d{2}(T|\s)\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))?$/;
-                            if (dateRegex.test(valStr)) {
-                              const safeDateStr = valStr.replace(' ', 'T');
-                              const d = new Date(safeDateStr);
-                              if (!isNaN(d.getTime())) return d.toUTCString();
-                            }
-                            return valStr;
-                          })()
-                        )
-                      )}
+                        ) : (formatCellValue(row[col]))
+                        )}
                     </td>
                   );
                 })}

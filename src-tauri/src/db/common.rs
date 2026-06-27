@@ -9,6 +9,31 @@ pub fn decode_i64(row: &MySqlRow, index: usize) -> Option<Value> {
     row.try_get::<Option<i64>, _>(index).ok().flatten().map(Value::from)
 }
 
+pub fn decode_u8(row: &MySqlRow, index: usize) -> Option<Value> {
+    row.try_get::<Option<u8>, _>(index).ok().flatten().map(|v| Value::from(v as i64))
+}
+
+pub fn decode_u16(row: &MySqlRow, index: usize) -> Option<Value> {
+    row.try_get::<Option<u16>, _>(index).ok().flatten().map(|v| Value::from(v as i64))
+}
+
+pub fn decode_u32(row: &MySqlRow, index: usize) -> Option<Value> {
+    row.try_get::<Option<u32>, _>(index).ok().flatten().map(|v| Value::from(v as i64))
+}
+
+pub fn decode_u64(row: &MySqlRow, index: usize) -> Option<Value> {
+    row.try_get::<Option<u64>, _>(index)
+        .ok()
+        .flatten()
+        .map(|v| {
+            if v <= i64::MAX as u64 {
+                Value::Number(serde_json::Number::from(v as i64))
+            } else {
+                Value::from(v.to_string())
+            }
+        })
+}
+
 pub fn decode_decimal(row: &MySqlRow, index: usize) -> Option<Value> {
     row.try_get::<Option<Decimal>, _>(index)
         .ok()

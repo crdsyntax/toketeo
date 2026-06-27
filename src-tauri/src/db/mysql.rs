@@ -15,6 +15,10 @@ use crate::db::common::{
     decode_i64,
     decode_string,
     decode_time,
+    decode_u8,
+    decode_u16,
+    decode_u32,
+    decode_u64,
 };
 use sqlx::{ Column, MySqlPool, Row, mysql::MySqlPoolOptions, mysql::MySqlRow, TypeInfo };
 use std::time::{ Duration, Instant };
@@ -548,6 +552,10 @@ impl MySqlDriver {
         const DECODERS: &[Decoder] = &[
             decode_string,
             decode_i64,
+            decode_u8,
+            decode_u16,
+            decode_u32,
+            decode_u64,
             decode_decimal,
             decode_f64,
             decode_bool,
