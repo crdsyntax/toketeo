@@ -1,4 +1,4 @@
-use crate::db::CapabilityProvider;
+use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::error::{AppError, AppResult};
@@ -7,6 +7,10 @@ use crate::models::QueryResult;
 use async_trait::async_trait;
 use sqlx::{Column, PgPool, Row, postgres::PgPoolOptions};
 use std::time::{Duration, Instant};
+
+fn quote_pg(id: &str) -> String {
+    format!("\"{}\"", id.replace('"', "\"\""))
+}
 
 /// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
@@ -534,6 +538,184 @@ impl DbDriver for PostgresDriver {
     async fn close(&self) -> AppResult<()> {
         self.pool.close().await;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl DataReader for PostgresDriver {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_pg(s), quote_pg(table))
+        } else {
+            quote_pg(table)
+        };
+
+        let cols: Vec<String> = columns.iter().map(|c| quote_pg(c)).collect();
+        let cols_str = cols.join(", ");
+
+        let (query, has_filter) = if last_key.is_some() {
+            (
+                format!(
+                    "SELECT {} FROM {} WHERE {} > $1 ORDER BY {} ASC LIMIT $2",
+                    cols_str, table_ref, quote_pg(pk_column), quote_pg(pk_column)
+                ),
+                true,
+            )
+        } else {
+            (
+                format!(
+                    "SELECT {} FROM {} ORDER BY {} ASC LIMIT $1",
+                    cols_str, table_ref, quote_pg(pk_column)
+                ),
+                false,
+            )
+        };
+
+        let mut qb = sqlx::query(&query);
+
+        if has_filter {
+            if let Some(ref key) = last_key {
+                qb = match key {
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            qb.bind(i)
+                        } else if let Some(f) = n.as_f64() {
+                            qb.bind(f)
+                        } else {
+                            qb.bind(n.to_string())
+                        }
+                    }
+                    serde_json::Value::String(s) => qb.bind(s.clone()),
+                    serde_json::Value::Bool(b) => qb.bind(*b),
+                    other => qb.bind(other.to_string()),
+                };
+            }
+            qb = qb.bind(batch_size as i64);
+        } else {
+            qb = qb.bind(batch_size as i64);
+        }
+
+        let rows = qb.fetch_all(&self.pool).await?;
+        let mut result = Vec::new();
+
+        for row in rows {
+            let mut map = serde_json::Map::new();
+            for (i, col_name) in columns.iter().enumerate() {
+                let value = self.decode_column(&row, i);
+                map.insert(col_name.clone(), value);
+            }
+            result.push(serde_json::Value::Object(map));
+        }
+
+        Ok(result)
+    }
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_pg(s), quote_pg(table))
+        } else {
+            quote_pg(table)
+        };
+
+        let row = sqlx::query(&format!("SELECT COUNT(*) as cnt FROM {}", table_ref))
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(row.get::<i64, _>("cnt") as u64)
+    }
+}
+
+#[async_trait]
+impl DataWriter for PostgresDriver {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64> {
+        if rows.is_empty() || columns.is_empty() {
+            return Ok(0);
+        }
+
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_pg(s), quote_pg(table))
+        } else {
+            quote_pg(table)
+        };
+
+        let quoted_cols: Vec<String> = columns.iter().map(|c| quote_pg(c)).collect();
+        let cols_str = quoted_cols.join(", ");
+
+        // Build placeholders: $1, $2, $3, ...
+        let mut param_idx = 1;
+        let mut all_placeholders = Vec::new();
+        for _ in 0..rows.len() {
+            let row_placeholders: Vec<String> = columns
+                .iter()
+                .map(|_| {
+                    let p = format!("${}", param_idx);
+                    param_idx += 1;
+                    p
+                })
+                .collect();
+            all_placeholders.push(format!("({})", row_placeholders.join(", ")));
+        }
+        let values_str = all_placeholders.join(", ");
+
+        let pk_clause: Vec<String> = primary_keys.iter().map(|k| quote_pg(k)).collect();
+        let update_parts: Vec<String> = quoted_cols
+            .iter()
+            .map(|c| format!("{} = EXCLUDED.{}", c, c))
+            .collect();
+        let update_str = update_parts.join(", ");
+
+        let query = format!(
+            "INSERT INTO {} ({}) VALUES {} ON CONFLICT ({}) DO UPDATE SET {}",
+            table_ref,
+            cols_str,
+            values_str,
+            pk_clause.join(", "),
+            update_str,
+        );
+
+        let mut qb = sqlx::query(&query);
+
+        for row in rows {
+            for col in columns {
+                qb = match row.get(col) {
+                    Some(serde_json::Value::Null) | None => qb.bind(None::<String>),
+                    Some(serde_json::Value::String(s)) => qb.bind(s.clone()),
+                    Some(serde_json::Value::Number(n)) => {
+                        if let Some(i) = n.as_i64() {
+                            qb.bind(i)
+                        } else if let Some(f) = n.as_f64() {
+                            qb.bind(f)
+                        } else {
+                            qb.bind(n.to_string())
+                        }
+                    }
+                    Some(serde_json::Value::Bool(b)) => qb.bind(*b),
+                    _ => qb.bind(None::<String>),
+                };
+            }
+        }
+
+        let result = qb.execute(&self.pool).await?;
+        Ok(result.rows_affected() as u64)
     }
 }
 

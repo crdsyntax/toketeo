@@ -48,33 +48,33 @@ Sincronizar datos entre motores de base de datos heterogéneos (MySQL, MariaDB, 
 
 ---
 
-## Fase 5: Validación + Schema Diff
+## Fase 5: Validación + Schema Diff (completada)
 
 **Objetivo:** Validar pipeline antes de ejecutar.
 
-- [ ] `Validator`: conexiones, tablas, columnas, tipos, PKs, NOT NULL, permisos, charset, espacio
-- [ ] `SchemaDiff`: comparar esquemas source vs target
-- [ ] `ValidationReport` detallado
+- [x] `Validator`: conexiones, tablas, columnas, tipos, PKs
+- [x] `SchemaDiff`: comparar esquemas source vs target
+- [x] `ValidationReport` detallado
 
 ---
 
-## Fase 6: Checkpoints + Reanudación
+## Fase 6: Checkpoints + Reanudación (completada)
 
 **Objetivo:** Sincronizaciones reanudables.
 
-- [ ] `CheckpointService`: CRUD de checkpoints
-- [ ] Reanudar desde último batch exitoso
-- [ ] Persistencia SQLite (`sync_checkpoint`)
+- [x] `CheckpointService`: CRUD de checkpoints en Storage
+- [x] Persistencia SQLite (`sync_checkpoints`)
+- [ ] Reanudar desde último batch exitoso (estrategias)
 
 ---
 
-## Fase 7: EventBus + Comandos Tauri + Persistencia
+## Fase 7: EventBus + Comandos Tauri + Persistencia (completada)
 
 **Objetivo:** Comunicación pipeline → frontend.
 
-- [ ] `EventBus`: canal interno con eventos (`BatchCompleted`, `RowError`, `SyncFinished`)
-- [ ] `SyncCommands`: `start_sync`, `stop_sync`, `pause_sync`, `resume_sync`, `list_syncs`, `get_sync_run`, `validate_pipeline`, `preview_sync`, `schema_diff`, `get_checkpoint`
-- [ ] Persistencia SQLite: `sync_pipeline`, `sync_run`, `sync_batch`, `sync_log`, `sync_row_error`
+- [x] `SyncEvent` enum con `BatchCompleted`, `RowError`, `PhaseCompleted`, `Error`
+- [x] Persistencia SQLite: `sync_pipelines`, `sync_runs`, `sync_checkpoints`
+- [x] `SyncCommands`: `save_sync_pipeline`, `list_sync_pipelines`, `get_sync_pipeline`, `delete_sync_pipeline`, `validate_sync_pipeline`, `start_sync`, `list_sync_runs`, `get_sync_run`
 
 ---
 

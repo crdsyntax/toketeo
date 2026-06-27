@@ -8,18 +8,18 @@ use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 /// ```js
 /// { _id: { $gt: last_id } }
 /// ```
-pub struct MongoExtractor {
-    reader: Box<dyn DataReader>,
+pub struct MongoExtractor<'a> {
+    reader: &'a dyn DataReader,
 }
 
-impl MongoExtractor {
-    pub fn new(reader: Box<dyn DataReader>) -> Self {
+impl<'a> MongoExtractor<'a> {
+    pub fn new(reader: &'a dyn DataReader) -> Self {
         Self { reader }
     }
 }
 
 #[async_trait::async_trait]
-impl DataExtractor for MongoExtractor {
+impl DataExtractor for MongoExtractor<'_> {
     async fn extract(
         &self,
         table: &str,

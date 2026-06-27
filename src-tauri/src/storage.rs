@@ -1,5 +1,6 @@
 use crate::db::DbType;
 use crate::error::AppResult;
+use crate::models::sync::{SyncCheckpoint, SyncPipeline, SyncRun, SyncMode, PipelineStatus, SyncTableConfig};
 use crate::models::{DbConnectionConfig, SshConfig, ScheduledJob, JobType, JobExecutionLog};
 use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;
@@ -135,6 +136,52 @@ impl Storage {
                 output_path TEXT,
                 error TEXT,
                 rows_affected INTEGER
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS sync_pipelines (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                source_connection_id TEXT NOT NULL,
+                target_connection_id TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                batch_size INTEGER NOT NULL DEFAULT 1000,
+                config TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS sync_runs (
+                id TEXT PRIMARY KEY,
+                pipeline_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                total_rows INTEGER NOT NULL DEFAULT 0,
+                processed_rows INTEGER NOT NULL DEFAULT 0,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                batch_count INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS sync_checkpoints (
+                id TEXT PRIMARY KEY,
+                pipeline_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                last_processed_key TEXT,
+                batch_number INTEGER NOT NULL DEFAULT 0
             )",
         )
         .execute(&pool)
@@ -533,4 +580,220 @@ impl Storage {
         }
         Ok(logs)
     }
+
+    // ── Sync Pipelines ──
+
+    pub async fn save_sync_pipeline(&self, pipeline: &SyncPipeline) -> AppResult<()> {
+        let config = serde_json::to_string(&pipeline.tables).unwrap_or_default();
+
+        sqlx::query(
+            "INSERT INTO sync_pipelines (id, name, source_connection_id, target_connection_id, mode, status, batch_size, config, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                source_connection_id = excluded.source_connection_id,
+                target_connection_id = excluded.target_connection_id,
+                mode = excluded.mode,
+                status = excluded.status,
+                batch_size = excluded.batch_size,
+                config = excluded.config,
+                updated_at = excluded.updated_at"
+        )
+        .bind(&pipeline.id)
+        .bind(&pipeline.name)
+        .bind(&pipeline.source_connection_id)
+        .bind(&pipeline.target_connection_id)
+        .bind(serde_json::to_value(&pipeline.mode).unwrap().as_str().unwrap_or("full").to_string())
+        .bind(serde_json::to_value(&pipeline.status).unwrap().as_str().unwrap_or("draft").to_string())
+        .bind(pipeline.batch_size as i64)
+        .bind(&config)
+        .bind(&pipeline.created_at)
+        .bind(&pipeline.updated_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_sync_pipeline(&self, id: &str) -> AppResult<SyncPipeline> {
+        let row = sqlx::query("SELECT * FROM sync_pipelines WHERE id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        row_to_sync_pipeline(row)
+    }
+
+    pub async fn list_sync_pipelines(&self) -> AppResult<Vec<SyncPipeline>> {
+        let rows = sqlx::query("SELECT * FROM sync_pipelines ORDER BY updated_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut pipelines = Vec::new();
+        for row in rows {
+            if let Ok(p) = row_to_sync_pipeline(row) {
+                pipelines.push(p);
+            }
+        }
+        Ok(pipelines)
+    }
+
+    pub async fn delete_sync_pipeline(&self, id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM sync_pipelines WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // ── Sync Runs ──
+
+    pub async fn save_sync_run(&self, run: &SyncRun) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO sync_runs (id, pipeline_id, status, started_at, completed_at, total_rows, processed_rows, error_count, batch_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                completed_at = excluded.completed_at,
+                processed_rows = excluded.processed_rows,
+                error_count = excluded.error_count,
+                batch_count = excluded.batch_count"
+        )
+        .bind(&run.id)
+        .bind(&run.pipeline_id)
+        .bind(serde_json::to_value(&run.status).unwrap().as_str().unwrap_or("running").to_string())
+        .bind(&run.started_at)
+        .bind(&run.completed_at)
+        .bind(run.total_rows as i64)
+        .bind(run.processed_rows as i64)
+        .bind(run.error_count as i64)
+        .bind(run.batch_count as i64)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_sync_run(&self, id: &str) -> AppResult<SyncRun> {
+        let row = sqlx::query("SELECT * FROM sync_runs WHERE id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        row_to_sync_run(row)
+    }
+
+    pub async fn list_sync_runs(&self, pipeline_id: &str) -> AppResult<Vec<SyncRun>> {
+        let rows = sqlx::query("SELECT * FROM sync_runs WHERE pipeline_id = ? ORDER BY started_at DESC")
+            .bind(pipeline_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut runs = Vec::new();
+        for row in rows {
+            if let Ok(r) = row_to_sync_run(row) {
+                runs.push(r);
+            }
+        }
+        Ok(runs)
+    }
+
+    // ── Sync Checkpoints ──
+
+    pub async fn save_sync_checkpoint(&self, cp: &SyncCheckpoint) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO sync_checkpoints (id, pipeline_id, run_id, table_name, last_processed_key, batch_number)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                last_processed_key = excluded.last_processed_key,
+                batch_number = excluded.batch_number"
+        )
+        .bind(&cp.id)
+        .bind(&cp.pipeline_id)
+        .bind(&cp.run_id)
+        .bind(&cp.table_name)
+        .bind(&cp.last_processed_key)
+        .bind(cp.batch_number as i64)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_sync_checkpoint(&self, pipeline_id: &str, table_name: &str) -> AppResult<Option<SyncCheckpoint>> {
+        let result = sqlx::query(
+            "SELECT * FROM sync_checkpoints WHERE pipeline_id = ? AND table_name = ?"
+        )
+        .bind(pipeline_id)
+        .bind(table_name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match result {
+            Some(row) => Ok(Some(row_to_sync_checkpoint(row)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn delete_sync_checkpoints(&self, pipeline_id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM sync_checkpoints WHERE pipeline_id = ?")
+            .bind(pipeline_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+}
+
+fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline> {
+    let config_str: String = row.get("config");
+    let mode_str: String = row.get("mode");
+    let status_str: String = row.get("status");
+
+    let mode: SyncMode = serde_json::from_value(serde_json::Value::String(mode_str))
+        .unwrap_or(SyncMode::Full);
+    let status: PipelineStatus = serde_json::from_value(serde_json::Value::String(status_str))
+        .unwrap_or(PipelineStatus::Draft);
+    let tables: Vec<SyncTableConfig> = serde_json::from_str(&config_str).unwrap_or_default();
+
+    Ok(SyncPipeline {
+        id: row.get("id"),
+        name: row.get("name"),
+        source_connection_id: row.get("source_connection_id"),
+        target_connection_id: row.get("target_connection_id"),
+        mode,
+        status,
+        tables,
+        batch_size: row.get::<i64, _>("batch_size") as usize,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn row_to_sync_run(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncRun> {
+    let status_str: String = row.get("status");
+    let status: PipelineStatus = serde_json::from_value(serde_json::Value::String(status_str))
+        .unwrap_or(PipelineStatus::Running);
+
+    Ok(SyncRun {
+        id: row.get("id"),
+        pipeline_id: row.get("pipeline_id"),
+        status,
+        started_at: row.get("started_at"),
+        completed_at: row.get("completed_at"),
+        total_rows: row.get::<i64, _>("total_rows") as u64,
+        processed_rows: row.get::<i64, _>("processed_rows") as u64,
+        error_count: row.get::<i64, _>("error_count") as u64,
+        batch_count: row.get::<i64, _>("batch_count") as u64,
+    })
+}
+
+fn row_to_sync_checkpoint(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncCheckpoint> {
+    Ok(SyncCheckpoint {
+        id: row.get("id"),
+        pipeline_id: row.get("pipeline_id"),
+        run_id: row.get("run_id"),
+        table_name: row.get("table_name"),
+        last_processed_key: row.get("last_processed_key"),
+        batch_number: row.get::<i64, _>("batch_number") as u64,
+    })
 }

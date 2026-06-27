@@ -2,6 +2,7 @@ use crate::error::AppResult;
 use crate::models::sync::{SyncPipeline, SyncRun};
 use crate::application::sync::extractors::DataExtractor;
 use async_trait::async_trait;
+use serde::Serialize;
 
 /// Resultado de ejecución de una estrategia.
 pub struct StrategyOutput {
@@ -29,7 +30,8 @@ pub trait SyncStrategy: Send + Sync {
 }
 
 /// Eventos emitidos durante la sincronización.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SyncEvent {
     BatchCompleted {
         table: String,

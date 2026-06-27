@@ -1,4 +1,6 @@
 use crate::db::CapabilityProvider;
+use crate::db::DataReader;
+use crate::db::DataWriter;
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::error::{ AppError, AppResult };
@@ -25,6 +27,10 @@ use crate::db::common::{
 use sqlx::{ Column, MySqlPool, Row, mysql::MySqlPoolOptions, mysql::MySqlRow, TypeInfo };
 use std::time::{ Duration, Instant };
 use serde_json::Value;
+
+fn quote_mysql(id: &str) -> String {
+    format!("`{}`", id.replace('`', "``"))
+}
 
 /// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
@@ -546,6 +552,161 @@ impl DbDriver for MySqlDriver {
     async fn close(&self) -> AppResult<()> {
         self.pool.close().await;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl DataReader for MySqlDriver {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_mysql(s), quote_mysql(table))
+        } else {
+            quote_mysql(table)
+        };
+
+        let cols: Vec<String> = columns.iter().map(|c| quote_mysql(c)).collect();
+        let cols_str = cols.join(", ");
+
+        let mut query = format!(
+            "SELECT {} FROM {} ORDER BY {} ASC",
+            cols_str, table_ref, quote_mysql(pk_column)
+        );
+
+        if last_key.is_some() {
+            query = format!(
+                "SELECT {} FROM {} WHERE {} > ? ORDER BY {} ASC",
+                cols_str, table_ref, quote_mysql(pk_column), quote_mysql(pk_column)
+            );
+        }
+
+        query = format!("{} LIMIT ?", query);
+
+        let mut qb = sqlx::query(&query);
+
+        if let Some(ref key) = last_key {
+            qb = match key {
+                Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        qb.bind(i)
+                    } else if let Some(f) = n.as_f64() {
+                        qb.bind(f)
+                    } else {
+                        qb.bind(n.to_string())
+                    }
+                }
+                Value::String(s) => qb.bind(s.clone()),
+                Value::Bool(b) => qb.bind(*b),
+                other => qb.bind(other.to_string()),
+            };
+        }
+
+        qb = qb.bind(batch_size as i64);
+
+        let rows = qb.fetch_all(&self.pool).await?;
+        let mut result = Vec::new();
+
+        for row in rows {
+            let mut map = serde_json::Map::new();
+            for (i, col_name) in columns.iter().enumerate() {
+                let value = self.decode_column(&row, i);
+                map.insert(col_name.clone(), value);
+            }
+            result.push(serde_json::Value::Object(map));
+        }
+
+        Ok(result)
+    }
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_mysql(s), quote_mysql(table))
+        } else {
+            quote_mysql(table)
+        };
+
+        let row = sqlx::query(&format!("SELECT COUNT(*) as cnt FROM {}", table_ref))
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(row.get::<i64, _>("cnt") as u64)
+    }
+}
+
+#[async_trait]
+impl DataWriter for MySqlDriver {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        _primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64> {
+        if rows.is_empty() || columns.is_empty() {
+            return Ok(0);
+        }
+
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_mysql(s), quote_mysql(table))
+        } else {
+            quote_mysql(table)
+        };
+
+        let quoted_cols: Vec<String> = columns.iter().map(|c| quote_mysql(c)).collect();
+        let cols_str = quoted_cols.join(", ");
+        let placeholders: Vec<String> = (0..columns.len()).map(|_| "?".to_string()).collect();
+        let row_placeholders: Vec<String> = (0..rows.len())
+            .map(|_| format!("({})", placeholders.join(", ")))
+            .collect();
+        let values_str = row_placeholders.join(", ");
+
+        let update_parts: Vec<String> = quoted_cols
+            .iter()
+            .map(|c| format!("{} = VALUES({})", c, c))
+            .collect();
+        let update_str = update_parts.join(", ");
+
+        let query = format!(
+            "INSERT INTO {} ({}) VALUES {} ON DUPLICATE KEY UPDATE {}",
+            table_ref, cols_str, values_str, update_str
+        );
+
+        let mut qb = sqlx::query(&query);
+
+        for row in rows {
+            for col in columns {
+                qb = match row.get(col) {
+                    Some(Value::Null) | None => qb.bind(None::<String>),
+                    Some(Value::String(s)) => qb.bind(s.clone()),
+                    Some(Value::Number(n)) => {
+                        if let Some(i) = n.as_i64() {
+                            qb.bind(i)
+                        } else if let Some(f) = n.as_f64() {
+                            qb.bind(f)
+                        } else {
+                            qb.bind(n.to_string())
+                        }
+                    }
+                    Some(Value::Bool(b)) => qb.bind(*b),
+                    _ => qb.bind(None::<String>),
+                };
+            }
+        }
+
+        let result = qb.execute(&self.pool).await?;
+        Ok(result.rows_affected() as u64)
     }
 }
 

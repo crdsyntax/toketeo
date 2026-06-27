@@ -16,8 +16,41 @@ pub enum DbType {
     Sqlserver,
 }
 
+/// Lectura de datos con paginación por keyset.
 #[async_trait]
-pub trait DbDriver: Send + Sync {
+pub trait DataReader: Send + Sync {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>>;
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64>;
+}
+
+/// Escritura de datos con upsert.
+#[async_trait]
+pub trait DataWriter: Send + Sync {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64>;
+}
+
+#[async_trait]
+pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     fn db_type(&self) -> DbType;
     async fn execute(&self, query: &str) -> AppResult<QueryResult>;
     async fn fetch_databases(&self) -> AppResult<Vec<String>>;
@@ -90,39 +123,6 @@ pub trait CapabilityProvider: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
 }
 
-/// Lectura de datos con paginación por keyset.
-#[async_trait]
-pub trait DataReader: Send + Sync {
-    async fn fetch_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-        columns: &[String],
-        pk_column: &str,
-        last_key: Option<serde_json::Value>,
-        batch_size: usize,
-    ) -> AppResult<Vec<serde_json::Value>>;
-
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64>;
-}
-
-/// Escritura de datos con upsert.
-#[async_trait]
-pub trait DataWriter: Send + Sync {
-    async fn upsert_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-        columns: &[String],
-        primary_keys: &[String],
-        rows: &[serde_json::Value],
-    ) -> AppResult<u64>;
-}
-
 pub mod mongodb;
 pub mod common;
 pub mod mysql;
@@ -147,6 +147,43 @@ impl Default for PoolConfig {
             max_lifetime: Some(Duration::from_secs(28800)),
             keep_alive: None,
         }
+    }
+}
+
+#[async_trait]
+impl DataReader for std::sync::Arc<dyn DbDriver> {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        (**self).fetch_rows(table, schema, columns, pk_column, last_key, batch_size).await
+    }
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64> {
+        (**self).count_rows(table, schema).await
+    }
+}
+
+#[async_trait]
+impl DataWriter for std::sync::Arc<dyn DbDriver> {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64> {
+        (**self).upsert_rows(table, schema, columns, primary_keys, rows).await
     }
 }
 

@@ -8,18 +8,18 @@ use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 /// ```sql
 /// WHERE pk > last_key ORDER BY pk LIMIT batch_size
 /// ```
-pub struct SqlExtractor {
-    reader: Box<dyn DataReader>,
+pub struct SqlExtractor<'a> {
+    reader: &'a dyn DataReader,
 }
 
-impl SqlExtractor {
-    pub fn new(reader: Box<dyn DataReader>) -> Self {
+impl<'a> SqlExtractor<'a> {
+    pub fn new(reader: &'a dyn DataReader) -> Self {
         Self { reader }
     }
 }
 
 #[async_trait::async_trait]
-impl DataExtractor for SqlExtractor {
+impl DataExtractor for SqlExtractor<'_> {
     async fn extract(
         &self,
         table: &str,

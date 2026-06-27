@@ -1,4 +1,4 @@
-use crate::db::{CapabilityProvider, DbDriver, DbType};
+use crate::db::{CapabilityProvider, DataReader, DataWriter, DbDriver, DbType};
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
@@ -11,6 +11,10 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use url::Url;
+
+fn quote_ss(id: &str) -> String {
+    format!("[{}]", id.replace(']', "]]"))
+}
 
 pub struct SqlServerDriver {
     client: Arc<Mutex<Option<Client<Compat<TcpStream>>>>>,
@@ -426,6 +430,167 @@ impl DbDriver for SqlServerDriver {
             })?;
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl DataReader for SqlServerDriver {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.[{}]", quote_ss(s), quote_ss(table))
+        } else {
+            quote_ss(table)
+        };
+
+        let cols: Vec<String> = columns.iter().map(|c| quote_ss(c)).collect();
+        let cols_str = cols.join(", ");
+
+        let query = if let Some(ref key) = last_key {
+            let key_str = json_to_ss_string(key);
+            format!(
+                "SELECT TOP ({}) {} FROM {} WHERE {} > {} ORDER BY {} ASC",
+                batch_size,
+                cols_str,
+                table_ref,
+                quote_ss(pk_column),
+                key_str,
+                quote_ss(pk_column),
+            )
+        } else {
+            format!(
+                "SELECT TOP ({}) {} FROM {} ORDER BY {} ASC",
+                batch_size, cols_str, table_ref, quote_ss(pk_column),
+            )
+        };
+
+        self.run_query(&query).await
+    }
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.[{}]", quote_ss(s), quote_ss(table))
+        } else {
+            quote_ss(table)
+        };
+
+        let rows = self.run_query(&format!("SELECT COUNT(*) as cnt FROM {}", table_ref)).await?;
+        Ok(rows
+            .first()
+            .and_then(|r| r.get("cnt").and_then(|v| v.as_i64()))
+            .unwrap_or(0) as u64)
+    }
+}
+
+fn json_to_ss_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b { "1".to_string() } else { "0".to_string() }
+        }
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+        other => format!("'{}'", other.to_string().replace('\'', "''")),
+    }
+}
+
+fn json_to_ss_values(row: &serde_json::Value, columns: &[String]) -> String {
+    columns
+        .iter()
+        .map(|col| {
+            let value = row.get(col).unwrap_or(&serde_json::Value::Null);
+            json_to_ss_string(value)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[async_trait]
+impl DataWriter for SqlServerDriver {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64> {
+        if rows.is_empty() || columns.is_empty() {
+            return Ok(0);
+        }
+
+        let table_ref = if let Some(s) = schema {
+            format!("{}.[{}]", quote_ss(s), quote_ss(table))
+        } else {
+            quote_ss(table)
+        };
+
+        let quoted_cols: Vec<String> = columns.iter().map(|c| quote_ss(c)).collect();
+        let cols_str = quoted_cols.join(", ");
+
+        let pk_cols: Vec<String> = primary_keys.iter().map(|k| quote_ss(k)).collect();
+        let pk_condition = pk_cols
+            .iter()
+            .map(|pk| {
+                format!(
+                    "target.{pk} = source.{pk}"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
+        let update_set: Vec<String> = quoted_cols
+            .iter()
+            .map(|c| format!("target.{c} = source.{c}"))
+            .collect();
+        let update_str = update_set.join(", ");
+
+        let mut total_affected = 0u64;
+
+        for row in rows {
+            let values = json_to_ss_values(row, columns);
+
+            let source_cols = quoted_cols.join(", ");
+
+            let query = format!(
+                "MERGE {} AS target \
+                 USING (VALUES ({values})) AS source ({cols_str}) \
+                 ON {pk_condition} \
+                 WHEN MATCHED THEN UPDATE SET {update_str} \
+                 WHEN NOT MATCHED THEN INSERT ({cols_str}) VALUES ({source_cols});",
+                table_ref,
+                values = values,
+                cols_str = cols_str,
+                pk_condition = pk_condition,
+                update_str = update_str,
+                source_cols = source_cols,
+            );
+
+            let mut guard = self.client.lock().await;
+            let client = guard.as_mut().ok_or_else(|| {
+                AppError::Internal("SQL Server client is closed".into())
+            })?;
+
+            let result = client
+                .execute(&query, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server upsert failed: {}", e)))?;
+
+            total_affected += result.total();
+        }
+
+        Ok(total_affected)
     }
 }
 

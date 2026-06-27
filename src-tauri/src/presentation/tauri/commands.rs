@@ -3,13 +3,16 @@ use crate::application::connection_service::ConnectionService;
 use crate::application::explorer_service::ExplorerService;
 use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::model_generator_service::ModelGeneratorService;
+use crate::application::sync::sync_service::SyncService;
+use crate::application::sync::strategies::SyncEvent;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::scheduler::job_engine;
+use crate::models::sync::{SyncPipeline, SyncRun};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
 use crate::state::AppState;
 use std::process::Command;
 use std::str::FromStr;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
@@ -899,4 +902,93 @@ pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: App
     });
 
     Ok(())
+}
+
+// ── Sync Commands ──
+
+#[tauri::command]
+pub async fn save_sync_pipeline(
+    pipeline: SyncPipeline,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.save_sync_pipeline(&pipeline).await
+}
+
+#[tauri::command]
+pub async fn list_sync_pipelines(state: State<'_, AppState>) -> AppResult<Vec<SyncPipeline>> {
+    state.storage.list_sync_pipelines().await
+}
+
+#[tauri::command]
+pub async fn get_sync_pipeline(id: String, state: State<'_, AppState>) -> AppResult<SyncPipeline> {
+    state.storage.get_sync_pipeline(&id).await
+}
+
+#[tauri::command]
+pub async fn delete_sync_pipeline(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.storage.delete_sync_pipeline(&id).await
+}
+
+#[tauri::command]
+pub async fn validate_sync_pipeline(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::sync::ValidationReport> {
+    let pipeline = state.storage.get_sync_pipeline(&id).await?;
+    let source = state.get_connection(&pipeline.source_connection_id).await?;
+    let target = state.get_connection(&pipeline.target_connection_id).await?;
+    SyncService::validate(&pipeline, source.as_ref(), target.as_ref()).await
+}
+
+#[tauri::command]
+pub async fn start_sync(
+    id: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    let pipeline = state.storage.get_sync_pipeline(&id).await?;
+    let source_driver = state.get_connection(&pipeline.source_connection_id).await?;
+    let target_driver = state.get_connection(&pipeline.target_connection_id).await?;
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
+    let emit_handle = app_handle.clone();
+
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let payload = serde_json::to_value(&event).unwrap_or_default();
+            let _ = emit_handle.emit("sync:event", &payload);
+        }
+    });
+
+    let db_type = source_driver.db_type();
+
+    tokio::spawn(async move {
+        let source: &dyn crate::db::DataReader = &*source_driver;
+        let target: &dyn crate::db::DataWriter = &*target_driver;
+
+        if let Err(e) = SyncService::execute_pipeline(
+            &pipeline,
+            source,
+            target,
+            db_type,
+            Some(tx),
+        ).await {
+            let _ = app_handle.emit("sync:error", &e.to_string());
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_sync_runs(
+    pipeline_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SyncRun>> {
+    state.storage.list_sync_runs(&pipeline_id).await
+}
+
+#[tauri::command]
+pub async fn get_sync_run(id: String, state: State<'_, AppState>) -> AppResult<SyncRun> {
+    state.storage.get_sync_run(&id).await
 }

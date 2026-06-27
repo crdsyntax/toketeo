@@ -1,4 +1,4 @@
-use crate::db::CapabilityProvider;
+use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::error::{AppError, AppResult};
@@ -9,7 +9,7 @@ use futures::StreamExt;
 use mongodb::{
     Client,
     bson::{Bson, Document, doc},
-    options::ClientOptions,
+    options::{ClientOptions, FindOptions},
 };
 use std::time::Instant;
 
@@ -541,6 +541,156 @@ impl DbDriver for MongoDbDriver {
 
     async fn close(&self) -> AppResult<()> {
         Ok(()) // Client is dropped automatically
+    }
+}
+
+fn resolve_db<'a>(schema: Option<&'a str>, default_db: &Option<String>) -> AppResult<String> {
+    schema
+        .map(|s| s.to_string())
+        .or_else(|| default_db.clone())
+        .ok_or_else(|| AppError::Validation("Database name is required for MongoDB operations".into()))
+}
+
+#[async_trait]
+impl DataReader for MongoDbDriver {
+    async fn fetch_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        pk_column: &str,
+        last_key: Option<serde_json::Value>,
+        batch_size: usize,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let db_name = resolve_db(schema, &self._default_db)?;
+        let collection = self.client.database(&db_name).collection::<Document>(table);
+
+        let filter = if let Some(ref key) = last_key {
+            let bson_key = json_value_to_bson(key);
+            doc! { pk_column: doc! { "$gt": bson_key } }
+        } else {
+            Document::new()
+        };
+
+        let projection = if !columns.is_empty() {
+            let mut proj = Document::new();
+            for col in columns {
+                proj.insert(col, 1);
+            }
+            Some(proj)
+        } else {
+            None
+        };
+
+        let opts = FindOptions::builder()
+            .sort(doc! { pk_column: 1 })
+            .limit(batch_size as i64)
+            .projection(projection)
+            .build();
+
+        let mut cursor = collection.find(filter).with_options(opts).await?;
+        let mut result = Vec::new();
+
+        while let Some(doc) = cursor.next().await {
+            match doc {
+                Ok(d) => {
+                    let json = bson_to_json(&Bson::Document(d));
+                    if let serde_json::Value::Object(map) = json {
+                        result.push(serde_json::Value::Object(map));
+                    }
+                }
+                Err(e) => return Err(AppError::Database(e.to_string())),
+            }
+        }
+
+        Ok(result)
+    }
+
+    async fn count_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+    ) -> AppResult<u64> {
+        let db_name = resolve_db(schema, &self._default_db)?;
+        let collection = self.client.database(&db_name).collection::<Document>(table);
+        let count = collection.count_documents(doc! {}).await?;
+        Ok(count)
+    }
+}
+
+fn json_value_to_bson(value: &serde_json::Value) -> Bson {
+    match value {
+        serde_json::Value::Null => Bson::Null,
+        serde_json::Value::Bool(b) => Bson::Boolean(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Bson::Int64(i)
+            } else if let Some(f) = n.as_f64() {
+                Bson::Double(f)
+            } else {
+                Bson::String(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Bson::String(s.clone()),
+        serde_json::Value::Array(arr) => {
+            Bson::Array(arr.iter().map(json_value_to_bson).collect())
+        }
+        serde_json::Value::Object(map) => {
+            let mut doc = Document::new();
+            for (k, v) in map {
+                doc.insert(k, json_value_to_bson(v));
+            }
+            Bson::Document(doc)
+        }
+    }
+}
+
+#[async_trait]
+impl DataWriter for MongoDbDriver {
+    async fn upsert_rows(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        columns: &[String],
+        primary_keys: &[String],
+        rows: &[serde_json::Value],
+    ) -> AppResult<u64> {
+        if rows.is_empty() || columns.is_empty() {
+            return Ok(0);
+        }
+
+        let db_name = resolve_db(schema, &self._default_db)?;
+        let collection = self.client.database(&db_name).collection::<Document>(table);
+        let pk_field = primary_keys.first().map(|s| s.as_str()).unwrap_or("_id");
+
+        let mut affected = 0u64;
+
+        for row in rows {
+            let mut filter_doc = Document::new();
+            let pk_value = json_value_to_bson(row.get(pk_field).unwrap_or(&serde_json::Value::Null));
+            filter_doc.insert(pk_field, pk_value);
+
+            let mut update_doc = Document::new();
+            for col in columns {
+                let value = row.get(col).unwrap_or(&serde_json::Value::Null);
+                update_doc.insert(col, json_value_to_bson(value));
+            }
+
+            let update = doc! { "$set": update_doc };
+
+            let result = collection
+                .update_one(filter_doc, update)
+                .upsert(true)
+                .await?;
+
+            if result.upserted_id.is_some() {
+                affected += 1;
+            } else {
+                affected += result.modified_count;
+            }
+        }
+
+        Ok(affected)
     }
 }
 

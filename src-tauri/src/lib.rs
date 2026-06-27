@@ -124,6 +124,14 @@ pub fn run() {
             commands::delete_scheduled_job,
             commands::get_scheduled_jobs,
             commands::run_job_now,
+            commands::start_sync,
+            commands::save_sync_pipeline,
+            commands::list_sync_pipelines,
+            commands::get_sync_pipeline,
+            commands::delete_sync_pipeline,
+            commands::validate_sync_pipeline,
+            commands::list_sync_runs,
+            commands::get_sync_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
