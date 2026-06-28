@@ -155,7 +155,7 @@ impl ConnectionService {
                 ssh_config.port
             );
 
-            match crate::ssh::SshTunnel::open(ssh_config, &config.host, config.port).await {
+            match crate::ssh::SshTunnel::open(ssh_config, &config.host, config.port, Some(id.clone())).await {
                 Ok(tunnel) => {
                     config.port = tunnel.local_port;
                     Some(tunnel)
@@ -248,6 +248,13 @@ impl ConnectionService {
             .await;
 
         Ok(())
+    }
+
+    pub async fn reconnect(state: &AppState, id: &str) -> AppResult<String> {
+        tracing::info!("Reconnecting session: {}", id);
+        let _ = state.remove_connection(id).await;
+        let config = state.storage.get_connection(id).await?;
+        Self::connect(state, config).await
     }
 
     pub async fn disconnect(state: &AppState, id: &str) -> AppResult<()> {

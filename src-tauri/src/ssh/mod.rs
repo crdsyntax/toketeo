@@ -4,8 +4,11 @@ use secrecy::ExposeSecret;
 use ssh2::Session;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+use tauri::Emitter;
+
+pub static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 pub struct SshTunnel {
     pub local_port: u16,
@@ -14,7 +17,7 @@ pub struct SshTunnel {
 }
 
 impl SshTunnel {
-    pub async fn open(config: &SshConfig, remote_host: &str, remote_port: u16) -> AppResult<Self> {
+    pub async fn open(config: &SshConfig, remote_host: &str, remote_port: u16, connection_id: Option<String>) -> AppResult<Self> {
         tracing::info!("Opening SSH connection to {}:{}", config.host, config.port);
 
         let tcp = TcpStream::connect(format!("{}:{}", config.host, config.port)).map_err(|e| {
@@ -99,6 +102,7 @@ impl SshTunnel {
         let sess_arc = Arc::new(Mutex::new(sess));
         let sess_clone = sess_arc.clone();
         let remote_host = remote_host.to_string();
+        let conn_id = connection_id;
 
         // Spawn background thread for port forwarding
         thread::spawn(move || {
@@ -117,6 +121,7 @@ impl SshTunnel {
                 if let Ok((mut local_stream, _addr)) = listener.accept() {
                     let sess_inner = sess_clone.clone();
                     let host_inner = remote_host.clone();
+                    let cid = conn_id.clone();
 
                     thread::spawn(move || {
                         let mut sess_guard = sess_inner.lock().unwrap();
@@ -133,10 +138,18 @@ impl SshTunnel {
                                     continue;
                                 }
                                 Err(e) => {
-                                    println!(
+                                    tracing::error!(
                                         "[SSH] FAILED to open channel to {}:{}: {}",
                                         host_inner, remote_port, e
                                     );
+                                    if let Some(ref handle) = APP_HANDLE.get() {
+                                        if let Some(ref cid) = cid {
+                                            let _ = handle.emit("connection:error", &serde_json::json!({
+                                                "connection_id": cid,
+                                                "error": format!("[SSH] FAILED to open channel to {}:{}: {}", host_inner, remote_port, e)
+                                            }));
+                                        }
+                                    }
                                     return;
                                 }
                             }

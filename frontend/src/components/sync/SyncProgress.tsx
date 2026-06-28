@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { Loader2, CheckCircle2, XCircle, Clock, ArrowRight } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, Clock, ArrowRight, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SyncEvent, SyncRun } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
@@ -14,6 +14,7 @@ interface ProgressState {
   totalBatches: number
   completedBatches: number
   processedRows: number
+  totalRows: number
   errors: number
   durationMs: number
   currentTable: string
@@ -25,20 +26,44 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
     totalBatches: run.batch_count,
     completedBatches: 0,
     processedRows: run.processed_rows,
+    totalRows: run.total_rows,
     errors: run.error_count,
     durationMs: 0,
     currentTable: '',
     phase: 'idle',
   })
 
-  const [startTime] = useState(Date.now())
+  const [startTime, setStartTime] = useState(Date.now())
+
+  // Re-initialize when run changes
+  useEffect(() => {
+    setProgress({
+      totalBatches: run.batch_count,
+      completedBatches: 0,
+      processedRows: run.processed_rows,
+      totalRows: run.total_rows,
+      errors: run.error_count,
+      durationMs: 0,
+      currentTable: '',
+      phase: 'idle',
+    })
+    setStartTime(Date.now())
+  }, [run.id, run.batch_count, run.processed_rows, run.error_count, run.total_rows])
 
   useEffect(() => {
     const unlisten = listen<SyncEvent>('sync:event', (event) => {
       const e = event.payload
       onEvent?.(e)
 
-      if (e.BatchCompleted) {
+      if (e.Progress) {
+        setProgress((p) => ({
+          ...p,
+          processedRows: e.Progress!.processed_rows,
+          totalRows: e.Progress!.total_rows,
+          errors: e.Progress!.error_count,
+          phase: 'loading',
+        }))
+      } else if (e.BatchCompleted) {
         setProgress((p) => ({
           ...p,
           completedBatches: p.completedBatches + 1,
@@ -71,9 +96,8 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
   const isCompleted = run.status === PipelineStatus.Completed
   const isFailed = run.status === PipelineStatus.Failed
 
-  const pct = run.total_rows > 0
-    ? Math.min(100, Math.round((progress.processedRows / run.total_rows) * 100))
-    : progress.completedBatches > 0 ? 50 : 0
+  const totalForPct = progress.totalRows > 0 ? progress.totalRows : 1
+  const pct = Math.min(100, Math.round((progress.processedRows / totalForPct) * 100))
 
   const formatDuration = (ms: number) => {
     const s = Math.floor(ms / 1000)
@@ -91,15 +115,17 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isRunning && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-          {isCompleted && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+          {isCompleted && !isFailed && progress.errors === 0 && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+          {isCompleted && progress.errors > 0 && <AlertTriangle className="w-4 h-4 text-amber-500" />}
           {isFailed && <XCircle className="w-4 h-4 text-destructive" />}
           <span className={cn(
             "text-[10px] font-bold uppercase tracking-widest",
             isRunning && 'text-primary',
-            isCompleted && 'text-emerald-500',
+            isCompleted && progress.errors === 0 && 'text-emerald-500',
+            isCompleted && progress.errors > 0 && 'text-amber-500',
             isFailed && 'text-destructive',
           )}>
-            {isRunning ? 'Running' : isCompleted ? 'Completed' : isFailed ? 'Failed' : run.status}
+            {isRunning ? 'Running' : isCompleted && progress.errors === 0 ? 'Completed' : isCompleted && progress.errors > 0 ? 'Completed with errors' : isFailed ? 'Failed' : run.status}
           </span>
         </div>
         <span className="text-[10px] font-mono text-muted-foreground">{formatDuration(progress.durationMs)}</span>
@@ -111,7 +137,8 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
           className={cn(
             "h-full transition-all duration-500",
             isRunning && 'bg-primary',
-            isCompleted && 'bg-emerald-500',
+            isCompleted && progress.errors === 0 && 'bg-emerald-500',
+            isCompleted && progress.errors > 0 && 'bg-amber-500',
             isFailed && 'bg-destructive',
           )}
           style={{ width: `${isCompleted ? 100 : pct}%` }}
@@ -121,16 +148,20 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
       {/* Stats grid */}
       <div className="grid grid-cols-4 gap-4 text-center">
         <div>
-          <p className="text-lg font-bold font-mono text-foreground">{progress.processedRows.toLocaleString()}</p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Rows</p>
+          <p className="text-lg font-bold font-mono text-foreground">
+            {progress.processedRows.toLocaleString()}<span className="text-muted-foreground"> / {progress.totalRows.toLocaleString()}</span>
+          </p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Records</p>
         </div>
         <div>
-          <p className="text-lg font-bold font-mono text-foreground">{run.total_rows.toLocaleString()}</p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Total</p>
+          <p className={cn("text-lg font-bold font-mono", progress.errors > 0 ? 'text-destructive' : 'text-foreground')}>
+            {progress.errors}
+          </p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Failed</p>
         </div>
         <div>
-          <p className="text-lg font-bold font-mono text-foreground">{progress.errors}</p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Errors</p>
+          <p className="text-lg font-bold font-mono text-foreground">{progress.completedBatches}</p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Batches</p>
         </div>
         <div>
           <p className="text-lg font-bold font-mono text-foreground">{rowsPerSec}</p>

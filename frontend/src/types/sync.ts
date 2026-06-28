@@ -152,6 +152,7 @@ export interface SyncEvent {
   BatchCompleted?: { table: string; batch_number: number; rows_loaded: number; duration_ms: number };
   RowError?: { table: string; row_key?: string; error: string };
   PhaseCompleted?: { table: string; total_rows: number };
+  Progress?: { table: string; processed_rows: number; total_rows: number; error_count: number };
   Error?: { message: string };
 }
 

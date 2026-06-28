@@ -1,4 +1,4 @@
-import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2 } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -99,6 +99,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   } | null>(null)
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase } = useAppStore()
+  const connectionErrors = useAppStore((state) => state.connectionErrors)
   const navigate = useNavigate()
 
   const handleDumpClick = async (conn: Connection, schema: string) => {
@@ -264,7 +265,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                 selectedConnId === conn.id && 'bg-accent/10 ring-1 ring-primary/20'
               )}
             >
-              {activeConnection?.id === conn.id && (
+              {activeConnection?.id === conn.id && connectionErrors[conn.id] && (
+                <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-destructive/70" />
+              )}
+              {activeConnection?.id === conn.id && !connectionErrors[conn.id] && (
                 <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-emerald-500/70" />
               )}
               <div
@@ -290,6 +294,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                     </span>
                     {loadingConnId === conn.id && (
                       <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
+                    )}
+                    {activeConnection?.id === conn.id && connectionErrors[conn.id] && (
+                      <AlertTriangle className="w-3 h-3 text-destructive shrink-0" title={connectionErrors[conn.id]!} />
                     )}
                     <TypeBadge type={conn.type} />
                   </div>

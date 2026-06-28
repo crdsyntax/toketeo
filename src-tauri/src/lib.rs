@@ -18,6 +18,13 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     tracing::info!("Starting Toketeo Backend...");
 
     tauri::Builder::default()
@@ -26,6 +33,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle();
+            let _ = crate::ssh::APP_HANDLE.set(app_handle.clone());
             let app_dir = app_handle
                 .path()
                 .app_data_dir()
@@ -67,6 +75,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::connect,
+            commands::reconnect_connection,
             commands::disconnect,
             commands::disconnect_all,
             commands::execute_query,

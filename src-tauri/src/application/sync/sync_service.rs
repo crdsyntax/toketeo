@@ -4,6 +4,8 @@ use crate::application::sync::extractors::{DataExtractor, SqlExtractor, MongoExt
 use crate::application::sync::strategies::{SyncStrategy, SyncEvent, FullSync, IncrementalSync};
 use crate::application::sync::validators::PipelineValidator;
 use crate::db::{DataReader, DataWriter, DbDriver, DbType};
+use crate::storage::Storage;
+use std::sync::Arc;
 
 /// Servicio principal de sincronización.
 ///
@@ -18,6 +20,7 @@ impl SyncService {
         source: &dyn DataReader,
         target: &dyn DataWriter,
         source_db_type: DbType,
+        storage: Arc<Storage>,
         event_sender: Option<tokio::sync::mpsc::UnboundedSender<SyncEvent>>,
     ) -> AppResult<()> {
         let extractor: Box<dyn DataExtractor + '_> = match source_db_type {
@@ -34,6 +37,11 @@ impl SyncService {
             let output = strategy
                 .execute(pipeline, table_config, extractor.as_ref(), target, event_sender.clone())
                 .await?;
+
+            // Persist the run so the frontend can fetch it
+            if let Err(e) = storage.save_sync_run(&output.run).await {
+                tracing::error!("Failed to persist sync run: {e}");
+            }
 
             tracing::info!(
                 "Sync completed for table {}: {} rows in {} batches, {} errors",

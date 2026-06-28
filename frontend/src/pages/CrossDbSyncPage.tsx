@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { listen } from '@tauri-apps/api/event'
 import { GitBranch, Plus, Trash2, Edit2, Play, Loader2, ArrowRight, X, BarChart3, History, ScrollText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { syncService } from '@/services/sync.service'
@@ -8,6 +9,7 @@ import { SyncProgress } from '@/components/sync/SyncProgress'
 import { SyncLogViewer } from '@/components/sync/SyncLogViewer'
 import { SyncHistory } from '@/components/sync/SyncHistory'
 import type { SyncPipeline, SyncRun } from '@/types/sync'
+import type { SyncEvent } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
 
 type DetailTab = 'progress' | 'logs' | 'history'
@@ -58,11 +60,37 @@ export function CrossDbSyncPage() {
       await syncService.start(p.id)
       setSelectedPipeline(p)
       setDetailTab('progress')
+      // Fetch latest run so SyncProgress can show live updates
+      const runs = await syncService.listRuns(p.id)
+      if (runs.length > 0) {
+        setActiveRun(runs[0])
+      }
       queryClient.invalidateQueries({ queryKey: ['sync-runs', p.id] })
-    } finally {
+    } catch {
       setExecutingId(null)
     }
   }
+
+  // Listen for sync events to clear executingId when sync finishes
+  useEffect(() => {
+    const unlisten = listen<SyncEvent>('sync:event', (event) => {
+      const e = event.payload
+      if (e.PhaseCompleted || e.Error) {
+        setExecutingId(null)
+        queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
+      }
+    })
+    return () => { unlisten.then((f) => f()) }
+  }, [])
+
+  // Also clear executingId on backend error (sent to a separate channel)
+  useEffect(() => {
+    const unlisten = listen<string>('sync:error', (event) => {
+      setExecutingId(null)
+      queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
+    })
+    return () => { unlisten.then((f) => f()) }
+  }, [])
 
   const handleSelectPipeline = (p: SyncPipeline) => {
     if (selectedPipeline?.id === p.id) {

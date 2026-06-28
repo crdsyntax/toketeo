@@ -28,21 +28,8 @@
  */
 
 export interface MongoShellProtocol {
-  collection: string;
-  operation:
-    | 'find'
-    | 'findOne'
-    | 'count'
-    | 'aggregate'
-    | 'insertOne'
-    | 'insertMany'
-    | 'updateOne'
-    | 'updateMany'
-    | 'deleteOne'
-    | 'deleteMany'
-    | 'drop'
-    | 'createIndex'
-    | 'distinct';
+  collection?: string;
+  operation?: string;
   find?: Record<string, unknown>;
   project?: Record<string, unknown>;
   sort?: Record<string, unknown>;
@@ -73,12 +60,14 @@ export type MongoParseResult = ParseResult | ParseError;
 // ─── Detection ──────────────────────────────────────────────────────────────
 
 const MONGO_SHELL_PATTERN = /^\s*db\s*\.\s*\w+\s*\.\s*\w+\s*\(/m;
+const MONGO_SHELL_HELP_PATTERN = /^\s*(show\s+\w+|use\s+\w+)/im;
+const MONGO_SHELL_ADMIN_PATTERN = /^\s*db\s*\.\s*[a-z][A-Za-z0-9_]*\s*\(/m;
 
 /**
  * Returns true if the query looks like MongoDB shell syntax.
  */
 export function isMongoShellSyntax(query: string): boolean {
-  return MONGO_SHELL_PATTERN.test(query);
+  return MONGO_SHELL_PATTERN.test(query) || MONGO_SHELL_HELP_PATTERN.test(query) || MONGO_SHELL_ADMIN_PATTERN.test(query);
 }
 
 // ─── Tokenizer / bracket-aware argument splitter ────────────────────────────
@@ -121,6 +110,7 @@ function extractBalanced(
       if (depth === 1) {
         // Start recording after this char
         i++;
+        depth = 0;
         break;
       }
     }
@@ -422,6 +412,63 @@ function splitStatements(src: string): string[] {
 export function parseMongoShell(query: string): MongoParseResult {
   if (!isMongoShellSyntax(query)) {
     return { success: false, error: 'Not MongoDB shell syntax' };
+  }
+
+  const cleaned = query.trim().replace(/;\s*$/, '');
+
+  // Handle shell helper commands: show collections, show dbs, show databases
+  const showMatch = cleaned.match(/^\s*show\s+(collections|dbs|databases)\s*$/im);
+  if (showMatch) {
+    const what = showMatch[1].toLowerCase();
+    const command: Record<string, unknown> =
+      what === 'collections' ? { listCollections: 1 } : { listDatabases: 1 };
+    return { success: true, protocol: command as unknown as MongoShellProtocol, rawJson: JSON.stringify(command, null, 2) };
+  }
+
+  // Handle use <db> — convert to a raw command signal
+  // The frontend/backend will handle switching via the connection manager
+  const useMatch = cleaned.match(/^\s*use\s+(\S+)\s*$/im);
+  if (useMatch) {
+    const dbName = useMatch[1];
+    const command: Record<string, unknown> = { use: dbName };
+    return { success: true, protocol: command as unknown as MongoShellProtocol, rawJson: JSON.stringify(command, null, 2) };
+  }
+
+  // Handle db.<adminMethod>(<args>) — e.g., db.createCollection("students"), db.dropDatabase()
+  const adminMatch = cleaned.match(/^\s*db\s*\.\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/);
+  if (adminMatch) {
+    const method = adminMatch[1];
+    const afterMethod = cleaned.slice(adminMatch[0].length - 1);
+    const balanced = extractBalanced(afterMethod);
+    const rawArgs = balanced ? balanced.inner.trim() : '';
+
+    const buildCommand = (): Record<string, unknown> => {
+      switch (method) {
+        case 'createCollection': {
+          const name = rawArgs.replace(/^["']|["']$/g, '').split(',')[0].trim().replace(/^["']|["']$/g, '');
+          return { create: name };
+        }
+        case 'dropDatabase':
+          return { dropDatabase: 1 };
+        case 'runCommand': {
+          try {
+            return JSON.parse(rawArgs) as Record<string, unknown>;
+          } catch {
+            throw new Error(`Invalid JSON argument for db.runCommand(): ${rawArgs}`);
+          }
+        }
+        default:
+          throw new Error(`Unsupported db.${method}() command`);
+      }
+    };
+
+    try {
+      const command = buildCommand();
+      const rawJson = JSON.stringify(command, null, 2);
+      return { success: true, protocol: command as unknown as MongoShellProtocol, rawJson };
+    } catch (e) {
+      return { success: false, error: (e as Error).message };
+    }
   }
 
   const statements = splitStatements(query);

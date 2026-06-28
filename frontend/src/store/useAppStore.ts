@@ -12,6 +12,8 @@ export interface MongoFilterState {
   hint: string
 }
 
+export type EditorMode = 'auto' | 'mongosh' | 'json'
+
 export interface QueryTab {
   id: string
   name: string
@@ -22,6 +24,7 @@ export interface QueryTab {
   error?: string | null
   editorViewState?: import('monaco-editor').editor.ICodeEditorViewState | null
   mongoFilter?: MongoFilterState
+  editorMode?: EditorMode
 }
 
 export interface QueryHistoryEntry {
@@ -84,6 +87,7 @@ interface AppState {
   setActiveTabId: (id: string) => void
   updateTabViewState: (id: string, viewState: import('monaco-editor').editor.ICodeEditorViewState | null) => void
   updateTabMongoFilter: (id: string, filter: Partial<MongoFilterState>) => void
+  updateTabEditorMode: (id: string, mode: EditorMode) => void
   panels: {
     editor: boolean
     results: boolean
@@ -106,6 +110,9 @@ interface AppState {
   miniToasts: Record<string, { type: 'success' | 'error', text: string } | null>
   setMiniToast: (id: string, msg: { type: 'success' | 'error', text: string }) => void
   clearMiniToast: (id: string) => void
+  connectionErrors: Record<string, string | null>
+  setConnectionError: (id: string, error: string | null) => void
+  clearConnectionError: (id: string) => void
   queryHistory: Record<string, QueryHistoryEntry[]> // keyed by connectionId
   addQueryHistory: (entry: QueryHistoryEntry) => void
   clearQueryHistory: (connectionId: string) => void
@@ -135,7 +142,7 @@ export const useAppStore = create<AppState>()(
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
       })),
-      tabs: [{ id: 'default', name: 'Query 1', query: 'SELECT * FROM tables LIMIT 10', status: ExecutionStatus.IDLE }],
+      tabs: [{ id: 'default', name: 'Query 1', query: 'SELECT * FROM tables LIMIT 10', status: ExecutionStatus.IDLE, editorMode: 'auto' }],
       activeTabId: 'default',
       panels: { editor: true, results: true, editorHeight: 60 },
       setEditorHeight: (editorHeight) => set((state) => ({
@@ -187,7 +194,8 @@ export const useAppStore = create<AppState>()(
             name: `Query ${state.tabs.length + 1}`, 
             query: '', 
             connectionId: connectionId || state.activeConnection?.id,
-            status: ExecutionStatus.IDLE 
+            status: ExecutionStatus.IDLE,
+            editorMode: 'auto',
           }],
           activeTabId: id,
         }
@@ -200,14 +208,15 @@ export const useAppStore = create<AppState>()(
             name: name.replace(/\.sql$/i, ''), 
             query, 
             connectionId: connectionId || state.activeConnection?.id,
-            status: ExecutionStatus.IDLE 
+            status: ExecutionStatus.IDLE,
+            editorMode: 'auto',
           }],
           activeTabId: id,
         }
       }),
       removeTab: (id) => set((state) => {
         const newTabs = state.tabs.filter((t) => t.id !== id)
-        const defaultTab: QueryTab = { id: 'default', name: 'Query 1', query: '', status: ExecutionStatus.IDLE }
+        const defaultTab: QueryTab = { id: 'default', name: 'Query 1', query: '', status: ExecutionStatus.IDLE, editorMode: 'auto' }
         return {
           tabs: newTabs.length ? newTabs : [defaultTab],
           activeTabId: state.activeTabId === id ? (newTabs[0]?.id || defaultTab.id) : state.activeTabId,
@@ -236,6 +245,9 @@ export const useAppStore = create<AppState>()(
             : t
         ),
       })),
+      updateTabEditorMode: (id, editorMode) => set((state) => ({
+        tabs: state.tabs.map((t) => t.id === id ? { ...t, editorMode } : t),
+      })),
       miniToasts: {},
       setMiniToast: (id, msg) => {
         set((state) => ({ miniToasts: { ...state.miniToasts, [id]: msg } }), false)
@@ -244,6 +256,13 @@ export const useAppStore = create<AppState>()(
         }, 3000)
       },
       clearMiniToast: (id) => set((state) => ({ miniToasts: { ...state.miniToasts, [id]: null } }), false),
+      connectionErrors: {},
+      setConnectionError: (id, error) => set((state) => ({
+        connectionErrors: { ...state.connectionErrors, [id]: error }
+      })),
+      clearConnectionError: (id) => set((state) => ({
+        connectionErrors: { ...state.connectionErrors, [id]: null }
+      })),
       queryHistory: {},
       addQueryHistory: (entry) => set((state) => {
         const MAX_HISTORY = 100;
@@ -259,6 +278,7 @@ export const useAppStore = create<AppState>()(
       name: 'toketeo-app-storage',
       partialize: (state: AppState): AppState => ({
         ...state,
+        connectionErrors: {},
         theme: state.theme,
         accessToken: state.accessToken,
         activeConnection: state.activeConnection ? { ...state.activeConnection, password: undefined } : null,

@@ -3,21 +3,25 @@ import { LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen, CheckCir
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
+import { ConnectionErrorModal } from '@/components/connections/ConnectionErrorModal'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
 import { LevelBadge } from '@/components/gamification/LevelBadge'
 import { GamificationModal } from '@/components/gamification/GamificationModal'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
+import { listen } from '@tauri-apps/api/event'
 
 export default function MainLayout() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
   const setMiniToast = useAppStore((state) => state.setMiniToast)
+  const setConnectionError = useAppStore((state) => state.setConnectionError)
+  const connectionErrors = useAppStore((state) => state.connectionErrors)
 
   const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
   const isProduction = activeConnection?.environment?.toLowerCase() === 'production'
@@ -32,6 +36,33 @@ export default function MainLayout() {
   useEffect(() => {
     checkStreak()
   }, [checkStreak])
+
+  const [connectionErrorModal, setConnectionErrorModal] = useState<{
+    connectionId: string
+    connectionName: string
+    error: string
+  } | null>(null)
+
+  useEffect(() => {
+    const unlisten = listen<{ connection_id: string; error: string }>('connection:error', (event) => {
+      const { connection_id, error } = event.payload
+      setConnectionError(connection_id, error)
+      const conn = connections.find((c) => c.id === connection_id)
+      setConnectionErrorModal({
+        connectionId: connection_id,
+        connectionName: conn?.name || connection_id,
+        error,
+      })
+    })
+    return () => { unlisten.then((f) => f()) }
+  }, [connections, setConnectionError])
+
+  const handleReconnected = useCallback(() => {
+    if (connectionErrorModal) {
+      setConnectionError(connectionErrorModal.connectionId, null)
+    }
+    queryClient.invalidateQueries({ queryKey: ['connections'] })
+  }, [connectionErrorModal, setConnectionError, queryClient])
 
   const handleDisconnect = async (id: string) => {
     try {
@@ -272,6 +303,16 @@ export default function MainLayout() {
         isOpen={isGamificationModalOpen} 
         onClose={() => setIsGamificationModalOpen(false)} 
       />
+
+      {connectionErrorModal && (
+        <ConnectionErrorModal
+          connectionId={connectionErrorModal.connectionId}
+          connectionName={connectionErrorModal.connectionName}
+          error={connectionErrorModal.error}
+          onClose={() => setConnectionErrorModal(null)}
+          onReconnected={handleReconnected}
+        />
+      )}
     </div>
   )
 }

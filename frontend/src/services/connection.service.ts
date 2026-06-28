@@ -69,6 +69,10 @@ export const connectionService = {
     return await tauriApi.invoke<string[]>('import_connections_dialog')
   },
 
+  reconnect: async (id: string): Promise<string> => {
+    return await tauriApi.invoke<string>('reconnect_connection', { id })
+  },
+
   test: async (config: CreateConnectionDto): Promise<string> => {
     return await tauriApi.invoke<string>('connect', { config })
   }

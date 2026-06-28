@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { GitBranch, X, Loader2, Database, Save, ArrowRight, FlaskConical } from 'lucide-react'
+import { GitBranch, X, Loader2, Database, Save, ArrowRight, FlaskConical, CheckSquare, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { connectionService } from '@/services/connection.service'
+import { schemaService } from '@/services/schema.service'
 import { syncService } from '@/services/sync.service'
 import { useSyncStore } from '@/store/syncStore'
 import { ColumnMapper } from '@/components/sync/ColumnMapper'
@@ -30,6 +31,8 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
   const [saving, setSaving] = useState(false)
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sourceColumns, setSourceColumns] = useState<Record<number, string[]>>({})
+  const [loadingColumns, setLoadingColumns] = useState<Record<number, boolean>>({})
 
   const { data: connections } = useQuery({
     queryKey: ['connections'],
@@ -46,6 +49,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
     mode,
     tables,
     batch_size: batchSize,
+    ...(pipeline?.id ? { id: pipeline.id } : {}),
   } as unknown as CreateSyncPipelineDto)
 
   const handleSave = async () => {
@@ -84,7 +88,30 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
   }
 
   const updateTable = (i: number, field: keyof SyncTableConfig, value: unknown) => {
-    setTables(tables.map((t, j) => j === i ? { ...t, [field]: value } as SyncTableConfig : t))
+    const newTables = tables.map((t, j) => j === i ? { ...t, [field]: value } as SyncTableConfig : t)
+    setTables(newTables)
+    // Auto-fetch source columns when source_table changes
+    if (field === 'source_table' && sourceId && value) {
+      setLoadingColumns((prev) => ({ ...prev, [i]: true }))
+      schemaService.getColumns(sourceId, value as string)
+        .then((cols) => {
+          const colNames = cols.map((c) => c.name)
+          setSourceColumns((prev) => ({ ...prev, [i]: colNames }))
+          const mappings: ColumnMapping[] = colNames.map((name) => ({
+            source_column: name,
+            destination_column: name,
+          }))
+          // Update mappings for this table using newTables
+          const updatedTables = newTables.map((t, j) =>
+            j === i ? { ...t, column_mappings: mappings } : t
+          )
+          setTables(updatedTables)
+        })
+        .catch(() => { /* ignore */ })
+        .finally(() => {
+          setLoadingColumns((prev) => ({ ...prev, [i]: false }))
+        })
+    }
   }
 
   const removeTable = (i: number) => {
@@ -93,6 +120,24 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
   const updateMappings = (i: number, mappings: ColumnMapping[]) => {
     updateTable(i, 'column_mappings', mappings)
+  }
+
+  const toggleColumn = (tableIdx: number, col: string) => {
+    const table = tables[tableIdx]
+    const existing = table.column_mappings
+    const idx = existing.findIndex((m) => m.source_column === col)
+    if (idx >= 0) {
+      updateMappings(tableIdx, existing.filter((_, j) => j !== idx))
+    } else {
+      updateMappings(tableIdx, [
+        ...existing,
+        { source_column: col, destination_column: col },
+      ])
+    }
+  }
+
+  const isColumnChecked = (tableIdx: number, col: string) => {
+    return tables[tableIdx]?.column_mappings.some((m) => m.source_column === col) ?? false
   }
 
   const isEditing = !!pipeline
@@ -274,8 +319,59 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                   />
                 </div>
 
+                {/* Source columns with checkboxes */}
+                {loadingColumns[i] ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Loading columns...
+                  </div>
+                ) : sourceColumns[i] && sourceColumns[i].length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Properties</span>
+                      <button
+                        onClick={() => {
+                          const allChecked = sourceColumns[i].every((col) => isColumnChecked(i, col))
+                          if (allChecked) {
+                            updateMappings(i, [])
+                          } else {
+                            const mappings: ColumnMapping[] = sourceColumns[i].map((name) => ({
+                              source_column: name,
+                              destination_column: name,
+                            }))
+                            updateMappings(i, mappings)
+                          }
+                        }}
+                        className="text-[9px] font-bold uppercase tracking-wider text-primary hover:text-primary/80"
+                      >
+                        {sourceColumns[i].every((col) => isColumnChecked(i, col)) ? 'Uncheck All' : 'Check All'}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto border border-border bg-background p-2">
+                      {sourceColumns[i].map((col) => (
+                        <label
+                          key={col}
+                          className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-mono cursor-pointer hover:bg-primary/5 rounded"
+                        >
+                          {isColumnChecked(i, col) ? (
+                            <CheckSquare className="w-3.5 h-3.5 text-primary shrink-0" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={isColumnChecked(i, col)}
+                            onChange={() => toggleColumn(i, col)}
+                          />
+                          <span className="truncate">{col}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <ColumnMapper
-                  sourceColumns={[]}
+                  sourceColumns={sourceColumns[i] ?? []}
                   targetColumns={[]}
                   mappings={table.column_mappings}
                   onChange={(mappings) => updateMappings(i, mappings)}

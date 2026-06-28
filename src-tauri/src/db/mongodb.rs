@@ -9,7 +9,7 @@ use futures::StreamExt;
 use mongodb::{
     Client,
     bson::{Bson, Document, doc},
-    options::{ClientOptions, FindOptions},
+    options::ClientOptions,
 };
 use std::time::Instant;
 
@@ -201,6 +201,8 @@ impl DbDriver for MongoDbDriver {
             .as_object()
             .ok_or_else(|| AppError::Validation("MongoDB query must be a JSON object".into()))?;
 
+        tracing::info!("[MongoDB Execute] query: {}", query);
+
         // Simple 'find' support: { "collection": "name", "find": { ... }, "limit": 100 }
         if let Some(coll_name) = obj.get("collection").and_then(|v| v.as_str()) {
             let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);
@@ -286,6 +288,8 @@ impl DbDriver for MongoDbDriver {
             let mut columns: Vec<String> = columns_set.into_iter().collect();
             columns.sort();
 
+            tracing::info!("[MongoDB Execute] path=collection, collection={}, rows={}, cols={:?}", coll_name, rows.len(), columns);
+
             return Ok(QueryResult {
                 columns,
                 rows,
@@ -296,17 +300,88 @@ impl DbDriver for MongoDbDriver {
 
         // Generic command support: { "listCollections": 1 }
         let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);
-        let db = self.get_db(db_name)?;
-        let command = serde_json::from_value::<Document>(json_query)
+        let db = self.get_db(db_name.clone())?;
+        tracing::info!("[MongoDB Execute] generic command: db={:?}, raw_query={}", db_name, json_query);
+
+        // Strip non-command fields before sending to run_command
+        let mut cmd_obj = json_query.clone();
+        if let Some(map) = cmd_obj.as_object_mut() {
+            map.remove("database");
+            map.remove("collection");
+        }
+        tracing::info!("[MongoDB Execute] stripped command: {}", cmd_obj);
+
+        let command = serde_json::from_value::<Document>(cmd_obj)
             .map_err(|e| AppError::Validation(format!("Invalid BSON document: {}", e)))?;
+
+        tracing::info!("[MongoDB Execute] run_command on db {:?}: {:?}", db_name, command);
 
         let result = db
             .run_command(command)
             .await
             .map_err(|e| AppError::Database(format!("MongoDB command failed: {}", e)))?;
 
+        tracing::info!("[MongoDB Execute] command result: {:?}", result);
+
         let json_result = bson_to_json(&Bson::Document(result));
 
+        tracing::info!("[MongoDB Execute] path=command, raw_result={}", json_result);
+
+        // Flatten cursor-based results (listCollections, listIndexes, etc.)
+        if let Some(cursor) = json_result.get("cursor").and_then(|v| v.as_object()) {
+            if let Some(batch) = cursor
+                .get("firstBatch")
+                .or_else(|| cursor.get("nextBatch"))
+                .and_then(|v| v.as_array())
+            {
+                if !batch.is_empty() {
+                    let rows: Vec<serde_json::Value> = batch.to_vec();
+                    let mut columns_set = std::collections::HashSet::new();
+                    for row in &rows {
+                        if let Some(obj) = row.as_object() {
+                            for key in obj.keys() {
+                                columns_set.insert(key.clone());
+                            }
+                        }
+                    }
+                    let mut columns: Vec<String> = columns_set.into_iter().collect();
+                    columns.sort();
+                    tracing::info!("[MongoDB Execute] flattened cursor with {} rows, cols={:?}", rows.len(), columns);
+                    return Ok(QueryResult {
+                        columns,
+                        rows,
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: None,
+                    });
+                }
+            }
+        }
+
+        // Flatten databases array (listDatabases command)
+        if let Some(dbs) = json_result.get("databases").and_then(|v| v.as_array()) {
+            if !dbs.is_empty() {
+                let rows: Vec<serde_json::Value> = dbs.to_vec();
+                let mut columns_set = std::collections::HashSet::new();
+                for row in &rows {
+                    if let Some(obj) = row.as_object() {
+                        for key in obj.keys() {
+                            columns_set.insert(key.clone());
+                        }
+                    }
+                }
+                let mut columns: Vec<String> = columns_set.into_iter().collect();
+                columns.sort();
+                tracing::info!("[MongoDB Execute] flattened databases with {} rows, cols={:?}", rows.len(), columns);
+                return Ok(QueryResult {
+                    columns,
+                    rows,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                });
+            }
+        }
+
+        tracing::info!("[MongoDB Execute] path=command, returning raw result as single row");
         Ok(QueryResult {
             columns: vec!["result".to_string()],
             rows: vec![json_result],
@@ -378,8 +453,9 @@ impl DbDriver for MongoDbDriver {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let db = self.get_db(schema)?;
-        let coll = db.collection::<Document>(table);
+        let (db_name, collection_name) = resolve_table_names(table, schema.as_deref(), &self._default_db)?;
+        let db = self.client.database(&db_name);
+        let coll = db.collection::<Document>(collection_name);
 
         // Sample 5 documents to guess "schema"
         let mut cursor = coll
@@ -544,11 +620,30 @@ impl DbDriver for MongoDbDriver {
     }
 }
 
-fn resolve_db<'a>(schema: Option<&'a str>, default_db: &Option<String>) -> AppResult<String> {
-    schema
-        .map(|s| s.to_string())
-        .or_else(|| default_db.clone())
-        .ok_or_else(|| AppError::Validation("Database name is required for MongoDB operations".into()))
+/// Resuelve database + collection a partir de un nombre de tabla.
+/// Si se provee `schema`, se usa como database y `table` como collection.
+/// Si no hay `schema`, y `table` contiene un `.`, se interpreta como `database.collection`.
+/// Si no hay schema ni punto, se usa `default_db` como database.
+fn resolve_table_names<'a>(
+    table: &'a str,
+    schema: Option<&'a str>,
+    default_db: &Option<String>,
+) -> AppResult<(String, &'a str)> {
+    match schema {
+        Some(db) => Ok((db.to_string(), table)),
+        None => {
+            if let Some(dot) = table.find('.') {
+                let db = table[..dot].to_string();
+                let collection = &table[dot + 1..];
+                Ok((db, collection))
+            } else {
+                let db = default_db
+                    .clone()
+                    .ok_or_else(|| AppError::Validation("Database name is required for MongoDB operations".into()))?;
+                Ok((db, table))
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -562,8 +657,13 @@ impl DataReader for MongoDbDriver {
         last_key: Option<serde_json::Value>,
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let db_name = resolve_db(schema, &self._default_db)?;
-        let collection = self.client.database(&db_name).collection::<Document>(table);
+        let (db_name, collection_name) = resolve_table_names(table, schema, &self._default_db)?;
+        tracing::info!(
+            "[MongoDB fetch_rows] table={table} schema={schema:?} default_db={:?} -> db={db_name} collection={collection_name} columns={} batch_size={batch_size} pk={pk_column}",
+            self._default_db,
+            columns.len(),
+        );
+        let collection = self.client.database(&db_name).collection::<Document>(collection_name);
 
         let filter = if let Some(ref key) = last_key {
             let bson_key = json_value_to_bson(key);
@@ -582,13 +682,13 @@ impl DataReader for MongoDbDriver {
             None
         };
 
-        let opts = FindOptions::builder()
-            .sort(doc! { pk_column: 1 })
-            .limit(batch_size as i64)
-            .projection(projection)
-            .build();
-
-        let mut cursor = collection.find(filter).with_options(opts).await?;
+        let mut find = collection
+            .find(filter)
+            .limit(batch_size as i64);
+        if let Some(proj) = projection {
+            find = find.projection(proj);
+        }
+        let mut cursor = find.await?;
         let mut result = Vec::new();
 
         while let Some(doc) = cursor.next().await {
@@ -603,6 +703,12 @@ impl DataReader for MongoDbDriver {
             }
         }
 
+        tracing::info!(
+            "[MongoDB fetch_rows] fetched {} rows from {}.{}",
+            result.len(),
+            db_name,
+            collection_name,
+        );
         Ok(result)
     }
 
@@ -611,9 +717,13 @@ impl DataReader for MongoDbDriver {
         table: &str,
         schema: Option<&str>,
     ) -> AppResult<u64> {
-        let db_name = resolve_db(schema, &self._default_db)?;
-        let collection = self.client.database(&db_name).collection::<Document>(table);
+        let (db_name, collection_name) = resolve_table_names(table, schema, &self._default_db)?;
+        let collection = self.client.database(&db_name).collection::<Document>(collection_name);
         let count = collection.count_documents(doc! {}).await?;
+        tracing::info!(
+            "[MongoDB count_rows] table={table} schema={schema:?} default_db={:?} -> db={db_name} collection={collection_name} count={count}",
+            self._default_db,
+        );
         Ok(count)
     }
 }
@@ -636,6 +746,60 @@ fn json_value_to_bson(value: &serde_json::Value) -> Bson {
             Bson::Array(arr.iter().map(json_value_to_bson).collect())
         }
         serde_json::Value::Object(map) => {
+            // Handle MongoDB Extended JSON v2 format
+            if map.len() == 1 {
+                if let Some(serde_json::Value::String(hex)) = map.get("$oid") {
+                    if let Ok(oid) = mongodb::bson::oid::ObjectId::parse_str(hex) {
+                        return Bson::ObjectId(oid);
+                    }
+                }
+                if let Some(val) = map.get("$numberInt") {
+                    if let Some(n) = val.as_str().and_then(|s| s.parse::<i32>().ok()) {
+                        return Bson::Int32(n);
+                    }
+                }
+                if let Some(val) = map.get("$numberLong") {
+                    if let Some(n) = val.as_str().and_then(|s| s.parse::<i64>().ok()) {
+                        return Bson::Int64(n);
+                    }
+                }
+                if let Some(val) = map.get("$numberDouble") {
+                    if let Some(f) = val.as_str().and_then(|s| s.parse::<f64>().ok()) {
+                        return Bson::Double(f);
+                    }
+                }
+                if let Some(val) = map.get("$date") {
+                    match val {
+                        serde_json::Value::String(iso) => {
+                            if let Ok(dt) = mongodb::bson::DateTime::parse_rfc3339_str(iso) {
+                                return Bson::DateTime(dt);
+                            }
+                        }
+                        serde_json::Value::Object(inner) => {
+                            if let Some(serde_json::Value::String(ms)) = inner.get("$numberLong")
+                            {
+                                if let Ok(ms) = ms.parse::<i64>() {
+                                    return Bson::DateTime(
+                                        mongodb::bson::DateTime::from_millis(ms),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(val) = map.get("$undefined") {
+                    if val.as_bool() == Some(true) {
+                        return Bson::Undefined;
+                    }
+                }
+                if map.contains_key("$minKey") {
+                    return Bson::MinKey;
+                }
+                if map.contains_key("$maxKey") {
+                    return Bson::MaxKey;
+                }
+            }
             let mut doc = Document::new();
             for (k, v) in map {
                 doc.insert(k, json_value_to_bson(v));
@@ -644,6 +808,8 @@ fn json_value_to_bson(value: &serde_json::Value) -> Bson {
         }
     }
 }
+
+
 
 #[async_trait]
 impl DataWriter for MongoDbDriver {
@@ -659,11 +825,12 @@ impl DataWriter for MongoDbDriver {
             return Ok(0);
         }
 
-        let db_name = resolve_db(schema, &self._default_db)?;
-        let collection = self.client.database(&db_name).collection::<Document>(table);
+        let (db_name, collection_name) = resolve_table_names(table, schema, &self._default_db)?;
+        let collection = self.client.database(&db_name).collection::<Document>(collection_name);
         let pk_field = primary_keys.first().map(|s| s.as_str()).unwrap_or("_id");
 
         let mut affected = 0u64;
+        let mut error_count = 0u64;
 
         for row in rows {
             let mut filter_doc = Document::new();
@@ -672,22 +839,35 @@ impl DataWriter for MongoDbDriver {
 
             let mut update_doc = Document::new();
             for col in columns {
+                if col == pk_field {
+                    continue;
+                }
                 let value = row.get(col).unwrap_or(&serde_json::Value::Null);
                 update_doc.insert(col, json_value_to_bson(value));
             }
 
             let update = doc! { "$set": update_doc };
 
-            let result = collection
-                .update_one(filter_doc, update)
-                .upsert(true)
-                .await?;
-
-            if result.upserted_id.is_some() {
-                affected += 1;
-            } else {
-                affected += result.modified_count;
+            match collection.update_one(filter_doc, update).upsert(true).await {
+                Ok(result) => {
+                    if result.upserted_id.is_some() {
+                        affected += 1;
+                    } else {
+                        affected += result.modified_count;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[MongoDB upsert_rows] row upsert failed: {e}");
+                    error_count += 1;
+                }
             }
+        }
+
+        if error_count > 0 {
+            tracing::warn!(
+                "[MongoDB upsert_rows] {affected} rows affected, {error_count} errors in batch of {}",
+                rows.len(),
+            );
         }
 
         Ok(affected)

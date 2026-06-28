@@ -30,9 +30,19 @@ impl DataExtractor for MongoExtractor<'_> {
         batch_size: usize,
         batch_number: u64,
     ) -> AppResult<ExtractOutput> {
+        tracing::info!(
+            "[MongoExtractor::extract] table={table} schema={schema:?} columns={} batch_size={batch_size} batch_number={batch_number} last_key={:?}",
+            columns.len(),
+            last_key,
+        );
         let mut rows = self.reader
             .fetch_rows(table, schema, columns, "_id", last_key, batch_size + 1)
             .await?;
+
+        tracing::info!(
+            "[MongoExtractor::extract] fetched {} rows",
+            rows.len(),
+        );
 
         let has_more = rows.len() > batch_size;
 

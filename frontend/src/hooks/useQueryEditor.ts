@@ -1,13 +1,13 @@
 import type * as monaco from 'monaco-editor'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { Monaco } from '@monaco-editor/react'
-import { useAppStore, type MongoFilterState, type QueryHistoryEntry } from '@/store/useAppStore'
+import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
 import { tauriApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import type { DbValue, DbRow } from '@/types/database'
-import { ExecutionStatus } from '@/types/database'
+import { ExecutionStatus, Environment } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { usePerformanceStore } from '@/store/performanceStore'
@@ -41,10 +41,38 @@ function mergeFilterBar(
   if (hint !== undefined) payload['hint'] = hint;
 }
 
-function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | undefined): string {
+function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | undefined, editorMode?: EditorMode): string {
   const cleaned = rawSql.replace(/;\s*$/, '').trim();
+  const mode = editorMode ?? 'auto';
 
-  // ── 1. Already structured JSON protocol ──────────────────────────────────
+  if (mode === 'mongosh') {
+    // Shell mode — pure shell parsing, NO filter bar merge, NO legacy fallback
+    const parseResult = parseMongoShell(cleaned);
+    if (parseResult.success) {
+      const payload = parseResult.protocol as unknown as Record<string, unknown>;
+      // Explicitly do NOT merge filter bar — user's query text is authoritative
+      return JSON.stringify(payload);
+    }
+    // Parse failed — throw so the caller shows the error instead of sending garbage
+    throw new Error(`Failed to parse MongoDB shell syntax:\n${parseResult.error}\n\n${cleaned}`);
+  }
+
+  if (mode === 'json') {
+    // JSON mode — only try JSON protocol, no filter bar merge
+    try {
+      const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
+        // Do NOT merge filter bar — user's JSON is authoritative
+        return JSON.stringify(parsed);
+      }
+      // Valid JSON but missing 'collection' key — send as generic MongoDB command
+      return cleaned;
+    } catch {
+      throw new Error(`Invalid JSON for MongoDB command:\n${cleaned}`);
+    }
+  }
+
+  // 'auto' — try JSON first, then shell, then legacy (with filter bar)
   try {
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
@@ -53,7 +81,6 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
     }
   } catch { /* not JSON — fall through */ }
 
-  // ── 2. MongoDB Shell syntax (db.collection.method(...)) ──────────────────
   if (isMongoShellSyntax(cleaned)) {
     const parseResult = parseMongoShell(cleaned);
     if (parseResult.success) {
@@ -61,11 +88,10 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
       mergeFilterBar(payload, mongoFilter);
       return JSON.stringify(payload);
     }
-    // Shell syntax detected but failed to parse: fall through to legacy handler
     console.warn('[mongoShellParser] Parse failed:', parseResult.error);
   }
 
-  // ── 3. Legacy fallback: bare identifier / unknown format ─────────────────
+  // Legacy fallback (only reached in 'auto' mode)
   const dbShellMatch = cleaned.match(/db\.(\w+)/);
   const collectionName = dbShellMatch ? dbShellMatch[1] : 'unknown';
 
@@ -100,12 +126,14 @@ export function useQueryEditor() {
     clearTabResults,
     updateTabViewState,
     updateTabMongoFilter,
+    updateTabEditorMode,
     panels, 
     setEditorHeight,
     togglePanel,
     addQueryHistory,
     queryHistory,
     clearQueryHistory,
+    setActiveConnectionDatabase,
   } = useAppStore()
   
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
@@ -172,7 +200,23 @@ export function useQueryEditor() {
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 
-  const checkDangerousQuery = useCallback((sql: string): boolean => {
+  const checkDangerousQuery = useCallback((sql: string, isMongo: boolean): boolean => {
+    if (isMongo) {
+      const isProduction = activeConnection?.environment === Environment.PRODUCTION;
+      if (!isProduction) return false;
+
+      // MongoDB destructive operations regex
+      const destructive = /\.\s*(updateMany|updateOne|deleteMany|deleteOne|findOneAndDelete|findOneAndUpdate|replaceOne|drop|remove|bulkWrite|insertMany|insertOne|save)\s*\(/i;
+      if (destructive.test(sql)) {
+        return !window.confirm(
+          'Warning: This MongoDB operation modifies data on a PRODUCTION database.\n' +
+          'Are you sure you want to proceed?'
+        );
+      }
+      return false;
+    }
+
+    // SQL danger check
     const upperSql = sql.toUpperCase()
     const hasUpdate = upperSql.includes('UPDATE')
     const hasDelete = upperSql.includes('DELETE')
@@ -182,20 +226,20 @@ export function useQueryEditor() {
       return !window.confirm('Warning: This query contains an UPDATE or DELETE statement without a WHERE clause. Are you sure you want to proceed?')
     }
     return false
-  }, [])
+  }, [activeConnection?.environment])
 
   const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
     if (activeTab?.query && activeConnection) {
-      if (checkDangerousQuery(activeTab.query)) return
+      const isMongo = activeConnection.type === 'mongodb';
+      if (checkDangerousQuery(activeTab.query, isMongo)) return
 
       const effectiveLimit = limit ?? queryLimit;
-      const isMongo = activeConnection.type === 'mongodb';
       let sql = activeTab.query.trim();
 
       if (isMongo) {
-        sql = buildMongoJsonQuery(sql, activeTab.mongoFilter);
+        sql = buildMongoJsonQuery(sql, activeTab.mongoFilter, activeTab.editorMode);
       } else if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
         const offset = (page - 1) * effectiveLimit;
         const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
@@ -237,6 +281,15 @@ export function useQueryEditor() {
           results: result,
           error: null
         });
+
+        // Handle MongoDB use <db> — update connection's active database
+        if (isMongo) {
+          const useMatch = activeTab.query.trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
+          if (useMatch) {
+            setActiveConnectionDatabase(useMatch[1]);
+          }
+        }
+
         const qHash = hashQuery(sql);
         const isFirstTime = isQueryFirstTime(qHash);
         const xpEarned = calculateQueryXp(sql, isFirstTime);
@@ -280,7 +333,7 @@ export function useQueryEditor() {
         addQueryHistory(histEntry);
       }
     }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
     if (!editorRef.current || !activeTab || !activeConnection) return
@@ -319,12 +372,13 @@ export function useQueryEditor() {
     }
 
     if (!sqlSnippet) return
-    if (checkDangerousQuery(sqlSnippet)) return
 
     const isMongo = activeConnection?.type === 'mongodb';
+    if (checkDangerousQuery(sqlSnippet, isMongo)) return
+
     sqlSnippet = sqlSnippet.trim();
     if (isMongo) {
-      sqlSnippet = buildMongoJsonQuery(sqlSnippet, activeTab.mongoFilter);
+      sqlSnippet = buildMongoJsonQuery(sqlSnippet, activeTab.mongoFilter, activeTab.editorMode);
     } else if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
       const offset = (page - 1) * queryLimit;
       const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
@@ -364,6 +418,15 @@ export function useQueryEditor() {
         results: result,
         error: null
       })
+
+      // Handle MongoDB use <db> — update connection's active database
+      if (isMongo) {
+        const useMatch = (activeTab?.query ?? sqlSnippet).trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
+        if (useMatch) {
+          setActiveConnectionDatabase(useMatch[1]);
+        }
+      }
+
       const qHash = hashQuery(sqlSnippet);
       const isFirstTime = isQueryFirstTime(qHash);
       const xpEarned = calculateQueryXp(sqlSnippet, isFirstTime);
@@ -377,7 +440,7 @@ export function useQueryEditor() {
         error: message
       })
     }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
 
   // Use refs to avoid stale closures in Monaco addCommand
   const executeCurrentRef = useRef(handleExecuteCurrent)
@@ -802,6 +865,7 @@ export function useQueryEditor() {
     handleGenerateSql,
     updateTabViewState,
     updateTabMongoFilter,
+    updateTabEditorMode,
     queryLimit,
     setQueryLimit,
     queryHistory,

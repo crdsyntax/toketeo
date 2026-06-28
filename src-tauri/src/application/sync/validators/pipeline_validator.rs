@@ -120,21 +120,34 @@ impl PipelineValidator {
         table_config: &SyncTableConfig,
         _pipeline: &SyncPipeline,
     ) -> AppResult<crate::models::sync::TableValidation> {
+        // Para MongoDB, si el nombre de tabla contiene '.', separamos
+        // database.collection → (database, collection) y usamos database como schema.
+        let (source_name, source_schema) = if source.db_type() == crate::db::DbType::Mongodb {
+            split_mongo_table(&table_config.source_table)
+        } else {
+            (table_config.source_table.as_str(), None)
+        };
+        let (target_name, target_schema) = if target.db_type() == crate::db::DbType::Mongodb {
+            split_mongo_table(&table_config.target_table)
+        } else {
+            (table_config.target_table.as_str(), None)
+        };
+
         // Verificar que la tabla existe en source
         let source_tables = source
-            .fetch_tables(None, None)
+            .fetch_tables(source_schema.map(String::from), None)
             .await?;
         let exists_on_source = source_tables
             .iter()
-            .any(|t| t == &table_config.source_table);
+            .any(|t| t == source_name);
 
         // Verificar que la tabla existe en target
         let target_tables = target
-            .fetch_tables(None, None)
+            .fetch_tables(target_schema.map(String::from), None)
             .await?;
         let exists_on_target = target_tables
             .iter()
-            .any(|t| t == &table_config.target_table);
+            .any(|t| t == target_name);
 
         if !exists_on_source || !exists_on_target {
             return Ok(crate::models::sync::TableValidation {
@@ -152,12 +165,24 @@ impl PipelineValidator {
         SchemaDiff::compare_tables(
             source,
             target,
-            &table_config.source_table,
-            &table_config.target_table,
-            None,
-            None,
+            source_name,
+            target_name,
+            source_schema,
+            target_schema,
         )
         .await
+    }
+}
+
+/// Divide una referencia `database.collection` en sus partes.
+/// Si no hay punto, retorna (nombre_completo, None).
+fn split_mongo_table(full: &str) -> (&str, Option<&str>) {
+    if let Some(dot) = full.find('.') {
+        let db = &full[..dot];
+        let collection = &full[dot + 1..];
+        (collection, Some(db))
+    } else {
+        (full, None)
     }
 }
 

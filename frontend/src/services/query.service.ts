@@ -7,7 +7,7 @@ export const queryService = {
    */
   execute: async (id: string, query: string, schema?: string, params?: unknown[], page?: number, pageSize?: number) => {
     const args: Record<string, unknown> = { id, query };
-    if (schema) args.schema = schema;
+    if (schema && typeof schema === 'string' && schema.trim().length > 0) args.schema = schema.trim();
     if (params) args.params = params;
     if (page !== undefined) args.page = page;
     if (pageSize !== undefined) args.pageSize = pageSize;

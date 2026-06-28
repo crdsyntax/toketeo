@@ -78,6 +78,7 @@ export default function QueryEditor() {
     queryLimit,
     setQueryLimit,
     updateTabMongoFilter,
+    updateTabEditorMode,
     queryHistory,
     clearQueryHistory,
   } = useQueryEditor()
@@ -363,6 +364,7 @@ export default function QueryEditor() {
                     connectionName={targetConnection.name}
                     connectionType={targetConnection.type}
                     updateTabViewState={updateTabViewState}
+                    updateTabEditorMode={updateTabEditorMode}
                   />
                 );
               })()}

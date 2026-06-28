@@ -1,7 +1,7 @@
 import { Editor, type Monaco } from '@monaco-editor/react';
 import type * as monaco from 'monaco-editor';
-import { ChevronUp, Terminal, Database } from 'lucide-react';
-import type { QueryTab } from '@/store/useAppStore';
+import { ChevronUp, Terminal, Database, Code2 } from 'lucide-react';
+import type { QueryTab, EditorMode } from '@/store/useAppStore';
 import { useRef, useEffect, useCallback } from 'react';
 import { isMongoShellSyntax } from '@/lib/mongoShellParser';
 import {
@@ -19,6 +19,7 @@ interface SqlEditorPanelProps {
   connectionName: string;
   connectionType: string;
   updateTabViewState: (id: string, viewState: monaco.editor.ICodeEditorViewState | null) => void;
+  updateTabEditorMode: (id: string, mode: EditorMode) => void;
 }
 
 export function SqlEditorPanel({
@@ -30,14 +31,21 @@ export function SqlEditorPanel({
   connectionName,
   connectionType,
   updateTabViewState,
+  updateTabEditorMode,
 }: SqlEditorPanelProps) {
   const isMongo = connectionType === 'mongodb';
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const prevTabIdRef = useRef<string>(activeTab.id);
 
-  // Detect if current query uses MongoDB shell syntax (derived — no state needed)
-  const isShellMode = isMongo && isMongoShellSyntax(activeTab.query);
+  const mode = activeTab.editorMode ?? 'auto';
+
+  // When in 'auto', derive mode from query text; otherwise use the explicit mode
+  const isShellMode = isMongo && (
+    mode === 'mongosh' ? true
+    : mode === 'json' ? false
+    : isMongoShellSyntax(activeTab.query)
+  );
 
   // Dynamically update the Monaco editor language when shell mode toggles
   useEffect(() => {
@@ -129,20 +137,43 @@ export function SqlEditorPanel({
                 : 'SQL Editor'}
           </span>
 
-          {/* Shell mode badge */}
-          {isShellMode && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-green-500/15 text-green-400 border border-green-500/30 animate-in fade-in duration-200">
-              <Terminal className="w-2.5 h-2.5" />
-              Shell Mode
-            </span>
-          )}
-
-          {/* JSON / structured mode badge for non-shell mongo */}
-          {isMongo && !isShellMode && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30">
-              <Database className="w-2.5 h-2.5" />
-              JSON Protocol
-            </span>
+          {/* Mode toggle — only show for MongoDB */}
+          {isMongo && (
+            <div className="flex items-center gap-1 ml-2 border border-border rounded">
+              <button
+                onClick={() => updateTabEditorMode(activeTab.id, 'mongosh')}
+                className={`flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${
+                  mode === 'mongosh'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Terminal className="w-2.5 h-2.5" />
+                Shell
+              </button>
+              <button
+                onClick={() => updateTabEditorMode(activeTab.id, 'auto')}
+                className={`flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${
+                  mode === 'auto'
+                    ? 'bg-yellow-500/20 text-yellow-400'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Code2 className="w-2.5 h-2.5" />
+                Auto
+              </button>
+              <button
+                onClick={() => updateTabEditorMode(activeTab.id, 'json')}
+                className={`flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${
+                  mode === 'json'
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Database className="w-2.5 h-2.5" />
+                JSON
+              </button>
+            </div>
           )}
 
           {/* Hint text */}

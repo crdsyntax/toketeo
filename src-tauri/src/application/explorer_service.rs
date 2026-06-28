@@ -52,12 +52,50 @@ impl ExplorerService {
                         driver.execute(&format!("SET search_path TO \"{}\";", s)).await?;
                         query.to_string()
                     }
+                    crate::db::DbType::Mongodb => {
+                        // Inject the database name into MongoDB JSON commands
+                        // so the driver uses the correct database
+                        if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(query) {
+                            if let Some(obj) = json_val.as_object_mut() {
+                                if !obj.contains_key("database") {
+                                    let clean_db = s.trim_end_matches(';').trim().to_string();
+                                    obj.insert("database".to_string(), serde_json::Value::String(clean_db));
+                                    serde_json::to_string(&json_val).unwrap_or_else(|_| query.to_string())
+                                } else {
+                                    query.to_string()
+                                }
+                            } else {
+                                query.to_string()
+                            }
+                        } else {
+                            query.to_string()
+                        }
+                    }
                     _ => query.to_string(),
                 }
             }
         } else {
             query.to_string()
         };
+
+        tracing::info!("[ExplorerService] MongoDB execute_query: schema={:?}, initial_query={}", schema, query);
+
+        // Handle MongoDB use <db> command — switch the connection's database
+        if db_type == crate::db::DbType::Mongodb {
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&final_query) {
+                if let Some(obj) = json_val.as_object() {
+                    if let Some(use_db) = obj.get("use").and_then(|v| v.as_str()).map(|s| s.trim_end_matches(';').trim().to_string()) {
+                        crate::application::connection_service::ConnectionService::switch_database(state, id, &use_db).await?;
+                        return Ok(QueryResult {
+                            columns: vec!["message".to_string()],
+                            rows: vec![serde_json::json!({"message": format!("Switched to db {}", use_db), "db": use_db})],
+                            execution_time_ms: start.elapsed().as_millis() as u64,
+                            primary_keys: None,
+                        });
+                    }
+                }
+            }
+        }
 
         match driver.execute(&final_query).await {
             Ok(result) => {

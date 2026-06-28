@@ -151,6 +151,11 @@ pub async fn connect(config: DbConnectionConfig, state: State<'_, AppState>) -> 
 }
 
 #[tauri::command]
+pub async fn reconnect_connection(id: String, state: State<'_, AppState>) -> AppResult<String> {
+    ConnectionService::reconnect(&state, &id).await
+}
+
+#[tauri::command]
 pub async fn disconnect(id: String, state: State<'_, AppState>) -> AppResult<()> {
     ConnectionService::disconnect(&state, &id).await
 }
@@ -1058,6 +1063,7 @@ pub async fn start_sync(
     });
 
     let db_type = source_driver.db_type();
+    let storage = state.storage.clone();
 
     tokio::spawn(async move {
         let source: &dyn crate::db::DataReader = &*source_driver;
@@ -1068,6 +1074,7 @@ pub async fn start_sync(
             source,
             target,
             db_type,
+            storage,
             Some(tx),
         ).await {
             let _ = app_handle.emit("sync:error", &e.to_string());
