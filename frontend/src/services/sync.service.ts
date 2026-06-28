@@ -5,6 +5,8 @@ import type {
   SyncBatch,
   SyncRowError,
   SyncCheckpoint,
+  SyncTableConfig,
+  SyncMode,
   ValidationReport,
   CreateSyncPipelineDto,
 } from '@/types/sync';
@@ -30,9 +32,20 @@ export const syncService = {
     return await tauriApi.invoke<void>('delete_sync_pipeline', { id });
   },
 
-  /** Validar configuración del pipeline. */
-  validate: async (pipeline: CreateSyncPipelineDto): Promise<ValidationReport> => {
-    return await tauriApi.invoke<ValidationReport>('validate_sync_pipeline', { pipeline });
+  /** Validar configuración del pipeline (por ID guardado). */
+  validate: async (params: { id: string }): Promise<ValidationReport> => {
+    return await tauriApi.invoke<ValidationReport>('validate_sync_pipeline', { id: params.id });
+  },
+
+  /** Validar configuración sin guardar el pipeline. */
+  validateConfig: async (params: {
+    sourceConnectionId: string;
+    targetConnectionId: string;
+    tables: SyncTableConfig[];
+    mode: SyncMode;
+    batchSize?: number;
+  }): Promise<ValidationReport> => {
+    return await tauriApi.invoke<ValidationReport>('validate_sync_config', params);
   },
 
   /** Iniciar ejecución de un pipeline. */

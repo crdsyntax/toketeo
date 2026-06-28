@@ -110,7 +110,13 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
   validatePipeline: async (dto) => {
     set({ loading: true, error: null });
     try {
-      const report = await syncService.validate(dto);
+      const report = await syncService.validateConfig({
+        sourceConnectionId: dto.source_connection_id,
+        targetConnectionId: dto.target_connection_id,
+        tables: dto.tables,
+        mode: dto.mode,
+        batchSize: dto.batch_size,
+      });
       set({ validation: report, loading: false });
       return report;
     } catch (e) {

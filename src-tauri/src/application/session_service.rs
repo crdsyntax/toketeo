@@ -39,6 +39,7 @@ pub struct MetadataCacheEntry {
 pub struct MetadataCache {
     entries: HashMap<MetadataCacheKey, MetadataCacheEntry>,
     ttl: Duration,
+    max_entries: usize,
 }
 
 impl MetadataCache {
@@ -46,6 +47,7 @@ impl MetadataCache {
         Self {
             entries: HashMap::new(),
             ttl,
+            max_entries: 500,
         }
     }
 
@@ -60,6 +62,14 @@ impl MetadataCache {
     }
 
     pub fn set(&mut self, key: MetadataCacheKey, data: Vec<serde_json::Value>) {
+        if self.entries.len() >= self.max_entries {
+            if let Some(oldest_key) = self.entries.iter()
+                .min_by_key(|(_, v)| v.cached_at)
+                .map(|(k, _)| k.clone())
+            {
+                self.entries.remove(&oldest_key);
+            }
+        }
         self.entries.insert(
             key,
             MetadataCacheEntry {
@@ -170,16 +180,27 @@ impl SessionService {
     ) {
         tauri::async_runtime::spawn(async move {
             let mut timer = tokio::time::interval(interval);
+            let mut audit_prune_counter = 0u8;
             loop {
                 timer.tick().await;
                 let state = app_handle.state::<AppState>();
                 if let Err(e) = Self::cleanup_sessions(&state, idle_timeout).await {
                     eprintln!("Session cleanup error: {:?}", e);
                 }
-                // Also evict expired metadata cache entries on every cleanup cycle
-                let mut conns = state.connections.write().await;
-                for session in conns.values_mut() {
-                    session.metadata_cache.evict_expired();
+                // Evict expired metadata cache entries
+                {
+                    let mut conns = state.connections.write().await;
+                    for session in conns.values_mut() {
+                        session.metadata_cache.evict_expired();
+                    }
+                }
+                // Prune audit logs every ~30 minutes (30 ticks at 60s interval)
+                audit_prune_counter += 1;
+                if audit_prune_counter >= 30 {
+                    audit_prune_counter = 0;
+                    if let Err(e) = state.storage.prune_audit_logs(10000).await {
+                        eprintln!("Audit log prune error: {:?}", e);
+                    }
                 }
             }
         });
@@ -200,6 +221,36 @@ mod tests {
     use async_trait::async_trait;
 
     struct MockDriver;
+    #[async_trait]
+    impl crate::db::DataReader for MockDriver {
+        async fn fetch_rows(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: &[String],
+            _: &str,
+            _: Option<serde_json::Value>,
+            _: usize,
+        ) -> AppResult<Vec<serde_json::Value>> {
+            todo!()
+        }
+        async fn count_rows(&self, _: &str, _: Option<&str>) -> AppResult<u64> {
+            todo!()
+        }
+    }
+    #[async_trait]
+    impl crate::db::DataWriter for MockDriver {
+        async fn upsert_rows(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: &[String],
+            _: &[String],
+            _: &[serde_json::Value],
+        ) -> AppResult<u64> {
+            todo!()
+        }
+    }
     #[async_trait]
     impl DbDriver for MockDriver {
         fn db_type(&self) -> crate::db::DbType {

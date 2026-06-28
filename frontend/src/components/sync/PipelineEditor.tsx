@@ -6,6 +6,7 @@ import { connectionService } from '@/services/connection.service'
 import { syncService } from '@/services/sync.service'
 import { useSyncStore } from '@/store/syncStore'
 import { ColumnMapper } from '@/components/sync/ColumnMapper'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { Connection } from '@/types/database'
 import type { SyncPipeline, SyncTableConfig, ColumnMapping, CreateSyncPipelineDto } from '@/types/sync'
 import { SyncMode } from '@/types/sync'
@@ -143,7 +144,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
           {/* Name */}
           <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Pipeline Name</label>
+            <Tooltip content="A descriptive name to identify this pipeline">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Pipeline Name</label>
+            </Tooltip>
             <input
               className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
               value={name}
@@ -156,12 +159,14 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           <div className="grid grid-cols-2 gap-6">
             <ConnectionSelector
               label="Source Connection"
+              tooltip="Select the source database — data will be read from here"
               value={sourceId}
               onChange={setSourceId}
               connections={connections ?? []}
             />
             <ConnectionSelector
               label="Target Connection"
+              tooltip="Select the target database — data will be written here"
               value={targetId}
               onChange={setTargetId}
               connections={connections ?? []}
@@ -171,7 +176,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           {/* Mode + Batch Size */}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
+              <Tooltip content="Full: copies all data each run. Incremental: only copies new/changed data since the last sync">
+                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
+              </Tooltip>
               <select
                 className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
                 value={mode}
@@ -182,7 +189,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Batch Size</label>
+              <Tooltip content="Number of rows per batch. Larger values improve throughput but use more memory">
+                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Batch Size</label>
+              </Tooltip>
               <input
                 type="number"
                 className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
@@ -196,7 +205,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           {/* Tables */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tables</span>
+              <Tooltip content="Define the tables to synchronize and their column mappings">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tables</span>
+              </Tooltip>
               <button
                 onClick={addTable}
                 className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
@@ -216,7 +227,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Table</label>
+                    <Tooltip content="Schema-qualified source table name (e.g. public.users)">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Table</label>
+                    </Tooltip>
                     <input
                       className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                       value={table.source_table}
@@ -225,7 +238,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Table</label>
+                    <Tooltip content="Schema-qualified target table name (e.g. public.users)">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Table</label>
+                    </Tooltip>
                     <input
                       className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                       value={table.target_table}
@@ -236,7 +251,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Filter (WHERE clause)</label>
+                  <Tooltip content="Optional SQL WHERE clause to filter rows during extraction (applied to source)">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Filter (WHERE clause)</label>
+                  </Tooltip>
                   <input
                     className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                     value={table.filters ?? ''}
@@ -246,7 +263,9 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Primary Key(s) (comma-separated)</label>
+                  <Tooltip content="Comma-separated primary key columns used for incremental sync and deduplication">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Primary Key(s) (comma-separated)</label>
+                  </Tooltip>
                   <input
                     className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                     value={table.primary_key?.join(', ') ?? ''}
@@ -273,27 +292,31 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
         </div>
 
         <div className="p-6 bg-muted/30 border-t border-border flex items-center justify-between gap-4">
-          <button
-            onClick={handleValidate}
-            disabled={validating}
-            className="flex items-center gap-2 bg-muted text-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all disabled:opacity-50"
-          >
-            {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FlaskConical className="w-3 h-3" />}
-            Validate
-          </button>
+          <Tooltip content="Test the pipeline configuration without saving — checks connections and table schemas">
+            <button
+              onClick={handleValidate}
+              disabled={validating}
+              className="flex items-center gap-2 bg-muted text-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all disabled:opacity-50"
+            >
+              {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FlaskConical className="w-3 h-3" />}
+              Validate
+            </button>
+          </Tooltip>
 
           <div className="flex items-center gap-4">
             <button onClick={onClose} className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
               Cancel
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              {isEditing ? 'Update Pipeline' : 'Create Pipeline'}
-            </button>
+            <Tooltip content={isEditing ? 'Save changes to this pipeline' : 'Save the pipeline and start using it'}>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                {isEditing ? 'Update Pipeline' : 'Create Pipeline'}
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -303,15 +326,18 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
 interface ConnectionSelectorProps {
   label: string
+  tooltip?: string
   value: string
   onChange: (id: string) => void
   connections: Connection[]
 }
 
-function ConnectionSelector({ label, value, onChange, connections }: ConnectionSelectorProps) {
+function ConnectionSelector({ label, tooltip, value, onChange, connections }: ConnectionSelectorProps) {
   return (
     <div className="space-y-2">
-      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</label>
+      <Tooltip content={tooltip ?? ''}>
+        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</label>
+      </Tooltip>
       <select
         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
         value={value}

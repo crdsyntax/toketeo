@@ -12,6 +12,7 @@ pub mod storage;
 use infrastructure::scheduler::job_engine::JobEngine;
 use state::AppState;
 use std::fs;
+use std::sync::Arc;
 use storage::Storage;
 use tauri::Manager;
 
@@ -28,32 +29,33 @@ pub fn run() {
             let app_dir = app_handle
                 .path()
                 .app_data_dir()
-                .expect("Failed to get app data dir");
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
             if !app_dir.exists() {
-                fs::create_dir_all(&app_dir).expect("Failed to create app data dir");
+                fs::create_dir_all(&app_dir)
+                    .map_err(|e| format!("Failed to create app data dir: {}", e))?;
             }
 
             let db_path = app_dir.join("toketeo.db");
 
             let storage = tauri::async_runtime::block_on(async {
                 if !db_path.exists() {
-                    fs::File::create(&db_path).expect("Failed to create db file");
+                    fs::File::create(&db_path)
+                        .map_err(|e| format!("Failed to create db file: {}", e))?;
                 }
                 Storage::new(db_path)
                     .await
-                    .expect("Failed to initialize storage")
-            });
+                    .map_err(|e| format!("Failed to initialize storage: {}", e))
+            })?;
 
             let state = tauri::async_runtime::block_on(AppState::new(storage));
             let storage_arc = state.storage.clone();
 
             app.manage(state);
 
-            let engine = Box::new(JobEngine::new(storage_arc.clone()));
-            let engine: &'static mut JobEngine = Box::leak(engine);
-            engine.set_app_handle(app.handle().clone());
-            engine.start();
+            let mut engine = Arc::new(JobEngine::new(storage_arc.clone()));
+            Arc::get_mut(&mut engine).unwrap().set_app_handle(app.handle().clone());
+            engine.clone().start();
 
             crate::application::session_service::SessionService::spawn_cleanup_task(
                 app.handle().clone(),
@@ -130,6 +132,7 @@ pub fn run() {
             commands::get_sync_pipeline,
             commands::delete_sync_pipeline,
             commands::validate_sync_pipeline,
+            commands::validate_sync_config,
             commands::list_sync_runs,
             commands::get_sync_run,
             commands::list_sync_batches,

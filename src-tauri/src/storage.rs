@@ -7,6 +7,7 @@ use secrecy::ExposeSecret;
 use sqlx::{Row, sqlite::SqlitePool};
 use std::path::PathBuf;
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 use crate::application::audit_service::AuditEntry;
 
@@ -236,6 +237,14 @@ impl Storage {
         Ok(())
     }
 
+    pub async fn prune_audit_logs(&self, max_entries: u32) -> AppResult<u32> {
+        let result = sqlx::query("DELETE FROM audit_logs WHERE id NOT IN (SELECT id FROM audit_logs ORDER BY timestamp DESC LIMIT ?)")
+            .bind(max_entries as i64)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() as u32)
+    }
+
     pub async fn get_audit_logs(&self, limit: u32, offset: u32) -> AppResult<Vec<AuditEntry>> {
         let rows = sqlx::query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?")
             .bind(limit as i64)
@@ -273,8 +282,11 @@ impl Storage {
         let db_type_str: String = row.get("type");
         let ssh_json: Option<String> = row.get("ssh");
 
-        let db_type: DbType =
-            serde_json::from_value(serde_json::Value::String(db_type_str)).unwrap_or(DbType::Mysql);
+        let db_type: DbType = serde_json::from_value(serde_json::Value::String(db_type_str.clone()))
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to parse db_type '{}': {}. Falling back to Mysql", db_type_str, e);
+                DbType::Mysql
+            });
         let ssh_tunnel: Option<SshConfig> = ssh_json.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(DbConnectionConfig {
@@ -287,7 +299,11 @@ impl Storage {
             user: row.get("user"),
             password: row
                 .get::<Option<String>, _>("password")
-                .map(secrecy::SecretString::from),
+                .map(|mut s| {
+                    let secret = secrecy::SecretString::from(s.as_str());
+                    s.zeroize();
+                    secret
+                }),
             database: row.get("database"),
             auth_enabled: row.try_get::<Option<i64>, _>("auth_enabled").unwrap_or(None).map(|v| v != 0),
             auth_source: row.get("auth_source"),
@@ -312,9 +328,15 @@ impl Storage {
         let ssh_json = config
             .ssh_tunnel
             .as_ref()
-            .map(|s| serde_json::to_string(&s).unwrap_or_default());
+            .map(|s| serde_json::to_string(&s).unwrap_or_else(|e| {
+                tracing::error!("Failed to serialize ssh config: {}", e);
+                "{}".into()
+            }));
         let db_type = serde_json::to_value(&config.db_type)
-            .unwrap()
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to serialize db_type: {}", e);
+                serde_json::Value::String("mysql".into())
+            })
             .as_str()
             .unwrap_or("mysql")
             .to_string();
@@ -404,7 +426,11 @@ impl Storage {
                 user: row.get("user"),
                 password: row
                     .get::<Option<String>, _>("password")
-                    .map(secrecy::SecretString::from),
+                    .map(|mut s| {
+                        let secret = secrecy::SecretString::from(s.as_str());
+                        s.zeroize();
+                        secret
+                    }),
                 database: row.get("database"),
                 auth_enabled: row.try_get::<Option<i64>, _>("auth_enabled").unwrap_or(None).map(|v| v != 0),
                 auth_source: row.get("auth_source"),
@@ -438,11 +464,17 @@ impl Storage {
         let id = job.id.to_string();
         let connection_id = job.connection_id.to_string();
         let job_type = serde_json::to_value(&job.job_type)
-            .unwrap()
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to serialize job_type: {}", e);
+                serde_json::Value::String("backup".into())
+            })
             .as_str()
             .unwrap_or("backup")
             .to_string();
-        let config = serde_json::to_string(&job.config).unwrap_or_default();
+        let config = serde_json::to_string(&job.config).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize job config: {}", e);
+            "{}".into()
+        });
         let last_run = job.last_run.map(|d| d.to_rfc3339());
         let next_run = job.next_run.map(|d| d.to_rfc3339());
         let created_at = job.created_at.to_rfc3339();
@@ -612,8 +644,12 @@ impl Storage {
 
     // ── Sync Pipelines ──
 
-    pub async fn save_sync_pipeline(&self, pipeline: &SyncPipeline) -> AppResult<()> {
+    pub async fn save_sync_pipeline(&self, pipeline: &SyncPipeline) -> AppResult<SyncPipeline> {
         let config = serde_json::to_string(&pipeline.tables).unwrap_or_default();
+        let now = chrono::Utc::now().to_rfc3339();
+        let pipeline_id = pipeline.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let created_at = pipeline.created_at.clone().unwrap_or_else(|| now.clone());
+        let updated_at = pipeline.updated_at.clone().unwrap_or(now);
 
         sqlx::query(
             "INSERT INTO sync_pipelines (id, name, source_connection_id, target_connection_id, mode, status, batch_size, config, created_at, updated_at)
@@ -628,20 +664,35 @@ impl Storage {
                 config = excluded.config,
                 updated_at = excluded.updated_at"
         )
-        .bind(&pipeline.id)
+        .bind(&pipeline_id)
         .bind(&pipeline.name)
         .bind(&pipeline.source_connection_id)
         .bind(&pipeline.target_connection_id)
-        .bind(serde_json::to_value(&pipeline.mode).unwrap().as_str().unwrap_or("full").to_string())
-        .bind(serde_json::to_value(&pipeline.status).unwrap().as_str().unwrap_or("draft").to_string())
+        .bind(serde_json::to_value(&pipeline.mode)
+            .unwrap_or_else(|e| { tracing::error!("Failed to serialize pipeline mode: {}", e); serde_json::Value::String("full".into()) })
+            .as_str().unwrap_or("full").to_string())
+        .bind(serde_json::to_value(&pipeline.status)
+            .unwrap_or_else(|e| { tracing::error!("Failed to serialize pipeline status: {}", e); serde_json::Value::String("draft".into()) })
+            .as_str().unwrap_or("draft").to_string())
         .bind(pipeline.batch_size as i64)
         .bind(&config)
-        .bind(&pipeline.created_at)
-        .bind(&pipeline.updated_at)
+        .bind(&created_at)
+        .bind(&updated_at)
         .execute(&self.pool)
         .await?;
 
-        Ok(())
+        Ok(SyncPipeline {
+            id: Some(pipeline_id),
+            name: pipeline.name.clone(),
+            source_connection_id: pipeline.source_connection_id.clone(),
+            target_connection_id: pipeline.target_connection_id.clone(),
+            mode: pipeline.mode.clone(),
+            status: pipeline.status.clone(),
+            tables: pipeline.tables.clone(),
+            batch_size: pipeline.batch_size,
+            created_at: Some(created_at),
+            updated_at: Some(updated_at),
+        })
     }
 
     pub async fn get_sync_pipeline(&self, id: &str) -> AppResult<SyncPipeline> {
@@ -690,7 +741,9 @@ impl Storage {
         )
         .bind(&run.id)
         .bind(&run.pipeline_id)
-        .bind(serde_json::to_value(&run.status).unwrap().as_str().unwrap_or("running").to_string())
+        .bind(serde_json::to_value(&run.status)
+            .unwrap_or_else(|e| { tracing::error!("Failed to serialize run status: {}", e); serde_json::Value::String("running".into()) })
+            .as_str().unwrap_or("running").to_string())
         .bind(&run.started_at)
         .bind(&run.completed_at)
         .bind(run.total_rows as i64)
@@ -880,7 +933,7 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
     let tables: Vec<SyncTableConfig> = serde_json::from_str(&config_str).unwrap_or_default();
 
     Ok(SyncPipeline {
-        id: row.get("id"),
+        id: Some(row.get("id")),
         name: row.get("name"),
         source_connection_id: row.get("source_connection_id"),
         target_connection_id: row.get("target_connection_id"),
@@ -888,8 +941,8 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
         status,
         tables,
         batch_size: row.get::<i64, _>("batch_size") as usize,
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+        created_at: Some(row.get("created_at")),
+        updated_at: Some(row.get("updated_at")),
     })
 }
 

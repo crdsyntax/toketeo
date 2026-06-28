@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use url::Url;
 
-fn quote_ss(id: &str) -> String {
+pub(crate) fn quote_ss(id: &str) -> String {
     format!("[{}]", id.replace(']', "]]"))
 }
 

@@ -7,6 +7,7 @@ use cron::Schedule;
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 #[derive(Clone, serde::Serialize)]
@@ -22,6 +23,15 @@ pub struct JobCompletedPayload {
 pub struct JobEngine {
     storage: Arc<Storage>,
     app_handle: Option<AppHandle>,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+}
+
+impl Drop for JobEngine {
+    fn drop(&mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+    }
 }
 
 impl JobEngine {
@@ -29,6 +39,7 @@ impl JobEngine {
         Self {
             storage,
             app_handle: None,
+            shutdown_tx: None,
         }
     }
 
@@ -36,13 +47,30 @@ impl JobEngine {
         self.app_handle = Some(handle);
     }
 
-    pub fn start(self: &'static Self) {
+    pub fn start(self: Arc<Self>) {
+        let (tx, mut rx) = oneshot::channel();
+        // Store shutdown sender so Drop sends the signal
+        // We use unsafe to mutably access the field through the Arc
+        // Actually, let's use a separate approach: store shutdown_tx before Arc-ifying
+        // Since this is called on Arc<Self> and we need to set shutdown_tx, we do it here
+        unsafe {
+            let ptr = Arc::as_ptr(&self) as *mut Self;
+            (*ptr).shutdown_tx = Some(tx);
+        }
+
         tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {
-                interval.tick().await;
-                if let Err(e) = Self::process_jobs(self).await {
-                    eprintln!("[JobEngine] Error processing jobs: {}", e);
+                tokio::select! {
+                    _ = interval.tick() => {
+                        if let Err(e) = Self::process_jobs(&self).await {
+                            eprintln!("[JobEngine] Error processing jobs: {}", e);
+                        }
+                    }
+                    _ = &mut rx => {
+                        tracing::info!("JobEngine shutdown signal received");
+                        break;
+                    }
                 }
             }
         });

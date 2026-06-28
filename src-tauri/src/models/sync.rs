@@ -9,9 +9,10 @@ pub enum SyncMode {
 }
 
 /// Estado del pipeline.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PipelineStatus {
+    #[default]
     Draft,
     Ready,
     Running,
@@ -50,16 +51,25 @@ pub struct DriverCapabilities {
 /// Pipeline de sincronización.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncPipeline {
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub name: String,
     pub source_connection_id: String,
     pub target_connection_id: String,
     pub mode: SyncMode,
+    #[serde(default)]
     pub status: PipelineStatus,
     pub tables: Vec<SyncTableConfig>,
+    #[serde(default = "default_batch_size")]
     pub batch_size: usize,
-    pub created_at: String,
-    pub updated_at: String,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+fn default_batch_size() -> usize {
+    1000
 }
 
 /// Configuración de una tabla dentro del pipeline.

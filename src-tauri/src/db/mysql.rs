@@ -28,7 +28,7 @@ use sqlx::{ Column, MySqlPool, Row, mysql::MySqlPoolOptions, mysql::MySqlRow, Ty
 use std::time::{ Duration, Instant };
 use serde_json::Value;
 
-fn quote_mysql(id: &str) -> String {
+pub(crate) fn quote_mysql(id: &str) -> String {
     format!("`{}`", id.replace('`', "``"))
 }
 

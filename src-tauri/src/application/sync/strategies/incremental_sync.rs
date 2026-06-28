@@ -113,7 +113,7 @@ impl SyncStrategy for IncrementalSync {
         Ok(StrategyOutput {
             run: SyncRun {
                 id: run_id,
-                pipeline_id: pipeline.id.clone(),
+                pipeline_id: pipeline.id.clone().unwrap_or_default(),
                 status: PipelineStatus::Completed,
                 started_at: Some(started_at),
                 completed_at: Some(chrono::Utc::now().to_rfc3339()),

@@ -4,9 +4,8 @@ use secrecy::ExposeSecret;
 use ssh2::Session;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use tokio::sync::Mutex;
 
 pub struct SshTunnel {
     pub local_port: u16,
@@ -120,9 +119,7 @@ impl SshTunnel {
                     let host_inner = remote_host.clone();
 
                     thread::spawn(move || {
-                        let mut sess_guard =
-                            tauri::async_runtime::block_on(async { sess_inner.lock().await });
-
+                        let mut sess_guard = sess_inner.lock().unwrap();
                         sess_guard.set_blocking(false);
 
                         let mut channel = loop {
@@ -132,9 +129,7 @@ impl SshTunnel {
                                     // EAGAIN
                                     drop(sess_guard);
                                     thread::sleep(std::time::Duration::from_millis(50));
-                                    sess_guard = tauri::async_runtime::block_on(async {
-                                        sess_inner.lock().await
-                                    });
+                                    sess_guard = sess_inner.lock().unwrap();
                                     continue;
                                 }
                                 Err(e) => {
@@ -192,9 +187,7 @@ impl SshTunnel {
                             if !activity {
                                 drop(sess_guard);
                                 thread::sleep(std::time::Duration::from_millis(50));
-                                sess_guard = tauri::async_runtime::block_on(async {
-                                    sess_inner.lock().await
-                                });
+                                sess_guard = sess_inner.lock().unwrap();
                             }
                         }
                     });

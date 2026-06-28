@@ -270,7 +270,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               <div
                 className="flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none"
                 title="Double click to list schemas"
-                onClick={async () => { setSelectedConnId(conn.id); try { await onConnect(conn); } catch { /* handled by caller */ } }}
+                onClick={async () => { setSelectedConnId(conn.id); try { await onConnect(conn); } catch (e) { toast.error(`Failed to connect: ${e instanceof Error ? e.message : 'Unknown error'}`); } }}
                 onDoubleClick={() => handleConnectionDoubleClick(conn)}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
               >

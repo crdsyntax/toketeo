@@ -10,6 +10,7 @@ use crate::infrastructure::scheduler::job_engine;
 use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
 use crate::state::AppState;
+use std::sync::Arc;
 use std::process::Command;
 use std::str::FromStr;
 use tauri::{AppHandle, Emitter, State};
@@ -491,12 +492,11 @@ pub async fn update_ddl(
     let final_sql = if let Some(ref s) = schema {
         match db_type {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
-                format!("USE `{}`;\n{}", s, sql)
+                format!("USE {};\n{}", quote_identifier(&db_type, s), sql)
             }
             crate::db::DbType::Postgres => {
-                // For Postgres, we still do SET search_path first as it might behave differently with raw_sql
                 driver
-                    .execute(&format!("SET search_path TO \"{}\";", s))
+                    .execute(&format!("SET search_path TO {};", quote_identifier(&db_type, s)))
                     .await?;
                 sql
             }
@@ -552,6 +552,15 @@ pub async fn edit_column(
         .map(|_| ())
 }
 
+fn quote_identifier(db_type: &crate::db::DbType, name: &str) -> String {
+    match db_type {
+        crate::db::DbType::Postgres => crate::db::postgres::quote_pg(name),
+        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => crate::db::mysql::quote_mysql(name),
+        crate::db::DbType::Sqlserver => crate::db::sqlserver::quote_ss(name),
+        _ => name.to_string(),
+    }
+}
+
 #[tauri::command]
 pub async fn drop_column(
     id: String,
@@ -560,7 +569,12 @@ pub async fn drop_column(
     schema: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let sql = format!("ALTER TABLE {} DROP COLUMN {}", table, column);
+    let driver = state.get_connection(&id).await?;
+    let db_type = driver.db_type();
+    drop(driver);
+    let sql = format!("ALTER TABLE {} DROP COLUMN {}",
+        quote_identifier(&db_type, &table),
+        quote_identifier(&db_type, &column));
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
@@ -575,9 +589,13 @@ pub async fn drop_index(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let driver = state.get_connection(&id).await?;
-    let sql = match driver.db_type() {
-        crate::db::DbType::Postgres => format!("DROP INDEX {}", index),
-        _ => format!("ALTER TABLE {} DROP INDEX {}", table, index),
+    let db_type = driver.db_type();
+    drop(driver);
+    let sql = match db_type {
+        crate::db::DbType::Postgres => format!("DROP INDEX {}", quote_identifier(&db_type, &index)),
+        _ => format!("ALTER TABLE {} DROP INDEX {}",
+            quote_identifier(&db_type, &table),
+            quote_identifier(&db_type, &index)),
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -594,10 +612,17 @@ pub async fn rename_index(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let driver = state.get_connection(&id).await?;
-    let sql = match driver.db_type() {
-        crate::db::DbType::Postgres => format!("ALTER INDEX {} RENAME TO {}", old_name, new_name),
-        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => format!("ALTER TABLE {} RENAME INDEX {} TO {}", table, old_name, new_name),
-        _ => return Err(crate::error::AppError::Validation(format!("Rename index not supported for {:?}", driver.db_type()))),
+    let db_type = driver.db_type();
+    drop(driver);
+    let sql = match db_type {
+        crate::db::DbType::Postgres => format!("ALTER INDEX {} RENAME TO {}",
+            quote_identifier(&db_type, &old_name),
+            quote_identifier(&db_type, &new_name)),
+        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => format!("ALTER TABLE {} RENAME INDEX {} TO {}",
+            quote_identifier(&db_type, &table),
+            quote_identifier(&db_type, &old_name),
+            quote_identifier(&db_type, &new_name)),
+        _ => return Err(crate::error::AppError::Validation(format!("Rename index not supported for {:?}", db_type))),
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -613,9 +638,15 @@ pub async fn drop_foreign_key(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let driver = state.get_connection(&id).await?;
-    let sql = match driver.db_type() {
-        crate::db::DbType::Postgres => format!("ALTER TABLE {} DROP CONSTRAINT {}", table, constraint),
-        _ => format!("ALTER TABLE {} DROP FOREIGN KEY {}", table, constraint),
+    let db_type = driver.db_type();
+    drop(driver);
+    let sql = match db_type {
+        crate::db::DbType::Postgres => format!("ALTER TABLE {} DROP CONSTRAINT {}",
+            quote_identifier(&db_type, &table),
+            quote_identifier(&db_type, &constraint)),
+        _ => format!("ALTER TABLE {} DROP FOREIGN KEY {}",
+            quote_identifier(&db_type, &table),
+            quote_identifier(&db_type, &constraint)),
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -630,7 +661,12 @@ pub async fn drop_constraint(
     schema: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let sql = format!("ALTER TABLE {} DROP CONSTRAINT {}", table, constraint);
+    let driver = state.get_connection(&id).await?;
+    let db_type = driver.db_type();
+    drop(driver);
+    let sql = format!("ALTER TABLE {} DROP CONSTRAINT {}",
+        quote_identifier(&db_type, &table),
+        quote_identifier(&db_type, &constraint));
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
@@ -646,9 +682,14 @@ pub async fn rename_foreign_key(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let driver = state.get_connection(&id).await?;
-    let sql = match driver.db_type() {
-        crate::db::DbType::Postgres => format!("ALTER TABLE {} RENAME CONSTRAINT {} TO {}", table, old_name, new_name),
-        _ => return Err(crate::error::AppError::Validation(format!("Rename constraint not supported for {:?}", driver.db_type()))),
+    let db_type = driver.db_type();
+    drop(driver);
+    let sql = match db_type {
+        crate::db::DbType::Postgres => format!("ALTER TABLE {} RENAME CONSTRAINT {} TO {}",
+            quote_identifier(&db_type, &table),
+            quote_identifier(&db_type, &old_name),
+            quote_identifier(&db_type, &new_name)),
+        _ => return Err(crate::error::AppError::Validation(format!("Rename constraint not supported for {:?}", db_type))),
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -800,9 +841,9 @@ pub async fn restore_database_selected(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let driver = state.get_connection(&id).await?;
-    if matches!(driver.db_type(), crate::db::DbType::Postgres) {
-        let schema_quoted = format!("\"{}\"", schema);
-        driver.execute(&format!("SET search_path TO {};", schema_quoted)).await?;
+    let db_type = driver.db_type();
+    if matches!(db_type, crate::db::DbType::Postgres) {
+        driver.execute(&format!("SET search_path TO {};", quote_identifier(&db_type, &schema))).await?;
     }
     drop(driver);
 
@@ -910,7 +951,7 @@ pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: App
 pub async fn save_sync_pipeline(
     pipeline: SyncPipeline,
     state: State<'_, AppState>,
-) -> AppResult<()> {
+) -> AppResult<SyncPipeline> {
     state.storage.save_sync_pipeline(&pipeline).await
 }
 
@@ -935,9 +976,65 @@ pub async fn validate_sync_pipeline(
     state: State<'_, AppState>,
 ) -> AppResult<crate::models::sync::ValidationReport> {
     let pipeline = state.storage.get_sync_pipeline(&id).await?;
-    let source = state.get_connection(&pipeline.source_connection_id).await?;
-    let target = state.get_connection(&pipeline.target_connection_id).await?;
+    let source = get_or_connect_driver(&state, &pipeline.source_connection_id).await?;
+    let target = get_or_connect_driver(&state, &pipeline.target_connection_id).await?;
     SyncService::validate(&pipeline, source.as_ref(), target.as_ref()).await
+}
+
+#[tauri::command]
+pub async fn validate_sync_config(
+    source_connection_id: String,
+    target_connection_id: String,
+    tables: Vec<crate::models::sync::SyncTableConfig>,
+    mode: crate::models::sync::SyncMode,
+    batch_size: Option<usize>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::sync::ValidationReport> {
+    let source = get_or_connect_driver(&state, &source_connection_id).await?;
+    let target = get_or_connect_driver(&state, &target_connection_id).await?;
+
+    let pipeline = crate::models::sync::SyncPipeline {
+        id: None,
+        name: String::new(),
+        source_connection_id,
+        target_connection_id,
+        mode,
+        status: crate::models::sync::PipelineStatus::Draft,
+        tables,
+        batch_size: batch_size.unwrap_or(1000),
+        created_at: None,
+        updated_at: None,
+    };
+
+    SyncService::validate(&pipeline, source.as_ref(), target.as_ref()).await
+}
+
+/// Get a driver from the runtime HashMap; if not found or the connection is dead, reconnect.
+async fn get_or_connect_driver(state: &AppState, conn_id: &str) -> AppResult<Arc<dyn crate::db::DbDriver>> {
+    if let Ok(driver) = state.get_connection(conn_id).await {
+        // Quick health check — lightweight query to verify the connection is alive
+        let healthy = match driver.db_type() {
+            // SQL databases all support SELECT 1
+            crate::db::DbType::Postgres
+            | crate::db::DbType::Mysql
+            | crate::db::DbType::Mariadb
+            | crate::db::DbType::Sqlite
+            | crate::db::DbType::Sqlserver => driver.execute("SELECT 1").await.is_ok(),
+            // MongoDB doesn't support SQL — use fetch_databases instead
+            crate::db::DbType::Mongodb => driver.fetch_databases().await.is_ok(),
+        };
+        if healthy {
+            return Ok(driver);
+        }
+        // Connection is stale — fall through to reconnect
+        tracing::warn!("Connection {conn_id} is stale, reconnecting...");
+    }
+
+    let config = state.storage.get_connection(conn_id).await?;
+    // Drop the stale entry before reconnecting
+    let _ = state.remove_connection(conn_id).await;
+    ConnectionService::connect(state, config).await?;
+    state.get_connection(conn_id).await
 }
 
 #[tauri::command]
@@ -947,8 +1044,8 @@ pub async fn start_sync(
     app_handle: AppHandle,
 ) -> AppResult<()> {
     let pipeline = state.storage.get_sync_pipeline(&id).await?;
-    let source_driver = state.get_connection(&pipeline.source_connection_id).await?;
-    let target_driver = state.get_connection(&pipeline.target_connection_id).await?;
+    let source_driver = get_or_connect_driver(&state, &pipeline.source_connection_id).await?;
+    let target_driver = get_or_connect_driver(&state, &pipeline.target_connection_id).await?;
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
     let emit_handle = app_handle.clone();

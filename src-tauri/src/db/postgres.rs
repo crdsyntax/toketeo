@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use sqlx::{Column, PgPool, Row, postgres::PgPoolOptions};
 use std::time::{Duration, Instant};
 
-fn quote_pg(id: &str) -> String {
+pub(crate) fn quote_pg(id: &str) -> String {
     format!("\"{}\"", id.replace('"', "\"\""))
 }
 
