@@ -29,6 +29,8 @@
     "socket.io-client": "^4.8.3",
     "sql-formatter": "^15.8.1",
     "tailwind-merge": "^3.6.0",
+    "echarts": "^5.6.0",
+    "echarts-for-react": "^3.0.6",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -50,6 +52,7 @@
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
+    "sharp": "^0.35.2",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",

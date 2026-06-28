@@ -12,11 +12,15 @@ use uuid::Uuid;
 
 #[derive(Clone, serde::Serialize)]
 pub struct JobCompletedPayload {
+    #[serde(rename = "jobId")]
     pub job_id: String,
+    #[serde(rename = "jobName")]
     pub job_name: String,
     pub status: String,
+    #[serde(rename = "outputPath")]
     pub output_path: Option<String>,
     pub error: Option<String>,
+    #[serde(rename = "rowsAffected")]
     pub rows_affected: Option<i64>,
 }
 
@@ -168,7 +172,7 @@ async fn execute_job(
     let job_id = job.id;
     let started_at = Utc::now();
 
-    let result = JobExecutor::execute(job).await;
+    let result = JobExecutor::execute(job, storage).await;
 
     let finished_at = Utc::now();
 

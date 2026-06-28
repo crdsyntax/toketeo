@@ -557,6 +557,81 @@ Necromante Nocturno
 
 ---
 
+# Phase 11: Data Visualizer
+
+## Overview
+
+Convertir resultados de consultas SQL en gráficos interactivos. El visualizador se despliega como un tercer modo de vista (junto a Table y JSON) en el panel de resultados, accesible desde la tab `Visualize` en el header de resultados.
+
+## Features
+
+- [ ] **Chart Types**: Bar, Line, Pie, Area, Scatter, Doughnut
+- [ ] **Auto-detection**: Column classification (numeric / categorical / temporal / id) + chart type suggestion
+- [ ] **Column Picker**: Select X axis, Y axis (multi-series), and Group by columns
+- [ ] **Chart Customization**: Orientation toggle, stacked mode, chart title
+- [ ] **Theme**: Dark/light mode integration with ECharts theme
+- [ ] **Export PNG**: Save chart as image via Tauri file dialog
+- [ ] **Performance**: Handle up to 5000 data points per series
+- [ ] **Empty/Error states**: Graceful handling of non-plottable data
+
+## Stack
+
+- **Library**: Apache ECharts (`echarts` + `echarts-for-react`)
+- **Store**: `visualizerStore.ts` (Zustand, config per tab)
+- **Gate**: Unlocked at level 15 via perk `data_visualizer`
+
+## Architecture
+
+```
+components/query/panels/
+├── VisualizePanel.tsx              # Orquestador (usa subcomponentes de visualize/)
+└── visualize/                      # Sub-módulo autocontenido
+    ├── ChartRenderer.tsx           # Renderiza ECharts
+    ├── ChartTypeSelector.tsx       # Bar / Line / Pie / Area / Scatter
+    ├── ColumnPicker.tsx            # Selectores de eje X, Y, Group
+    ├── ChartControls.tsx           # Orientación, stacked, título
+    └── ChartEmptyState.tsx         # Sin datos o columnas no graficables
+
+store/
+└── visualizerStore.ts              # ChartConfig por tabId (store del módulo)
+
+lib/
+├── chart-types.ts                  # Constantes + config de tipos de gráfico
+└── column-detection.ts             # Clasificación de columnas
+```
+
+## Tasks
+
+### 5.1 Install Dependencies
+- [ ] Install `echarts` and `echarts-for-react`
+
+### 5.2 Visualizer Store
+- [ ] `visualizerStore.ts` — ChartConfig (chartType, xColumn, yColumns, groupColumn, orientation, stacked, title) + setters por tabId
+
+### 5.3 Column Detection Engine
+- [ ] `column-detection.ts` — ColumnProfile con role detection (numeric, categorical, temporal, id) + chart type suggestion algorithm
+
+### 5.4 Chart Renderer
+- [ ] `ChartRenderer.tsx` — Construye option de ECharts desde ColumnConfig + rows; soporta bar, line, pie, area, scatter, doughnut; integra tema dark/light
+
+### 5.5 UI Controls
+- [ ] `ChartTypeSelector.tsx` — Botones de selección con suggested badge
+- [ ] `ColumnPicker.tsx` — Dropdowns X, Y (multi), Group
+- [ ] `ChartControls.tsx` — Orientation, stacked toggle, title input
+
+### 5.6 Refactor VisualizePanel
+- [ ] Reemplazar placeholder actual con layout completo de controles + ChartRenderer
+
+### 5.7 Integration
+- [ ] Extraer `columns` de `activeTab.results.columns` y pasar a VisualizePanel
+- [ ] Inicializar ChartConfig automático al cambiar a visualize mode
+- [ ] Export PNG via Tauri invoke
+
+### 5.8 Perk Update
+- [ ] Cambiar `requiredLevel` de `data_visualizer` de 1 a 15 en `unlocks.ts`
+
+---
+
 # Phase 12: Smart Assistant Hub
 
 ## Overview

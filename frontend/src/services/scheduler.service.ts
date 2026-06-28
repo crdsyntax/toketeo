@@ -27,4 +27,12 @@ export const schedulerService = {
   runNow: async (id: string): Promise<void> => {
     await tauriApi.invoke('run_job_now', { id })
   },
+
+  getDatabases: async (connectionId: string): Promise<string[]> => {
+    return await tauriApi.invoke<string[]>('scheduler_get_databases', { connectionId })
+  },
+
+  getTables: async (connectionId: string, database: string): Promise<string[]> => {
+    return await tauriApi.invoke<string[]>('scheduler_get_tables', { connectionId, database })
+  },
 }

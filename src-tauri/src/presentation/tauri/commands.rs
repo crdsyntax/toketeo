@@ -6,9 +6,12 @@ use crate::application::model_generator_service::ModelGeneratorService;
 use crate::application::sync::sync_service::SyncService;
 use crate::application::sync::strategies::SyncEvent;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::database::connection_string_builder::ConnectionStringBuilder;
+use crate::infrastructure::drivers::driver_factory::DriverFactory;
 use crate::infrastructure::scheduler::job_engine;
 use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
+use secrecy::ExposeSecret;
 use crate::state::AppState;
 use std::sync::Arc;
 use std::process::Command;
@@ -857,6 +860,37 @@ pub async fn restore_database_selected(
 
 // ===================== Scheduled Jobs =====================
 
+fn normalize_cron(expr: &str) -> String {
+    let trimmed = expr.trim();
+    let parts: Vec<&str> = trimmed.split_whitespace().filter(|s| !s.is_empty()).collect();
+    if parts.len() == 5 {
+        format!("0 {}", trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[tauri::command]
+pub async fn scheduler_get_databases(connection_id: String, state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    let config = state.storage.get_connection(&connection_id).await?;
+    let url = ConnectionStringBuilder::build(&config)?;
+    let driver = DriverFactory::create(config.db_type.clone(), &url, false, None).await?;
+    driver.fetch_databases().await
+}
+
+#[tauri::command]
+pub async fn scheduler_get_tables(
+    connection_id: String,
+    database: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let mut config = state.storage.get_connection(&connection_id).await?;
+    config.database = Some(database);
+    let url = ConnectionStringBuilder::build(&config)?;
+    let driver = DriverFactory::create(config.db_type.clone(), &url, false, None).await?;
+    driver.fetch_tables(None, None).await
+}
+
 #[tauri::command]
 pub async fn create_scheduled_job(
     name: String,
@@ -866,17 +900,42 @@ pub async fn create_scheduled_job(
     config: serde_json::Value,
     state: State<'_, AppState>,
 ) -> AppResult<ScheduledJob> {
+    let cron_expression = normalize_cron(&cron_expression);
     let now = chrono::Utc::now();
     let schedule = cron::Schedule::from_str(&cron_expression)
         .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
 
     let next_run = schedule.after(&now).next();
 
+    let conn_id = Uuid::parse_str(&connection_id)
+        .map_err(|e| AppError::Validation(format!("Invalid connection ID: {}", e)))?;
+
+    let config = if job_type == JobType::Backup {
+        let conn = state.storage.get_connection(&connection_id).await?;
+        let mut cfg = config.as_object().cloned().unwrap_or_default();
+        cfg.insert("dbType".into(), serde_json::Value::String(conn.db_type.to_string()));
+        cfg.insert("host".into(), serde_json::Value::String(conn.host));
+        cfg.insert("port".into(), serde_json::Value::Number(conn.port.into()));
+        cfg.insert("user".into(), serde_json::Value::String(conn.user));
+        if let Some(pw) = &conn.password {
+            cfg.insert("password".into(), serde_json::Value::String(pw.expose_secret().to_string()));
+        }
+        // Only set database from connection if frontend didn't send one
+        let has_db = cfg.get("database").and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
+        if !has_db {
+            if let Some(db) = &conn.database {
+                cfg.insert("database".into(), serde_json::Value::String(db.clone()));
+            }
+        }
+        serde_json::Value::Object(cfg)
+    } else {
+        config
+    };
+
     let job = ScheduledJob {
         id: Uuid::new_v4(),
         name,
-        connection_id: Uuid::parse_str(&connection_id)
-            .map_err(|e| AppError::Validation(format!("Invalid connection ID: {}", e)))?,
+        connection_id: conn_id,
         job_type,
         cron_expression,
         config,
@@ -906,6 +965,7 @@ pub async fn update_scheduled_job(
     }
 
     if let Some(cron_expression) = cron_expression {
+        let cron_expression = normalize_cron(&cron_expression);
         let _ = cron::Schedule::from_str(&cron_expression)
             .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
         job.cron_expression = cron_expression;

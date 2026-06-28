@@ -38,7 +38,7 @@ export const APP_PERKS: Perk[] = [
     id: 'data_visualizer',
     title: 'Data Visualizer',
     description: 'Unlock one-click charts, graphs, and visual dashboards for your query results.',
-    requiredLevel: 1,
+    requiredLevel: 15,
     requiredQuests: [],
     icon: 'LineChart',
   },

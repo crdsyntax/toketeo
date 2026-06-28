@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
-import { X, Clock, Database, FileDown, FileJson, FileSpreadsheet } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Clock, Database, FileDown, FileJson, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { JobType } from '@/types/database'
+import { JobType, DatabaseType } from '@/types/database'
 import type { ScheduledJob, CreateScheduledJobDto } from '@/types/database'
 import { connectionService } from '@/services/connection.service'
+import { schedulerService } from '@/services/scheduler.service'
 import type { Connection } from '@/types/database'
 
 interface JobFormModalProps {
@@ -36,19 +37,93 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
   const [outputDir, setOutputDir] = useState((job?.config?.outputDir as string) ?? '/tmp')
   const [connections, setConnections] = useState<Connection[]>([])
 
+  const [databases, setDatabases] = useState<string[]>([])
+  const [selectedDatabase, setSelectedDatabase] = useState((job?.config?.database as string) ?? '')
+  const [tables, setTables] = useState<string[]>([])
+  const [selectedTables, setSelectedTables] = useState<Set<string>>(
+    new Set((job?.config?.tables as string[]) ?? [])
+  )
+  const [loadingDbs, setLoadingDbs] = useState(false)
+  const [loadingTables, setLoadingTables] = useState(false)
+
   useEffect(() => {
     connectionService.getAll().then(setConnections).catch(() => {})
   }, [])
 
+  const isBackup = jobType === JobType.Backup
+
+  useEffect(() => {
+    if (!isBackup || !connectionId) {
+      setDatabases([])
+      setSelectedDatabase('')
+      setTables([])
+      setSelectedTables(new Set())
+      return
+    }
+    setLoadingDbs(true)
+    schedulerService.getDatabases(connectionId)
+      .then((dbs) => {
+        setDatabases(dbs)
+        if (dbs.length > 0 && !job) {
+          setSelectedDatabase(dbs[0])
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDbs(false))
+  }, [connectionId, isBackup, job])
+
+  useEffect(() => {
+    if (!isBackup || !connectionId || !selectedDatabase) {
+      setTables([])
+      setSelectedTables(new Set())
+      return
+    }
+    setLoadingTables(true)
+    schedulerService.getTables(connectionId, selectedDatabase)
+      .then((tbls) => {
+        setTables(tbls)
+        if (!job) {
+          setSelectedTables(new Set(tbls))
+        } else {
+          const existing = new Set((job?.config?.tables as string[]) ?? [])
+          setSelectedTables(new Set(tbls.filter((t) => existing.has(t))))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTables(false))
+  }, [connectionId, selectedDatabase, isBackup, job])
+
+  const toggleTable = useCallback((table: string) => {
+    setSelectedTables((prev) => {
+      const next = new Set(prev)
+      if (next.has(table)) next.delete(table)
+      else next.add(table)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    if (selectedTables.size === tables.length) {
+      setSelectedTables(new Set())
+    } else {
+      setSelectedTables(new Set(tables))
+    }
+  }, [tables, selectedTables])
+
   const handleSave = () => {
     const config: Record<string, unknown> = { outputDir }
-    if (jobType !== JobType.Backup) {
+    if (isBackup) {
+      config.database = selectedDatabase
+      config.tables = Array.from(selectedTables)
+    } else {
       config.query = query
     }
     onSave({ name, connectionId, jobType, cronExpression, config })
   }
 
-  const canSave = name && connectionId && cronExpression && (jobType === JobType.Backup || query)
+  const canSave = name && connectionId && cronExpression && (isBackup || query)
+
+  const selectedConn = connections.find((c) => c.id === connectionId)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -77,16 +152,23 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
               <Database className="w-3 h-3" /> Connection
             </label>
-            <select
-              value={connectionId}
-              onChange={(e) => setConnectionId(e.target.value)}
-              className="w-full mt-1 px-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-            >
-              <option value="">Select connection...</option>
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <div className="relative mt-1">
+              <select
+                value={connectionId}
+                onChange={(e) => setConnectionId(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground appearance-none cursor-pointer pr-8"
+              >
+                <option value="">Select connection...</option>
+                {connections.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-muted-foreground">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </div>
           </div>
 
           {/* Job Type */}
@@ -114,6 +196,75 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
               })}
             </div>
           </div>
+
+          {/* Database (Backup only) */}
+          {isBackup && connectionId && (
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Database
+              </label>
+              {loadingDbs ? (
+                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading databases...
+                </div>
+              ) : databases.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-1">No databases found</p>
+              ) : (
+                <select
+                  value={selectedDatabase}
+                  onChange={(e) => setSelectedDatabase(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                >
+                  {databases.map((db) => (
+                    <option key={db} value={db}>{db}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Tables / Collections (Backup only) */}
+          {isBackup && selectedDatabase && (
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {selectedConn?.type === DatabaseType.MONGODB ? 'Collections' : 'Tables'}
+                </label>
+                {tables.length > 0 && (
+                  <button
+                    onClick={toggleAll}
+                    className="text-[9px] font-semibold uppercase tracking-wider text-primary hover:underline"
+                  >
+                    {selectedTables.size === tables.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                )}
+              </div>
+              {loadingTables ? (
+                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                </div>
+              ) : tables.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-1">No tables found</p>
+              ) : (
+                <div className="mt-1 max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+                  {tables.map((table) => (
+                    <label
+                      key={table}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/40 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedTables.has(table)}
+                        onChange={() => toggleTable(table)}
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-foreground truncate">{table}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Cron Expression */}
           <div>
@@ -145,7 +296,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           </div>
 
           {/* Query (for Report / CSV) */}
-          {jobType !== JobType.Backup && (
+          {!isBackup && (
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SQL Query</label>
               <textarea

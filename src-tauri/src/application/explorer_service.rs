@@ -547,8 +547,8 @@ impl ExplorerService {
                 match serde_json::from_str::<serde_json::Value>(f) {
                     Ok(mut parsed) => {
                         if let Some(o) = parsed.as_object_mut() {
-                            if o.contains_key("$find") {
-                                find_filter = o.remove("$find").unwrap();
+                            if o.contains_key("$find") || o.contains_key("$project") || o.contains_key("$sort") || o.contains_key("$collation") || o.contains_key("$hint") {
+                                find_filter = o.remove("$find").unwrap_or(serde_json::json!({}));
                                 if let Some(p) = o.remove("$project") { mongo_query_map.insert("project".to_string(), p); }
                                 if let Some(s) = o.remove("$sort") { mongo_query_map.insert("sort".to_string(), s); }
                                 if let Some(c) = o.remove("$collation") { mongo_query_map.insert("collation".to_string(), c); }

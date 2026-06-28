@@ -82,6 +82,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null)
   const [loadingConnId, setLoadingConnId] = useState<string | null>(null)
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null)
+  const [connectingId, setConnectingId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, connId?: string }>({ visible: false, x: 0, y: 0 })
   const [schemaMenu, setSchemaMenu] = useState<{
     x: number
@@ -206,14 +207,31 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     }
   }
 
+  const handleConnectionSingleClick = async (conn: Connection) => {
+    if (connectingId === conn.id) return
+    setSelectedConnId(conn.id)
+    setConnectingId(conn.id)
+    try {
+      await onConnect(conn)
+    } catch (e) {
+      toast.error(`Failed to connect: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    } finally {
+      setConnectingId(null)
+    }
+  }
+
   const handleConnectionDoubleClick = async (conn: Connection) => {
     const willExpand = expandedConnId !== conn.id
     if (willExpand && activeConnection?.id !== conn.id) {
+      if (connectingId === conn.id) return
+      setConnectingId(conn.id)
       try {
         await onConnect(conn)
       } catch {
+        setConnectingId(null)
         return
       }
+      setConnectingId(null)
     }
     setExpandedConnId(willExpand ? conn.id : null)
     if (willExpand) setLoadingConnId(conn.id)
@@ -274,7 +292,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               <div
                 className="flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none"
                 title="Double click to list schemas"
-                onClick={async () => { setSelectedConnId(conn.id); try { await onConnect(conn); } catch (e) { toast.error(`Failed to connect: ${e instanceof Error ? e.message : 'Unknown error'}`); } }}
+                onClick={() => handleConnectionSingleClick(conn)}
                 onDoubleClick={() => handleConnectionDoubleClick(conn)}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, connId: conn.id }) }}
               >
@@ -292,7 +310,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                     )}>
                       {conn.name}
                     </span>
-                    {loadingConnId === conn.id && (
+                    {(connectingId === conn.id || loadingConnId === conn.id) && (
                       <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
                     )}
                     {activeConnection?.id === conn.id && connectionErrors[conn.id] && (
@@ -321,13 +339,17 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
+                      if (connectingId === conn.id) return;
                       const willExpand = expandedConnId !== conn.id;
                       if (willExpand && activeConnection?.id !== conn.id) {
+                        setConnectingId(conn.id);
                         try {
                           await onConnect(conn);
                         } catch {
+                          setConnectingId(null);
                           return;
                         }
+                        setConnectingId(null);
                       }
                       setExpandedConnId(expandedConnId === conn.id ? null : conn.id);
                     }}

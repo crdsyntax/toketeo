@@ -138,6 +138,9 @@ export function DataTab({
     }
   });
 
+  const executeRef = useRef(handleExecute);
+  executeRef.current = handleExecute;
+
   const handleMongoFilterExecute = () => {
     const payload: Record<string, unknown> = {};
     const add = (k: string, v: string) => {
@@ -149,9 +152,9 @@ export function DataTab({
     add('$sort', mongoInputs.$sort);
     add('$collation', mongoInputs.$collation);
     add('$hint', mongoInputs.$hint);
-    
+
     setFilter(JSON.stringify(payload));
-    setTimeout(() => handleExecute(), 50);
+    queueMicrotask(() => executeRef.current());
   };
 
   const handleStartEdit = (

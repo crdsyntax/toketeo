@@ -178,8 +178,8 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum JobType {
     Backup,
     Report,

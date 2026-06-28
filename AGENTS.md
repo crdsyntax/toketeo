@@ -17,6 +17,7 @@ Frontend:
 - .agents/frontend/architect.md
 - .agents/frontend/engineer.md
 - .agents/frontend/frontend.md
+- .agents/frontend/component-architecture.md
 
 Security & Ops:
 - .agents/core/security-devops.md

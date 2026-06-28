@@ -135,6 +135,8 @@ pub fn run() {
             commands::delete_scheduled_job,
             commands::get_scheduled_jobs,
             commands::run_job_now,
+            commands::scheduler_get_databases,
+            commands::scheduler_get_tables,
             commands::start_sync,
             commands::save_sync_pipeline,
             commands::list_sync_pipelines,

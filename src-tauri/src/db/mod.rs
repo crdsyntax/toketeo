@@ -16,6 +16,20 @@ pub enum DbType {
     Sqlserver,
 }
 
+impl std::fmt::Display for DbType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            DbType::Postgres => "postgres",
+            DbType::Mariadb => "mariadb",
+            DbType::Mysql => "mysql",
+            DbType::Sqlite => "sqlite",
+            DbType::Mongodb => "mongodb",
+            DbType::Sqlserver => "sqlserver",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Lectura de datos con paginación por keyset.
 #[async_trait]
 pub trait DataReader: Send + Sync {
