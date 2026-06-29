@@ -1180,3 +1180,194 @@ pub async fn get_checkpoint(
 ) -> AppResult<Option<SyncCheckpoint>> {
     state.storage.get_latest_checkpoint(&pipeline_id).await
 }
+
+// ── Database & Collection Management ──
+
+#[tauri::command]
+pub async fn create_database(
+    id: String,
+    db_name: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = state.get_connection(&id).await?;
+    let db_type = driver.db_type();
+
+    match db_type {
+        crate::db::DbType::Mongodb => {
+            let query = serde_json::json!({
+                "create": "_init_",
+                "database": db_name,
+            }).to_string();
+            driver.execute(&query).await?;
+        }
+        crate::db::DbType::Postgres => {
+            driver.execute(&format!("CREATE DATABASE {}", quote_identifier(&db_type, &db_name))).await?;
+        }
+        crate::db::DbType::Sqlserver => {
+            driver.execute(&format!("CREATE DATABASE [{}]", db_name.replace(']', "]]"))).await?;
+        }
+        _ => {
+            driver.execute(&format!("CREATE DATABASE `{}`", db_name.replace('`', "``"))).await?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_collection(
+    id: String,
+    db_name: String,
+    collection_name: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = state.get_connection(&id).await?;
+    let db_type = driver.db_type();
+
+    match db_type {
+        crate::db::DbType::Mongodb => {
+            let query = serde_json::json!({
+                "create": collection_name,
+                "database": db_name,
+            }).to_string();
+            driver.execute(&query).await?;
+        }
+        crate::db::DbType::Postgres => {
+            let sql = format!(
+                "CREATE TABLE {} (\"id\" BIGSERIAL PRIMARY KEY);",
+                quote_identifier(&db_type, &collection_name)
+            );
+            driver.execute(&sql).await?;
+        }
+        crate::db::DbType::Sqlserver => {
+            let sql = format!(
+                "CREATE TABLE [{}] ([id] BIGINT IDENTITY(1,1) PRIMARY KEY);",
+                collection_name.replace(']', "]]")
+            );
+            driver.execute(&sql).await?;
+        }
+        _ => {
+            let sql = format!(
+                "CREATE TABLE `{}` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY);",
+                collection_name.replace('`', "``")
+            );
+            driver.execute(&sql).await?;
+        }
+    }
+    Ok(())
+}
+
+// ── MongoDB Backup & Restore ──
+
+#[tauri::command]
+pub async fn mongo_backup_database(
+    id: String,
+    db_name: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Save MongoDB backup")
+        .set_file_name(format!("{}.json", db_name))
+        .add_filter("JSON Files", &["json"])
+        .add_filter("All Files", &["*"])
+        .blocking_save_file();
+
+    let path = match file_path {
+        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let driver = state.get_connection(&id).await?;
+    let filename = path.display().to_string();
+
+    let collections = driver.fetch_tables(Some(db_name.clone()), None).await?;
+
+    let mut output = serde_json::Map::new();
+    output.insert("database".into(), serde_json::Value::String(db_name.clone()));
+    output.insert("exportedAt".into(), serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+
+    let mut colls = serde_json::Map::new();
+    for collection in &collections {
+        let query = serde_json::json!({
+            "collection": collection,
+            "database": db_name,
+            "find": {},
+            "limit": 0,
+        }).to_string();
+        match driver.execute(&query).await {
+            Ok(result) => {
+                colls.insert(collection.clone(), serde_json::Value::Array(result.rows));
+            }
+            Err(e) => {
+                colls.insert(collection.clone(), serde_json::Value::String(format!("__error__: {}", e)));
+            }
+        }
+    }
+    output.insert("collections".into(), serde_json::Value::Object(colls));
+
+    let json = serde_json::to_string_pretty(&output).unwrap_or_default();
+    std::fs::write(&filename, &json)
+        .map_err(|e| AppError::Internal(format!("Failed to write backup: {}", e)))?;
+
+    Ok(Some(filename))
+}
+
+#[tauri::command]
+pub async fn mongo_restore_database(
+    id: String,
+    db_name: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Select MongoDB backup file to restore")
+        .add_filter("JSON Files", &["json"])
+        .add_filter("All Files", &["*"])
+        .blocking_pick_file();
+
+    let path = match file_path {
+        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| AppError::Internal(format!("Failed to read backup file: {}", e)))?;
+
+    let backup: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| AppError::Validation(format!("Invalid backup JSON: {}", e)))?;
+
+    let collections = backup.get("collections")
+        .and_then(|c| c.as_object())
+        .ok_or_else(|| AppError::Validation("Invalid backup format: missing 'collections'".into()))?;
+
+    let driver = state.get_connection(&id).await?;
+    let mut total = 0u64;
+
+    for (coll_name, docs) in collections {
+        let docs_arr = match docs.as_array() {
+            Some(arr) => arr,
+            None => continue,
+        };
+        if docs_arr.is_empty() {
+            continue;
+        }
+
+        // Insert all documents in bulk
+        let insert_cmd = serde_json::json!({
+            "insert": coll_name,
+            "database": db_name,
+            "documents": docs_arr,
+            "ordered": false,
+        }).to_string();
+        match driver.execute(&insert_cmd).await {
+            Ok(_) => total += docs_arr.len() as u64,
+            Err(e) => eprintln!("[mongo_restore] Error inserting into {}: {}", coll_name, e),
+        }
+    }
+
+    Ok(Some(format!("Restored {} documents into {} collections", total, collections.len())))
+}

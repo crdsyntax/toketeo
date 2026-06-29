@@ -149,6 +149,10 @@ pub fn run() {
             commands::list_sync_batches,
             commands::list_sync_row_errors,
             commands::get_checkpoint,
+            commands::create_database,
+            commands::create_collection,
+            commands::mongo_backup_database,
+            commands::mongo_restore_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

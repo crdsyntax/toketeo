@@ -393,6 +393,28 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               <Unplug className="w-3.5 h-3.5 text-slate-400" />
               Disconnect
             </button>
+            <div className="border-t border-slate-700/40 my-1" />
+            <button
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+              onClick={async (e) => {
+                e.stopPropagation()
+                setContextMenu({ visible: false, x: 0, y: 0 })
+                const name = window.prompt('Enter database name:')
+                if (name && contextMenu.connId) {
+                  try {
+                    await schemaService.createDatabase(contextMenu.connId, name)
+                    toast.success(`Database "${name}" created`)
+                    queryClient.invalidateQueries({ queryKey: ['databases'] })
+                    queryClient.invalidateQueries({ queryKey: ['schemas'] })
+                  } catch (err) {
+                    toast.error(`Failed to create database: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                  }
+                }
+              }}
+            >
+              <Database className="w-3.5 h-3.5 text-slate-400" />
+              Create Database
+            </button>
           </div>
         )}
 
@@ -426,6 +448,65 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                   <Download className="w-3.5 h-3.5 text-slate-400" />
                   Restore
                 </button>
+                {schemaMenu.conn.type === 'mongodb' && (
+                  <>
+                    <div className="border-t border-slate-700/40 my-1" />
+                    <button
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+                      onClick={async () => {
+                        setSchemaMenu(null)
+                        try {
+                          const result = await schemaService.mongoBackupDatabase(schemaMenu.conn.id, schemaMenu.schema)
+                          if (result) {
+                            toast.success(`Backup saved to: ${result}`)
+                          }
+                        } catch (err) {
+                          toast.error(`Backup failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                        }
+                      }}
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-400" />
+                      Backup MongoDB
+                    </button>
+                    <button
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+                      onClick={async () => {
+                        setSchemaMenu(null)
+                        try {
+                          const result = await schemaService.mongoRestoreDatabase(schemaMenu.conn.id, schemaMenu.schema)
+                          if (result) {
+                            toast.success(result)
+                          }
+                        } catch (err) {
+                          toast.error(`Restore failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                        }
+                      }}
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-400" />
+                      Restore MongoDB
+                    </button>
+                    <div className="border-t border-slate-700/40 my-1" />
+                    <button
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+                      onClick={async () => {
+                        setSchemaMenu(null)
+                        const name = window.prompt('Enter collection name:')
+                        if (name) {
+                          try {
+                            await schemaService.createCollection(schemaMenu.conn.id, schemaMenu.schema, name)
+                            toast.success(`Collection "${name}" created`)
+                            queryClient.invalidateQueries({ queryKey: ['tables'] })
+                          } catch (err) {
+                            toast.error(`Failed to create collection: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                          }
+                        }
+                      }}
+                    >
+                      <Database className="w-3.5 h-3.5 text-slate-400" />
+                      Create Collection
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

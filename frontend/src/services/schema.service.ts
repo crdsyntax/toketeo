@@ -205,4 +205,20 @@ executeExplorer: async (payload: {
       tables,
     })
   },
+
+  createDatabase: async (id: string, dbName: string): Promise<void> => {
+    await tauriApi.invoke<void>('create_database', { id, dbName })
+  },
+
+  createCollection: async (id: string, dbName: string, collectionName: string): Promise<void> => {
+    await tauriApi.invoke<void>('create_collection', { id, dbName, collectionName })
+  },
+
+  mongoBackupDatabase: async (id: string, dbName: string): Promise<string | null> => {
+    return await tauriApi.invoke<string | null>('mongo_backup_database', { id, dbName })
+  },
+
+  mongoRestoreDatabase: async (id: string, dbName: string): Promise<string | null> => {
+    return await tauriApi.invoke<string | null>('mongo_restore_database', { id, dbName })
+  },
 }
