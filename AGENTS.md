@@ -10,7 +10,6 @@ Backend:
 - .agents/backend/tech-leader.md
 - .agents/backend/architect.md
 - .agents/backend/engineer.md
-- .agents/backend/nestjs.md
 
 Frontend:
 - .agents/frontend/tech-leader.md

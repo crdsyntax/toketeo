@@ -314,7 +314,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                       <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
                     )}
                     {activeConnection?.id === conn.id && connectionErrors[conn.id] && (
-                      <AlertTriangle className="w-3 h-3 text-destructive shrink-0" title={connectionErrors[conn.id]!} />
+                      <span title={connectionErrors[conn.id]!}>
+                        <AlertTriangle className="w-3 h-3 text-destructive shrink-0" />
+                      </span>
                     )}
                     <TypeBadge type={conn.type} />
                   </div>

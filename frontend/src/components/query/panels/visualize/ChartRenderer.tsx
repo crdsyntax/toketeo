@@ -1,30 +1,8 @@
 import { useMemo } from 'react'
 import ReactEChartsCore from 'echarts-for-react/lib/core'
-import * as echarts from 'echarts/core'
-import { BarChart, LineChart, PieChart, ScatterChart } from 'echarts/charts'
-import {
-  GridComponent,
-  TooltipComponent,
-  LegendComponent,
-  TitleComponent,
-  ToolboxComponent,
-} from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import * as echarts from 'echarts/dist/echarts.esm'
 import type { ChartConfig } from '@/store/visualizerStore'
 import type { DbRow } from '@/types/database'
-
-echarts.use([
-  BarChart,
-  LineChart,
-  PieChart,
-  ScatterChart,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent,
-  TitleComponent,
-  ToolboxComponent,
-  CanvasRenderer,
-])
 
 interface ChartRendererProps {
   rows: DbRow[]
@@ -58,12 +36,13 @@ function buildOption(rows: DbRow[], config: ChartConfig, theme: string) {
   const textColor = isDark ? '#e5e7eb' : '#374151'
   const axisColor = isDark ? '#4b5563' : '#d1d5db'
 
-  const xValues = rows.map((r) => String(r[config.xColumn] ?? ''))
+  const xCol = config.xColumn ?? ''
+  const xValues = rows.map((r) => String(r[xCol] ?? ''))
   const isHorizontal = config.orientation === 'horizontal'
 
   if (config.chartType === 'pie' || config.chartType === 'doughnut') {
     const data = rows.map((r) => ({
-      name: String(r[config.xColumn] ?? ''),
+      name: String(r[xCol] ?? ''),
       value: Number(r[config.yColumns[0]] ?? 0),
     }))
     return {
