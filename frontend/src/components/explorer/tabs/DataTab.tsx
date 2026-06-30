@@ -139,7 +139,63 @@ export function DataTab({
   });
 
   const executeRef = useRef(handleExecute);
-  executeRef.current = handleExecute;
+
+  useEffect(() => {
+    executeRef.current = handleExecute;
+  }, [handleExecute]);
+
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.id = 'col-resize-drag-style';
+    style.textContent = '.col-resize-drag { cursor: col-resize !important; user-select: none !important; }';
+    document.head.appendChild(style);
+    return () => { const s = document.getElementById('col-resize-drag-style'); if (s) s.remove(); };
+  }, []);
+
+  const DEFAULT_COL_WIDTH = 180;
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const resizing = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
+  const prevColumns = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (!queryData) return;
+    const newCols = queryData.columns.filter(c => !prevColumns.current.includes(c));
+    if (newCols.length === 0) return;
+    setColumnWidths(prev => {
+      const next = { ...prev };
+      for (const col of newCols) {
+        if (!(col in next)) next[col] = DEFAULT_COL_WIDTH;
+      }
+      return next;
+    });
+    prevColumns.current = queryData.columns;
+  }, [queryData]);
+
+  const handleResizeStart = (col: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = columnWidths[col] ?? DEFAULT_COL_WIDTH;
+    resizing.current = { column: col, startX: e.clientX, startWidth };
+
+    document.body.classList.add('col-resize-drag');
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizing.current) return;
+      const diff = ev.clientX - resizing.current.startX;
+      const newWidth = Math.max(80, resizing.current.startWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [resizing.current!.column]: newWidth }));
+    };
+
+    const onMouseUp = () => {
+      resizing.current = null;
+      document.body.classList.remove('col-resize-drag');
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   const handleMongoFilterExecute = () => {
     const payload: Record<string, string> = {};
@@ -466,7 +522,7 @@ export function DataTab({
           </div>
         ) : queryData ? (
           <div className="min-w-full inline-block align-middle">
-            <table className="min-w-full text-left text-xs border-collapse table-auto">
+            <table className="min-w-full text-left text-xs border-collapse table-fixed">
               <thead className="sticky top-0 bg-background border-b border-border z-10">
                 <tr>
                   <th className="p-2 font-bold bg-muted/50 border-r border-border text-center w-10">
@@ -475,10 +531,15 @@ export function DataTab({
                   {queryData.columns.map((col) => (
                     <th
                       key={col}
-                      className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0 max-w-[200px]"
+                      className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0 relative select-none"
+                      style={{ width: columnWidths[col] ?? DEFAULT_COL_WIDTH, minWidth: 80, maxWidth: 600 }}
                       title={col}
                     >
                       {col}
+                      <div
+                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+                        onMouseDown={(e) => handleResizeStart(col, e)}
+                      />
                     </th>
                   ))}
                 </tr>
@@ -502,7 +563,8 @@ export function DataTab({
                       return (
                         <td
                           key={col}
-                          className="p-2 border-r border-border last:border-0 truncate max-w-[200px] cursor-text relative"
+                          className="p-2 border-r border-border last:border-0 truncate cursor-text relative"
+                          style={{ width: columnWidths[col] ?? DEFAULT_COL_WIDTH, minWidth: 80, maxWidth: 600 }}
                           onDoubleClick={() => handleStartEdit(i, col, value)}
                           title="Double-click to edit"
                         >
