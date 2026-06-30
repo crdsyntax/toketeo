@@ -5394,6 +5394,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "ssh2",
+ "strsim",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

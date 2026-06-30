@@ -118,18 +118,18 @@ export function DataTab({
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
 
-
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
     try {
       const parsed = JSON.parse(filter);
       if (parsed.$find !== undefined || parsed.$project !== undefined || parsed.$sort !== undefined) {
+        const val = (v: unknown) => (typeof v === 'string' ? v : v ? JSON.stringify(v) : '');
         return {
-          $find: parsed.$find ? JSON.stringify(parsed.$find) : '',
-          $project: parsed.$project ? JSON.stringify(parsed.$project) : '',
-          $sort: parsed.$sort ? JSON.stringify(parsed.$sort) : '',
-          $collation: parsed.$collation ? JSON.stringify(parsed.$collation) : '',
-          $hint: parsed.$hint ? JSON.stringify(parsed.$hint) : '',
+          $find: val(parsed.$find),
+          $project: val(parsed.$project),
+          $sort: val(parsed.$sort),
+          $collation: val(parsed.$collation),
+          $hint: val(parsed.$hint),
         };
       }
       return { $find: filter, $project: '', $sort: '', $collation: '', $hint: '' };
@@ -142,17 +142,12 @@ export function DataTab({
   executeRef.current = handleExecute;
 
   const handleMongoFilterExecute = () => {
-    const payload: Record<string, unknown> = {};
-    const add = (k: string, v: string) => {
-      if (!v.trim()) return;
-      try { payload[k] = JSON.parse(v); } catch { payload[k] = v; }
-    };
-    add('$find', mongoInputs.$find);
-    add('$project', mongoInputs.$project);
-    add('$sort', mongoInputs.$sort);
-    add('$collation', mongoInputs.$collation);
-    add('$hint', mongoInputs.$hint);
-
+    const payload: Record<string, string> = {};
+    if (mongoInputs.$find.trim()) payload.$find = mongoInputs.$find.trim();
+    if (mongoInputs.$project.trim()) payload.$project = mongoInputs.$project.trim();
+    if (mongoInputs.$sort.trim()) payload.$sort = mongoInputs.$sort.trim();
+    if (mongoInputs.$collation.trim()) payload.$collation = mongoInputs.$collation.trim();
+    if (mongoInputs.$hint.trim()) payload.$hint = mongoInputs.$hint.trim();
     setFilter(JSON.stringify(payload));
     queueMicrotask(() => executeRef.current());
   };
@@ -362,18 +357,20 @@ export function DataTab({
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex flex-col shrink-0">
         <div className="flex items-center gap-2 w-full">
           {isMongo ? (
-            <input
-              className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary flex-1 max-w-xl"
-              placeholder='Filter document (e.g. { "status": "active" })'
-              value={mongoInputs.$find}
-              onChange={(e) => setMongoInputs(p => ({ ...p, $find: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleMongoFilterExecute();
-                }
-              }}
-            />
+            <div className="flex-1 max-w-xl">
+              <input
+                className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary w-full"
+                placeholder='Filter document (e.g. { "status": "active" })'
+                value={mongoInputs.$find}
+                onChange={(e) => setMongoInputs(p => ({ ...p, $find: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleMongoFilterExecute();
+                  }
+                }}
+              />
+            </div>
           ) : (
             <input
               className="bg-background border border-border px-3 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary w-64"

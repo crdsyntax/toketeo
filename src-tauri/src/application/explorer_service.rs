@@ -541,18 +541,78 @@ impl ExplorerService {
         if matches!(db_type, crate::db::DbType::Mongodb) {
             let mut mongo_query_map = serde_json::Map::new();
             mongo_query_map.insert("collection".to_string(), serde_json::Value::String(name.to_string()));
-            
+
+            fn fix_mongo_shell_json(s: &str) -> String {
+                let s = s.trim();
+                let wrapped = if !s.starts_with('{') && !s.starts_with('[') {
+                    format!("{{{}}}", s)
+                } else {
+                    s.to_string()
+                };
+                let re = regex::Regex::new(r#"([\{,]\s*)([a-zA-Z_]\w*)(\s*:)"#).unwrap();
+                re.replace_all(&wrapped, r#"$1"$2"$3"#).to_string()
+            }
+
+            fn parse_mongo_field(value: serde_json::Value, label: &str) -> AppResult<serde_json::Value> {
+                let raw = match &value {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => return Ok(other.clone()),
+                };
+                if raw.trim().is_empty() {
+                    return match label {
+                        "find" => Ok(serde_json::json!({})),
+                        _ => Err(AppError::Validation(format!("${} value cannot be empty", label))),
+                    };
+                }
+                match serde_json::from_str::<serde_json::Value>(&raw) {
+                    Ok(v) => Ok(v),
+                    Err(_) => {
+                        let fixed = fix_mongo_shell_json(&raw);
+                        match serde_json::from_str::<serde_json::Value>(&fixed) {
+                            Ok(v) => Ok(v),
+                            Err(e) => Err(AppError::Validation(
+                                format!("${} has invalid syntax: {}. Use JSON format like {{\"field\": value}}", label, e)
+                            )),
+                        }
+                    }
+                }
+            }
+
+            fn collect_field_keys(value: &serde_json::Value) -> Vec<String> {
+                let mut keys = Vec::new();
+                match value {
+                    serde_json::Value::Object(map) => {
+                        for k in map.keys() {
+                            if !k.starts_with('$') {
+                                keys.push(k.clone());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                keys
+            }
+
+            fn find_closest<'a>(name: &str, known: &[&'a str]) -> Option<&'a str> {
+                let name_lower = name.to_lowercase();
+                known.iter()
+                    .map(|k| (k, strsim::levenshtein(&name_lower, &k.to_lowercase())))
+                    .filter(|(_, d)| *d <= 3)
+                    .min_by_key(|(_, d)| *d)
+                    .map(|(k, _)| *k)
+            }
+
             let mut find_filter = serde_json::json!({});
             if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
                 match serde_json::from_str::<serde_json::Value>(f) {
                     Ok(mut parsed) => {
                         if let Some(o) = parsed.as_object_mut() {
                             if o.contains_key("$find") || o.contains_key("$project") || o.contains_key("$sort") || o.contains_key("$collation") || o.contains_key("$hint") {
-                                find_filter = o.remove("$find").unwrap_or(serde_json::json!({}));
-                                if let Some(p) = o.remove("$project") { mongo_query_map.insert("project".to_string(), p); }
-                                if let Some(s) = o.remove("$sort") { mongo_query_map.insert("sort".to_string(), s); }
-                                if let Some(c) = o.remove("$collation") { mongo_query_map.insert("collation".to_string(), c); }
-                                if let Some(h) = o.remove("$hint") { mongo_query_map.insert("hint".to_string(), h); }
+                                find_filter = parse_mongo_field(o.remove("$find").unwrap_or(serde_json::json!({})), "find")?;
+                                if let Some(p) = o.remove("$project") { mongo_query_map.insert("project".to_string(), parse_mongo_field(p, "project")?); }
+                                if let Some(s) = o.remove("$sort") { mongo_query_map.insert("sort".to_string(), parse_mongo_field(s, "sort")?); }
+                                if let Some(c) = o.remove("$collation") { mongo_query_map.insert("collation".to_string(), parse_mongo_field(c, "collation")?); }
+                                if let Some(h) = o.remove("$hint") { mongo_query_map.insert("hint".to_string(), parse_mongo_field(h, "hint")?); }
                             } else {
                                 find_filter = parsed;
                             }
@@ -560,18 +620,40 @@ impl ExplorerService {
                             find_filter = parsed;
                         }
                     },
-                    Err(e) => return Err(crate::error::AppError::Validation(format!("MongoDB filter must be valid JSON: {}", e))),
+                    Err(e) => return Err(AppError::Validation(format!("MongoDB filter must be valid JSON: {}", e))),
                 }
             }
-            
+
+            // Validate field names against known columns
+            let find_keys = collect_field_keys(&find_filter);
+            let project_keys = mongo_query_map.get("project").map(collect_field_keys).unwrap_or_default();
+            let sort_keys = mongo_query_map.get("sort").map(collect_field_keys).unwrap_or_default();
+            let all_keys: std::collections::BTreeSet<&str> = find_keys.iter().chain(project_keys.iter()).chain(sort_keys.iter()).map(|s| s.as_str()).collect();
+
+            if !all_keys.is_empty() {
+                let columns = driver.fetch_columns(name, database.clone()).await?;
+                let known: Vec<&str> = columns.iter().filter_map(|c| c.get("name").and_then(|n| n.as_str())).collect();
+
+                for key in all_keys {
+                    if !known.contains(&key) {
+                        let suggestion = find_closest(key, &known);
+                        let msg = match suggestion {
+                            Some(s) => format!("Unknown field '{}'. Did you mean '{}'?", key, s),
+                            None => format!("Unknown field '{}'. Available fields: {}", key, known.join(", ")),
+                        };
+                        return Err(AppError::Validation(msg));
+                    }
+                }
+            }
+
             mongo_query_map.insert("find".to_string(), find_filter);
             mongo_query_map.insert("limit".to_string(), serde_json::json!(effective_page_size as i64));
             mongo_query_map.insert("skip".to_string(), serde_json::json!(offset as i64));
-            
+
             if let Some(db_name) = database {
                 mongo_query_map.insert("database".to_string(), serde_json::Value::String(db_name));
             }
-            
+
             let mongo_query = serde_json::Value::Object(mongo_query_map);
             return driver.execute(&mongo_query.to_string()).await;
         }

@@ -724,6 +724,10 @@ export function useExplorer() {
         setShowParamModal(false);
 
         try {
+          const store = useAppStore.getState();
+          const tabId = activeExplorerTabId ?? store.explorer.activeExplorerTabId;
+          const currentFilter = tabId ? store.explorerTabs[tabId]?.filter ?? '' : '';
+
           const result = await schemaService.executeExplorer({
             connectionId: activeConnection.id,
             database: currentSchema,
@@ -732,7 +736,7 @@ export function useExplorer() {
             page: page + 1,
             pageSize: pageSize,
             params: useParams ? paramValues : undefined,
-            filter: filter,
+            filter: currentFilter,
           });
 
           if (activeExplorerTabId) {
