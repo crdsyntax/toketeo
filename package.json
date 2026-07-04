@@ -11,7 +11,8 @@
     "frontend:dev": "cd frontend && bun run dev",
     "frontend:build": "cd frontend && bun run build",
     "format": "prettier --write \"src-tauri/**/*.rs\" \"frontend/src/**/*.{ts,tsx}\"",
-    "lint": "cd frontend && bun run lint"
+    "lint": "cd frontend && bun run lint",
+    "docs:agents": "node scripts/generate-agent-docs.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
@@ -45,6 +46,6 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
-  },
+  }
 
 }

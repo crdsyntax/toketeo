@@ -75,9 +75,12 @@ interface AppState {
   activeConnection: Connection | null
   setActiveConnection: (connection: Connection | null) => void
   setActiveConnectionDatabase: (database: string) => void
+  connectedConnectionIds: string[]
+  setConnectedConnection: (id: string) => void
+  removeConnectedConnection: (id: string) => void
   tabs: QueryTab[]
   activeTabId: string | null
-  addTab: (connectionId?: string) => void
+  addTab: (connectionId?: string, database?: string) => void
   openTab: (name: string, query: string, connectionId?: string) => void
   removeTab: (id: string) => void
   updateTabQuery: (id: string, query: string) => void
@@ -142,6 +145,14 @@ export const useAppStore = create<AppState>()(
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
       })),
+      connectedConnectionIds: [],
+      setConnectedConnection: (id) => set((state) => {
+        if (state.connectedConnectionIds.includes(id)) return state
+        return { connectedConnectionIds: [...state.connectedConnectionIds, id] }
+      }),
+      removeConnectedConnection: (id) => set((state) => ({
+        connectedConnectionIds: state.connectedConnectionIds.filter((cid) => cid !== id)
+      })),
       tabs: [{ id: 'default', name: 'Query 1', query: 'SELECT * FROM tables LIMIT 10', status: ExecutionStatus.IDLE, editorMode: 'auto' }],
       activeTabId: 'default',
       panels: { editor: true, results: true, editorHeight: 60 },
@@ -186,18 +197,28 @@ export const useAppStore = create<AppState>()(
           explorer: { ...state.explorer, activeExplorerTabId: nextActiveId }
         }
       }),
-      addTab: (connectionId?: string) => set((state) => {
+      addTab: (connectionId?: string, database?: string) => set((state) => {
         const id = Math.random().toString(36).substring(7)
+        const effectiveConnId = connectionId || state.activeConnection?.id
+        let updatedActive = state.activeConnection
+        if (database && effectiveConnId) {
+          if (state.activeConnection?.id === effectiveConnId) {
+            updatedActive = { ...state.activeConnection, database }
+          } else {
+            updatedActive = { id: effectiveConnId, database } as Connection
+          }
+        }
         return {
           tabs: [...state.tabs, { 
             id, 
             name: `Query ${state.tabs.length + 1}`, 
             query: '', 
-            connectionId: connectionId || state.activeConnection?.id,
+            connectionId: effectiveConnId,
             status: ExecutionStatus.IDLE,
             editorMode: 'auto',
           }],
           activeTabId: id,
+          activeConnection: updatedActive,
         }
       }),
       openTab: (name, query, connectionId?: string) => set((state) => {
@@ -279,6 +300,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state: AppState): AppState => ({
         ...state,
         connectionErrors: {},
+        connectedConnectionIds: state.connectedConnectionIds,
         theme: state.theme,
         accessToken: state.accessToken,
         activeConnection: state.activeConnection ? { ...state.activeConnection, password: undefined } : null,

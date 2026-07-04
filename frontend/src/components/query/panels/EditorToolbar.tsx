@@ -15,7 +15,7 @@ import { useRef } from 'react';
 import type { Connection } from '@/types/database';
 
 interface EditorToolbarProps {
-  onNew: (connectionId?: string) => void;
+  onNew: () => void;
   onOpen: (content: string, fileName: string) => void;
   onSave: () => void;
   onExecute: () => void;
@@ -32,6 +32,7 @@ interface EditorToolbarProps {
   onCommit: () => void;
   onRollback: () => void;
   isTransactional: boolean;
+  onNewWithConnection: () => void;
 }
 
 export function EditorToolbar({
@@ -52,6 +53,7 @@ export function EditorToolbar({
   onCommit,
   onRollback,
   isTransactional,
+  onNewWithConnection,
 }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,26 +86,19 @@ export function EditorToolbar({
         <div className="flex items-center">
           <button
             onClick={() => onNew()}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-md transition-all border-r border-border"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-md transition-all"
             title="Create a new query tab"
           >
             <Plus className="w-3.5 h-3.5" />
             New Script
           </button>
-          <select
-            className="appearance-none bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted px-1 py-1.5 text-xs font-bold rounded-r-md outline-none cursor-pointer"
-            onChange={(e) => {
-              if (e.target.value) {
-                onNew(e.target.value);
-                e.target.value = ''; // reset
-              }
-            }}
-            value=""
-            title="New Script with specific connection"
+          <button
+            onClick={() => onNewWithConnection()}
+            className="flex items-center px-1 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-md transition-all border-l border-border"
+            title="New Script with connection and database"
           >
-            <option value="" disabled>▾</option>
-            {connections.map(c => <option key={c.id} value={c.id}>{c.database ? `${c.name} / ${c.database}` : c.name}</option>)}
-          </select>
+            <span className="text-[10px] leading-none">▼</span>
+          </button>
         </div>
 
         <button

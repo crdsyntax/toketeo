@@ -11,6 +11,7 @@ import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
 import { AssistantLayout } from '@/components/assistant/AssistantLayout';
 import { ContextualTip } from '@/components/ui/ContextualTip';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
+import { NewScriptModal } from '@/components/query/NewScriptModal';
 import { useAssistantStore } from '@/store/assistantStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
@@ -85,6 +86,7 @@ export default function QueryEditor() {
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
   const [showHistory, setShowHistory] = useState(false);
+  const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const showAssistant = useAssistantStore((s) => s.showAssistant);
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
@@ -234,7 +236,7 @@ export default function QueryEditor() {
       )}
 
       <EditorToolbar 
-        onNew={addTab}
+        onNew={() => addTab()}
         onOpen={handleFileImport}
         onSave={handleSaveScript}
         onExecute={handleExecuteAll}
@@ -255,6 +257,16 @@ export default function QueryEditor() {
         onCommit={handleCommit}
         onRollback={handleRollback}
         isTransactional={!!isTransactional}
+        onNewWithConnection={() => setShowNewScriptModal(true)}
+      />
+
+      <NewScriptModal
+        isOpen={showNewScriptModal}
+        onClose={() => setShowNewScriptModal(false)}
+        connections={connections}
+        onCreate={(connectionId, database) => {
+          addTab(connectionId, database)
+        }}
       />
 
       {/* Contextual tips */}

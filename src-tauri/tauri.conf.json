@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Toketeo",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "identifier": "com.toketeo.app",
   "build": {
     "frontendDist": "../frontend/dist",
@@ -26,7 +26,8 @@
   "bundle": {
     "active": true,
     "targets": [
-      "deb"
+      "deb",
+      "msi"
     ],
     "icon": [
       "icons/32x32.png",

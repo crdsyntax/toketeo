@@ -19,6 +19,8 @@ export default function MainLayout() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
+  const setConnectedConnection = useAppStore((state) => state.setConnectedConnection)
+  const removeConnectedConnection = useAppStore((state) => state.removeConnectedConnection)
   const setMiniToast = useAppStore((state) => state.setMiniToast)
   const setConnectionError = useAppStore((state) => state.setConnectionError)
   const connectionErrors = useAppStore((state) => state.connectionErrors)
@@ -67,6 +69,7 @@ export default function MainLayout() {
   const handleDisconnect = async (id: string) => {
     try {
       await connectionService.disconnect(id)
+      removeConnectedConnection(id)
       if (activeConnection?.id === id) {
         setActiveConnection(null)
         const { setExplorerState } = useAppStore.getState()
@@ -152,6 +155,7 @@ export default function MainLayout() {
     try {
       await connectionService.connect(conn)
       setActiveConnection(conn)
+      setConnectedConnection(conn.id)
     } catch (error: unknown) {
       console.error('Failed to connect to database:', error)
     }

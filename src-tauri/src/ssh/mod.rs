@@ -59,13 +59,23 @@ impl SshTunnel {
                         .passphrase
                         .as_ref()
                         .map(|p| p.expose_secret().as_ref());
-                    sess.userauth_pubkey_memory(
+                    let key_data = key.expose_secret().to_owned();
+                    let tmp_dir = std::env::temp_dir();
+                    let tmp_key_path = tmp_dir.join(format!("toketeo_key_{}", std::process::id()));
+                    std::fs::write(&tmp_key_path, &key_data).map_err(|e| {
+                        crate::error::AppError::Ssh(format!(
+                            "Failed to write temporary key file: {}",
+                            e
+                        ))
+                    })?;
+                    let result = sess.userauth_pubkey_file(
                         &config.user,
                         None,
-                        key.expose_secret(),
+                        &tmp_key_path,
                         passphrase,
-                    )
-                    .map_err(|e| {
+                    );
+                    let _ = std::fs::remove_file(&tmp_key_path);
+                    result.map_err(|e| {
                         crate::error::AppError::Ssh(format!(
                             "SSH Key auth failed for user '{}': {}",
                             config.user, e

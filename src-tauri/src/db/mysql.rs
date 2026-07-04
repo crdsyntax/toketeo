@@ -150,6 +150,81 @@ impl DbDriver for MySqlDriver {
         }
     }
 
+    async fn execute_with_schema(&self, query: &str, schema: &str) -> AppResult<QueryResult> {
+        let mut pool_conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire MySQL connection: {}", e))
+        })?;
+        use sqlx::Executor;
+        let conn: &mut sqlx::mysql::MySqlConnection = &mut *pool_conn;
+
+        conn.execute(sqlx::raw_sql(&format!("USE `{}`", schema))).await.map_err(|e| {
+            AppError::Database(format!("Failed to select database '{}': {}", schema, e))
+        })?;
+
+        let start = Instant::now();
+        let trimmed_query = query.trim();
+        let is_select =
+            trimmed_query.to_uppercase().starts_with("SELECT") ||
+            trimmed_query.to_uppercase().starts_with("SHOW") ||
+            trimmed_query.to_uppercase().starts_with("DESCRIBE") ||
+            trimmed_query.to_uppercase().starts_with("EXPLAIN") ||
+            trimmed_query.to_uppercase().starts_with("CALL");
+
+        if is_select {
+            let rows = sqlx::query(query).fetch_all(&mut *conn).await?;
+
+            if rows.is_empty() {
+                return Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                });
+            }
+
+            let columns: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.name().to_string())
+                .collect();
+
+            let mut result_rows = Vec::new();
+            for row in rows {
+                let mut row_map = serde_json::Map::new();
+                for (i, col_name) in columns.iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    row_map.insert(col_name.clone(), value);
+                }
+                result_rows.push(serde_json::Value::Object(row_map));
+            }
+
+            Ok(QueryResult {
+                columns,
+                rows: result_rows,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys: None,
+            })
+        } else {
+            let result = if trimmed_query.contains(';') {
+                conn.execute(sqlx::raw_sql(query)).await
+            } else {
+                conn.execute(sqlx::query(query)).await
+            };
+
+            match result {
+                Ok(_res) => {
+                    Ok(QueryResult {
+                        columns: vec![],
+                        rows: vec![],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: None,
+                    })
+                }
+                Err(e) => { Err(e.into()) }
+            }
+        }
+    }
+
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
         let rows = sqlx
             ::query("SELECT schema_name FROM information_schema.schemata")

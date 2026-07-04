@@ -39,22 +39,18 @@ impl ExplorerService {
         let db_type = driver.db_type();
         let start = std::time::Instant::now();
 
+        let mut use_schema_context = false;
         let final_query = if let Some(ref s) = schema {
             if s.is_empty() {
                 query.to_string()
             } else {
                 match db_type {
-                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
-                        driver.execute(&format!("USE `{}`;", s)).await?;
-                        query.to_string()
-                    }
-                    crate::db::DbType::Postgres => {
-                        driver.execute(&format!("SET search_path TO \"{}\";", s)).await?;
+                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb | crate::db::DbType::Postgres => {
+                        use_schema_context = true;
                         query.to_string()
                     }
                     crate::db::DbType::Mongodb => {
                         // Inject the database name into MongoDB JSON commands
-                        // so the driver uses the correct database
                         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(query) {
                             if let Some(obj) = json_val.as_object_mut() {
                                 if !obj.contains_key("database") {
@@ -77,9 +73,9 @@ impl ExplorerService {
         } else {
             query.to_string()
         };
-
+        
         tracing::info!("[ExplorerService] MongoDB execute_query: schema={:?}, initial_query={}", schema, query);
-
+        
         // Handle MongoDB use <db> command — switch the connection's database
         if db_type == crate::db::DbType::Mongodb {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&final_query) {
@@ -96,8 +92,18 @@ impl ExplorerService {
                 }
             }
         }
-
-        match driver.execute(&final_query).await {
+        
+        let result = if use_schema_context {
+            if let Some(ref s) = schema {
+                driver.execute_with_schema(&final_query, s).await
+            } else {
+                driver.execute(&final_query).await
+            }
+        } else {
+            driver.execute(&final_query).await
+        };
+        
+        match result {
             Ok(result) => {
                 let _ = AuditService::log_query(
                     state,

@@ -103,6 +103,7 @@ export function SqlEditorPanel({
     if (activeTab.editorViewState) {
       editorInstance.restoreViewState(activeTab.editorViewState as monaco.editor.ICodeEditorViewState);
     }
+    editorInstance.focus();
   }, [handleEditorDidMount, activeTab.editorViewState]);
 
   const handleChange = useCallback((val: string | undefined) => {
@@ -208,7 +209,10 @@ export function SqlEditorPanel({
             scrollBeyondLastLine: false,
             automaticLayout: true,
             padding: { top: 16 },
-            // Better bracket matching for JSON/shell
+            lineNumbers: 'on',
+            cursorStyle: 'line',
+            renderLineHighlight: 'all',
+            wordWrap: 'on',
             bracketPairColorization: { enabled: true },
             guides: { bracketPairs: true },
           }}

@@ -535,7 +535,8 @@ export function useQueryEditor() {
         try {
             await tauriApi.invoke('execute_query', {
                 id: activeConnection.id,
-                query: finalSql
+                query: finalSql,
+                ...(activeConnection.database ? { schema: activeConnection.database } : {})
             })
         } catch (err: unknown) {
             const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
@@ -547,7 +548,8 @@ export function useQueryEditor() {
                 await connectionService.connect(targetConnection);
                 await tauriApi.invoke('execute_query', {
                     id: activeConnection.id,
-                    query: finalSql
+                    query: finalSql,
+                    ...(targetConnection.database ? { schema: targetConnection.database } : {})
                 })
             } else {
                 throw err;

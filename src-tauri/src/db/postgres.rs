@@ -130,6 +130,82 @@ impl DbDriver for PostgresDriver {
         }
     }
 
+    async fn execute_with_schema(&self, query: &str, schema: &str) -> AppResult<QueryResult> {
+        let mut pool_conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire Postgres connection: {}", e))
+        })?;
+        use sqlx::Executor;
+        let conn: &mut sqlx::postgres::PgConnection = &mut *pool_conn;
+
+        conn.execute(sqlx::query(&format!("SET search_path TO \"{}\"", schema))).await.map_err(|e| {
+            AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
+        })?;
+
+        let start = Instant::now();
+        let trimmed = query.trim().to_uppercase();
+
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("DESCRIBE")
+            || trimmed.starts_with("EXPLAIN")
+            || trimmed.starts_with("WITH");
+
+        if is_select {
+            let rows = sqlx::query(query).fetch_all(&mut *conn).await?;
+
+            if rows.is_empty() {
+                return Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                });
+            }
+
+            let columns: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.name().to_string())
+                .collect();
+
+            let result_rows = rows
+                .into_iter()
+                .map(|row| {
+                    let mut row_map = serde_json::Map::new();
+                    for (i, col_name) in columns.iter().enumerate() {
+                        let value = self.decode_column(&row, i);
+                        row_map.insert(col_name.clone(), value);
+                    }
+                    serde_json::Value::Object(row_map)
+                })
+                .collect();
+
+            let primary_keys = if let Some(table) = self.extract_table_name(query) {
+                self.get_primary_keys(&table)
+                    .await
+                    .ok()
+                    .filter(|keys| !keys.is_empty())
+            } else {
+                None
+            };
+
+            Ok(QueryResult {
+                columns,
+                rows: result_rows,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys,
+            })
+        } else {
+            let _ = conn.execute(sqlx::query(query)).await?;
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys: None,
+            })
+        }
+    }
+
     // ==================== METADATOS ====================
 
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {

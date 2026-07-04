@@ -83,10 +83,12 @@ export default function Connections() {
   }
 
   const handleConnect = async (conn: Connection) => {
+    const setConnectedConnection = useAppStore.getState().setConnectedConnection
     setConnectingId(conn.id)
     try {
       await connectionService.connect(conn)
       setActiveConnection(conn)
+      setConnectedConnection(conn.id)
       navigate('/explorer')
     } catch (error: unknown) {
       console.error('Failed to connect to database:', error)
@@ -103,7 +105,9 @@ export default function Connections() {
 
   const handleDisconnect = async (id: string) => {
     try {
+      const removeConnectedConnection = useAppStore.getState().removeConnectedConnection
       await connectionService.disconnect(id)
+      removeConnectedConnection(id)
       if (activeConnection?.id === id) setActiveConnection(null)
       queryClient.invalidateQueries({ queryKey: ['connections'] })
       setMiniToast(id, { type: 'success', text: 'Disconnected' })

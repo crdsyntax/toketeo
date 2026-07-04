@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { DatabaseItem } from './DatabaseItem'
 import { SchemaItem } from './SchemaItem'
 import { DumpRestoreModal } from './DumpRestoreModal'
@@ -48,7 +48,6 @@ function PostgresContent({ conn, activeConnection, onSelect, onSchemaContextMenu
   const { data: databases = [], isFetched } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
-    enabled: activeConnection?.id === conn.id,
     staleTime: 5 * 60 * 1000,
   })
   useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
@@ -65,7 +64,6 @@ function SchemaContent({ conn, activeConnection, onSelect, onSchemaContextMenu, 
   const { data: schemas = [], isFetched } = useQuery({
     queryKey: ['schemas', conn.id],
     queryFn: () => schemaService.getSchemas(conn.id),
-    enabled: activeConnection?.id === conn.id,
     staleTime: 5 * 60 * 1000,
   })
   useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
@@ -99,9 +97,12 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     filePath?: string
   } | null>(null)
   const queryClient = useQueryClient()
-  const { setActiveConnectionDatabase } = useAppStore()
+  const { setActiveConnectionDatabase, addTab } = useAppStore()
+  const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds)
+  const setActiveConnection = useAppStore((state) => state.setActiveConnection)
   const connectionErrors = useAppStore((state) => state.connectionErrors)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleDumpClick = async (conn: Connection, schema: string) => {
     setSchemaMenu(null)
@@ -182,20 +183,26 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
 
   const handleSchemaDoubleClick = async (conn: Connection, schema: string) => {
     try {
-      if (activeConnection?.id !== conn.id) {
+      if (!connectedConnectionIds.includes(conn.id)) {
         await onConnect(conn)
+      } else if (activeConnection?.id !== conn.id) {
+        setActiveConnection(conn)
       }
-      // Optimistic update: update frontend state immediately so the UI
-      // reflects the selected schema without waiting for the backend.
-      setActiveConnectionDatabase(schema)
-      queryClient.invalidateQueries({ queryKey: ['connections'] })
-      queryClient.invalidateQueries({ queryKey: ['schemas'] })
-      queryClient.invalidateQueries({ queryKey: ['tables'] })
-      queryClient.invalidateQueries({ queryKey: ['views'] })
-      queryClient.invalidateQueries({ queryKey: ['procedures'] })
-      queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      queryClient.invalidateQueries({ queryKey: ['functions'] })
-      navigate('/explorer')
+      if (location.pathname === '/query') {
+        addTab(conn.id, schema)
+      } else {
+        // Optimistic update: update frontend state immediately so the UI
+        // reflects the selected schema without waiting for the backend.
+        setActiveConnectionDatabase(schema)
+        queryClient.invalidateQueries({ queryKey: ['connections'] })
+        queryClient.invalidateQueries({ queryKey: ['schemas'] })
+        queryClient.invalidateQueries({ queryKey: ['tables'] })
+        queryClient.invalidateQueries({ queryKey: ['views'] })
+        queryClient.invalidateQueries({ queryKey: ['procedures'] })
+        queryClient.invalidateQueries({ queryKey: ['triggers'] })
+        queryClient.invalidateQueries({ queryKey: ['functions'] })
+        navigate('/explorer')
+      }
       // Fire the backend call in the background so the pool is updated,
       // but don't block the UI if it fails (explorer queries use explicit
       // schema parameters and work regardless of the pool's default db).
@@ -210,6 +217,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const handleConnectionSingleClick = async (conn: Connection) => {
     if (connectingId === conn.id) return
     setSelectedConnId(conn.id)
+    if (connectedConnectionIds.includes(conn.id)) {
+      setActiveConnection(conn)
+      return
+    }
     setConnectingId(conn.id)
     try {
       await onConnect(conn)
@@ -222,7 +233,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
 
   const handleConnectionDoubleClick = async (conn: Connection) => {
     const willExpand = expandedConnId !== conn.id
-    if (willExpand && activeConnection?.id !== conn.id) {
+    if (willExpand && !connectedConnectionIds.includes(conn.id)) {
       if (connectingId === conn.id) return
       setConnectingId(conn.id)
       try {
@@ -283,10 +294,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                 selectedConnId === conn.id && 'bg-accent/10 ring-1 ring-primary/20'
               )}
             >
-              {activeConnection?.id === conn.id && connectionErrors[conn.id] && (
+              {connectedConnectionIds.includes(conn.id) && connectionErrors[conn.id] && (
                 <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-destructive/70" />
               )}
-              {activeConnection?.id === conn.id && !connectionErrors[conn.id] && (
+              {connectedConnectionIds.includes(conn.id) && !connectionErrors[conn.id] && (
                 <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-emerald-500/70" />
               )}
               <div
@@ -313,7 +324,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                     {(connectingId === conn.id || loadingConnId === conn.id) && (
                       <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
                     )}
-                    {activeConnection?.id === conn.id && connectionErrors[conn.id] && (
+                    {connectedConnectionIds.includes(conn.id) && connectionErrors[conn.id] && (
                       <span title={connectionErrors[conn.id]!}>
                         <AlertTriangle className="w-3 h-3 text-destructive shrink-0" />
                       </span>
@@ -343,7 +354,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                       e.stopPropagation();
                       if (connectingId === conn.id) return;
                       const willExpand = expandedConnId !== conn.id;
-                      if (willExpand && activeConnection?.id !== conn.id) {
+                      if (willExpand && !connectedConnectionIds.includes(conn.id)) {
                         setConnectingId(conn.id);
                         try {
                           await onConnect(conn);
@@ -379,7 +390,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             </div>
           ))}
         </div>
-        {contextMenu.visible && contextMenu.connId === activeConnection?.id && (
+        {contextMenu.visible && contextMenu.connId && connectedConnectionIds.includes(contextMenu.connId) && (
           <div
             style={{ left: contextMenu.x, top: contextMenu.y }}
             className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"

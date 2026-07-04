@@ -67,6 +67,9 @@ pub trait DataWriter: Send + Sync {
 pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     fn db_type(&self) -> DbType;
     async fn execute(&self, query: &str) -> AppResult<QueryResult>;
+    async fn execute_with_schema(&self, query: &str, _schema: &str) -> AppResult<QueryResult> {
+        self.execute(query).await
+    }
     async fn fetch_databases(&self) -> AppResult<Vec<String>>;
     async fn fetch_schemas(&self) -> AppResult<Vec<String>>;
     async fn fetch_tables(
