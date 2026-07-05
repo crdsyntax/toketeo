@@ -36,7 +36,7 @@ export function DatabaseItem({ conn, dbName, activeConnection, onSelect, onSchem
   return (
     <div className="text-foreground">
       <div 
-        className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-accent/10 hover:text-accent transition-colors rounded-sm"
+        className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-muted/80 hover:text-foreground transition-colors rounded-sm"
         onClick={toggleExpand}
       >
         <ChevronDown className={cn("w-3 h-3 transition-transform", !isExpanded && "-rotate-90")} />

@@ -232,6 +232,15 @@ pub struct DumpSelection {
     pub functions: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Character {
+    pub id: String,
+    pub name: String,
+    pub lore: String,
+    #[serde(rename = "slotOrder")]
+    pub slot_order: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

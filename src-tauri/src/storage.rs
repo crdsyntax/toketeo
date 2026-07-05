@@ -217,6 +217,17 @@ impl Storage {
         .execute(&pool)
         .await?;
 
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS characters (
+                id TEXT PRIMARY KEY DEFAULT 'default',
+                name TEXT NOT NULL DEFAULT 'Unnamed Hero',
+                lore TEXT NOT NULL DEFAULT '',
+                slot_order TEXT NOT NULL DEFAULT '[]'
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Self { pool })
     }
 
@@ -918,6 +929,45 @@ impl Storage {
             }
         }
         Ok(errors)
+    }
+
+    pub async fn get_character(&self) -> AppResult<crate::models::Character> {
+        let row = sqlx::query("SELECT * FROM characters WHERE id = 'default'")
+            .fetch_optional(&self.pool)
+            .await?;
+
+        match row {
+            Some(r) => Ok(crate::models::Character {
+                id: r.get("id"),
+                name: r.get("name"),
+                lore: r.get("lore"),
+                slot_order: r.get("slot_order"),
+            }),
+            None => Ok(crate::models::Character {
+                id: "default".into(),
+                name: "Unnamed Hero".into(),
+                lore: String::new(),
+                slot_order: "[]".into(),
+            }),
+        }
+    }
+
+    pub async fn save_character(&self, character: &crate::models::Character) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO characters (id, name, lore, slot_order) VALUES (?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                lore = excluded.lore,
+                slot_order = excluded.slot_order"
+        )
+        .bind(&character.id)
+        .bind(&character.name)
+        .bind(&character.lore)
+        .bind(&character.slot_order)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }
 

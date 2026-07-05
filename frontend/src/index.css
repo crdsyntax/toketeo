@@ -269,3 +269,74 @@
   animation: splash-dot-bounce 1.2s ease-in-out infinite;
 }
 
+@keyframes wizard-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(calc(var(--float-distance, 4px) * -1));
+  }
+}
+
+.animate-wizard-float {
+  animation: wizard-float var(--float-speed, 2.5s) ease-in-out infinite;
+}
+
+@keyframes arm-wave {
+  0%, 100% {
+    transform: rotate(calc(var(--arm-angle, 15deg) * -0.6));
+  }
+  50% {
+    transform: rotate(var(--arm-angle, 15deg));
+  }
+}
+
+@keyframes aura-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+.animate-aura-pulse {
+  animation: aura-pulse var(--aura-speed, 3s) ease-in-out infinite;
+}
+
+@keyframes flame-flicker {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
+}
+
+.animate-flame-flicker {
+  animation: flame-flicker 0.8s ease-in-out infinite;
+}
+
+.animate-flame-flicker-delay {
+  animation: flame-flicker 0.8s ease-in-out infinite 0.4s;
+}
+
+@keyframes ring-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
+}
+
+.animate-ring-pulse {
+  animation: ring-pulse 2s ease-in-out infinite;
+}
+

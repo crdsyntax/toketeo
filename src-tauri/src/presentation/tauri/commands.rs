@@ -1371,3 +1371,18 @@ pub async fn mongo_restore_database(
 
     Ok(Some(format!("Restored {} documents into {} collections", total, collections.len())))
 }
+
+// ── Character Commands ──
+
+#[tauri::command]
+pub async fn get_character(state: State<'_, AppState>) -> AppResult<crate::models::Character> {
+    state.storage.get_character().await
+}
+
+#[tauri::command]
+pub async fn save_character(
+    character: crate::models::Character,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.save_character(&character).await
+}

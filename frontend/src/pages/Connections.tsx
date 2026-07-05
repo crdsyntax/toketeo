@@ -14,6 +14,7 @@ export default function Connections() {
   const navigate = useNavigate()
   const setActiveConnection = useAppStore((state) => state.setActiveConnection)
   const activeConnection = useAppStore((state) => state.activeConnection)
+  const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds)
   const setMiniToast = useAppStore((state) => state.setMiniToast)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
@@ -249,7 +250,7 @@ export default function Connections() {
               onExport={handleExport}
               isConnecting={connectingId === conn.id}
               isTesting={testingId === conn.id}
-              isActive={activeConnection?.id === conn.id}
+              isActive={connectedConnectionIds.includes(conn.id)}
             />
           ))}
         </div>

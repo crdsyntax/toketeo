@@ -288,10 +288,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               key={conn.id}
               className={cn(
                 'group relative rounded-lg transition-all duration-200',
-                activeConnection?.id === conn.id
+                connectedConnectionIds.includes(conn.id) && activeConnection?.id === conn.id
                   ? 'bg-accent/5 ring-1 ring-primary/10'
                   : 'hover:bg-muted/50',
-                selectedConnId === conn.id && 'bg-accent/10 ring-1 ring-primary/20'
+                connectedConnectionIds.includes(conn.id) && selectedConnId === conn.id && 'bg-accent/10 ring-1 ring-primary/20'
               )}
             >
               {connectedConnectionIds.includes(conn.id) && connectionErrors[conn.id] && (
@@ -310,14 +310,14 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                 <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted/80 shrink-0">
                   <Database className={cn(
                     'w-3 h-3',
-                    selectedConnId === conn.id ? 'text-primary' : 'text-muted-foreground'
+                    connectedConnectionIds.includes(conn.id) && selectedConnId === conn.id ? 'text-primary' : 'text-muted-foreground'
                   )} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className={cn(
                       'text-xs font-semibold truncate',
-                      selectedConnId === conn.id ? 'text-foreground' : 'text-foreground/90'
+                      connectedConnectionIds.includes(conn.id) && selectedConnId === conn.id ? 'text-foreground' : 'text-foreground/90'
                     )}>
                       {conn.name}
                     </span>
@@ -349,30 +349,32 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                   >
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (connectingId === conn.id) return;
-                      const willExpand = expandedConnId !== conn.id;
-                      if (willExpand && !connectedConnectionIds.includes(conn.id)) {
-                        setConnectingId(conn.id);
-                        try {
-                          await onConnect(conn);
-                        } catch {
+                  {connectedConnectionIds.includes(conn.id) && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (connectingId === conn.id) return;
+                        const willExpand = expandedConnId !== conn.id;
+                        if (willExpand && !connectedConnectionIds.includes(conn.id)) {
+                          setConnectingId(conn.id);
+                          try {
+                            await onConnect(conn);
+                          } catch {
+                            setConnectingId(null);
+                            return;
+                          }
                           setConnectingId(null);
-                          return;
                         }
-                        setConnectingId(null);
-                      }
-                      setExpandedConnId(expandedConnId === conn.id ? null : conn.id);
-                    }}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
-                  >
-                    <ChevronDown className={cn(
-                      'w-3.5 h-3.5 transition-transform duration-200',
-                      expandedConnId === conn.id && 'rotate-180'
-                    )} />
-                  </button>
+                        setExpandedConnId(expandedConnId === conn.id ? null : conn.id);
+                      }}
+                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                    >
+                      <ChevronDown className={cn(
+                        'w-3.5 h-3.5 transition-transform duration-200',
+                        expandedConnId === conn.id && 'rotate-180'
+                      )} />
+                    </button>
+                  )}
                 </div>
               </div>
 

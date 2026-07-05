@@ -31,7 +31,8 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
   return (
     <div onDoubleClick={() => onConnect(connection)} className={cn(
       "group relative border border-border bg-secondary/30 p-4 transition-all duration-200 hover:border-primary/30 hover:bg-secondary/50",
-      connection.environment === Environment.PRODUCTION && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-red-500"
+      connection.environment === Environment.PRODUCTION && "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-red-500",
+      isActive && "ring-1 ring-emerald-500/40 border-emerald-500/30"
     )}>
       {miniToast && (
         <div className={`absolute top-2 right-2 text-xs rounded-md px-2 py-1 font-semibold shadow-lg animate-in slide-in-from-top-1 duration-200 ${miniToast.type === 'success' ? 'bg-emerald-500 text-emerald-900 border border-emerald-700' : 'bg-red-500 text-red-900 border border-red-700'}`}>
@@ -44,7 +45,10 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
             <Database className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h3 className="font-bold text-sm tracking-tight truncate max-w-[140px]">{connection.name}</h3>
+            <h3 className="font-bold text-sm tracking-tight truncate max-w-[140px] flex items-center gap-1.5">
+              {connection.name}
+              {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />}
+            </h3>
             <span className={cn("inline-flex px-1.5 py-0.5 mt-1 text-[9px] font-bold tracking-widest uppercase border", getEnvColor(connection.environment))}>
               {connection.environment}
             </span>

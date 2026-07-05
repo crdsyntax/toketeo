@@ -9,9 +9,10 @@ interface LevelBadgeProps {
   className?: string;
   onClick?: () => void;
   collapsed?: boolean;
+  hideWizard?: boolean;
 }
 
-export function LevelBadge({ className, onClick, collapsed }: LevelBadgeProps) {
+export function LevelBadge({ className, onClick, collapsed, hideWizard }: LevelBadgeProps) {
   const { level, xp, streak } = useGamificationStore();
   
   const xpForNext = getXPForNextLevel(level);
@@ -30,7 +31,7 @@ export function LevelBadge({ className, onClick, collapsed }: LevelBadgeProps) {
       title={`Level ${level} - ${xp} XP (${streak} day streak)`}
     >
       <div className="flex items-center gap-2">
-        <WizardPixelArt />
+        {!hideWizard && <WizardPixelArt />}
         <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
           <svg className="absolute inset-0 w-full h-full -rotate-90">
             <circle

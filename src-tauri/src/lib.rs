@@ -153,6 +153,8 @@ pub fn run() {
             commands::create_collection,
             commands::mongo_backup_database,
             commands::mongo_restore_database,
+            commands::get_character,
+            commands::save_character,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
