@@ -1,5 +1,6 @@
 use crate::db::PoolConfig;
 use crate::error::AppResult;
+use crate::infrastructure::crypto;
 use crate::models::DbConnectionConfig;
 use crate::state::AppState;
 use secrecy::ExposeSecret;
@@ -13,6 +14,88 @@ use crate::infrastructure::drivers::driver_factory::DriverFactory;
 pub struct ConnectionService;
 
 impl ConnectionService {
+    fn encrypt_connection(
+        config: &mut DbConnectionConfig,
+        key: &[u8; 32],
+    ) -> AppResult<()> {
+        if let Some(ref pw) = config.password {
+            let plaintext = pw.expose_secret();
+            if !plaintext.is_empty() {
+                let (enc, nonce) = crypto::encrypt(plaintext, key)
+                    .map_err(|e| crate::error::AppError::Auth(e))?;
+                config.password_enc = Some(enc);
+                config.password_nonce = Some(nonce.to_vec());
+                config.password = None;
+            }
+        }
+        if let Some(ref ssh) = config.ssh_tunnel {
+            let mut ssh_fields = Vec::new();
+            if let Some(ref pw) = ssh.password {
+                ssh_fields.push(("password", pw.expose_secret().to_string()));
+            }
+            if let Some(ref pk) = ssh.private_key {
+                ssh_fields.push(("private_key", pk.expose_secret().to_string()));
+            }
+            if let Some(ref pp) = ssh.passphrase {
+                ssh_fields.push(("passphrase", pp.expose_secret().to_string()));
+            }
+            if !ssh_fields.is_empty() {
+                let ssh_json = serde_json::to_string(&ssh_fields)
+                    .unwrap_or_default();
+                let (enc, nonce) = crypto::encrypt(&ssh_json, key)
+                    .map_err(|e| crate::error::AppError::Auth(e))?;
+                config.ssh_enc = Some(enc);
+                config.ssh_nonce = Some(nonce.to_vec());
+            }
+        }
+        Ok(())
+    }
+
+    fn decrypt_connection(
+        config: &mut DbConnectionConfig,
+        key: &[u8; 32],
+    ) -> AppResult<()> {
+        if let Some(ref enc) = config.password_enc.clone() {
+            if let Some(ref nonce_vec) = config.password_nonce.clone() {
+                if nonce_vec.len() == 12 {
+                    let mut nonce = [0u8; 12];
+                    nonce.copy_from_slice(nonce_vec);
+                    if let Ok(plaintext) = crypto::decrypt(enc, &nonce, key) {
+                        config.password = Some(secrecy::SecretString::from(plaintext));
+                    }
+                }
+            }
+        }
+        if let Some(ref enc) = config.ssh_enc.clone() {
+            if let Some(ref nonce_vec) = config.ssh_nonce.clone() {
+                if nonce_vec.len() == 12 {
+                    let mut nonce = [0u8; 12];
+                    nonce.copy_from_slice(nonce_vec);
+                    if let Ok(plaintext) = crypto::decrypt(enc, &nonce, key) {
+                        if let Ok(ssh_fields) =
+                            serde_json::from_str::<Vec<(String, String)>>(&plaintext)
+                        {
+                            if let Some(ref mut ssh) = config.ssh_tunnel {
+                                for (field, value) in ssh_fields {
+                                    match field.as_str() {
+                                        "password" => ssh.password =
+                                            Some(secrecy::SecretString::from(value)),
+                                        "private_key" => ssh.private_key =
+                                            Some(secrecy::SecretString::from(value)),
+                                        "passphrase" => ssh.passphrase =
+                                            Some(secrecy::SecretString::from(value)),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn merge_sensitive_data(state: &AppState, config: &mut DbConnectionConfig) {
         if let Some(id) = config.id {
             if let Ok(db_config) = state.storage.get_connection(&id.to_string()).await {
@@ -70,20 +153,40 @@ impl ConnectionService {
         mut config: DbConnectionConfig,
     ) -> AppResult<String> {
         tracing::debug!("Saving connection: {:?}", config.name);
-        // If updating existing, merge passwords if not provided
         Self::merge_sensitive_data(state, &mut config).await;
+        if let Ok(key) = state.require_unlock().await {
+            Self::encrypt_connection(&mut config, &key)?;
+        }
         state.storage.save_connection(config).await
     }
 
     pub async fn export_connection(state: &AppState, id: &str, file_path: &str) -> AppResult<()> {
-        let connection = state.storage.get_connection(id).await?;
+        let mut connection = state.storage.get_connection(id).await?;
+        let unlocked = state.is_session_unlocked().await;
+        if unlocked {
+            if let Ok(key) = state.require_unlock().await {
+                let _ = Self::decrypt_connection(&mut connection, &key);
+            }
+        } else {
+            connection.strip_secrets();
+        }
         let content = serde_json::to_string_pretty(&connection)?;
         tokio::fs::write(file_path, content).await?;
         Ok(())
     }
 
     pub async fn export_all_connections(state: &AppState, file_path: &str) -> AppResult<()> {
-        let connections = state.storage.get_all_connections().await?;
+        let mut connections = state.storage.get_all_connections().await?;
+        let unlocked = state.is_session_unlocked().await;
+        for conn in connections.iter_mut() {
+            if unlocked {
+                if let Ok(key) = state.require_unlock().await {
+                    let _ = Self::decrypt_connection(conn, &key);
+                }
+            } else {
+                conn.strip_secrets();
+            }
+        }
         let content = serde_json::to_string_pretty(&connections)?;
         tokio::fs::write(file_path, content).await?;
         Ok(())
@@ -92,7 +195,7 @@ impl ConnectionService {
     pub async fn import_connections(state: &AppState, file_path: &str) -> AppResult<Vec<String>> {
         let content = tokio::fs::read_to_string(file_path).await?;
 
-        let connections: Vec<DbConnectionConfig> = serde_json::from_str(&content)
+        let mut connections: Vec<DbConnectionConfig> = serde_json::from_str(&content)
             .or_else(|_| {
                 let single_conn: DbConnectionConfig =
                     serde_json::from_str(&content).map_err(|e| {
@@ -103,8 +206,11 @@ impl ConnectionService {
             .map_err(|e: crate::error::AppError| e)?;
 
         let mut saved_ids = Vec::new();
-        for conn in connections {
-            let id = state.storage.save_connection(conn).await?;
+        for conn in connections.iter_mut() {
+            if let Ok(key) = state.require_unlock().await {
+                Self::encrypt_connection(conn, &key)?;
+            }
+            let id = state.storage.save_connection(conn.clone()).await?;
             saved_ids.push(id.to_string());
         }
         Ok(saved_ids)
@@ -113,21 +219,19 @@ impl ConnectionService {
     pub async fn get_connections(state: &AppState) -> AppResult<Vec<DbConnectionConfig>> {
         tracing::debug!("Fetching all connections");
         let mut conns = state.storage.get_all_connections().await?;
-        // Security: Remove sensitive data before sending to frontend
         for conn in conns.iter_mut() {
-            conn.password = None;
-            if let Some(ref mut ssh) = conn.ssh_tunnel {
-                ssh.password = None;
-                ssh.private_key = None;
-                ssh.passphrase = None;
-            }
+            conn.strip_secrets();
         }
         Ok(conns)
     }
 
     pub async fn get_connection(state: &AppState, id: &str) -> AppResult<DbConnectionConfig> {
         tracing::debug!("Fetching single connection with secrets: {}", id);
-        state.storage.get_connection(id).await
+        let mut conn = state.storage.get_connection(id).await?;
+        if let Ok(key) = state.require_unlock().await {
+            Self::decrypt_connection(&mut conn, &key)?;
+        }
+        Ok(conn)
     }
 
     pub async fn delete_connection(state: &AppState, id: &str) -> AppResult<()> {
@@ -217,7 +321,10 @@ impl ConnectionService {
     }
 
     pub async fn diagnose_connection(state: &AppState, id: &str) -> AppResult<serde_json::Value> {
-        let config = state.storage.get_connection(id).await?;
+        let mut config = state.storage.get_connection(id).await?;
+        if let Ok(key) = state.require_unlock().await {
+            Self::decrypt_connection(&mut config, &key)?;
+        }
         let url = ConnectionStringBuilder::build(&config)?;
 
         let driver = DriverFactory::create(config.db_type, &url, false, None).await?;
@@ -233,6 +340,9 @@ impl ConnectionService {
 
     pub async fn switch_database(state: &AppState, id: &str, new_db: &str) -> AppResult<()> {
         let mut config = state.storage.get_connection(id).await?;
+        if let Ok(key) = state.require_unlock().await {
+            Self::decrypt_connection(&mut config, &key)?;
+        }
         config.database = Some(new_db.to_string());
 
         let url = ConnectionStringBuilder::build(&config)?;
@@ -253,7 +363,10 @@ impl ConnectionService {
     pub async fn reconnect(state: &AppState, id: &str) -> AppResult<String> {
         tracing::info!("Reconnecting session: {}", id);
         let _ = state.remove_connection(id).await;
-        let config = state.storage.get_connection(id).await?;
+        let mut config = state.storage.get_connection(id).await?;
+        if let Ok(key) = state.require_unlock().await {
+            Self::decrypt_connection(&mut config, &key)?;
+        }
         Self::connect(state, config).await
     }
 

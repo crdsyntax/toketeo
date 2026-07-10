@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { formatCellValue } from '@/lib/formatCellValue';
@@ -35,6 +36,8 @@ export function ResultsPanelTable({
   setShowExportMenu,
   setShowLimitMenu,
 }: ResultsPanelTableProps) {
+  const editorFontFamily = useAppStore((s) => s.editorFontFamily);
+  const resultsFontSize = useAppStore((s) => s.resultsFontSize);
   const parentRef = useRef<HTMLDivElement>(null);
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -53,7 +56,7 @@ export function ResultsPanelTable({
 
   return (
     <div ref={parentRef} className="flex-1 overflow-auto relative h-full" onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}>
-      <table className="w-max min-w-full border-collapse table-fixed text-sm">
+      <table className="w-max min-w-full border-collapse table-fixed" style={{ fontFamily: editorFontFamily, fontSize: resultsFontSize }}>
         <thead className="sticky top-0 z-20 bg-muted shadow-[0_1px_0_0_hsl(var(--border))]">
           <tr>
             <th className="p-2.5 font-semibold text-muted-foreground text-xs border-r border-border/60 w-12 min-w-[3rem] max-w-[3rem] text-center shrink-0 bg-muted select-none">
@@ -68,7 +71,7 @@ export function ResultsPanelTable({
                   className="p-2.5 font-semibold text-muted-foreground text-xs border-r border-border/60 w-[250px] max-w-[250px] bg-muted cursor-pointer hover:bg-muted-foreground/10 hover:text-foreground transition-colors select-none"
                 >
                   <div className="flex items-center justify-between group">
-                    <span className="truncate font-mono">{col}</span>
+                    <span className="truncate">{col}</span>
                     <div className={cn(
                       "p-1 rounded-md transition-colors",
                       isSorted ? "bg-primary/10 text-primary" : "text-muted-foreground/40 group-hover:text-muted-foreground group-hover:bg-background"
@@ -115,7 +118,7 @@ export function ResultsPanelTable({
                 }}
               >
                 <td className={cn(
-                  "p-2.5 border-r border-border/60 text-center text-xs font-mono w-12 min-w-[3rem] cursor-pointer select-none transition-colors",
+                  "p-2.5 border-r border-border/60 text-center w-12 min-w-[3rem] cursor-pointer select-none transition-colors",
                   isSelected ? "text-primary font-bold bg-primary/5" : "text-muted-foreground/60 bg-muted/10 group-hover:bg-transparent"
                 )}>
                   {i + 1}
@@ -133,14 +136,14 @@ export function ResultsPanelTable({
                         setEditingCell({ rowIndex: i, column: col, value: row[col] });
                       }}
                       className={cn(
-                        "border-r border-border/40 truncate relative font-mono text-xs text-foreground/90 w-[250px] max-w-[250px] cursor-pointer",
+                        "border-r border-border/40 truncate relative text-foreground/90 w-[250px] max-w-[250px] cursor-pointer",
                         isEditing ? "p-0" : "p-2.5"
                       )}
                     >
                       {isEditing ? (
                         <input
                           autoFocus
-                          className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 font-mono text-xs z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
+                          className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
                           value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
                           onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                           onClick={(e) => e.stopPropagation()}

@@ -1,6 +1,7 @@
 import { Loader2, Save } from 'lucide-react';
 import { Editor } from '@monaco-editor/react';
 import type { UseMutationResult } from '@tanstack/react-query';
+import { useAppStore } from '@/store/useAppStore';
 
 interface DdlTabProps {
   isLoading: boolean;
@@ -17,6 +18,11 @@ export function DdlTab({
   setEditableDdl,
   updateDdlMutation,
 }: DdlTabProps) {
+  const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
+  const storeEditorFontSize = useAppStore((s) => s.editorFontSize);
+  const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
+  const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
+  const storeEditorMinimap = useAppStore((s) => s.editorMinimap);
   return (
     <div className="flex-1 flex flex-col bg-muted/30 relative">
       <div className="p-2 border-b border-border bg-background/50 flex justify-between items-center px-4">
@@ -58,9 +64,11 @@ export function DdlTab({
             value={editableDdl}
             onChange={(val) => setEditableDdl(val || '')}
             options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+              minimap: { enabled: storeEditorMinimap },
+              fontSize: storeEditorFontSize,
+              fontFamily: storeEditorFontFamily,
+              lineHeight: storeEditorLineHeight,
+              tabSize: storeEditorTabSize,
               scrollBeyondLastLine: false,
               automaticLayout: true,
               padding: { top: 16 },

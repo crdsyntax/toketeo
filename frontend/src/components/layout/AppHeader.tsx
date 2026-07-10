@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen,
-  CheckCircle, RotateCcw, AlertTriangle, GitBranch, Palette,
-  CalendarClock, Sparkles, Flame
+  CheckCircle, Loader2, RotateCcw, AlertTriangle, GitBranch, Palette,
+  CalendarClock, Sparkles, Flame, Shield
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
@@ -18,6 +18,7 @@ const navItems = [
   { name: 'Settings', icon: Palette, path: '/settings', perkId: null },
   { name: 'Scheduler', icon: CalendarClock, path: '/scheduler', perkId: 'query_scheduler' },
   { name: 'Cross-DB Sync', icon: Sparkles, path: '/cross-db-sync', perkId: 'multi_connection' },
+  { name: 'Security', icon: Shield, path: '/security', perkId: null },
 ]
 
 interface AppHeaderProps {
@@ -129,8 +130,8 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
               className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 rounded-md transition-all duration-200 disabled:opacity-50"
               title="Commit Transaction"
             >
-              <CheckCircle className="w-3.5 h-3.5" />
-              Commit
+              {isTransacting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+              {isTransacting ? 'Committing...' : 'Commit'}
             </button>
           </div>
         )}

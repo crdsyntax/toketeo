@@ -87,6 +87,7 @@ impl ExplorerService {
                             rows: vec![serde_json::json!({"message": format!("Switched to db {}", use_db), "db": use_db})],
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
+                            rows_affected: 0,
                         });
                     }
                 }
@@ -119,6 +120,7 @@ impl ExplorerService {
                     let mut conns = state.connections.write().await;
                     if let Some(session) = conns.get_mut(id) {
                         session.metadata_cache.clear();
+                        session.accumulated_rows_affected += result.rows_affected;
                     }
                 }
 

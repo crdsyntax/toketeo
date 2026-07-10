@@ -16,11 +16,9 @@ import { useAssistantStore } from '@/store/assistantStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef, useState } from 'react';
-import { ExecutionStatus, Environment } from '@/types/database';
+import { ExecutionStatus } from '@/types/database';
 import { useQuery } from '@tanstack/react-query';
 import { connectionService } from '@/services/connection.service';
-import { invoke } from '@tauri-apps/api/core';
-import { toast } from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 
 export default function QueryEditor() {
@@ -108,27 +106,6 @@ export default function QueryEditor() {
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
   const isMongo = activeConnection?.type === 'mongodb'
-  const isTransactional = activeConnection?.environment === Environment.PRODUCTION && !isMongo
-
-  const handleCommit = async () => {
-    if (!currentConnectionId) return;
-    try {
-      await invoke('commit_transaction', { id: currentConnectionId });
-      toast.success('Transaction committed');
-    } catch (e) {
-      toast.error(`Commit failed: ${e}`);
-    }
-  };
-
-  const handleRollback = async () => {
-    if (!currentConnectionId) return;
-    try {
-      await invoke('rollback_transaction', { id: currentConnectionId });
-      toast.success('Transaction rolled back');
-    } catch (e) {
-      toast.error(`Rollback failed: ${e}`);
-    }
-  };
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
@@ -254,9 +231,6 @@ export default function QueryEditor() {
         onHistoryToggle={() => setShowHistory((v) => !v)}
         showHistory={showHistory}
         historyCount={currentHistory.length}
-        onCommit={handleCommit}
-        onRollback={handleRollback}
-        isTransactional={!!isTransactional}
         onNewWithConnection={() => setShowNewScriptModal(true)}
       />
 

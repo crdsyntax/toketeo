@@ -82,6 +82,7 @@ impl DbDriver for PostgresDriver {
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
+                    rows_affected: 0,
                 });
             }
 
@@ -118,14 +119,17 @@ impl DbDriver for PostgresDriver {
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys,
+                rows_affected: 0,
             })
         } else {
-            let _ = sqlx::query(query).execute(&self.pool).await?;
+            let result = sqlx::query(query).execute(&self.pool).await?;
+            let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
                 rows: vec![],
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
+                rows_affected,
             })
         }
     }
@@ -159,6 +163,7 @@ impl DbDriver for PostgresDriver {
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
+                    rows_affected: 0,
                 });
             }
 
@@ -194,14 +199,17 @@ impl DbDriver for PostgresDriver {
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys,
+                rows_affected: 0,
             })
         } else {
-            let _ = conn.execute(sqlx::query(query)).await?;
+            let result = conn.execute(sqlx::query(query)).await?;
+            let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
                 rows: vec![],
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
+                rows_affected,
             })
         }
     }

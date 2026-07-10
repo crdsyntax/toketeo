@@ -2,6 +2,7 @@ import { Editor, type Monaco } from '@monaco-editor/react';
 import type * as monaco from 'monaco-editor';
 import { ChevronUp, Terminal, Database, Code2 } from 'lucide-react';
 import type { QueryTab, EditorMode } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 import { useRef, useEffect, useCallback } from 'react';
 import { isMongoShellSyntax } from '@/lib/mongoShellParser';
 import {
@@ -37,6 +38,11 @@ export function SqlEditorPanel({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const prevTabIdRef = useRef<string>(activeTab.id);
+  const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
+  const storeEditorFontSize = useAppStore((s) => s.editorFontSize);
+  const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
+  const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
+  const storeEditorMinimap = useAppStore((s) => s.editorMinimap);
 
   const mode = activeTab.editorMode ?? 'auto';
 
@@ -203,9 +209,11 @@ export function SqlEditorPanel({
           beforeMount={onBeforeMount}
           onMount={onMount}
           options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            minimap: { enabled: storeEditorMinimap },
+            fontSize: storeEditorFontSize,
+            fontFamily: storeEditorFontFamily,
+            lineHeight: storeEditorLineHeight,
+            tabSize: storeEditorTabSize,
             scrollBeyondLastLine: false,
             automaticLayout: true,
             padding: { top: 16 },

@@ -48,6 +48,14 @@ pub struct DbConnectionConfig {
     pub keep_alive: Option<i32>,
     #[serde(rename = "metadataCacheTtl")]
     pub metadata_cache_ttl: Option<i32>,
+    #[serde(skip)]
+    pub password_enc: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub password_nonce: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub ssh_enc: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub ssh_nonce: Option<Vec<u8>>,
 }
 
 impl fmt::Debug for DbConnectionConfig {
@@ -72,6 +80,21 @@ impl fmt::Debug for DbConnectionConfig {
             .field("keep_alive", &self.keep_alive)
             .field("metadata_cache_ttl", &self.metadata_cache_ttl)
             .finish()
+    }
+}
+
+impl DbConnectionConfig {
+    pub fn strip_secrets(&mut self) {
+        self.password = None;
+        self.password_enc = None;
+        self.password_nonce = None;
+        self.ssh_enc = None;
+        self.ssh_nonce = None;
+        if let Some(ref mut ssh) = self.ssh_tunnel {
+            ssh.password = None;
+            ssh.private_key = None;
+            ssh.passphrase = None;
+        }
     }
 }
 
@@ -152,6 +175,8 @@ pub struct QueryResult {
     #[serde(rename = "executionTime")]
     pub execution_time_ms: u64,
     pub primary_keys: Option<Vec<String>>,
+    #[serde(rename = "rowsAffected")]
+    pub rows_affected: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

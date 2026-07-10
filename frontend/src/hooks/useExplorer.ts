@@ -4,6 +4,7 @@ import { format } from 'sql-formatter';
 import { schemaService } from '@/services/schema.service';
 import { useAppStore } from '@/store/useAppStore';
 import { tauriApi } from '@/lib/api';
+import { toast } from 'react-hot-toast';
 import type {
   DatabaseObject,
   QueryResult,
@@ -13,6 +14,7 @@ import type {
 import {
   DatabaseType,
   ExecutionStatus,
+  Environment,
   SidebarTab,
   ExplorerTab,
   DatabaseObjectType,
@@ -203,6 +205,10 @@ export function useExplorer() {
           : ExplorerTab.DDL;
 
       if (explorerTabs[tabId]) {
+        updateExplorerTab(tabId, {
+          executionStatus: ExecutionStatus.IDLE,
+          socketResults: null,
+        });
         setExplorerState({ activeExplorerTabId: tabId });
       } else {
         addExplorerTab({
@@ -226,6 +232,7 @@ export function useExplorer() {
       currentSchema,
       explorerTabs,
       addExplorerTab,
+      updateExplorerTab,
       setExplorerState,
     ],
   );
@@ -673,6 +680,13 @@ export function useExplorer() {
     (row: DbRow, column: string, newValue: DbValue) => {
       if (!selectedItem || !activeConnection) return;
 
+      if (activeConnection.environment === Environment.PRODUCTION) {
+        toast(
+          'Editing production data — changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
+          { icon: '⚠️', duration: 5000 },
+        );
+      }
+
       const primaryKeys = columns
         ?.filter((col) => col.isPrimaryKey)
         .map((col) => col.name) ?? [];
@@ -695,12 +709,14 @@ export function useExplorer() {
 
       setSocketResults((prev: QueryResult | null) => {
         if (!prev) return prev;
-        return {
-          ...prev,
-          rows: (prev.rows as DbRow[]).map((r: DbRow) =>
-            r === row ? { ...r, [column]: newValue } : r,
-          ),
-        } as QueryResult;
+        const prevRows = prev.rows as DbRow[];
+        const matchedIndex = primaryKeys.length > 0
+          ? prevRows.findIndex((r) => primaryKeys.every((pk) => r[pk] === row[pk]))
+          : prevRows.indexOf(row);
+        if (matchedIndex === -1) return prev;
+        const newRows = [...prevRows];
+        newRows[matchedIndex] = { ...prevRows[matchedIndex], [column]: newValue };
+        return { ...prev, rows: newRows } as QueryResult;
       });
     },
     [selectedItem, activeConnection, columns, currentSchema, setSocketResults],

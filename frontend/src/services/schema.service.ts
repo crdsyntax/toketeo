@@ -149,7 +149,7 @@ executeExplorer: async (payload: {
   },
 
   commitTransaction: async (id: string) => {
-    return await tauriApi.invoke<void>('commit_transaction', { id })
+    return await tauriApi.invoke<number>('commit_transaction', { id })
   },
 
   rollbackTransaction: async (id: string) => {

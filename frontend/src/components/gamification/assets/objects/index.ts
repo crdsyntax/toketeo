@@ -1,3 +1,4 @@
+import type { PixelArtAsset } from '../pixelart';
 import { ringEmber } from './ring-ember';
 import { necklaceEmber } from './necklace-ember';
 import { crownAsh } from './crown-ash';
@@ -12,7 +13,7 @@ import { goldenKey } from './golden-key';
 export { ringEmber, necklaceEmber, crownAsh, sigilBone, orbVoid };
 export { fireWhip, shadowStaff, skullAxe, acidBlade, goldenKey };
 
-export const OBJECT_ASSETS = [
+export const OBJECT_ASSETS: PixelArtAsset[] = [
   ringEmber,
   necklaceEmber,
   crownAsh,
@@ -20,7 +21,7 @@ export const OBJECT_ASSETS = [
   orbVoid,
 ];
 
-export const SOUL_ITEMS = [
+export const SOUL_ITEMS: PixelArtAsset[] = [
   fireWhip,
   shadowStaff,
   skullAxe,

@@ -104,6 +104,7 @@ impl DbDriver for MySqlDriver {
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
+                    rows_affected: 0,
                 });
             }
 
@@ -128,6 +129,7 @@ impl DbDriver for MySqlDriver {
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
+                rows_affected: 0,
             })
         } else {
             let result = if trimmed_query.contains(';') {
@@ -137,12 +139,14 @@ impl DbDriver for MySqlDriver {
             };
 
             match result {
-                Ok(_res) => {
+                Ok(res) => {
+                    let rows_affected = res.rows_affected();
                     Ok(QueryResult {
                         columns: vec![],
                         rows: vec![],
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
+                        rows_affected,
                     })
                 }
                 Err(e) => { Err(e.into()) }
@@ -179,6 +183,7 @@ impl DbDriver for MySqlDriver {
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
+                    rows_affected: 0,
                 });
             }
 
@@ -203,6 +208,7 @@ impl DbDriver for MySqlDriver {
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
+                rows_affected: 0,
             })
         } else {
             let result = if trimmed_query.contains(';') {
@@ -212,12 +218,14 @@ impl DbDriver for MySqlDriver {
             };
 
             match result {
-                Ok(_res) => {
+                Ok(res) => {
+                    let rows_affected = res.rows_affected();
                     Ok(QueryResult {
                         columns: vec![],
                         rows: vec![],
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
+                        rows_affected,
                     })
                 }
                 Err(e) => { Err(e.into()) }

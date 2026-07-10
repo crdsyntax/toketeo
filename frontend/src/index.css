@@ -3,8 +3,8 @@
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, Consolas, monospace;
+  --font-sans: var(--ch-ui-font-family, Inter), "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", "Source Code Pro", Consolas, "Courier New", monospace;
 
   --color-border: var(--border);
   --color-input: var(--border);
@@ -26,30 +26,49 @@
 
   --color-destructive: #ef4444;
   --color-destructive-foreground: #fff;
+
+  --radius-sm: calc(var(--ch-radius, 6px) * 0.5);
+  --radius-md: var(--ch-radius, 6px);
+  --radius-lg: calc(var(--ch-radius, 6px) * 1.5);
+  --radius-xl: calc(var(--ch-radius, 6px) * 2);
+  --radius-2xl: calc(var(--ch-radius, 6px) * 3);
+  --radius-3xl: calc(var(--ch-radius, 6px) * 4);
 }
 
 :root {
+  --ch-primary: #374151;
+  --ch-secondary: #f3f4f6;
+  --ch-accent: #e5e7eb;
+  --ch-background: #ffffff;
+
   --text: #6b7280;
   --text-h: #111827;
-  --bg: #ffffff;
+  --bg: var(--ch-background);
   --border: #e5e7eb;
-  --code-bg: #f3f4f6;
-  --accent: #374151;
-  --accent-bg: rgba(55, 65, 81, 0.05);
-  --accent-border: rgba(55, 65, 81, 0.3);
-  --radius: 6px;
+  --code-bg: var(--ch-secondary);
+  --accent: var(--ch-primary);
+  --accent-bg: color-mix(in srgb, var(--ch-accent) 50%, transparent);
+  --accent-border: color-mix(in srgb, var(--ch-primary) 30%, transparent);
+  --radius: var(--ch-radius, 6px);
+  --ch-ui-font-size: 13px;
 }
 
 .dark {
+  --ch-primary: #e0e0e0;
+  --ch-secondary: #1a1a1a;
+  --ch-accent: #2d2d2d;
+  --ch-background: #121212;
+
   --text: #a0a0a0;
   --text-h: #e0e0e0;
-  --bg: #121212;
+  --bg: var(--ch-background);
   --border: #2d2d2d;
-  --code-bg: #1a1a1a;
-  --accent: #e0e0e0;
-  --accent-bg: rgba(224, 224, 224, 0.05);
-  --accent-border: rgba(224, 224, 224, 0.3);
-  --radius: 6px;
+  --code-bg: var(--ch-secondary);
+  --accent: var(--ch-primary);
+  --accent-bg: color-mix(in srgb, var(--ch-accent) 50%, transparent);
+  --accent-border: color-mix(in srgb, var(--ch-primary) 30%, transparent);
+  --radius: var(--ch-radius, 6px);
+  --ch-ui-font-size: 13px;
 }
 
 @layer base {
@@ -58,8 +77,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-mono);
-    font-size: 13px;
+    font-family: var(--font-sans);
+    font-size: var(--ch-ui-font-size, 13px);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   button {

@@ -295,6 +295,7 @@ impl DbDriver for MongoDbDriver {
                 rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: Some(vec!["_id".to_string()]),
+                rows_affected: 0,
             });
         }
 
@@ -352,6 +353,7 @@ impl DbDriver for MongoDbDriver {
                         rows,
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
+                        rows_affected: 0,
                     });
                 }
             }
@@ -377,6 +379,7 @@ impl DbDriver for MongoDbDriver {
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
+                    rows_affected: 0,
                 });
             }
         }
@@ -387,6 +390,7 @@ impl DbDriver for MongoDbDriver {
             rows: vec![json_result],
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
+            rows_affected: 0,
         })
     }
 

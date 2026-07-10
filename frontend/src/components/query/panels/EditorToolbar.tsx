@@ -7,8 +7,6 @@ import {
   Loader2,
   Square,
   Clock,
-  CheckCircle2,
-  Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRef } from 'react';
@@ -29,9 +27,6 @@ interface EditorToolbarProps {
   onHistoryToggle: () => void;
   showHistory: boolean;
   historyCount: number;
-  onCommit: () => void;
-  onRollback: () => void;
-  isTransactional: boolean;
   onNewWithConnection: () => void;
 }
 
@@ -50,9 +45,6 @@ export function EditorToolbar({
   onHistoryToggle,
   showHistory,
   historyCount,
-  onCommit,
-  onRollback,
-  isTransactional,
   onNewWithConnection,
 }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,30 +141,6 @@ export function EditorToolbar({
           )}
           {isExecuting ? 'Running...' : 'Run All'}
         </button>
-
-        {isTransactional && (
-          <>
-            <div className="w-[1px] h-4 bg-border mx-2" />
-            <button
-              onClick={onCommit}
-              disabled={isExecuting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-none transition-all disabled:opacity-50"
-              title="Commit Transaction"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Commit
-            </button>
-            <button
-              onClick={onRollback}
-              disabled={isExecuting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-all disabled:opacity-50"
-              title="Rollback Transaction"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-              Rollback
-            </button>
-          </>
-        )}
 
         {isExecuting && (
           <button

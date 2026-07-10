@@ -58,18 +58,33 @@ export interface CustomColors {
   background: string
 }
 
-export const DEFAULT_COLORS: CustomColors = {
-  primary: '#6366f1',
-  secondary: '#8b5cf6',
-  accent: '#06b6d4',
-  background: '#09090b',
-}
+export const DEFAULT_EDITOR_FONT = "'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', Consolas, 'Courier New', monospace"
+
+export const DEFAULT_COLORS: CustomColors | null = null
 
 interface AppState {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
-  customColors: CustomColors
-  setCustomColors: (colors: Partial<CustomColors>) => void
+  customColors: CustomColors | null
+  setCustomColors: (colors: Partial<CustomColors> | null) => void
+  editorFontFamily: string
+  setEditorFontFamily: (font: string) => void
+  editorFontSize: number
+  setEditorFontSize: (size: number) => void
+  editorLineHeight: number
+  setEditorLineHeight: (lh: number) => void
+  editorTabSize: number
+  setEditorTabSize: (size: number) => void
+  editorMinimap: boolean
+  setEditorMinimap: (show: boolean) => void
+  uiFontFamily: string
+  setUiFontFamily: (font: string) => void
+  uiFontSize: number
+  setUiFontSize: (size: number) => void
+  borderRadius: number
+  setBorderRadius: (radius: number) => void
+  resultsFontSize: number
+  setResultsFontSize: (size: number) => void
   accessToken: string | null
   setAccessToken: (token: string | null) => void
   activeConnection: Connection | null
@@ -126,10 +141,28 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
-      customColors: DEFAULT_COLORS,
-      setCustomColors: (colors) => set((state) => ({
-        customColors: { ...state.customColors, ...colors },
+      customColors: null,
+      setCustomColors: (colors) => set(() => ({
+        customColors: colors as CustomColors | null,
       })),
+      editorFontFamily: DEFAULT_EDITOR_FONT,
+      setEditorFontFamily: (editorFontFamily) => set({ editorFontFamily }),
+      editorFontSize: 14,
+      setEditorFontSize: (editorFontSize) => set({ editorFontSize }),
+      editorLineHeight: 1.6,
+      setEditorLineHeight: (editorLineHeight) => set({ editorLineHeight }),
+      editorTabSize: 2,
+      setEditorTabSize: (editorTabSize) => set({ editorTabSize }),
+      editorMinimap: false,
+      setEditorMinimap: (editorMinimap) => set({ editorMinimap }),
+      uiFontFamily: "Inter, 'Segoe UI', system-ui, -apple-system, sans-serif",
+      setUiFontFamily: (uiFontFamily) => set({ uiFontFamily }),
+      uiFontSize: 13,
+      setUiFontSize: (uiFontSize) => set({ uiFontSize }),
+      borderRadius: 6,
+      setBorderRadius: (borderRadius) => set({ borderRadius }),
+      resultsFontSize: 12,
+      setResultsFontSize: (resultsFontSize) => set({ resultsFontSize }),
       accessToken: null,
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,

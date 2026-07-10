@@ -1,6 +1,9 @@
 use crate::application::audit_service::AuditService;
+use crate::application::auth_service;
 use crate::application::connection_service::ConnectionService;
 use crate::application::explorer_service::ExplorerService;
+use crate::application::keyring_service;
+use crate::application::totp_service;
 use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::model_generator_service::ModelGeneratorService;
 use crate::application::sync::sync_service::SyncService;
@@ -14,6 +17,7 @@ use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext
 use secrecy::ExposeSecret;
 use crate::state::AppState;
 use std::sync::Arc;
+use tauri::Manager;
 use std::process::Command;
 use std::str::FromStr;
 use tauri::{AppHandle, Emitter, State};
@@ -146,6 +150,147 @@ pub async fn get_connection(
 #[tauri::command]
 pub async fn delete_connection(id: String, state: State<'_, AppState>) -> AppResult<()> {
     ConnectionService::delete_connection(&state, &id).await
+}
+
+#[tauri::command]
+pub async fn check_master_password_exists(state: State<'_, AppState>) -> AppResult<bool> {
+    auth_service::check_master_password_exists(&state.storage).await
+}
+
+#[tauri::command]
+pub async fn create_master_password(password: String, state: State<'_, AppState>) -> AppResult<()> {
+    match auth_service::create_master_password(&password, &state.storage).await {
+        Ok(key) => {
+            state.set_master_key(key, 3600).await;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub async fn unlock_session(password: String, state: State<'_, AppState>) -> AppResult<bool> {
+    match auth_service::unlock_master_password(&password, &state.storage).await {
+        Ok(key) => {
+            state.set_master_key(key, 3600).await;
+            Ok(true)
+        }
+        Err(AppError::Unauthorized(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub async fn lock_session(state: State<'_, AppState>) -> AppResult<()> {
+    state.clear_master_key().await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn change_master_password(
+    old_password: String,
+    new_password: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let key = auth_service::change_master_password(
+        &old_password,
+        &new_password,
+        &state,
+        &state.storage,
+    )
+    .await?;
+    state.set_master_key(key, 3600).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn is_session_unlocked(state: State<'_, AppState>) -> AppResult<bool> {
+    Ok(state.is_session_unlocked().await)
+}
+
+#[tauri::command]
+pub async fn is_windows_hello_available() -> AppResult<bool> {
+    Ok(keyring_service::is_available().await)
+}
+
+#[tauri::command]
+pub async fn store_master_in_keyring(password: String) -> AppResult<()> {
+    keyring_service::store_password(&password)
+}
+
+#[tauri::command]
+pub async fn get_master_from_keyring() -> AppResult<Option<String>> {
+    keyring_service::get_password()
+}
+
+#[tauri::command]
+pub async fn remove_master_from_keyring() -> AppResult<()> {
+    keyring_service::delete_password()
+}
+
+#[tauri::command]
+pub async fn unlock_with_windows_hello(state: State<'_, AppState>, app_handle: AppHandle) -> AppResult<bool> {
+    use raw_window_handle::HasWindowHandle;
+    let hwnd = app_handle.get_webview_window("main")
+        .map(|w| {
+            if let Ok(handle) = w.window_handle() {
+                if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
+                    return win32.hwnd.get();
+                }
+            }
+            0
+        })
+        .unwrap_or(0);
+    let verified = keyring_service::request_verification(hwnd).await?;
+    if !verified {
+        return Ok(false);
+    }
+
+    let password = keyring_service::get_password()?
+        .ok_or_else(|| AppError::Auth("No Windows Hello credential stored".into()))?;
+
+    match crate::application::auth_service::unlock_master_password(&password, &state.storage).await {
+        Ok(key) => {
+            state.set_master_key(key, 3600).await;
+            Ok(true)
+        }
+        Err(AppError::Unauthorized(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub async fn is_totp_available() -> AppResult<bool> {
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn generate_totp_setup(state: State<'_, AppState>) -> AppResult<totp_service::TotpSetupResult> {
+    totp_service::generate_totp_setup(&state, &state.storage).await
+}
+
+#[tauri::command]
+pub async fn verify_and_enable_totp(
+    secret: String,
+    code: String,
+    state: State<'_, AppState>,
+) -> AppResult<bool> {
+    totp_service::verify_and_enable_totp(&secret, &code, &state, &state.storage).await
+}
+
+#[tauri::command]
+pub async fn is_totp_enabled(state: State<'_, AppState>) -> AppResult<bool> {
+    totp_service::is_totp_enabled(&state.storage).await
+}
+
+#[tauri::command]
+pub async fn unlock_with_totp(code: String, state: State<'_, AppState>) -> AppResult<bool> {
+    totp_service::unlock_with_totp(&code, &state, &state.storage).await
+}
+
+#[tauri::command]
+pub async fn disable_totp(state: State<'_, AppState>) -> AppResult<()> {
+    totp_service::disable_totp(&state.storage).await
 }
 
 #[tauri::command]
@@ -538,7 +683,7 @@ pub async fn update_ddl(
 }
 
 #[tauri::command]
-pub async fn commit_transaction(id: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn commit_transaction(id: String, state: State<'_, AppState>) -> AppResult<u64> {
     state.commit_transaction(&id).await
 }
 
@@ -1189,7 +1334,7 @@ pub async fn create_database(
     db_name: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let driver = state.get_connection(&id).await?;
+    let driver = get_or_connect_driver(&state, &id).await?;
     let db_type = driver.db_type();
 
     match db_type {

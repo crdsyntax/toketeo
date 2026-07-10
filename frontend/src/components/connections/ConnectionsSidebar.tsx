@@ -183,11 +183,8 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
 
   const handleSchemaDoubleClick = async (conn: Connection, schema: string) => {
     try {
-      if (!connectedConnectionIds.includes(conn.id)) {
-        await onConnect(conn)
-      } else if (activeConnection?.id !== conn.id) {
-        setActiveConnection(conn)
-      }
+      await onConnect(conn)
+      setActiveConnection(conn)
       if (location.pathname === '/query') {
         addTab(conn.id, schema)
       } else {
@@ -233,7 +230,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
 
   const handleConnectionDoubleClick = async (conn: Connection) => {
     const willExpand = expandedConnId !== conn.id
-    if (willExpand && !connectedConnectionIds.includes(conn.id)) {
+    if (willExpand) {
       if (connectingId === conn.id) return
       setConnectingId(conn.id)
       try {
@@ -355,7 +352,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                         e.stopPropagation();
                         if (connectingId === conn.id) return;
                         const willExpand = expandedConnId !== conn.id;
-                        if (willExpand && !connectedConnectionIds.includes(conn.id)) {
+                        if (willExpand) {
                           setConnectingId(conn.id);
                           try {
                             await onConnect(conn);

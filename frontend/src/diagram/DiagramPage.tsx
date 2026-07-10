@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ReactFlowProvider,
@@ -128,6 +128,10 @@ function EditorInner() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+
+  // Sync React Flow state when initial nodes/edges change (table selection, data load)
+  useEffect(() => { setNodes(initialNodes) }, [initialNodes, setNodes])
+  useEffect(() => { setEdges(initialEdges) }, [initialEdges, setEdges])
 
   // Save nodes to store when diagram changes
   const handleSave = useCallback(() => {

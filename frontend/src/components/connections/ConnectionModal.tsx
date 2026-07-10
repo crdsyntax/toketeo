@@ -4,6 +4,7 @@ import { DatabaseType, Environment, SshAuthType } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
 import { useState, useEffect } from 'react'
 import { connectionService } from '@/services/connection.service'
+import { UnlockPrompt } from '@/components/security/UnlockPrompt'
 
 interface ConnectionModalProps {
   isOpen: boolean
@@ -47,6 +48,8 @@ export function ConnectionModal({
   const [storePassword, setStorePassword] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoadingConnection, setIsLoadingConnection] = useState(false)
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false)
+  const [pendingReveal, setPendingReveal] = useState<'password' | 'ssh_password' | 'ssh_passphrase' | null>(null)
   const [showSshPassword, setShowSshPassword] = useState(false)
   const [showSshPassphrase, setShowSshPassphrase] = useState(false)
 
@@ -349,7 +352,19 @@ export function ConnectionModal({
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPassword((prev) => !prev)}
+                      onClick={async () => {
+                        if (showPassword) {
+                          setShowPassword(false)
+                          return
+                        }
+                        const unlocked = await connectionService.isSessionUnlocked()
+                        if (unlocked) {
+                          setShowPassword(true)
+                        } else {
+                          setPendingReveal('password')
+                          setShowUnlockPrompt(true)
+                        }
+                      }}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -779,6 +794,22 @@ export function ConnectionModal({
           </div>
         )}
       </div>
+
+      {showUnlockPrompt && (
+        <UnlockPrompt
+          onUnlocked={() => {
+            setShowUnlockPrompt(false)
+            if (pendingReveal === 'password') setShowPassword(true)
+            if (pendingReveal === 'ssh_password') setShowSshPassword(true)
+            if (pendingReveal === 'ssh_passphrase') setShowSshPassphrase(true)
+            setPendingReveal(null)
+          }}
+          onCancel={() => {
+            setShowUnlockPrompt(false)
+            setPendingReveal(null)
+          }}
+        />
+      )}
     </div>
   )
 }

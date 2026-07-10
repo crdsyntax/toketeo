@@ -1,19 +1,14 @@
-import { useEffect, useMemo } from 'react'
-import { useAppStore, DEFAULT_COLORS } from '@/store/useAppStore'
+import { useEffect } from 'react'
+import { useAppStore } from '@/store/useAppStore'
+
+const THEME_VARS = ['--ch-primary', '--ch-secondary', '--ch-accent', '--ch-background'] as const
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((s) => s.theme)
   const customColors = useAppStore((s) => s.customColors)
-
-  const cssVars = useMemo(() => {
-    const base = customColors ?? DEFAULT_COLORS
-    return {
-      '--ch-primary': base.primary,
-      '--ch-secondary': base.secondary,
-      '--ch-accent': base.accent,
-      '--ch-background': base.background,
-    } as React.CSSProperties
-  }, [customColors])
+  const uiFontFamily = useAppStore((s) => s.uiFontFamily)
+  const uiFontSize = useAppStore((s) => s.uiFontSize)
+  const borderRadius = useAppStore((s) => s.borderRadius)
 
   useEffect(() => {
     document.documentElement.className = theme === 'dark' ? 'dark' : ''
@@ -26,8 +21,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.style.setProperty('--ch-secondary', customColors.secondary)
       root.style.setProperty('--ch-accent', customColors.accent)
       root.style.setProperty('--ch-background', customColors.background)
+    } else {
+      THEME_VARS.forEach(v => root.style.removeProperty(v))
     }
   }, [customColors])
 
-  return <div style={cssVars}>{children}</div>
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--ch-ui-font-family', uiFontFamily)
+  }, [uiFontFamily])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--ch-ui-font-size', `${uiFontSize}px`)
+  }, [uiFontSize])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--ch-radius', `${borderRadius}px`)
+  }, [borderRadius])
+
+  return <>{children}</>
 }

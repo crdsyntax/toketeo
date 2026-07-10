@@ -10,6 +10,8 @@ use tokio::sync::RwLock;
 pub struct AppState {
     pub connections: RwLock<HashMap<String, ConnectionSession>>,
     pub storage: Arc<Storage>,
+    pub master_key: RwLock<Option<[u8; 32]>>,
+    pub session_expires_at: RwLock<Option<std::time::Instant>>,
 }
 
 impl AppState {
@@ -17,6 +19,47 @@ impl AppState {
         Self {
             connections: RwLock::new(HashMap::new()),
             storage: Arc::new(storage),
+            master_key: RwLock::new(None),
+            session_expires_at: RwLock::new(None),
+        }
+    }
+
+    pub async fn require_unlock(&self) -> crate::error::AppResult<[u8; 32]> {
+        let key = self.master_key.read().await;
+        if let Some(k) = *key {
+            let expired = self.session_expires_at.read().await;
+            if let Some(exp) = *expired {
+                if std::time::Instant::now() > exp {
+                    return Err(crate::error::AppError::Unauthorized("Session expired".into()));
+                }
+            }
+            Ok(k)
+        } else {
+            Err(crate::error::AppError::Unauthorized("Session locked".into()))
+        }
+    }
+
+    pub async fn set_master_key(&self, key: [u8; 32], timeout_secs: u64) {
+        *self.master_key.write().await = Some(key);
+        *self.session_expires_at.write().await =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs));
+    }
+
+    pub async fn clear_master_key(&self) {
+        *self.master_key.write().await = None;
+        *self.session_expires_at.write().await = None;
+    }
+
+    pub async fn is_session_unlocked(&self) -> bool {
+        let key = self.master_key.read().await;
+        if key.is_none() {
+            return false;
+        }
+        let expired = self.session_expires_at.read().await;
+        if let Some(exp) = *expired {
+            std::time::Instant::now() <= exp
+        } else {
+            true
         }
     }
 
@@ -112,10 +155,11 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn commit_transaction(&self, id: &str) -> AppResult<()> {
+    pub async fn commit_transaction(&self, id: &str) -> AppResult<u64> {
         let db_type;
         let transactional;
         let driver;
+        let accumulated;
         {
             let mut conns = self.connections.write().await;
             let session = conns.get_mut(id).ok_or_else(|| {
@@ -124,8 +168,10 @@ impl AppState {
             session.touch();
             db_type = session.driver.db_type();
             transactional = session.transactional;
+            accumulated = session.accumulated_rows_affected;
+            session.accumulated_rows_affected = 0;
             if db_type == DbType::Mongodb {
-                return Ok(());
+                return Ok(0);
             }
             driver = session.driver.clone();
         }
@@ -139,7 +185,7 @@ impl AppState {
             };
             driver.execute(begin_sql).await?;
         }
-        Ok(())
+        Ok(accumulated)
     }
 
     pub async fn rollback_transaction(&self, id: &str) -> AppResult<()> {
@@ -154,6 +200,7 @@ impl AppState {
             session.touch();
             db_type = session.driver.db_type();
             transactional = session.transactional;
+            session.accumulated_rows_affected = 0;
             if db_type == DbType::Mongodb {
                 return Ok(());
             }

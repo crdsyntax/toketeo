@@ -1,9 +1,11 @@
 import {
   Loader2,
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   ChevronDown,
+  ChevronUp,
   Layout,
   Code,
   Play,
@@ -23,6 +25,7 @@ import type {
   DbRow,
   DbValue,
 } from '@/types/database';
+import { Environment } from '@/types/database';
 import { ModelExportModal } from '../ModelExportModal';
 import { ContextMenu } from '@/components/ui/ContextMenu';
 import { invoke } from '@tauri-apps/api/core';
@@ -83,7 +86,17 @@ export function DataTab({
     column: string;
   } | null>(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [selectedCell, setSelectedCell] = useState<{
+    rowIndex: number;
+    column: string;
+  } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  const [sortState, setSortState] = useState<{
+    column: string;
+    direction: 'asc' | 'desc';
+  } | null>(null);
+  const copiedTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
 
   const SQL_ACTIONS = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON'] as const;
   type SqlAction = (typeof SQL_ACTIONS)[number];
@@ -117,6 +130,8 @@ export function DataTab({
   const isMongo = activeConnection?.type === 'mongodb';
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
+  const editorFontFamily = useAppStore((s) => s.editorFontFamily);
+  const resultsFontSize = useAppStore((s) => s.resultsFontSize);
 
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
@@ -170,6 +185,35 @@ export function DataTab({
     });
     prevColumns.current = queryData.columns;
   }, [queryData]);
+
+  const handleSortToggle = (col: string) => {
+    setSortState(prev => {
+      if (prev?.column === col) {
+        if (prev.direction === 'asc') return { column: col, direction: 'desc' };
+        return null;
+      }
+      return { column: col, direction: 'asc' };
+    });
+  };
+
+  const sortedRows = queryData?.rows
+    ? [...queryData.rows].sort((a, b) => {
+        if (!sortState) return 0;
+        const aVal = a[sortState.column];
+        const bVal = b[sortState.column];
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
+        let cmp = 0;
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          cmp = aVal - bVal;
+        } else if (typeof aVal === 'string' && typeof bVal === 'string') {
+          cmp = aVal.localeCompare(bVal);
+        } else {
+          cmp = String(aVal).localeCompare(String(bVal));
+        }
+        return sortState.direction === 'desc' ? -cmp : cmp;
+      })
+    : queryData?.rows ?? [];
 
   const handleResizeStart = (col: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -373,7 +417,7 @@ export function DataTab({
   return (
     <div
       className="flex-1 flex flex-col min-h-0 min-w-0 relative"
-      onClick={() => setContextMenu(null)}
+      onClick={() => { setContextMenu(null); setSelectedCell(null); }}
     >
       {contextMenu && (
         <ContextMenu
@@ -498,6 +542,12 @@ export function DataTab({
           </div>
         )}
       </div>
+      {activeConnection?.environment === Environment.PRODUCTION && (
+        <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-red-500 flex items-center gap-2 shrink-0">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <p className="text-[11px] font-bold uppercase tracking-wider flex-1">Production — inline edits require explicit Commit to persist</p>
+        </div>
+      )}
       {executionStatus === 'error' && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
@@ -522,7 +572,7 @@ export function DataTab({
           </div>
         ) : queryData ? (
           <div className="min-w-full inline-block align-middle">
-            <table className="min-w-full text-left text-xs border-collapse table-fixed">
+            <table className="min-w-full text-left border-collapse table-fixed" style={{ fontFamily: editorFontFamily, fontSize: resultsFontSize }}>
               <thead className="sticky top-0 bg-background border-b border-border z-10">
                 <tr>
                   <th className="p-2 font-bold bg-muted/50 border-r border-border text-center w-10">
@@ -531,40 +581,60 @@ export function DataTab({
                   {queryData.columns.map((col) => (
                     <th
                       key={col}
-                      className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0 relative select-none"
+                      className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0 relative select-none cursor-pointer hover:bg-muted/70 transition-colors group"
                       style={{ width: columnWidths[col] ?? DEFAULT_COL_WIDTH, minWidth: 80, maxWidth: 600 }}
                       title={col}
+                      onClick={() => handleSortToggle(col)}
                     >
-                      {col}
+                      <div className="flex items-center gap-1 pr-4">
+                        <span className="truncate">{col}</span>
+                        {sortState?.column === col ? (
+                          sortState.direction === 'asc' ? (
+                            <ChevronUp className="w-3 h-3 shrink-0 text-primary" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3 shrink-0 text-primary" />
+                          )
+                        ) : (
+                          <ChevronUp className="w-3 h-3 shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        )}
+                      </div>
                       <div
                         className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
-                        onMouseDown={(e) => handleResizeStart(col, e)}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          handleResizeStart(col, e);
+                        }}
                       />
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {queryData.rows.map((row, i) => (
+                {sortedRows.map((row, i) => (
                   <tr
                     key={i}
                     className={`${i === selectedRowIndex ? 'bg-muted' : 'border-b border-border/50 hover:bg-muted/30'} whitespace-nowrap`}
-                    onClick={() => setSelectedRowIndex(i)}
+                    onClick={(e) => { e.stopPropagation(); setSelectedRowIndex(i); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.pageX, y: e.pageY, row, rowIndex: i });
                     }}
                   >
-                    <td className="p-2 border-r cursor-pointer border-border text-center text-muted-foreground font-mono">
+                    <td className="p-2 border-r cursor-pointer border-border text-center text-muted-foreground">
                       {i + 1}
                     </td>
                     {queryData.columns.map((col) => {
                       const value = row[col];
+                      const isSelectedCell = selectedCell?.rowIndex === i && selectedCell?.column === col;
                       return (
                         <td
                           key={col}
-                          className="p-2 border-r border-border last:border-0 truncate cursor-text relative"
+                          className={cn(
+                            "p-2 border-r border-border last:border-0 truncate cursor-text relative group/cell",
+                            isSelectedCell && "ring-1 ring-primary/50 bg-primary/5"
+                          )}
                           style={{ width: columnWidths[col] ?? DEFAULT_COL_WIDTH, minWidth: 80, maxWidth: 600 }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedCell({ rowIndex: i, column: col }); }}
                           onDoubleClick={() => handleStartEdit(i, col, value)}
                           title="Double-click to edit"
                         >
@@ -603,15 +673,40 @@ export function DataTab({
                               </button>
                             </div>
                           ) : (
-                            <>
-                              {value === null ? (
-                                <span className="text-muted-foreground italic text-[10px]">
-                                  NULL
-                                </span>
-                              ) : (
-                                formatCellValue(value)
+                            <div className="flex items-center gap-1">
+                              <span className="truncate flex-1 min-w-0">
+                                {value === null ? (
+                                  <span className="text-muted-foreground italic text-[10px]">NULL</span>
+                                ) : (
+                                  formatCellValue(value)
+                                )}
+                              </span>
+                              {isSelectedCell && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const text = value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+                                    navigator.clipboard.writeText(text);
+                                    const key = `${i}:${col}`;
+                                    const existing = copiedTimers.current.get(key);
+                                    if (existing) clearTimeout(existing);
+                                    setCopiedCellKey(key);
+                                    copiedTimers.current.set(key, setTimeout(() => {
+                                      setCopiedCellKey(prev => prev === key ? null : prev);
+                                      copiedTimers.current.delete(key);
+                                    }, 1500));
+                                  }}
+                                  className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                                  title="Copy to clipboard"
+                                >
+                                  {copiedCellKey === `${i}:${col}` ? (
+                                    <Check className="w-3 h-3 text-emerald-500" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                </button>
                               )}
-                            </>
+                            </div>
                           )}
                         </td>
                       );

@@ -11,6 +11,7 @@ import { ConnectionModal } from '@/components/connections/ConnectionModal'
 import { GamificationModal } from '@/components/gamification/GamificationModal'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { listen } from '@tauri-apps/api/event'
+import { toast } from 'react-hot-toast'
 
 export default function MainLayout() {
   const queryClient = useQueryClient()
@@ -88,11 +89,16 @@ export default function MainLayout() {
     if (!activeConnection?.id) return
     setIsTransacting(true)
     try {
-      await connectionService.commit(activeConnection.id)
-      setMiniToast('tx', { type: 'success', text: 'Transaction Committed' })
+      const rowsAffected = await connectionService.commit(activeConnection.id)
+      const msg = rowsAffected > 0
+        ? `Transaction committed — ${rowsAffected} row(s) affected`
+        : 'Transaction committed successfully'
+      setMiniToast('tx', { type: 'success', text: msg })
+      toast.success(msg)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Commit failed'
       setMiniToast('tx', { type: 'error', text: message })
+      toast.error(`Commit failed: ${message}`)
     } finally {
       setIsTransacting(false)
     }
@@ -104,9 +110,11 @@ export default function MainLayout() {
     try {
       await connectionService.rollback(activeConnection.id)
       setMiniToast('tx', { type: 'success', text: 'Transaction Rolled Back' })
+      toast.success('Transaction rolled back successfully')
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Rollback failed'
       setMiniToast('tx', { type: 'error', text: message })
+      toast.error(`Rollback failed: ${message}`)
     } finally {
       setIsTransacting(false)
     }

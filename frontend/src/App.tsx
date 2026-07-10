@@ -6,6 +6,7 @@ import QueryEditor from '@/pages/QueryEditor'
 import AuditLog from '@/pages/AuditLog'
 import { DiagramPage } from '@/diagram'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
 import { SchedulerPage } from '@/pages/SchedulerPage'
 import { CrossDbSyncPage } from '@/pages/CrossDbSyncPage'
 import { AssistantPage } from '@/pages/AssistantPage'
@@ -29,6 +30,7 @@ function App() {
           <Route path="scheduler" element={<SchedulerPage />} />
           <Route path="cross-db-sync" element={<CrossDbSyncPage />} />
           <Route path="assistant" element={<AssistantPage />} />
+          <Route path="security" element={<SecuritySettingsPage />} />
         </Route>
       </Routes>
       </ThemeProvider>

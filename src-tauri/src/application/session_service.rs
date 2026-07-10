@@ -109,6 +109,7 @@ pub struct ConnectionSession {
     pub last_access: Instant,
     pub max_ttl: Option<Duration>,
     pub metadata_cache: MetadataCache,
+    pub accumulated_rows_affected: u64,
 }
 
 impl ConnectionSession {
@@ -130,6 +131,7 @@ impl ConnectionSession {
             last_access: now,
             max_ttl,
             metadata_cache: MetadataCache::new(metadata_cache_ttl),
+            accumulated_rows_affected: 0,
         }
     }
 

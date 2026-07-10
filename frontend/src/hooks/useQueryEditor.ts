@@ -6,6 +6,7 @@ import { queryService } from '@/services/query.service'
 import { tauriApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
+import { toast } from 'react-hot-toast'
 import type { DbValue, DbRow } from '@/types/database'
 import { ExecutionStatus, Environment } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
@@ -464,6 +465,13 @@ export function useQueryEditor() {
 
   const updateCell = useCallback(async (rowIndex: number, column: string, newValue: DbValue, isUndoRedo: boolean = false) => {
     if (!activeTab?.results || !activeConnection) return
+
+    if (activeConnection.environment === Environment.PRODUCTION && !isUndoRedo) {
+      toast(
+        'Editing production data — changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
+        { icon: '⚠️', duration: 5000 },
+      );
+    }
 
     const row = activeTab.results.rows[rowIndex]
     const prevValue = row[column]

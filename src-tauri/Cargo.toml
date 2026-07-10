@@ -42,3 +42,23 @@ zeroize = "1.8.2"
 cron = "0.15"
 regex = "1"
 strsim = "0.11"
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+keyring = { version = "3.6", features = ["windows-native"] }
+base64 = "0.22"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+qrcode = { version = "0.14", features = ["svg"] }
+sha2 = "0.10"
+raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Security_Credentials_UI",
+    "Foundation",
+    "implement",
+    "Win32_System_Com",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_StationsAndDesktops",
+] }

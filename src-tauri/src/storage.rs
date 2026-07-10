@@ -228,6 +228,29 @@ impl Storage {
         .execute(&pool)
         .await?;
 
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS app_secrets (
+                key TEXT PRIMARY KEY,
+                value BLOB NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Migrations for encrypted columns
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN password_enc BLOB")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN password_nonce BLOB")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN ssh_enc BLOB")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN ssh_nonce BLOB")
+            .execute(&pool)
+            .await;
+
         Ok(Self { pool })
     }
 
@@ -331,6 +354,10 @@ impl Storage {
             max_lifetime: row.try_get::<Option<i64>, _>("max_lifetime").unwrap_or(None).map(|v| v as i32),
             keep_alive: row.try_get::<Option<i64>, _>("keep_alive").unwrap_or(None).map(|v| v as i32),
             metadata_cache_ttl: row.try_get::<Option<i64>, _>("metadata_cache_ttl").unwrap_or(None).map(|v| v as i32),
+            password_enc: row.try_get::<Option<Vec<u8>>, _>("password_enc").unwrap_or(None),
+            password_nonce: row.try_get::<Option<Vec<u8>>, _>("password_nonce").unwrap_or(None),
+            ssh_enc: row.try_get::<Option<Vec<u8>>, _>("ssh_enc").unwrap_or(None),
+            ssh_nonce: row.try_get::<Option<Vec<u8>>, _>("ssh_nonce").unwrap_or(None),
         })
     }
 
@@ -458,6 +485,10 @@ impl Storage {
                 max_lifetime: row.try_get::<Option<i64>, _>("max_lifetime").unwrap_or(None).map(|v| v as i32),
                 keep_alive: row.try_get::<Option<i64>, _>("keep_alive").unwrap_or(None).map(|v| v as i32),
                 metadata_cache_ttl: row.try_get::<Option<i64>, _>("metadata_cache_ttl").unwrap_or(None).map(|v| v as i32),
+                password_enc: row.try_get::<Option<Vec<u8>>, _>("password_enc").unwrap_or(None),
+                password_nonce: row.try_get::<Option<Vec<u8>>, _>("password_nonce").unwrap_or(None),
+                ssh_enc: row.try_get::<Option<Vec<u8>>, _>("ssh_enc").unwrap_or(None),
+                ssh_nonce: row.try_get::<Option<Vec<u8>>, _>("ssh_nonce").unwrap_or(None),
             });
         }
         Ok(connections)
@@ -468,6 +499,41 @@ impl Storage {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn update_connection_encrypted(&self, config: &DbConnectionConfig) -> AppResult<()> {
+        let id = config.id.map(|i| i.to_string()).unwrap_or_default();
+        sqlx::query(
+            "UPDATE connections SET password_enc = ?, password_nonce = ?, ssh_enc = ?, ssh_nonce = ? WHERE id = ?"
+        )
+        .bind(&config.password_enc)
+        .bind(&config.password_nonce)
+        .bind(&config.ssh_enc)
+        .bind(&config.ssh_nonce)
+        .bind(&id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_app_secret(&self, key: &str) -> AppResult<Option<Vec<u8>>> {
+        let row = sqlx::query("SELECT value FROM app_secrets WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.get::<Vec<u8>, _>("value")))
+    }
+
+    pub async fn set_app_secret(&self, key: &str, value: &[u8]) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO app_secrets (key, value) VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
