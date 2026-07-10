@@ -1,32 +1,77 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listen } from '@tauri-apps/api/event'
-import { GitBranch, Plus, Trash2, Edit2, Play, Loader2, ArrowRight, X, BarChart3, History, ScrollText } from 'lucide-react'
+import { GitBranch, Plus, Trash2, Edit2, Play, Loader2, X, BarChart3, History, ScrollText, Database, Clock, CheckCircle2, AlertCircle, Pause, Square, ArrowRightFromLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { connectionService } from '@/services/connection.service'
 import { syncService } from '@/services/sync.service'
-import { PipelineEditor } from '@/components/sync/PipelineEditor'
+import { SyncWizard } from '@/components/sync/wizard/SyncWizard'
 import { SyncProgress } from '@/components/sync/SyncProgress'
 import { SyncLogViewer } from '@/components/sync/SyncLogViewer'
 import { SyncHistory } from '@/components/sync/SyncHistory'
+import type { Connection } from '@/types/database'
 import type { SyncPipeline, SyncRun } from '@/types/sync'
 import type { SyncEvent } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
 
 type DetailTab = 'progress' | 'logs' | 'history'
 
+function timeAgo(dateStr: string): string {
+  const ms = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1) return 'justo ahora'
+  if (mins < 60) return `hace ${mins}m`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `hace ${hours}h`
+  const days = Math.floor(hours / 24)
+  return `hace ${days}d`
+}
+
+const STATUS_CONFIG: Record<PipelineStatus, { color: string; label: string; icon: typeof CheckCircle2 }> = {
+  [PipelineStatus.Ready]: { color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', label: 'Listo', icon: CheckCircle2 },
+  [PipelineStatus.Running]: { color: 'text-blue-500 bg-blue-500/10 border-blue-500/20', label: 'En progreso', icon: Loader2 },
+  [PipelineStatus.Draft]: { color: 'text-muted-foreground bg-muted/20 border-border', label: 'Borrador', icon: Clock },
+  [PipelineStatus.Failed]: { color: 'text-destructive bg-destructive/10 border-destructive/20', label: 'Error', icon: AlertCircle },
+  [PipelineStatus.Completed]: { color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', label: 'Completado', icon: CheckCircle2 },
+  [PipelineStatus.Paused]: { color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20', label: 'Pausado', icon: Pause },
+  [PipelineStatus.Cancelled]: { color: 'text-muted-foreground bg-muted/20 border-border', label: 'Cancelado', icon: Square },
+  [PipelineStatus.Retrying]: { color: 'text-orange-500 bg-orange-500/10 border-orange-500/20', label: 'Reintentando', icon: Loader2 },
+}
+
 export function CrossDbSyncPage() {
   const [showEditor, setShowEditor] = useState(false)
   const [editingPipeline, setEditingPipeline] = useState<SyncPipeline | null>(null)
   const [executingId, setExecutingId] = useState<string | null>(null)
+  const [pausedId, setPausedId] = useState<string | null>(null)
   const [selectedPipeline, setSelectedPipeline] = useState<SyncPipeline | null>(null)
   const [activeRun, setActiveRun] = useState<SyncRun | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('history')
+  const [latestRuns, setLatestRuns] = useState<Record<string, SyncRun>>({})
   const queryClient = useQueryClient()
 
   const { data: pipelines, isLoading } = useQuery({
     queryKey: ['sync-pipelines'],
     queryFn: () => syncService.list(),
   })
+
+  const { data: connections } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  })
+
+  const connMap = new Map(connections?.map((c) => [c.id, c]) ?? [])
+
+  // Fetch latest run for each pipeline
+  useEffect(() => {
+    if (!pipelines) return
+    pipelines.forEach((p) => {
+      syncService.listRuns(p.id).then((runs) => {
+        if (runs.length > 0) {
+          setLatestRuns((prev) => ({ ...prev, [p.id]: runs[0] }))
+        }
+      }).catch(() => {})
+    })
+  }, [pipelines])
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => syncService.remove(id),
@@ -60,7 +105,6 @@ export function CrossDbSyncPage() {
       await syncService.start(p.id)
       setSelectedPipeline(p)
       setDetailTab('progress')
-      // Fetch latest run so SyncProgress can show live updates
       const runs = await syncService.listRuns(p.id)
       if (runs.length > 0) {
         setActiveRun(runs[0])
@@ -71,7 +115,17 @@ export function CrossDbSyncPage() {
     }
   }
 
-  // Listen for sync events to clear executingId when sync finishes
+  const handlePause = async (id: string) => {
+    setPausedId(id)
+    // Backend pause will be implemented in a later phase
+    setPausedId(null)
+  }
+
+  const handleCancel = async (id: string) => {
+    setExecutingId(null)
+    // Backend cancel will be implemented in a later phase
+  }
+
   useEffect(() => {
     const unlisten = listen<SyncEvent>('sync:event', (event) => {
       const e = event.payload
@@ -83,9 +137,8 @@ export function CrossDbSyncPage() {
     return () => { unlisten.then((f) => f()) }
   }, [])
 
-  // Also clear executingId on backend error (sent to a separate channel)
   useEffect(() => {
-    const unlisten = listen<string>('sync:error', (event) => {
+    const unlisten = listen<string>('sync:error', () => {
       setExecutingId(null)
       queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
     })
@@ -103,16 +156,7 @@ export function CrossDbSyncPage() {
     }
   }
 
-  const statusColor = (s: PipelineStatus) => {
-    switch (s) {
-      case PipelineStatus.Ready: return 'text-emerald-500 bg-emerald-500/5 border-emerald-500/20'
-      case PipelineStatus.Running: return 'text-blue-500 bg-blue-500/5 border-blue-500/20'
-      case PipelineStatus.Draft: return 'text-muted-foreground bg-muted/20 border-border'
-      case PipelineStatus.Failed: return 'text-destructive bg-destructive/5 border-destructive/20'
-      case PipelineStatus.Completed: return 'text-emerald-500 bg-emerald-500/5 border-emerald-500/20'
-      default: return 'text-muted-foreground bg-muted/20 border-border'
-    }
-  }
+  const isExecuting = (id: string) => executingId === id
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto py-6">
@@ -120,10 +164,10 @@ export function CrossDbSyncPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight uppercase flex items-center gap-3">
             <GitBranch className="w-6 h-6 text-primary" />
-            Cross-DB Sync
+            Sincronización Cross-DB
           </h1>
           <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">
-            Synchronize data across multiple database engines
+            Sincroniza datos entre distintos motores de base de datos
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -131,13 +175,12 @@ export function CrossDbSyncPage() {
             onClick={handleCreate}
             className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
           >
-            <Plus className="w-4 h-4" /> New Pipeline
+            <Plus className="w-4 h-4" /> Nueva Sincronización
           </button>
         </div>
       </div>
 
       <div className="flex gap-6">
-        {/* Pipeline list */}
         <div className={cn(selectedPipeline ? 'w-1/2' : 'w-full', 'space-y-4')}>
           {isLoading ? (
             <div className="grid gap-4 md:grid-cols-2">
@@ -147,94 +190,134 @@ export function CrossDbSyncPage() {
             </div>
           ) : pipelines && pipelines.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2">
-              {pipelines.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => handleSelectPipeline(p)}
-                  className={cn(
-                    "group relative border border-border bg-secondary/30 p-4 transition-all duration-200 cursor-pointer",
-                    selectedPipeline?.id === p.id
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'hover:border-primary/30 hover:bg-secondary/50',
-                  )}
-                >
-                  {selectedPipeline?.id === p.id && (
-                    <div className="absolute -left-[1px] top-0 bottom-0 w-1 bg-primary" />
-                  )}
+              {pipelines.map((p) => {
+                const sc = connMap.get(p.source_connection_id)
+                const tc = connMap.get(p.target_connection_id)
+                const lastRun = latestRuns[p.id]
+                const cfg = STATUS_CONFIG[p.status]
+                const StatusIcon = cfg.icon
+                const busy = isExecuting(p.id)
 
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/5 border border-primary/10">
-                        <GitBranch className="w-5 h-5 text-primary" />
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => handleSelectPipeline(p)}
+                    className={cn(
+                      "group relative border border-border bg-secondary/30 p-4 transition-all duration-200 cursor-pointer",
+                      selectedPipeline?.id === p.id
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'hover:border-primary/30 hover:bg-secondary/50',
+                    )}
+                  >
+                    {selectedPipeline?.id === p.id && (
+                      <div className="absolute -left-[1px] top-0 bottom-0 w-1 bg-primary" />
+                    )}
+
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/5 border border-primary/10">
+                          <GitBranch className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-sm tracking-tight truncate max-w-[140px]">{p.name}</h3>
+                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 mt-1 text-[9px] font-bold tracking-widest uppercase border", cfg.color)}>
+                            <StatusIcon className={cn("w-3 h-3", p.status === PipelineStatus.Running || p.status === PipelineStatus.Retrying ? 'animate-spin' : '')} />
+                            {cfg.label}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-bold text-sm tracking-tight truncate max-w-[140px]">{p.name}</h3>
-                        <span className={cn("inline-flex px-1.5 py-0.5 mt-1 text-[9px] font-bold tracking-widest uppercase border", statusColor(p.status))}>
-                          {p.status}
-                        </span>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                        {busy ? (
+                          <>
+                            <button
+                              onClick={() => handlePause(p.id)}
+                              disabled={pausedId === p.id}
+                              className="p-1.5 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/5 transition-colors"
+                              title="Pausar"
+                            >
+                              {pausedId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pause className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => handleCancel(p.id)}
+                              className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+                              title="Cancelar"
+                            >
+                              <Square className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleStart(p)}
+                              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+                              title="Ejecutar"
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleEdit(p)}
+                              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => deleteMutation.mutate(p.id)}
+                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleStart(p)}
-                        disabled={executingId === p.id}
-                        className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
-                      >
-                        {executingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        onClick={() => handleEdit(p)}
-                        className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => deleteMutation.mutate(p.id)}
-                        className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
 
-                  <div className="space-y-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-2 font-mono">
-                      <span className="text-primary text-[10px]">Source</span>
-                      <span className="truncate">{p.source_connection_id.slice(0, 12)}...</span>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-3">
+                      <span className="flex items-center gap-1 truncate max-w-[120px]">
+                        <Database className="w-3 h-3 shrink-0" />
+                        {sc?.name ?? p.source_connection_id.slice(0, 8)}
+                      </span>
+                      <ArrowRightFromLine className="w-3 h-3 shrink-0 text-primary" />
+                      <span className="flex items-center gap-1 truncate max-w-[120px]">
+                        <Database className="w-3 h-3 shrink-0" />
+                        {tc?.name ?? p.target_connection_id.slice(0, 8)}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 font-mono">
-                      <span className="text-primary text-[10px]">Target</span>
-                      <span className="truncate">{p.target_connection_id.slice(0, 12)}...</span>
-                    </div>
-                  </div>
 
-                  <div className="mt-4 pt-4 border-t border-border/50 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground">
-                      {p.mode.toUpperCase()}
+                    <div className="pt-3 border-t border-border/50 flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span className="font-bold uppercase tracking-wider">{p.mode === 'full' ? 'Completa' : 'Incremental'}</span>
+                      <span>{p.tables.length} tabla{p.tables.length !== 1 ? 's' : ''}</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground font-mono">
-                      {p.tables.length} table{p.tables.length !== 1 ? 's' : ''} · batch {p.batch_size}
-                    </div>
+
+                    {lastRun && (
+                      <div className="mt-1 text-[9px] text-muted-foreground/70">
+                        {lastRun.completed_at ? (
+                          <span>Última ejecución: {timeAgo(lastRun.completed_at)} · {lastRun.processed_rows} filas, {lastRun.error_count} errores</span>
+                        ) : (
+                          <span>Última ejecución: {timeAgo(lastRun.started_at ?? '')}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center text-muted-foreground p-12 text-center border border-dashed border-border bg-muted/20">
               <GitBranch className="w-12 h-12 mb-4 opacity-30" />
-              <h3 className="text-base font-semibold text-foreground mb-1">No Sync Pipelines</h3>
-              <p className="text-sm max-w-md">Create a pipeline to start syncing data across databases.</p>
+              <h3 className="text-base font-semibold text-foreground mb-1">Sin sincronizaciones</h3>
+              <p className="text-sm max-w-md">Crea una sincronización para empezar a transferir datos entre bases de datos.</p>
               <button
                 onClick={handleCreate}
                 className="mt-6 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
               >
-                <Plus className="w-4 h-4" /> New Pipeline
+                <Plus className="w-4 h-4" /> Nueva Sincronización
               </button>
             </div>
           )}
         </div>
 
-        {/* Detail panel */}
         {selectedPipeline && (
           <div className="w-1/2 space-y-4">
             <div className="flex items-center justify-between">
@@ -247,12 +330,11 @@ export function CrossDbSyncPage() {
               </button>
             </div>
 
-            {/* Tab bar */}
             <div className="flex gap-1 border-b border-border pb-1">
               {[
-                { id: 'progress' as DetailTab, icon: BarChart3, label: 'Progress' },
-                { id: 'logs' as DetailTab, icon: ScrollText, label: 'Logs' },
-                { id: 'history' as DetailTab, icon: History, label: 'History' },
+                { id: 'progress' as DetailTab, icon: BarChart3, label: 'Progreso' },
+                { id: 'logs' as DetailTab, icon: ScrollText, label: 'Registros' },
+                { id: 'history' as DetailTab, icon: History, label: 'Historial' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -269,13 +351,12 @@ export function CrossDbSyncPage() {
               ))}
             </div>
 
-            {/* Tab content */}
             {detailTab === 'progress' && (
               activeRun ? (
                 <SyncProgress run={activeRun} />
               ) : (
                 <div className="border border-border bg-muted/20 p-6 text-center">
-                  <p className="text-xs text-muted-foreground">Select a run from History to view progress, or start a new sync.</p>
+                  <p className="text-xs text-muted-foreground">Selecciona una ejecución del historial para ver su progreso, o inicia una nueva sincronización.</p>
                 </div>
               )
             )}
@@ -285,7 +366,7 @@ export function CrossDbSyncPage() {
                 <SyncLogViewer runId={activeRun.id} />
               ) : (
                 <div className="border border-border bg-muted/20 p-6 text-center">
-                  <p className="text-xs text-muted-foreground">Select a run to view its batch logs.</p>
+                  <p className="text-xs text-muted-foreground">Selecciona una ejecución para ver sus registros.</p>
                 </div>
               )
             )}
@@ -302,7 +383,7 @@ export function CrossDbSyncPage() {
       </div>
 
       {showEditor && (
-        <PipelineEditor pipeline={editingPipeline} onClose={handleClose} />
+        <SyncWizard pipeline={editingPipeline} onClose={handleClose} />
       )}
     </div>
   )

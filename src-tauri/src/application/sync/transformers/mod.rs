@@ -108,11 +108,77 @@ fn cast_value(value: serde_json::Value, target_type: &str) -> AppResult<serde_js
     }
 }
 
-fn date_format(value: serde_json::Value, _format: &str) -> AppResult<serde_json::Value> {
-    // Placeholder: devuelve el valor sin cambios.
-    // La implementación completa requerirá chrono/naive date parsing.
-    //
-    // Ejemplo futuro:
-    //   "2024-01-15T10:30:00Z" con formato "%Y-%m-%d" → "2024-01-15"
-    Ok(value)
+fn date_format(value: serde_json::Value, format: &str) -> AppResult<serde_json::Value> {
+    let s = match value.as_str() {
+        Some(s) if !s.is_empty() => s,
+        _ => return Ok(value),
+    };
+
+    // Try common ISO 8601 / datetime formats automatically
+    let parsed = try_parse_datetime(s);
+    let formatted = match parsed {
+        Some(dt) => {
+            if format.contains('%') {
+                // strftime-style format
+                dt.format(format).to_string()
+            } else {
+                // Common named format shortcuts
+                match format {
+                    "date" => dt.format("%Y-%m-%d").to_string(),
+                    "datetime" => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+                    "time" => dt.format("%H:%M:%S").to_string(),
+                    "timestamp" => dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+                    "year" => dt.format("%Y").to_string(),
+                    "month" => dt.format("%Y-%m").to_string(),
+                    _ => {
+                        // Treat as strftime format
+                        let fmt = format.replace("YYYY", "%Y")
+                            .replace("yy", "%y")
+                            .replace("MM", "%m")
+                            .replace("dd", "%d")
+                            .replace("HH", "%H")
+                            .replace("mm", "%M")
+                            .replace("ss", "%S");
+                        dt.format(&fmt).to_string()
+                    }
+                }
+            }
+        }
+        None => return Ok(value),
+    };
+
+    Ok(serde_json::Value::String(formatted))
+}
+
+/// Try to parse a datetime string from common formats.
+fn try_parse_datetime(s: &str) -> Option<chrono::NaiveDateTime> {
+    // ISO 8601 with timezone: 2024-01-15T10:30:00Z or 2024-01-15T10:30:00+00:00
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.naive_utc());
+    }
+    // ISO 8601 without timezone
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return Some(dt);
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Some(dt);
+    }
+    // Date only
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Some(d.and_hms_opt(0, 0, 0).unwrap());
+    }
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%d/%m/%Y") {
+        return Some(d.and_hms_opt(0, 0, 0).unwrap());
+    }
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%m/%d/%Y") {
+        return Some(d.and_hms_opt(0, 0, 0).unwrap());
+    }
+    // Timestamp with milliseconds
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+        return Some(dt);
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ") {
+        return Some(dt);
+    }
+    None
 }

@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { Loader2, CheckCircle2, XCircle, Clock, ArrowRight, AlertTriangle } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, Database, ArrowRightFromLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SyncEvent, SyncRun } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
@@ -11,44 +11,52 @@ interface SyncProgressProps {
 }
 
 interface ProgressState {
-  totalBatches: number
   completedBatches: number
   processedRows: number
   totalRows: number
   errors: number
-  durationMs: number
   currentTable: string
   phase: 'extracting' | 'loading' | 'done' | 'idle'
+  elapsedMs: number
+  estimatedMs: number
+}
+
+interface MiniLog {
+  type: 'batch' | 'error' | 'phase'
+  table: string
+  message: string
+  time: Date
 }
 
 export function SyncProgress({ run, onEvent }: SyncProgressProps) {
   const [progress, setProgress] = useState<ProgressState>({
-    totalBatches: run.batch_count,
     completedBatches: 0,
     processedRows: run.processed_rows,
     totalRows: run.total_rows,
     errors: run.error_count,
-    durationMs: 0,
     currentTable: '',
     phase: 'idle',
+    elapsedMs: 0,
+    estimatedMs: 0,
   })
+  const [logs, setLogs] = useState<MiniLog[]>([])
+  const [startTime] = useState(Date.now())
+  const processedAtStart = useRef(run.processed_rows)
 
-  const [startTime, setStartTime] = useState(Date.now())
-
-  // Re-initialize when run changes
   useEffect(() => {
     setProgress({
-      totalBatches: run.batch_count,
       completedBatches: 0,
       processedRows: run.processed_rows,
       totalRows: run.total_rows,
       errors: run.error_count,
-      durationMs: 0,
       currentTable: '',
       phase: 'idle',
+      elapsedMs: 0,
+      estimatedMs: 0,
     })
-    setStartTime(Date.now())
-  }, [run.id, run.batch_count, run.processed_rows, run.error_count, run.total_rows])
+    setLogs([])
+    processedAtStart.current = run.processed_rows
+  }, [run.id])
 
   useEffect(() => {
     const unlisten = listen<SyncEvent>('sync:event', (event) => {
@@ -64,119 +72,178 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
           phase: 'loading',
         }))
       } else if (e.BatchCompleted) {
-        setProgress((p) => ({
-          ...p,
-          completedBatches: p.completedBatches + 1,
-          processedRows: p.processedRows + e.BatchCompleted!.rows_loaded,
-          currentTable: e.BatchCompleted!.table,
-          phase: 'loading',
-        }))
+        const batch = e.BatchCompleted!
+        setProgress((p) => {
+          const now = Date.now()
+          const elapsed = now - startTime
+          const rowsPerMs = p.processedRows / Math.max(elapsed, 1)
+          const remaining = Math.max(p.totalRows - p.processedRows, 0)
+          const estimated = rowsPerMs > 0 ? remaining / rowsPerMs : 0
+          return {
+            ...p,
+            completedBatches: p.completedBatches + 1,
+            processedRows: p.processedRows + batch.rows_loaded,
+            currentTable: batch.table,
+            phase: 'loading',
+            elapsedMs: elapsed,
+            estimatedMs: estimated,
+          }
+        })
+        setLogs((prev) => [
+          { type: 'batch', table: batch.table, message: `Lote ${batch.batch_number}: ${batch.rows_loaded} filas en ${batch.duration_ms}ms`, time: new Date() },
+          ...prev,
+        ].slice(0, 5))
       } else if (e.RowError) {
         setProgress((p) => ({ ...p, errors: p.errors + 1 }))
+        setLogs((prev) => [
+          { type: 'error', table: e.RowError!.table, message: e.RowError!.error, time: new Date() },
+          ...prev,
+        ].slice(0, 5))
       } else if (e.PhaseCompleted) {
-        setProgress((p) => ({ ...p, phase: 'done', currentTable: '' }))
+        setProgress((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
+        setLogs((prev) => [
+          { type: 'phase', table: e.PhaseCompleted!.table, message: `Completado: ${e.PhaseCompleted!.total_rows} filas`, time: new Date() },
+          ...prev,
+        ].slice(0, 5))
       } else if (e.Error) {
-        setProgress((p) => ({ ...p, phase: 'done' }))
+        setProgress((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime }))
+        setLogs((prev) => [
+          { type: 'error', table: '', message: e.Error!.message, time: new Date() },
+          ...prev,
+        ].slice(0, 5))
       }
     })
 
     return () => { unlisten.then((f) => f()) }
   }, [])
 
-  // Tick duration
+  // Elapsed time ticker
   useEffect(() => {
     if (run.status !== PipelineStatus.Running) return
     const interval = setInterval(() => {
-      setProgress((p) => ({ ...p, durationMs: Date.now() - startTime }))
+      setProgress((p) => ({ ...p, elapsedMs: Date.now() - startTime }))
     }, 1000)
     return () => clearInterval(interval)
   }, [run.status, startTime])
 
   const isRunning = run.status === PipelineStatus.Running
   const isCompleted = run.status === PipelineStatus.Completed
-  const isFailed = run.status === PipelineStatus.Failed
-
   const totalForPct = progress.totalRows > 0 ? progress.totalRows : 1
   const pct = Math.min(100, Math.round((progress.processedRows / totalForPct) * 100))
 
-  const formatDuration = (ms: number) => {
+  const fmt = (ms: number) => {
     const s = Math.floor(ms / 1000)
     const m = Math.floor(s / 60)
     const h = Math.floor(m / 60)
-    return `${h > 0 ? h + 'h ' : ''}${m % 60}m ${s % 60}s`
+    const secs = s % 60
+    return `${h > 0 ? h + 'h ' : ''}${m % 60 > 0 || h > 0 ? (m % 60) + 'm ' : ''}${secs}s`
   }
 
-  const rowsPerSec = progress.durationMs > 0
-    ? (progress.processedRows / (progress.durationMs / 1000)).toFixed(1)
-    : '—'
-
   return (
-    <div className="border border-border bg-muted/20 p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isRunning && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-          {isCompleted && !isFailed && progress.errors === 0 && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-          {isCompleted && progress.errors > 0 && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-          {isFailed && <XCircle className="w-4 h-4 text-destructive" />}
-          <span className={cn(
-            "text-[10px] font-bold uppercase tracking-widest",
-            isRunning && 'text-primary',
-            isCompleted && progress.errors === 0 && 'text-emerald-500',
-            isCompleted && progress.errors > 0 && 'text-amber-500',
-            isFailed && 'text-destructive',
-          )}>
-            {isRunning ? 'Running' : isCompleted && progress.errors === 0 ? 'Completed' : isCompleted && progress.errors > 0 ? 'Completed with errors' : isFailed ? 'Failed' : run.status}
-          </span>
+    <div className="border border-border bg-muted/20 space-y-0 divide-y divide-border">
+      {/* Header */}
+      <div className="p-4 flex items-center gap-3">
+        {isRunning ? (
+          <div className="w-10 h-10 bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 text-primary animate-spin" />
+          </div>
+        ) : isCompleted && progress.errors === 0 ? (
+          <div className="w-10 h-10 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+          </div>
+        ) : (
+          <div className="w-10 h-10 bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+          </div>
+        )}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider">
+            {isRunning ? 'Sincronizando...' : isCompleted && progress.errors === 0 ? 'Completado' : 'Completado con errores'}
+          </p>
+          <p className="text-[10px] text-muted-foreground font-mono">{fmt(progress.elapsedMs)}</p>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground">{formatDuration(progress.durationMs)}</span>
+        {progress.currentTable && isRunning && (
+          <div className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground">
+            <Database className="w-3 h-3 animate-pulse" />
+            {progress.currentTable}
+          </div>
+        )}
+      </div>
+
+      {/* Big counter */}
+      <div className="p-6 flex items-center justify-center gap-8">
+        <div className="text-center">
+          <p className="text-4xl font-bold font-mono tabular-nums">
+            {progress.processedRows.toLocaleString()}
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+            de {progress.totalRows.toLocaleString()} filas
+          </p>
+        </div>
+        <ArrowRightFromLine className="w-8 h-8 text-primary/40" />
+        <div className="text-center">
+          <p className={cn("text-4xl font-bold font-mono tabular-nums", progress.errors > 0 && 'text-destructive')}>
+            {progress.errors}
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+            errores
+          </p>
+        </div>
       </div>
 
       {/* Progress bar */}
-      <div className="h-2 bg-muted border border-border overflow-hidden">
-        <div
-          className={cn(
-            "h-full transition-all duration-500",
-            isRunning && 'bg-primary',
-            isCompleted && progress.errors === 0 && 'bg-emerald-500',
-            isCompleted && progress.errors > 0 && 'bg-amber-500',
-            isFailed && 'bg-destructive',
+      <div className="px-4 pb-4">
+        <div className="h-3 bg-muted border border-border overflow-hidden relative">
+          <div
+            className={cn(
+              "h-full transition-all duration-500 ease-out",
+              isRunning && 'bg-primary',
+              !isRunning && progress.errors === 0 && 'bg-emerald-500',
+              !isRunning && progress.errors > 0 && 'bg-amber-500',
+            )}
+            style={{ width: `${isCompleted ? 100 : Math.max(pct, 2)}%` }}
+          />
+          {/* Animated stripe effect while running */}
+          {isRunning && (
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
+            </div>
           )}
-          style={{ width: `${isCompleted ? 100 : pct}%` }}
-        />
-      </div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-4 gap-4 text-center">
-        <div>
-          <p className="text-lg font-bold font-mono text-foreground">
-            {progress.processedRows.toLocaleString()}<span className="text-muted-foreground"> / {progress.totalRows.toLocaleString()}</span>
-          </p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Records</p>
         </div>
-        <div>
-          <p className={cn("text-lg font-bold font-mono", progress.errors > 0 ? 'text-destructive' : 'text-foreground')}>
-            {progress.errors}
-          </p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Failed</p>
-        </div>
-        <div>
-          <p className="text-lg font-bold font-mono text-foreground">{progress.completedBatches}</p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Batches</p>
-        </div>
-        <div>
-          <p className="text-lg font-bold font-mono text-foreground">{rowsPerSec}</p>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Rows/s</p>
+        <div className="flex justify-between mt-1 text-[9px] text-muted-foreground font-mono">
+          <span>{pct}%</span>
+          {isRunning && progress.estimatedMs > 0 && (
+            <span>~{fmt(progress.estimatedMs)} restantes</span>
+          )}
         </div>
       </div>
 
-      {/* Batch info */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
-        <span>Batches: {progress.completedBatches} / {Math.max(run.batch_count, progress.completedBatches)}</span>
-        {progress.currentTable && (
-          <span className="flex items-center gap-1">
-            <ArrowRight className="w-3 h-3" /> {progress.currentTable}
-          </span>
-        )}
+      {/* Mini logs */}
+      <div className="p-4">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Últimas operaciones</p>
+        <div className="space-y-1 max-h-[120px] overflow-y-auto">
+          {logs.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground italic">Esperando eventos...</p>
+          ) : (
+            logs.map((log, i) => (
+              <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
+                <span className={cn(
+                  'w-1.5 h-1.5 rounded-full shrink-0',
+                  log.type === 'batch' && 'bg-primary',
+                  log.type === 'error' && 'bg-destructive',
+                  log.type === 'phase' && 'bg-emerald-500',
+                )} />
+                <span className="text-muted-foreground shrink-0">[{log.time.toLocaleTimeString()}]</span>
+                <span className={cn(
+                  log.type === 'error' && 'text-destructive',
+                  log.type === 'phase' && 'text-emerald-500',
+                )}>
+                  {log.message}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   )

@@ -7,11 +7,44 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
+/// Control state for a running sync pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyncControl {
+    Running,
+    Paused,
+    Cancelled,
+}
+
+/// Thread-safe sync controller that can be shared across tasks.
+#[derive(Clone)]
+pub struct SyncController {
+    inner: Arc<RwLock<HashMap<String, SyncControl>>>,
+}
+
+impl SyncController {
+    pub fn new() -> Self {
+        Self { inner: Arc::new(RwLock::new(HashMap::new())) }
+    }
+
+    pub async fn set(&self, pipeline_id: &str, control: SyncControl) {
+        self.inner.write().await.insert(pipeline_id.to_string(), control);
+    }
+
+    pub async fn get(&self, pipeline_id: &str) -> Option<SyncControl> {
+        self.inner.read().await.get(pipeline_id).cloned()
+    }
+
+    pub async fn remove(&self, pipeline_id: &str) {
+        self.inner.write().await.remove(pipeline_id);
+    }
+}
+
 pub struct AppState {
     pub connections: RwLock<HashMap<String, ConnectionSession>>,
     pub storage: Arc<Storage>,
     pub master_key: RwLock<Option<[u8; 32]>>,
     pub session_expires_at: RwLock<Option<std::time::Instant>>,
+    pub sync_controller: SyncController,
 }
 
 impl AppState {
@@ -21,7 +54,20 @@ impl AppState {
             storage: Arc::new(storage),
             master_key: RwLock::new(None),
             session_expires_at: RwLock::new(None),
+            sync_controller: SyncController::new(),
         }
+    }
+
+    pub async fn set_sync_control(&self, pipeline_id: &str, control: SyncControl) {
+        self.sync_controller.set(pipeline_id, control).await;
+    }
+
+    pub async fn get_sync_control(&self, pipeline_id: &str) -> Option<SyncControl> {
+        self.sync_controller.get(pipeline_id).await
+    }
+
+    pub async fn remove_sync_control(&self, pipeline_id: &str) {
+        self.sync_controller.remove(pipeline_id).await;
     }
 
     pub async fn require_unlock(&self) -> crate::error::AppResult<[u8; 32]> {

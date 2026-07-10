@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { GitBranch, X, Loader2, Database, Save, ArrowRight, FlaskConical, CheckSquare, Square } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { GitBranch, X, Loader2, Database, Save, FlaskConical, ChevronDown, ChevronRight, Columns } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
 import { schemaService } from '@/services/schema.service'
-import { syncService } from '@/services/sync.service'
 import { useSyncStore } from '@/store/syncStore'
 import { ColumnMapper } from '@/components/sync/ColumnMapper'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -26,21 +24,18 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
   const [sourceId, setSourceId] = useState(pipeline?.source_connection_id ?? '')
   const [targetId, setTargetId] = useState(pipeline?.target_connection_id ?? '')
   const [mode, setMode] = useState<SyncMode>(pipeline?.mode ?? SyncMode.Full)
-  const [batchSize, setBatchSize] = useState(pipeline?.batch_size ?? 1000)
   const [tables, setTables] = useState<SyncTableConfig[]>(pipeline?.tables ?? [])
   const [saving, setSaving] = useState(false)
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sourceColumns, setSourceColumns] = useState<Record<number, string[]>>({})
   const [loadingColumns, setLoadingColumns] = useState<Record<number, boolean>>({})
+  const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({})
 
   const { data: connections } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
-
-  const sourceConn = connections?.find((c) => c.id === sourceId)
-  const targetConn = connections?.find((c) => c.id === targetId)
 
   const dto = (): CreateSyncPipelineDto => ({
     name,
@@ -48,7 +43,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
     target_connection_id: targetId,
     mode,
     tables,
-    batch_size: batchSize,
+    batch_size: 0,
     ...(pipeline?.id ? { id: pipeline.id } : {}),
   } as unknown as CreateSyncPipelineDto)
 
@@ -120,24 +115,6 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
   const updateMappings = (i: number, mappings: ColumnMapping[]) => {
     updateTable(i, 'column_mappings', mappings)
-  }
-
-  const toggleColumn = (tableIdx: number, col: string) => {
-    const table = tables[tableIdx]
-    const existing = table.column_mappings
-    const idx = existing.findIndex((m) => m.source_column === col)
-    if (idx >= 0) {
-      updateMappings(tableIdx, existing.filter((_, j) => j !== idx))
-    } else {
-      updateMappings(tableIdx, [
-        ...existing,
-        { source_column: col, destination_column: col },
-      ])
-    }
-  }
-
-  const isColumnChecked = (tableIdx: number, col: string) => {
-    return tables[tableIdx]?.column_mappings.some((m) => m.source_column === col) ?? false
   }
 
   const isEditing = !!pipeline
@@ -218,33 +195,19 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             />
           </div>
 
-          {/* Mode + Batch Size */}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Tooltip content="Full: copies all data each run. Incremental: only copies new/changed data since the last sync">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
-              </Tooltip>
-              <select
-                className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
-                value={mode}
-                onChange={(e) => setMode(e.target.value as SyncMode)}
-              >
-                <option value={SyncMode.Full}>Full Sync</option>
-                <option value={SyncMode.Incremental}>Incremental Sync</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Tooltip content="Number of rows per batch. Larger values improve throughput but use more memory">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Batch Size</label>
-              </Tooltip>
-              <input
-                type="number"
-                className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
-                value={batchSize}
-                onChange={(e) => setBatchSize(parseInt(e.target.value) || 1000)}
-                min={1}
-              />
-            </div>
+          {/* Sync Mode */}
+          <div className="space-y-2">
+            <Tooltip content="Full: copies all data each run. Incremental: only copies new/changed data since the last sync">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
+            </Tooltip>
+            <select
+              className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as SyncMode)}
+            >
+              <option value={SyncMode.Full}>Full Sync</option>
+              <option value={SyncMode.Incremental}>Incremental Sync</option>
+            </select>
           </div>
 
           {/* Tables */}
@@ -272,110 +235,84 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <Tooltip content="Schema-qualified source table name (e.g. public.users)">
+                    <Tooltip content="Source table name (e.g. users)">
                       <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Table</label>
                     </Tooltip>
                     <input
                       className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                       value={table.source_table}
                       onChange={(e) => updateTable(i, 'source_table', e.target.value)}
-                      placeholder="schema.table_name"
+                      placeholder="users"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Tooltip content="Schema-qualified target table name (e.g. public.users)">
+                    <Tooltip content="Target table name (e.g. users)">
                       <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Table</label>
                     </Tooltip>
                     <input
                       className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                       value={table.target_table}
                       onChange={(e) => updateTable(i, 'target_table', e.target.value)}
-                      placeholder="schema.table_name"
+                      placeholder="users"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <Tooltip content="Optional SQL WHERE clause to filter rows during extraction (applied to source)">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Filter (WHERE clause)</label>
-                  </Tooltip>
-                  <input
-                    className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
-                    value={table.filters ?? ''}
-                    onChange={(e) => updateTable(i, 'filters', e.target.value || undefined)}
-                    placeholder="e.g. created_at > '2024-01-01'"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Tooltip content="Comma-separated primary key columns used for incremental sync and deduplication">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Primary Key(s) (comma-separated)</label>
-                  </Tooltip>
-                  <input
-                    className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
-                    value={table.primary_key?.join(', ') ?? ''}
-                    onChange={(e) => updateTable(i, 'primary_key', e.target.value ? e.target.value.split(',').map((s) => s.trim()) : undefined)}
-                    placeholder="id"
-                  />
-                </div>
-
-                {/* Source columns with checkboxes */}
+                {/* Auto-detected columns - read only summary */}
                 {loadingColumns[i] ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Loading columns...
+                    <Loader2 className="w-3 h-3 animate-spin" /> Detecting columns...
                   </div>
                 ) : sourceColumns[i] && sourceColumns[i].length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Properties</span>
-                      <button
-                        onClick={() => {
-                          const allChecked = sourceColumns[i].every((col) => isColumnChecked(i, col))
-                          if (allChecked) {
-                            updateMappings(i, [])
-                          } else {
-                            const mappings: ColumnMapping[] = sourceColumns[i].map((name) => ({
-                              source_column: name,
-                              destination_column: name,
-                            }))
-                            updateMappings(i, mappings)
-                          }
-                        }}
-                        className="text-[9px] font-bold uppercase tracking-wider text-primary hover:text-primary/80"
-                      >
-                        {sourceColumns[i].every((col) => isColumnChecked(i, col)) ? 'Uncheck All' : 'Check All'}
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto border border-border bg-background p-2">
-                      {sourceColumns[i].map((col) => (
-                        <label
-                          key={col}
-                          className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-mono cursor-pointer hover:bg-primary/5 rounded"
-                        >
-                          {isColumnChecked(i, col) ? (
-                            <CheckSquare className="w-3.5 h-3.5 text-primary shrink-0" />
-                          ) : (
-                            <Square className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                          )}
-                          <input
-                            type="checkbox"
-                            className="sr-only"
-                            checked={isColumnChecked(i, col)}
-                            onChange={() => toggleColumn(i, col)}
-                          />
-                          <span className="truncate">{col}</span>
-                        </label>
-                      ))}
-                    </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Database className="w-3 h-3" />
+                    {sourceColumns[i].length} columns detected — all will be synchronized automatically
                   </div>
                 ) : null}
 
-                <ColumnMapper
-                  sourceColumns={sourceColumns[i] ?? []}
-                  targetColumns={[]}
-                  mappings={table.column_mappings}
-                  onChange={(mappings) => updateMappings(i, mappings)}
-                />
+                {/* Advanced: column mappings, filters, primary key */}
+                <div className="border border-dashed border-border/50">
+                  <button
+                    onClick={() => setAdvancedOpen((prev) => ({ ...prev, [i]: !prev[i] }))}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {advancedOpen[i] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    <Columns className="w-3 h-3" />
+                    Advanced Options (column mapping, filters, primary key)
+                  </button>
+                  {advancedOpen[i] && (
+                    <div className="px-3 pb-3 space-y-4">
+                      <div className="space-y-1">
+                        <Tooltip content="Optional SQL WHERE clause to filter rows during extraction">
+                          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Filter (SQL WHERE clause)</label>
+                        </Tooltip>
+                        <input
+                          className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
+                          value={table.filters ?? ''}
+                          onChange={(e) => updateTable(i, 'filters', e.target.value || undefined)}
+                          placeholder="e.g. created_at > '2024-01-01'"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Tooltip content="Primary key columns for incremental sync (auto-detected if left empty)">
+                          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Primary Key(s)</label>
+                        </Tooltip>
+                        <input
+                          className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
+                          value={table.primary_key?.join(', ') ?? ''}
+                          onChange={(e) => updateTable(i, 'primary_key', e.target.value ? e.target.value.split(',').map((s) => s.trim()) : undefined)}
+                          placeholder="Auto-detected if empty"
+                        />
+                      </div>
+                      <ColumnMapper
+                        sourceColumns={sourceColumns[i] ?? []}
+                        targetColumns={[]}
+                        mappings={table.column_mappings}
+                        onChange={(mappings) => updateMappings(i, mappings)}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
 

@@ -772,6 +772,20 @@ impl Storage {
         })
     }
 
+    pub async fn update_sync_pipeline_status(&self, id: &str, status: PipelineStatus) -> AppResult<()> {
+        let status_str = serde_json::to_value(&status)
+            .unwrap_or_else(|e| { tracing::error!("Failed to serialize status: {}", e); serde_json::Value::String("draft".into()) })
+            .as_str().unwrap_or("draft").to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE sync_pipelines SET status = ?, updated_at = ? WHERE id = ?")
+            .bind(&status_str)
+            .bind(&now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_sync_pipeline(&self, id: &str) -> AppResult<SyncPipeline> {
         let row = sqlx::query("SELECT * FROM sync_pipelines WHERE id = ?")
             .bind(id)

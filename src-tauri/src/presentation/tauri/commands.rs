@@ -12,10 +12,11 @@ use crate::error::{AppError, AppResult};
 use crate::infrastructure::database::connection_string_builder::ConnectionStringBuilder;
 use crate::infrastructure::drivers::driver_factory::DriverFactory;
 use crate::infrastructure::scheduler::job_engine;
-use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError};
+use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, PipelineStatus};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
 use secrecy::ExposeSecret;
 use crate::state::AppState;
+use serde::Serialize;
 use std::sync::Arc;
 use tauri::Manager;
 use std::process::Command;
@@ -1270,6 +1271,11 @@ pub async fn start_sync(
     let db_type = source_driver.db_type();
     let storage = state.storage.clone();
 
+    let pipeline_id = pipeline.id.clone().unwrap_or_default();
+    state.set_sync_control(&pipeline_id, crate::state::SyncControl::Running).await;
+
+    let controller = state.sync_controller.clone();
+
     tokio::spawn(async move {
         let source: &dyn crate::db::DataReader = &*source_driver;
         let target: &dyn crate::db::DataWriter = &*target_driver;
@@ -1281,9 +1287,12 @@ pub async fn start_sync(
             db_type,
             storage,
             Some(tx),
+            &controller,
         ).await {
             let _ = app_handle.emit("sync:error", &e.to_string());
         }
+
+        controller.remove(&pipeline_id).await;
     });
 
     Ok(())
@@ -1324,6 +1333,73 @@ pub async fn get_checkpoint(
     state: State<'_, AppState>,
 ) -> AppResult<Option<SyncCheckpoint>> {
     state.storage.get_latest_checkpoint(&pipeline_id).await
+}
+
+#[tauri::command]
+pub async fn pause_sync(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.set_sync_control(&id, crate::state::SyncControl::Paused).await;
+    if let Err(e) = state.storage.update_sync_pipeline_status(&id, PipelineStatus::Paused).await {
+        tracing::error!("Failed to update pipeline status to Paused: {e}");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn resume_sync(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.set_sync_control(&id, crate::state::SyncControl::Running).await;
+    if let Err(e) = state.storage.update_sync_pipeline_status(&id, PipelineStatus::Running).await {
+        tracing::error!("Failed to update pipeline status to Running: {e}");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_sync(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.set_sync_control(&id, crate::state::SyncControl::Cancelled).await;
+    if let Err(e) = state.storage.update_sync_pipeline_status(&id, PipelineStatus::Cancelled).await {
+        tracing::error!("Failed to update pipeline status to Cancelled: {e}");
+    }
+    Ok(())
+}
+
+/// Preview table data (first N rows) for the sync wizard
+#[derive(Serialize)]
+pub struct TablePreview {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+}
+
+#[tauri::command]
+pub async fn get_table_preview(
+    id: String,
+    table: String,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> AppResult<TablePreview> {
+    let driver = get_or_connect_driver(&state, &id).await?;
+    let limit = limit.unwrap_or(5);
+    let safe_table = quote_identifier(&driver.db_type(), &table);
+    let sql = format!("SELECT * FROM {safe_table} LIMIT {limit}");
+    let result = driver.execute(&sql).await?;
+
+    let columns = result.columns;
+    let rows: Vec<Vec<String>> = result
+        .rows
+        .into_iter()
+        .map(|row| match row {
+            serde_json::Value::Array(arr) => arr
+                .into_iter()
+                .map(|v| match v {
+                    serde_json::Value::Null => String::new(),
+                    serde_json::Value::String(s) => s,
+                    other => other.to_string(),
+                })
+                .collect(),
+            _ => vec![],
+        })
+        .collect();
+
+    Ok(TablePreview { columns, rows })
 }
 
 // ── Database & Collection Management ──

@@ -1,8 +1,11 @@
 use crate::error::AppResult;
 use crate::models::sync::{SyncPipeline, SyncRun};
 use crate::application::sync::extractors::DataExtractor;
+use crate::state::SyncController;
+use crate::storage::Storage;
 use async_trait::async_trait;
 use serde::Serialize;
+use std::sync::Arc;
 
 /// Resultado de ejecución de una estrategia.
 pub struct StrategyOutput {
@@ -13,10 +16,6 @@ pub struct StrategyOutput {
 }
 
 /// Estrategia de sincronización.
-///
-/// Cada estrategia sabe cómo orquestar:
-///   Extract → Transform → Load
-/// para un modo específico (full, incremental).
 #[async_trait]
 pub trait SyncStrategy: Send + Sync {
     async fn execute(
@@ -25,7 +24,9 @@ pub trait SyncStrategy: Send + Sync {
         table_config: &crate::models::sync::SyncTableConfig,
         extractor: &dyn DataExtractor,
         writer: &dyn crate::db::DataWriter,
+        storage: Arc<Storage>,
         event_sender: Option<tokio::sync::mpsc::UnboundedSender<SyncEvent>>,
+        controller: &SyncController,
     ) -> AppResult<StrategyOutput>;
 }
 

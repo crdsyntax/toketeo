@@ -4,17 +4,17 @@ use crate::application::sync::extractors::{DataExtractor, SqlExtractor, MongoExt
 use crate::application::sync::strategies::{SyncStrategy, SyncEvent, FullSync, IncrementalSync};
 use crate::application::sync::validators::PipelineValidator;
 use crate::db::{DataReader, DataWriter, DbDriver, DbType};
+use crate::state::SyncController;
 use crate::storage::Storage;
 use std::sync::Arc;
 
+const DEFAULT_BATCH_SIZE: usize = 1000;
+
 /// Servicio principal de sincronización.
-///
-/// Orquesta la validación, selección de estrategia, extracción
-/// y carga para un pipeline completo.
 pub struct SyncService;
 
 impl SyncService {
-    /// Ejecuta un pipeline de sincronización.
+    /// Executes a sync pipeline.
     pub async fn execute_pipeline(
         pipeline: &SyncPipeline,
         source: &dyn DataReader,
@@ -22,6 +22,7 @@ impl SyncService {
         source_db_type: DbType,
         storage: Arc<Storage>,
         event_sender: Option<tokio::sync::mpsc::UnboundedSender<SyncEvent>>,
+        controller: &SyncController,
     ) -> AppResult<()> {
         let extractor: Box<dyn DataExtractor + '_> = match source_db_type {
             DbType::Mongodb => Box::new(MongoExtractor::new(source)),
@@ -33,12 +34,36 @@ impl SyncService {
             SyncMode::Full => Box::new(FullSync),
         };
 
-        for table_config in &pipeline.tables {
+        let effective_batch_size = if pipeline.batch_size == 0 {
+            DEFAULT_BATCH_SIZE
+        } else {
+            pipeline.batch_size
+        };
+
+        let mut pipeline_clone = pipeline.clone();
+        pipeline_clone.batch_size = effective_batch_size;
+
+        let pipeline_id = pipeline_clone.id.clone().unwrap_or_default();
+
+        for table_config in &pipeline_clone.tables {
+            // Check for cancellation before starting a new table
+            if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
+                tracing::info!("Sync cancelled before table {}", table_config.source_table);
+                break;
+            }
+
             let output = strategy
-                .execute(pipeline, table_config, extractor.as_ref(), target, event_sender.clone())
+                .execute(
+                    &pipeline_clone,
+                    table_config,
+                    extractor.as_ref(),
+                    target,
+                    storage.clone(),
+                    event_sender.clone(),
+                    controller,
+                )
                 .await?;
 
-            // Persist the run so the frontend can fetch it
             if let Err(e) = storage.save_sync_run(&output.run).await {
                 tracing::error!("Failed to persist sync run: {e}");
             }
@@ -51,6 +76,9 @@ impl SyncService {
                 output.error_count,
             );
         }
+
+        // Clean up sync control
+        controller.remove(&pipeline_id).await;
 
         Ok(())
     }
