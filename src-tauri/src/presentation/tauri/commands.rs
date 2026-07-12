@@ -975,8 +975,9 @@ pub async fn pick_and_parse_dump_file(
     };
 
     let file_path_str = path.display().to_string();
-    let content = std::fs::read_to_string(&file_path_str)
+    let bytes = std::fs::read(&file_path_str)
         .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
+    let content = String::from_utf8_lossy(&bytes).into_owned();
 
     let tables = ExplorerService::parse_dump_tables(&content);
 
@@ -1277,6 +1278,51 @@ pub async fn start_sync(
     let controller = state.sync_controller.clone();
 
     tokio::spawn(async move {
+        let mut pipeline = pipeline;
+
+        // Parallelize PK auto-detection (chunked to avoid connection pool saturation)
+        const PK_CHUNK_SIZE: usize = 1;
+        let tables_needing_pk: Vec<usize> = pipeline
+            .tables
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.primary_key.is_none() || t.primary_key.as_ref().map_or(false, |v| v.is_empty()))
+            .map(|(i, _)| i)
+            .collect();
+
+        for chunk in tables_needing_pk.chunks(PK_CHUNK_SIZE) {
+            let futures: Vec<_> = chunk
+                .iter()
+                .map(|&idx| {
+                    let src = source_driver.clone();
+                    let table = pipeline.tables[idx].source_table.clone();
+                    async move {
+                        let cols = src.fetch_columns(&table, None).await;
+                        (idx, table, cols)
+                    }
+                })
+                .collect();
+
+            let results = futures::future::join_all(futures).await;
+            for (idx, _table_name, cols_result) in results {
+                if let Ok(cols) = cols_result {
+                    let pks: Vec<String> = cols
+                        .iter()
+                        .filter(|c| {
+                            c.get("isPrimaryKey")
+                                .or_else(|| c.get("isPrimary"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false)
+                        })
+                        .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
+                        .collect();
+                    if !pks.is_empty() {
+                        pipeline.tables[idx].primary_key = Some(pks);
+                    }
+                }
+            }
+        }
+
         let source: &dyn crate::db::DataReader = &*source_driver;
         let target: &dyn crate::db::DataWriter = &*target_driver;
 
@@ -1429,6 +1475,35 @@ pub async fn create_database(
         }
         _ => {
             driver.execute(&format!("CREATE DATABASE `{}`", db_name.replace('`', "``"))).await?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn drop_database(
+    id: String,
+    db_name: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = get_or_connect_driver(&state, &id).await?;
+    let db_type = driver.db_type();
+
+    match db_type {
+        crate::db::DbType::Mongodb => {
+            let query = serde_json::json!({
+                "dropDatabase": 1,
+            }).to_string();
+            driver.execute(&query).await?;
+        }
+        crate::db::DbType::Postgres => {
+            driver.execute(&format!("DROP DATABASE {}", quote_identifier(&db_type, &db_name))).await?;
+        }
+        crate::db::DbType::Sqlserver => {
+            driver.execute(&format!("DROP DATABASE [{}]", db_name.replace(']', "]]"))).await?;
+        }
+        _ => {
+            driver.execute(&format!("DROP DATABASE `{}`", db_name.replace('`', "``"))).await?;
         }
     }
     Ok(())

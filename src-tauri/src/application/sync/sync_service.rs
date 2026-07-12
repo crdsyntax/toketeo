@@ -45,11 +45,21 @@ impl SyncService {
 
         let pipeline_id = pipeline_clone.id.clone().unwrap_or_default();
 
-        for table_config in &pipeline_clone.tables {
+        let total_tables = pipeline_clone.tables.len() as u32;
+
+        for (idx, table_config) in pipeline_clone.tables.iter().enumerate() {
             // Check for cancellation before starting a new table
             if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
                 tracing::info!("Sync cancelled before table {}", table_config.source_table);
                 break;
+            }
+
+            if let Some(ref sender) = event_sender {
+                let _ = sender.send(SyncEvent::TableStarted {
+                    table: table_config.source_table.clone(),
+                    table_index: idx as u32 + 1,
+                    total_tables,
+                });
             }
 
             let output = strategy
@@ -79,6 +89,10 @@ impl SyncService {
 
         // Clean up sync control
         controller.remove(&pipeline_id).await;
+
+        if let Some(ref sender) = event_sender {
+            let _ = sender.send(SyncEvent::Completed);
+        }
 
         Ok(())
     }

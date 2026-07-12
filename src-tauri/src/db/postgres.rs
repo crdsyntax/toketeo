@@ -563,10 +563,7 @@ impl DbDriver for PostgresDriver {
         match obj_type.as_str() {
             "view" => self.fetch_view_ddl(name, &schema).await,
             "function" | "procedure" => self.fetch_function_ddl(name, &schema).await,
-            "table" => Ok(format!(
-                "-- DDL completo para tabla {}.{} no está implementado.\n-- Recomendación: usar pg_dump para obtener el DDL completo.",
-                schema, name
-            )),
+            "table" => self.fetch_table_ddl(name, &schema).await,
             _ => Ok(format!("-- DDL no implementado para tipo: {}", object_type)),
         }
     }
@@ -912,6 +909,140 @@ impl PostgresDriver {
 
         let def: Option<String> = row.try_get(0)?;
         Ok(def.unwrap_or_default())
+    }
+
+    async fn fetch_table_ddl(&self, name: &str, schema: &str) -> AppResult<String> {
+        let columns = sqlx::query(
+            r#"
+            SELECT 
+                c.column_name,
+                c.data_type,
+                c.character_maximum_length,
+                c.numeric_precision,
+                c.numeric_scale,
+                c.is_nullable,
+                c.column_default,
+                c.udt_name
+            FROM information_schema.columns c
+            WHERE c.table_name = $1 AND c.table_schema = $2
+            ORDER BY c.ordinal_position
+            "#,
+        )
+        .bind(name)
+        .bind(schema)
+        .fetch_all(&self.pool)
+        .await?;
+
+        if columns.is_empty() {
+            return Ok(format!("-- Table {}.{} not found", schema, name));
+        }
+
+        let pk_rows = sqlx::query(
+            r#"
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = (
+                SELECT oid FROM pg_class 
+                WHERE relname = $1 
+                AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)
+            )
+            AND i.indisprimary
+            ORDER BY array_position(i.indkey, a.attnum)
+            "#,
+        )
+        .bind(name)
+        .bind(schema)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let pk_cols: Vec<String> = pk_rows.iter().filter_map(|r| r.try_get(0).ok()).collect();
+
+        let mut col_defs = Vec::new();
+        for row in &columns {
+            let col_name: String = row.try_get("column_name")?;
+            let data_type: String = row.try_get("data_type")?;
+            let udt_name: Option<String> = row.try_get("udt_name").ok();
+            let char_max_len: Option<i32> = row.try_get("character_maximum_length").ok();
+            let num_precision: Option<i32> = row.try_get("numeric_precision").ok();
+            let num_scale: Option<i32> = row.try_get("numeric_scale").ok();
+            let is_nullable: String = row.try_get("is_nullable")?;
+            let default_val: Option<String> = row.try_get("column_default").ok();
+
+            let pg_type = match data_type.as_str() {
+                "character varying" | "varchar" => {
+                    if let Some(max_len) = char_max_len {
+                        format!("varchar({})", max_len)
+                    } else {
+                        "varchar".to_string()
+                    }
+                }
+                "character" | "char" => {
+                    if let Some(max_len) = char_max_len {
+                        format!("char({})", max_len)
+                    } else {
+                        "char".to_string()
+                    }
+                }
+                "numeric" | "decimal" => {
+                    if let (Some(p), Some(s)) = (num_precision, num_scale) {
+                        format!("numeric({}, {})", p, s)
+                    } else if let Some(p) = num_precision {
+                        format!("numeric({})", p)
+                    } else {
+                        "numeric".to_string()
+                    }
+                }
+                "user-defined" => {
+                    if let Some(ref udt) = udt_name {
+                        if udt.starts_with('_') {
+                            format!("{}[]", &udt[1..])
+                        } else {
+                            udt.clone()
+                        }
+                    } else {
+                        data_type.clone()
+                    }
+                }
+                "ARRAY" => {
+                    if let Some(ref udt) = udt_name {
+                        if udt.starts_with('_') {
+                            format!("{}[]", &udt[1..])
+                        } else {
+                            format!("{}[]", udt)
+                        }
+                    } else {
+                        "text[]".to_string()
+                    }
+                }
+                _ => data_type.clone(),
+            };
+
+            let mut def = format!("    \"{}\" {}", col_name.replace('"', "\"\""), pg_type);
+
+            if is_nullable == "NO" {
+                def.push_str(" NOT NULL");
+            }
+
+            if let Some(ref d) = default_val {
+                def.push_str(&format!(" DEFAULT {}", d));
+            }
+
+            col_defs.push(def);
+        }
+
+        if !pk_cols.is_empty() {
+            let pkquoted: Vec<String> = pk_cols.iter().map(|c| format!("\"{}\"", c.replace('"', "\"\""))).collect();
+            col_defs.push(format!("    PRIMARY KEY ({})", pkquoted.join(", ")));
+        }
+
+        let schema_quoted = schema.replace('"', "\"\"");
+        let name_quoted = name.replace('"', "\"\"");
+
+        Ok(format!(
+            "CREATE TABLE \"{}\".\"{}\" (\n{}\n);",
+            schema_quoted, name_quoted, col_defs.join(",\n")
+        ))
     }
 }
 

@@ -16,6 +16,8 @@ interface ProgressState {
   totalRows: number
   errors: number
   currentTable: string
+  tableIndex: number
+  totalTables: number
   phase: 'extracting' | 'loading' | 'done' | 'idle'
   elapsedMs: number
   estimatedMs: number
@@ -35,6 +37,8 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
     totalRows: run.total_rows,
     errors: run.error_count,
     currentTable: '',
+    tableIndex: 0,
+    totalTables: 0,
     phase: 'idle',
     elapsedMs: 0,
     estimatedMs: 0,
@@ -50,6 +54,8 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
       totalRows: run.total_rows,
       errors: run.error_count,
       currentTable: '',
+      tableIndex: 0,
+      totalTables: 0,
       phase: 'idle',
       elapsedMs: 0,
       estimatedMs: 0,
@@ -63,7 +69,20 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
       const e = event.payload
       onEvent?.(e)
 
-      if (e.Progress) {
+      if (e.TableStarted) {
+        const ts = e.TableStarted!
+        setProgress((p) => ({
+          ...p,
+          currentTable: ts.table,
+          tableIndex: ts.table_index,
+          totalTables: ts.total_tables,
+          phase: 'extracting',
+        }))
+        setLogs((prev) => [
+          { type: 'phase', table: ts.table, message: `Tabla ${ts.table_index}/${ts.total_tables}: ${ts.table}`, time: new Date() },
+          ...prev,
+        ].slice(0, 5))
+      } else if (e.Progress) {
         setProgress((p) => ({
           ...p,
           processedRows: e.Progress!.processed_rows,
@@ -109,6 +128,12 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
         setProgress((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime }))
         setLogs((prev) => [
           { type: 'error', table: '', message: e.Error!.message, time: new Date() },
+          ...prev,
+        ].slice(0, 5))
+      } else if (e.Completed) {
+        setProgress((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
+        setLogs((prev) => [
+          { type: 'phase', table: '', message: 'Sincronización completada', time: new Date() },
           ...prev,
         ].slice(0, 5))
       }
@@ -165,6 +190,9 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
         {progress.currentTable && isRunning && (
           <div className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground">
             <Database className="w-3 h-3 animate-pulse" />
+            {progress.totalTables > 0 && (
+              <span className="font-bold">{progress.tableIndex}/{progress.totalTables}</span>
+            )}
             {progress.currentTable}
           </div>
         )}

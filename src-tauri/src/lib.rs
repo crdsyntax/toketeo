@@ -171,6 +171,7 @@ pub fn run() {
             commands::cancel_sync,
             commands::get_table_preview,
             commands::create_database,
+            commands::drop_database,
             commands::create_collection,
             commands::mongo_backup_database,
             commands::mongo_restore_database,

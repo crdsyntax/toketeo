@@ -1,4 +1,4 @@
-import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2, AlertTriangle } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2, AlertTriangle, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -152,7 +152,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     try {
       await schemaService.restoreSchemaSelected(tableSelection.conn.id, tableSelection.schema, tableSelection.filePath, selectedTables)
       toast.success(`Schema "${tableSelection.schema}" restored successfully`)
-      setTableSelection(null)
     } catch (e) {
       toast.error(`Restore failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
@@ -230,7 +229,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
 
   const handleConnectionDoubleClick = async (conn: Connection) => {
     const willExpand = expandedConnId !== conn.id
-    if (willExpand) {
+    if (willExpand && !connectedConnectionIds.includes(conn.id)) {
       if (connectingId === conn.id) return
       setConnectingId(conn.id)
       try {
@@ -352,7 +351,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                         e.stopPropagation();
                         if (connectingId === conn.id) return;
                         const willExpand = expandedConnId !== conn.id;
-                        if (willExpand) {
+                        if (willExpand && !connectedConnectionIds.includes(conn.id)) {
                           setConnectingId(conn.id);
                           try {
                             await onConnect(conn);
@@ -424,6 +423,30 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             >
               <Database className="w-3.5 h-3.5 text-slate-400" />
               Create Database
+            </button>
+            <button
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-red-400 rounded-md hover:bg-red-500/10 hover:text-red-300 transition-colors"
+              onClick={async (e) => {
+                e.stopPropagation()
+                setContextMenu({ visible: false, x: 0, y: 0 })
+                const name = window.prompt('Enter the database name to delete:')
+                if (name && contextMenu.connId) {
+                  const confirmed = window.confirm(`Are you sure you want to permanently delete database "${name}"? This action cannot be undone.`)
+                  if (confirmed) {
+                    try {
+                      await schemaService.dropDatabase(contextMenu.connId, name)
+                      toast.success(`Database "${name}" deleted`)
+                      queryClient.invalidateQueries({ queryKey: ['databases'] })
+                      queryClient.invalidateQueries({ queryKey: ['schemas'] })
+                    } catch (err) {
+                      toast.error(`Failed to delete database: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                    }
+                  }
+                }
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete Database
             </button>
           </div>
         )}

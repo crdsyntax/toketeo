@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   X, Loader2, Upload, Download, CheckSquare, Square,
   Table2, Eye, Bell, Workflow, FunctionSquare,
-  FolderOpen, CheckCircle2, AlertCircle,
+  FolderOpen, CheckCircle2, AlertCircle, Minimize2, Maximize2,
 } from 'lucide-react'
 import type { DumpObjects, DumpSelection, IntegrityResult } from '@/types/database'
 import { cn } from '@/lib/utils'
@@ -53,6 +53,8 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
   const [activeTab, setActiveTab] = useState<ObjectType>('tables')
   const [selection, setSelection] = useState<DumpSelection>(initSelection(objects))
   const [isLoading, setIsLoading] = useState(false)
+  const [isMinimized, setIsMinimized] = useState(false)
+  const [completed, setCompleted] = useState(false)
   const [result, setResult] = useState<{ filePath?: string; integrity?: IntegrityResult } | null>(null)
   const [tableSizes, setTableSizes] = useState<Record<string, number>>({})
 
@@ -95,7 +97,11 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
       if (res) {
         setResult(res)
       } else {
-        onClose()
+        if (isMinimized) {
+          setCompleted(true)
+        } else {
+          onClose()
+        }
       }
     } finally {
       setIsLoading(false)
@@ -110,6 +116,45 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
         toast.error('Could not open file location')
       }
     }
+  }
+
+  const handleMinimize = () => setIsMinimized(true)
+  const handleExpand = () => setIsMinimized(false)
+
+  if (isMinimized && (isLoading || completed)) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[210]">
+        <div className="bg-background border border-border rounded-lg shadow-2xl p-3 flex items-center gap-3 min-w-[220px]">
+          {completed ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+          ) : (
+            <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-foreground truncate">
+              {completed
+                ? (mode === 'dump' ? 'Dump complete' : 'Restore complete')
+                : (mode === 'dump' ? 'Generating dump...' : 'Restoring database...')}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate">{schema}</p>
+          </div>
+          <button
+            onClick={handleExpand}
+            className="p-1 hover:bg-muted rounded shrink-0"
+            title="Expand"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-muted rounded shrink-0"
+            title="Close"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (result) {
@@ -181,9 +226,16 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
             {mode === 'dump' ? <Upload className="w-4 h-4" /> : <Download className="w-4 h-4" />}
             {mode === 'dump' ? 'Dump' : 'Restore'} Schema: {schema}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-muted rounded">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {isLoading && (
+              <button onClick={handleMinimize} className="p-1 hover:bg-muted rounded" title="Minimize">
+                <Minimize2 className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex border-b border-border overflow-x-auto">

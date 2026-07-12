@@ -296,6 +296,10 @@ mod tests {
             max_lifetime: None,
             keep_alive: None,
             metadata_cache_ttl: None,
+            password_enc: None,
+            password_nonce: None,
+            ssh_enc: None,
+            ssh_nonce: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();

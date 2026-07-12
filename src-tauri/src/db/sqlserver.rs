@@ -144,6 +144,113 @@ impl SqlServerDriver {
 
         Ok(rows)
     }
+
+    async fn fetch_table_ddl(&self, name: &str, schema: &str) -> AppResult<String> {
+        let col_query = format!(
+            "SELECT 
+                c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH,
+                c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.IS_NULLABLE,
+                c.COLUMN_DEFAULT
+            FROM INFORMATION_SCHEMA.COLUMNS c
+            WHERE c.TABLE_NAME = '{}' AND c.TABLE_SCHEMA = '{}'
+            ORDER BY c.ORDINAL_POSITION",
+            Self::escape_sql(name),
+            Self::escape_sql(schema)
+        );
+
+        let columns = self.run_query(&col_query).await?;
+        if columns.is_empty() {
+            return Ok(format!("-- Table {}.{} not found", schema, name));
+        }
+
+        let pk_query = format!(
+            "SELECT ccu.COLUMN_NAME
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+            JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu 
+                ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME 
+                AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
+            WHERE tc.TABLE_NAME = '{}' 
+              AND tc.TABLE_SCHEMA = '{}' 
+              AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+            ORDER BY ccu.COLUMN_NAME",
+            Self::escape_sql(name),
+            Self::escape_sql(schema)
+        );
+
+        let pk_rows = self.run_query(&pk_query).await?;
+        let pk_cols: Vec<String> = pk_rows.iter()
+            .filter_map(|r| r.get("COLUMN_NAME").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect();
+
+        let mut col_defs = Vec::new();
+        for row in &columns {
+            let col_name = row.get("COLUMN_NAME").and_then(|v| v.as_str()).unwrap_or("");
+            let data_type = row.get("DATA_TYPE").and_then(|v| v.as_str()).unwrap_or("");
+            let char_max_len = row.get("CHARACTER_MAXIMUM_LENGTH").and_then(|v| v.as_i64());
+            let num_prec = row.get("NUMERIC_PRECISION").and_then(|v| v.as_i64());
+            let num_scale = row.get("NUMERIC_SCALE").and_then(|v| v.as_i64());
+            let is_nullable = row.get("IS_NULLABLE").and_then(|v| v.as_str()).unwrap_or("YES");
+            let default_val = row.get("COLUMN_DEFAULT").and_then(|v| v.as_str());
+
+            let sql_type = match data_type {
+                "varchar" | "nvarchar" | "varbinary" => {
+                    if let Some(max_len) = char_max_len {
+                        if max_len == -1 {
+                            format!("{}(MAX)", data_type.to_uppercase())
+                        } else {
+                            format!("{}({})", data_type.to_uppercase(), max_len)
+                        }
+                    } else {
+                        data_type.to_uppercase().to_string()
+                    }
+                }
+                "char" | "nchar" => {
+                    if let Some(max_len) = char_max_len {
+                        format!("{}({})", data_type.to_uppercase(), max_len)
+                    } else {
+                        data_type.to_uppercase().to_string()
+                    }
+                }
+                "decimal" | "numeric" => {
+                    if let (Some(p), Some(s)) = (num_prec, num_scale) {
+                        format!("{}({}, {})", data_type.to_uppercase(), p, s)
+                    } else if let Some(p) = num_prec {
+                        format!("{}({})", data_type.to_uppercase(), p)
+                    } else {
+                        data_type.to_uppercase().to_string()
+                    }
+                }
+                _ => data_type.to_uppercase().to_string(),
+            };
+
+            let mut def = format!("    [{}] {}", col_name, sql_type);
+
+            if is_nullable == "NO" {
+                def.push_str(" NOT NULL");
+            }
+
+            if let Some(d) = default_val {
+                if !d.is_empty() {
+                    def.push_str(&format!(" DEFAULT {}", d));
+                }
+            }
+
+            col_defs.push(def);
+        }
+
+        if !pk_cols.is_empty() {
+            let pk_list: Vec<String> = pk_cols.iter().map(|c| format!("[{}]", c)).collect();
+            col_defs.push(format!("    PRIMARY KEY ({})", pk_list.join(", ")));
+        }
+
+        let schema_quoted = schema.replace(']', "]]");
+        let name_quoted = name.replace(']', "]]");
+
+        Ok(format!(
+            "CREATE TABLE [{}].[{}] (\n{}\n);",
+            schema_quoted, name_quoted, col_defs.join(",\n")
+        ))
+    }
 }
 
 #[async_trait]
@@ -379,6 +486,12 @@ impl DbDriver for SqlServerDriver {
     ) -> AppResult<String> {
         let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
 
+        let obj_type_lower = object_type.to_lowercase();
+
+        if obj_type_lower == "table" {
+            return self.fetch_table_ddl(name, &schema_name).await;
+        }
+
         // OBJECT_DEFINITION can be NULL if the user doesn't have permissions or for certain object types.
         // sys.sql_modules is generally more reliable for code-based objects.
         let query = format!(
@@ -392,14 +505,6 @@ impl DbDriver for SqlServerDriver {
             if let Some(def) = row.get("definition").and_then(|v| v.as_str()) {
                 return Ok(def.to_string());
             }
-        }
-
-        // Fallback for tables or objects not in sql_modules
-        if object_type.to_lowercase() == "table" {
-            return Ok(format!(
-                "-- DDL for table {}.{} not IMPLEMENTED for SQL Server yet\n-- Use a specialized tool for full table DDL",
-                schema_name, name
-            ));
         }
 
         Err(AppError::Internal(format!(

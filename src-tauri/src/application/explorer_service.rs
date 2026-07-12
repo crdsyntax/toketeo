@@ -1021,8 +1021,9 @@ impl ExplorerService {
 
     /// Verify dump file integrity: count statements vs expected tables.
     pub fn verify_dump_integrity(file_path: &str, expected_tables: usize) -> AppResult<serde_json::Value> {
-        let content = std::fs::read_to_string(file_path)
+        let bytes = std::fs::read(file_path)
             .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
+        let content = String::from_utf8_lossy(&bytes);
 
         let file_size = std::fs::metadata(file_path)
             .map(|m| m.len())
@@ -1087,9 +1088,10 @@ impl ExplorerService {
         file_path: &str,
         tables: &[String],
     ) -> AppResult<()> {
-        let content = tokio::fs::read_to_string(file_path)
+        let bytes = tokio::fs::read(file_path)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
+        let content = String::from_utf8_lossy(&bytes);
 
         let driver = state.get_connection(id).await?;
 
@@ -1107,13 +1109,18 @@ impl ExplorerService {
             current_query.push_str(line);
             current_query.push('\n');
 
-            if trimmed.ends_with(';') {
+            if trimmed.ends_with(';') || trimmed.ends_with('\\') {
                 let upper_stmt = current_query.to_uppercase();
                 let should_execute = tables.is_empty()
                     || tables.iter().any(|t| {
-                        upper_stmt.contains(&format!(" {}", t.to_uppercase()))
-                            || upper_stmt.contains(&format!("\"{}\"", t))
-                            || upper_stmt.contains(&format!("`{}`", t))
+                        let tu = t.to_uppercase();
+                        upper_stmt.contains(&format!(" {}", tu))
+                            || upper_stmt.contains(&format!(" \"{}\" ", tu))
+                            || upper_stmt.contains(&format!("`{}`", tu))
+                            || upper_stmt.contains(&format!(" {}(", tu))
+                            || upper_stmt.contains(&format!(" {}\n", tu))
+                            || upper_stmt.contains(&format!(" {};", tu))
+                            || upper_stmt.contains(&format!(" {},", tu))
                     });
 
                 if should_execute {
@@ -1129,9 +1136,14 @@ impl ExplorerService {
             let upper_stmt = current_query.to_uppercase();
             let should_execute = tables.is_empty()
                 || tables.iter().any(|t| {
-                    upper_stmt.contains(&format!(" {}", t.to_uppercase()))
-                        || upper_stmt.contains(&format!("\"{}\"", t))
-                        || upper_stmt.contains(&format!("`{}`", t))
+                    let tu = t.to_uppercase();
+                    upper_stmt.contains(&format!(" {}", tu))
+                        || upper_stmt.contains(&format!(" \"{}\" ", tu))
+                        || upper_stmt.contains(&format!("`{}`", tu))
+                        || upper_stmt.contains(&format!(" {}(", tu))
+                        || upper_stmt.contains(&format!(" {}\n", tu))
+                        || upper_stmt.contains(&format!(" {};", tu))
+                        || upper_stmt.contains(&format!(" {},", tu))
                 });
             if should_execute {
                 if let Err(e) = driver.execute(&current_query).await {

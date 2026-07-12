@@ -149,11 +149,13 @@ export enum DiffType {
 }
 
 export interface SyncEvent {
+  TableStarted?: { table: string; table_index: number; total_tables: number };
   BatchCompleted?: { table: string; batch_number: number; rows_loaded: number; duration_ms: number };
   RowError?: { table: string; row_key?: string; error: string };
   PhaseCompleted?: { table: string; total_rows: number };
   Progress?: { table: string; processed_rows: number; total_rows: number; error_count: number };
   Error?: { message: string };
+  Completed?: Record<string, never>;
 }
 
 export type CreateSyncPipelineDto = Omit<SyncPipeline, 'id' | 'created_at' | 'updated_at' | 'status'>;

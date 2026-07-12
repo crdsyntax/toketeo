@@ -182,6 +182,10 @@ mod tests {
             max_lifetime: None,
             keep_alive: None,
             metadata_cache_ttl: None,
+            password_enc: None,
+            password_nonce: None,
+            ssh_enc: None,
+            ssh_nonce: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         assert_eq!(
@@ -224,6 +228,10 @@ mod tests {
             max_lifetime: None,
             keep_alive: None,
             metadata_cache_ttl: None,
+            password_enc: None,
+            password_nonce: None,
+            ssh_enc: None,
+            ssh_nonce: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
         // Should use 127.0.0.1 when SSH tunnel is active

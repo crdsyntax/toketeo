@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Loader2, Database, Eye, EyeOff, ChevronDown, ChevronRight, Columns } from 'lucide-react'
+import { X, Loader2, Database, Eye, EyeOff, ChevronDown, ChevronRight, Columns, ListChecks } from 'lucide-react'
 import { schemaService } from '@/services/schema.service'
 import { ColumnMapper } from '@/components/sync/ColumnMapper'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -8,6 +8,8 @@ import type { SyncTableConfig, ColumnMapping } from '@/types/sync'
 interface Step2TablesProps {
   sourceId: string
   targetId: string
+  sourceSchema: string
+  targetSchema: string
   tables: SyncTableConfig[]
   onTablesChange: (tables: SyncTableConfig[]) => void
   sourceColumns: Record<number, string[]>
@@ -17,6 +19,8 @@ interface Step2TablesProps {
 export function Step2Tables({
   sourceId,
   targetId,
+  sourceSchema,
+  targetSchema,
   tables,
   onTablesChange,
   sourceColumns,
@@ -29,19 +33,73 @@ export function Step2Tables({
   const [loadingPreview, setLoadingPreview] = useState<Record<number, boolean>>({})
   const [showPreview, setShowPreview] = useState<Record<number, boolean>>({})
   const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({})
+  const [loadingAllTables, setLoadingAllTables] = useState(false)
 
   const addTable = () => {
     onTablesChange([...tables, { source_table: '', target_table: '', column_mappings: [] }])
+  }
+
+  const addAllTables = async () => {
+    if (!sourceId || !sourceSchema) return
+    setLoadingAllTables(true)
+    try {
+      const sourceTables = await schemaService.getTables(sourceId, sourceSchema)
+      const existingNames = new Set(tables.map((t) => t.source_table))
+      const newTables: SyncTableConfig[] = []
+      const newColumns: Record<number, string[]> = {}
+
+      const tablesToFetch = sourceTables.filter((t) => !existingNames.has(t.name))
+
+      const CHUNK_SIZE = 5
+      for (let ci = 0; ci < tablesToFetch.length; ci += CHUNK_SIZE) {
+        const chunk = tablesToFetch.slice(ci, ci + CHUNK_SIZE)
+        const results = await Promise.allSettled(
+          chunk.map((t) => schemaService.getColumns(sourceId, t.name, sourceSchema))
+        )
+        for (let ri = 0; ri < results.length; ri++) {
+          const tableName = chunk[ri].name
+          const globalIdx = tables.length + newTables.length
+          const result = results[ri]
+          if (result.status === 'fulfilled') {
+            const colNames = result.value.map((c) => c.name)
+            newColumns[globalIdx] = colNames
+            newTables.push({
+              source_table: tableName,
+              target_table: tableName,
+              column_mappings: colNames.map((name) => ({
+                source_column: name,
+                destination_column: name,
+              })),
+            })
+          } else {
+            newTables.push({
+              source_table: tableName,
+              target_table: tableName,
+              column_mappings: [],
+            })
+          }
+        }
+      }
+
+      if (newTables.length > 0) {
+        onTablesChange([...tables, ...newTables])
+        onSourceColumnsChange({ ...sourceColumns, ...newColumns })
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingAllTables(false)
+    }
   }
 
   const updateTable = (i: number, field: keyof SyncTableConfig, value: unknown) => {
     const newTables = tables.map((t, j) => j === i ? { ...t, [field]: value } as SyncTableConfig : t)
     onTablesChange(newTables)
 
-    if (field === 'source_table' && sourceId && value) {
+    if (field === 'source_table' && sourceId && sourceSchema && value) {
       const tableName = value as string
       setLoadingColumns((prev) => ({ ...prev, [i]: true }))
-      schemaService.getColumns(sourceId, tableName)
+      schemaService.getColumns(sourceId, tableName, sourceSchema)
         .then((cols) => {
           const colNames = cols.map((c) => c.name)
           onSourceColumnsChange({ ...sourceColumns, [i]: colNames })
@@ -60,9 +118,9 @@ export function Step2Tables({
         })
     }
 
-    if (field === 'target_table' && targetId && value) {
+    if (field === 'target_table' && targetId && targetSchema && value) {
       setLoadingTargetColumns((prev) => ({ ...prev, [i]: true }))
-      schemaService.getColumns(targetId, value as string)
+      schemaService.getColumns(targetId, value as string, targetSchema)
         .then((cols) => {
           setTargetColumns((prev) => ({ ...prev, [i]: cols.map((c) => c.name) }))
         })
@@ -79,7 +137,7 @@ export function Step2Tables({
 
   const loadPreview = async (i: number) => {
     const table = tables[i]
-    if (!sourceId || !table.source_table) return
+    if (!sourceId || !sourceSchema || !table.source_table) return
     setLoadingPreview((prev) => ({ ...prev, [i]: true }))
     try {
       const result = await schemaService.getPreview(sourceId, table.source_table, 5)
@@ -105,12 +163,26 @@ export function Step2Tables({
         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Tablas a sincronizar
         </span>
-        <button
-          onClick={addTable}
-          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
-        >
-          <Database className="w-3 h-3" /> Agregar Tabla
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={addAllTables}
+            disabled={!sourceId || !sourceSchema || loadingAllTables}
+            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingAllTables ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <ListChecks className="w-3 h-3" />
+            )}
+            Copiar todas las tablas
+          </button>
+          <button
+            onClick={addTable}
+            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+          >
+            <Database className="w-3 h-3" /> Agregar Tabla
+          </button>
+        </div>
       </div>
 
       {tables.map((table, i) => (
@@ -246,7 +318,7 @@ export function Step2Tables({
 
       {tables.length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-6 border border-dashed border-border">
-          No hay tablas configuradas. Haz clic en "Agregar Tabla".
+          No hay tablas configuradas. Haz clic en "Agregar Tabla" o "Copiar todas las tablas".
         </p>
       )}
     </div>

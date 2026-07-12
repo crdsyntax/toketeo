@@ -98,7 +98,12 @@ impl ConnectionService {
 
     async fn merge_sensitive_data(state: &AppState, config: &mut DbConnectionConfig) {
         if let Some(id) = config.id {
-            if let Ok(db_config) = state.storage.get_connection(&id.to_string()).await {
+            if let Ok(mut db_config) = state.storage.get_connection(&id.to_string()).await {
+                // Decrypt stored secrets if session is unlocked
+                if let Ok(key) = state.require_unlock().await {
+                    let _ = Self::decrypt_connection(&mut db_config, &key);
+                }
+
                 // When auth is explicitly disabled, clear password and skip merge
                 if config.auth_enabled == Some(false) {
                     config.password = None;

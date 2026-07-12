@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { X, GitBranch } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
-import { schemaService } from '@/services/schema.service'
 import { useSyncStore } from '@/store/syncStore'
 import { Step1Connections } from './Step1Connections'
 import { Step2Tables } from './Step2Tables'
@@ -38,6 +37,8 @@ export function SyncWizard({ pipeline, onClose }: SyncWizardProps) {
   const [schedule, setSchedule] = useState<'once' | 'recurring' | 'cron'>('once')
   const [cronExpression, setCronExpression] = useState('')
   const [sourceColumns, setSourceColumns] = useState<Record<number, string[]>>({})
+  const [sourceSchema, setSourceSchema] = useState('')
+  const [targetSchema, setTargetSchema] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,7 +55,7 @@ export function SyncWizard({ pipeline, onClose }: SyncWizardProps) {
   const canGoNext = (): boolean => {
     switch (step) {
       case 'connections':
-        return !!name && !!sourceId && !!targetId
+        return !!name && !!sourceId && !!targetId && !!sourceSchema && !!targetSchema
       case 'tables':
         return tables.length > 0 && tables.every((t) => !!t.source_table && !!t.target_table)
       case 'preview':
@@ -156,12 +157,18 @@ export function SyncWizard({ pipeline, onClose }: SyncWizardProps) {
               connections={connections ?? []}
               mode={mode}
               onModeChange={setMode}
+              sourceSchema={sourceSchema}
+              onSourceSchemaChange={setSourceSchema}
+              targetSchema={targetSchema}
+              onTargetSchemaChange={setTargetSchema}
             />
           )}
           {step === 'tables' && (
             <Step2Tables
               sourceId={sourceId}
               targetId={targetId}
+              sourceSchema={sourceSchema}
+              targetSchema={targetSchema}
               tables={tables}
               onTablesChange={setTables}
               sourceColumns={sourceColumns}

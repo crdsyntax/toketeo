@@ -210,6 +210,10 @@ executeExplorer: async (payload: {
     await tauriApi.invoke<void>('create_database', { id, dbName })
   },
 
+  dropDatabase: async (id: string, dbName: string): Promise<void> => {
+    await tauriApi.invoke<void>('drop_database', { id, dbName })
+  },
+
   getPreview: async (id: string, table: string, limit: number = 5): Promise<{ columns: string[]; rows: string[][] }> => {
     return await tauriApi.invoke('get_table_preview', { id, table, limit })
   },

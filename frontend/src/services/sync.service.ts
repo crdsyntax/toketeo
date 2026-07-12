@@ -53,6 +53,21 @@ export const syncService = {
     return await tauriApi.invoke<void>('start_sync', { id });
   },
 
+  /** Pausar ejecución en curso. */
+  pause: async (id: string): Promise<void> => {
+    return await tauriApi.invoke<void>('pause_sync', { id });
+  },
+
+  /** Reanudar ejecución pausada. */
+  resume: async (id: string): Promise<void> => {
+    return await tauriApi.invoke<void>('resume_sync', { id });
+  },
+
+  /** Cancelar ejecución en curso. */
+  cancel: async (id: string): Promise<void> => {
+    return await tauriApi.invoke<void>('cancel_sync', { id });
+  },
+
   /** Listar ejecuciones de un pipeline. */
   listRuns: async (pipelineId: string): Promise<SyncRun[]> => {
     return await tauriApi.invoke<SyncRun[]>('list_sync_runs', { pipelineId });

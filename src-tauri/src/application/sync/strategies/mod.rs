@@ -33,6 +33,11 @@ pub trait SyncStrategy: Send + Sync {
 /// Eventos emitidos durante la sincronización.
 #[derive(Debug, Clone, Serialize)]
 pub enum SyncEvent {
+    TableStarted {
+        table: String,
+        table_index: u32,
+        total_tables: u32,
+    },
     BatchCompleted {
         table: String,
         batch_number: u64,
@@ -57,6 +62,7 @@ pub enum SyncEvent {
     Error {
         message: String,
     },
+    Completed,
 }
 
 pub use full_sync::FullSync;

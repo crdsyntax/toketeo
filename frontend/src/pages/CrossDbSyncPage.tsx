@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listen } from '@tauri-apps/api/event'
 import { GitBranch, Plus, Trash2, Edit2, Play, Loader2, X, BarChart3, History, ScrollText, Database, Clock, CheckCircle2, AlertCircle, Pause, Square, ArrowRightFromLine } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import { connectionService } from '@/services/connection.service'
 import { syncService } from '@/services/sync.service'
@@ -9,7 +10,6 @@ import { SyncWizard } from '@/components/sync/wizard/SyncWizard'
 import { SyncProgress } from '@/components/sync/SyncProgress'
 import { SyncLogViewer } from '@/components/sync/SyncLogViewer'
 import { SyncHistory } from '@/components/sync/SyncHistory'
-import type { Connection } from '@/types/database'
 import type { SyncPipeline, SyncRun } from '@/types/sync'
 import type { SyncEvent } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
@@ -46,6 +46,7 @@ export function CrossDbSyncPage() {
   const [selectedPipeline, setSelectedPipeline] = useState<SyncPipeline | null>(null)
   const [activeRun, setActiveRun] = useState<SyncRun | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>('history')
+  const virtualRunCounter = useRef(0)
   const [latestRuns, setLatestRuns] = useState<Record<string, SyncRun>>({})
   const queryClient = useQueryClient()
 
@@ -101,49 +102,112 @@ export function CrossDbSyncPage() {
 
   const handleStart = async (p: SyncPipeline) => {
     setExecutingId(p.id)
+    virtualRunCounter.current += 1
+    queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+      old?.map((pipe) => pipe.id === p.id ? { ...pipe, status: PipelineStatus.Running } : pipe)
+    )
+    const virtualRun: SyncRun = {
+      id: `virtual-${virtualRunCounter.current}`,
+      pipeline_id: p.id,
+      status: PipelineStatus.Running,
+      total_rows: 0,
+      processed_rows: 0,
+      error_count: 0,
+      batch_count: 0,
+    }
+    setActiveRun(virtualRun)
+    setSelectedPipeline(p)
+    setDetailTab('progress')
     try {
       await syncService.start(p.id)
-      setSelectedPipeline(p)
-      setDetailTab('progress')
-      const runs = await syncService.listRuns(p.id)
-      if (runs.length > 0) {
-        setActiveRun(runs[0])
-      }
-      queryClient.invalidateQueries({ queryKey: ['sync-runs', p.id] })
     } catch {
       setExecutingId(null)
+      queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+        old?.map((pipe) => pipe.id === p.id ? { ...pipe, status: PipelineStatus.Ready } : pipe)
+      )
     }
   }
 
   const handlePause = async (id: string) => {
     setPausedId(id)
-    // Backend pause will be implemented in a later phase
-    setPausedId(null)
+    try {
+      const currentStatus = pipelines?.find((p) => p.id === id)?.status
+      if (currentStatus === PipelineStatus.Paused) {
+        await syncService.resume(id)
+        queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+          old?.map((p) => p.id === id ? { ...p, status: PipelineStatus.Running } : p)
+        )
+      } else {
+        await syncService.pause(id)
+        queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+          old?.map((p) => p.id === id ? { ...p, status: PipelineStatus.Paused } : p)
+        )
+      }
+    } catch {
+      toast.error('Error al pausar/reanudar sincronización')
+    } finally {
+      setPausedId(null)
+    }
   }
 
   const handleCancel = async (id: string) => {
-    setExecutingId(null)
-    // Backend cancel will be implemented in a later phase
+    try {
+      await syncService.cancel(id)
+      setExecutingId(null)
+      queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+        old?.map((p) => p.id === id ? { ...p, status: PipelineStatus.Cancelled } : p)
+      )
+      toast.success('Sincronización cancelada')
+    } catch {
+      toast.error('Error al cancelar sincronización')
+    }
   }
 
   useEffect(() => {
     const unlisten = listen<SyncEvent>('sync:event', (event) => {
       const e = event.payload
-      if (e.PhaseCompleted || e.Error) {
+      if (e.PhaseCompleted) {
+        queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
+        queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+        toast.success(`Tabla "${e.PhaseCompleted.table}" sincronizada: ${e.PhaseCompleted.total_rows.toLocaleString()} filas`)
+        setLatestRuns((prev) => ({
+          ...prev,
+          [selectedPipeline?.id ?? '']: {
+            id: `run-${Date.now()}`,
+            pipeline_id: selectedPipeline?.id ?? '',
+            status: PipelineStatus.Completed,
+            total_rows: e.PhaseCompleted!.total_rows,
+            processed_rows: e.PhaseCompleted!.total_rows,
+            error_count: 0,
+            batch_count: 0,
+          },
+        }))
+      }
+      if (e.Completed) {
         setExecutingId(null)
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
+        queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+        toast.success('Sincronización completada')
+      }
+      if (e.Error) {
+        setExecutingId(null)
+        queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
+        queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+        toast.error(`Error en sincronización: ${e.Error.message}`)
       }
     })
     return () => { unlisten.then((f) => f()) }
-  }, [])
+  }, [queryClient, selectedPipeline])
 
   useEffect(() => {
-    const unlisten = listen<string>('sync:error', () => {
+    const unlisten = listen<string>('sync:error', (event) => {
       setExecutingId(null)
       queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
+      queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+      toast.error(`Error en sincronización: ${event.payload}`)
     })
     return () => { unlisten.then((f) => f()) }
-  }, [])
+  }, [queryClient])
 
   const handleSelectPipeline = (p: SyncPipeline) => {
     if (selectedPipeline?.id === p.id) {
@@ -232,10 +296,19 @@ export function CrossDbSyncPage() {
                             <button
                               onClick={() => handlePause(p.id)}
                               disabled={pausedId === p.id}
-                              className="p-1.5 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/5 transition-colors"
-                              title="Pausar"
+                              className={cn(
+                                "p-1.5 text-muted-foreground hover:bg-yellow-500/5 transition-colors",
+                                p.status === PipelineStatus.Paused ? 'hover:text-emerald-500' : 'hover:text-yellow-500',
+                              )}
+                              title={p.status === PipelineStatus.Paused ? 'Reanudar' : 'Pausar'}
                             >
-                              {pausedId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pause className="w-3.5 h-3.5" />}
+                              {pausedId === p.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : p.status === PipelineStatus.Paused ? (
+                                <Play className="w-3.5 h-3.5" />
+                              ) : (
+                                <Pause className="w-3.5 h-3.5" />
+                              )}
                             </button>
                             <button
                               onClick={() => handleCancel(p.id)}

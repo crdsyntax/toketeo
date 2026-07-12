@@ -333,10 +333,10 @@ export const useAppStore = create<AppState>()(
       partialize: (state: AppState): AppState => ({
         ...state,
         connectionErrors: {},
-        connectedConnectionIds: state.connectedConnectionIds,
+        connectedConnectionIds: [],
         theme: state.theme,
         accessToken: state.accessToken,
-        activeConnection: state.activeConnection ? { ...state.activeConnection, password: undefined } : null,
+        activeConnection: null,
         tabs: state.tabs.map(tab => ({ ...tab, results: null })),
         activeTabId: state.activeTabId,
         panels: state.panels,
@@ -354,7 +354,7 @@ export const useAppStore = create<AppState>()(
         ),
         queryHistory: state.queryHistory,
       }),
-      version: 1,
+      version: 2,
       migrate: (persistedState: unknown, version: number) => {
         const persisted = persistedState as Record<string, unknown> & { version?: number };
         if (version < 1) {
@@ -362,6 +362,10 @@ export const useAppStore = create<AppState>()(
           if (explorer && !Object.values(SidebarTab).includes(explorer.sidebarTab as SidebarTab)) {
             explorer.sidebarTab = SidebarTab.TABLES
           }
+        }
+        if (version < 2) {
+          persisted.connectedConnectionIds = []
+          persisted.activeConnection = null
         }
         return persisted as unknown as AppState
       },

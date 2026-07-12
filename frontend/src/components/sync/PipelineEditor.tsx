@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { GitBranch, X, Loader2, Database, Save, FlaskConical, ChevronDown, ChevronRight, Columns } from 'lucide-react'
+import { GitBranch, X, Loader2, Database, Save, FlaskConical, ChevronDown, ChevronRight, Columns, ListChecks } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
 import { schemaService } from '@/services/schema.service'
 import { useSyncStore } from '@/store/syncStore'
@@ -25,6 +25,8 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
   const [targetId, setTargetId] = useState(pipeline?.target_connection_id ?? '')
   const [mode, setMode] = useState<SyncMode>(pipeline?.mode ?? SyncMode.Full)
   const [tables, setTables] = useState<SyncTableConfig[]>(pipeline?.tables ?? [])
+  const [sourceSchema, setSourceSchema] = useState('')
+  const [targetSchema, setTargetSchema] = useState('')
   const [saving, setSaving] = useState(false)
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,6 +38,30 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
+
+  const { data: sourceSchemas, isLoading: loadingSourceSchemas } = useQuery({
+    queryKey: ['schemas', sourceId],
+    queryFn: () => schemaService.getSchemas(sourceId),
+    enabled: !!sourceId,
+  })
+
+  const { data: targetSchemas, isLoading: loadingTargetSchemas } = useQuery({
+    queryKey: ['schemas', targetId],
+    queryFn: () => schemaService.getSchemas(targetId),
+    enabled: !!targetId,
+  })
+
+  useEffect(() => {
+    if (sourceSchemas && sourceSchemas.length > 0 && !sourceSchema) {
+      setSourceSchema(sourceSchemas[0])
+    }
+  }, [sourceSchemas, sourceSchema])
+
+  useEffect(() => {
+    if (targetSchemas && targetSchemas.length > 0 && !targetSchema) {
+      setTargetSchema(targetSchemas[0])
+    }
+  }, [targetSchemas, targetSchema])
 
   const dto = (): CreateSyncPipelineDto => ({
     name,
@@ -82,13 +108,55 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
     setTables([...tables, { source_table: '', target_table: '', column_mappings: [] }])
   }
 
+  const addAllTables = async () => {
+    if (!sourceId || !sourceSchema) return
+    try {
+      const sourceTables = await schemaService.getTables(sourceId, sourceSchema)
+      const existingNames = new Set(tables.map((t) => t.source_table))
+      const newTables: SyncTableConfig[] = []
+      const newColumns: Record<number, string[]> = {}
+
+      for (let idx = 0; idx < sourceTables.length; idx++) {
+        const tableName = sourceTables[idx].name
+        if (existingNames.has(tableName)) continue
+
+        try {
+          const cols = await schemaService.getColumns(sourceId, tableName, sourceSchema)
+          const colNames = cols.map((c) => c.name)
+          const globalIdx = tables.length + newTables.length
+          newColumns[globalIdx] = colNames
+          newTables.push({
+            source_table: tableName,
+            target_table: tableName,
+            column_mappings: colNames.map((name) => ({
+              source_column: name,
+              destination_column: name,
+            })),
+          })
+        } catch {
+          newTables.push({
+            source_table: tableName,
+            target_table: tableName,
+            column_mappings: [],
+          })
+        }
+      }
+
+      if (newTables.length > 0) {
+        setTables([...tables, ...newTables])
+        setSourceColumns({ ...sourceColumns, ...newColumns })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const updateTable = (i: number, field: keyof SyncTableConfig, value: unknown) => {
     const newTables = tables.map((t, j) => j === i ? { ...t, [field]: value } as SyncTableConfig : t)
     setTables(newTables)
-    // Auto-fetch source columns when source_table changes
-    if (field === 'source_table' && sourceId && value) {
+    if (field === 'source_table' && sourceId && sourceSchema && value) {
       setLoadingColumns((prev) => ({ ...prev, [i]: true }))
-      schemaService.getColumns(sourceId, value as string)
+      schemaService.getColumns(sourceId, value as string, sourceSchema)
         .then((cols) => {
           const colNames = cols.map((c) => c.name)
           setSourceColumns((prev) => ({ ...prev, [i]: colNames }))
@@ -96,7 +164,6 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             source_column: name,
             destination_column: name,
           }))
-          // Update mappings for this table using newTables
           const updatedTables = newTables.map((t, j) =>
             j === i ? { ...t, column_mappings: mappings } : t
           )
@@ -179,20 +246,76 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
           {/* Source / Target selector */}
           <div className="grid grid-cols-2 gap-6">
-            <ConnectionSelector
-              label="Source Connection"
-              tooltip="Select the source database — data will be read from here"
-              value={sourceId}
-              onChange={setSourceId}
-              connections={connections ?? []}
-            />
-            <ConnectionSelector
-              label="Target Connection"
-              tooltip="Select the target database — data will be written here"
-              value={targetId}
-              onChange={setTargetId}
-              connections={connections ?? []}
-            />
+            <div className="space-y-3">
+              <ConnectionSelector
+                label="Source Connection"
+                tooltip="Select the source database — data will be read from here"
+                value={sourceId}
+                onChange={(v) => {
+                  setSourceId(v)
+                  setSourceSchema('')
+                }}
+                connections={connections ?? []}
+              />
+              {sourceId && (
+                <div className="space-y-1">
+                  <Tooltip content="Select the schema to sync from">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Schema</label>
+                  </Tooltip>
+                  {loadingSourceSchemas ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading schemas...
+                    </div>
+                  ) : (
+                    <select
+                      className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
+                      value={sourceSchema}
+                      onChange={(e) => setSourceSchema(e.target.value)}
+                    >
+                      <option value="">— Select Schema —</option>
+                      {(sourceSchemas ?? []).map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <ConnectionSelector
+                label="Target Connection"
+                tooltip="Select the target database — data will be written here"
+                value={targetId}
+                onChange={(v) => {
+                  setTargetId(v)
+                  setTargetSchema('')
+                }}
+                connections={connections ?? []}
+              />
+              {targetId && (
+                <div className="space-y-1">
+                  <Tooltip content="Select the schema to sync to">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Schema</label>
+                  </Tooltip>
+                  {loadingTargetSchemas ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading schemas...
+                    </div>
+                  ) : (
+                    <select
+                      className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
+                      value={targetSchema}
+                      onChange={(e) => setTargetSchema(e.target.value)}
+                    >
+                      <option value="">— Select Schema —</option>
+                      {(targetSchemas ?? []).map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Sync Mode */}
@@ -216,12 +339,22 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
               <Tooltip content="Define the tables to synchronize and their column mappings">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tables</span>
               </Tooltip>
-              <button
-                onClick={addTable}
-                className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
-              >
-                <Database className="w-3 h-3" /> Add Table
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={addAllTables}
+                  disabled={!sourceId || !sourceSchema}
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ListChecks className="w-3 h-3" />
+                  Copy all tables
+                </button>
+                <button
+                  onClick={addTable}
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Database className="w-3 h-3" /> Add Table
+                </button>
+              </div>
             </div>
 
             {tables.map((table, i) => (

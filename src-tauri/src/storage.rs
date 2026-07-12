@@ -379,14 +379,19 @@ impl Storage {
             .unwrap_or("mysql")
             .to_string();
 
-        let password = config
-            .password
-            .as_ref()
-            .map(|p| p.expose_secret().to_string());
+        let has_encrypted = config.password_enc.is_some() || config.ssh_enc.is_some();
+        let password = if has_encrypted {
+            None::<String>
+        } else {
+            config
+                .password
+                .as_ref()
+                .map(|p| p.expose_secret().to_string())
+        };
 
         sqlx::query(
-            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_enabled, auth_source, replica_set, direct_connection, ssl, ssh, read_only, max_pool_size, idle_timeout, acquire_timeout, max_lifetime, keep_alive, metadata_cache_ttl)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_enabled, auth_source, replica_set, direct_connection, ssl, ssh, read_only, max_pool_size, idle_timeout, acquire_timeout, max_lifetime, keep_alive, metadata_cache_ttl, password_enc, password_nonce, ssh_enc, ssh_nonce)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 environment = excluded.environment,
@@ -394,9 +399,10 @@ impl Storage {
                 host = excluded.host,
                 port = excluded.port,
                 user = excluded.user,
-                password = CASE 
-                    WHEN excluded.password IS NOT NULL AND excluded.password != '' THEN excluded.password 
-                    ELSE connections.password 
+                password = CASE
+                    WHEN excluded.password_enc IS NOT NULL THEN NULL
+                    WHEN excluded.password IS NOT NULL AND excluded.password != '' THEN excluded.password
+                    ELSE connections.password
                 END,
                 database = excluded.database,
                 auth_enabled = excluded.auth_enabled,
@@ -411,10 +417,14 @@ impl Storage {
                 max_lifetime = excluded.max_lifetime,
                 keep_alive = excluded.keep_alive,
                 metadata_cache_ttl = excluded.metadata_cache_ttl,
-                ssh = CASE 
-                    WHEN excluded.ssh IS NOT NULL THEN excluded.ssh 
-                    ELSE connections.ssh 
-                END"
+                ssh = CASE
+                    WHEN excluded.ssh IS NOT NULL THEN excluded.ssh
+                    ELSE connections.ssh
+                END,
+                password_enc = excluded.password_enc,
+                password_nonce = excluded.password_nonce,
+                ssh_enc = excluded.ssh_enc,
+                ssh_nonce = excluded.ssh_nonce"
         )
         .bind(&id)
         .bind(&config.name)
@@ -432,6 +442,16 @@ impl Storage {
         .bind(config.ssl)
         .bind(ssh_json)
         .bind(config.read_only.map(|v| if v { 1 } else { 0 }))
+        .bind(config.max_pool_size.map(|v| v as i64))
+        .bind(config.idle_timeout.map(|v| v as i64))
+        .bind(config.acquire_timeout.map(|v| v as i64))
+        .bind(config.max_lifetime.map(|v| v as i64))
+        .bind(config.keep_alive.map(|v| v as i64))
+        .bind(config.metadata_cache_ttl.map(|v| v as i64))
+        .bind(config.password_enc.as_deref())
+        .bind(config.password_nonce.as_deref())
+        .bind(config.ssh_enc.as_deref())
+        .bind(config.ssh_nonce.as_deref())
         .execute(&self.pool)
         .await?;
 
