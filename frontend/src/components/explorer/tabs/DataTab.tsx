@@ -204,12 +204,16 @@ export function DataTab({
         if (aVal === null || aVal === undefined) return 1;
         if (bVal === null || bVal === undefined) return -1;
         let cmp = 0;
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
+        const aIsNum = typeof aVal === 'number';
+        const bIsNum = typeof bVal === 'number';
+        if (aIsNum && bIsNum) {
           cmp = aVal - bVal;
         } else if (typeof aVal === 'string' && typeof bVal === 'string') {
           cmp = aVal.localeCompare(bVal);
         } else {
-          cmp = String(aVal).localeCompare(String(bVal));
+          const aStr = typeof aVal === 'object' ? JSON.stringify(aVal) : String(aVal);
+          const bStr = typeof bVal === 'object' ? JSON.stringify(bVal) : String(bVal);
+          cmp = aStr.localeCompare(bStr);
         }
         return sortState.direction === 'desc' ? -cmp : cmp;
       })

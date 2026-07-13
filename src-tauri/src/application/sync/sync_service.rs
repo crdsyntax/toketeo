@@ -132,7 +132,7 @@ impl SyncService {
         );
 
         if let Some(ref sender) = event_sender {
-            let _ = sender.send(SyncEvent::Completed);
+            let _ = sender.send(SyncEvent::Completed {});
         }
 
         Ok(())

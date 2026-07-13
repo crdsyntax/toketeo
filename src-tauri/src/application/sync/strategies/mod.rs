@@ -63,7 +63,7 @@ pub enum SyncEvent {
     Error {
         message: String,
     },
-    Completed,
+    Completed {},
 }
 
 pub use full_sync::FullSync;
