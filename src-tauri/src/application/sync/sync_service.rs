@@ -8,7 +8,7 @@ use crate::state::SyncController;
 use crate::storage::Storage;
 use std::sync::Arc;
 
-const DEFAULT_BATCH_SIZE: usize = 1000;
+const DEFAULT_BATCH_SIZE: usize = 200;
 
 /// Servicio principal de sincronización.
 pub struct SyncService;
@@ -46,11 +46,19 @@ impl SyncService {
         let pipeline_id = pipeline_clone.id.clone().unwrap_or_default();
 
         let total_tables = pipeline_clone.tables.len() as u32;
+        let mut pipeline_errors: u32 = 0;
+
+        tracing::info!(
+            "[sync] Starting pipeline '{}' with {} tables, mode={:?}, batch_size={}",
+            pipeline_clone.name,
+            total_tables,
+            pipeline_clone.mode,
+            effective_batch_size,
+        );
 
         for (idx, table_config) in pipeline_clone.tables.iter().enumerate() {
-            // Check for cancellation before starting a new table
             if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
-                tracing::info!("Sync cancelled before table {}", table_config.source_table);
+                tracing::info!("[sync] Pipeline cancelled before table {}", table_config.source_table);
                 break;
             }
 
@@ -62,7 +70,15 @@ impl SyncService {
                 });
             }
 
-            let output = strategy
+            tracing::info!(
+                "[sync] Processing table {}/{}: {} -> {}",
+                idx + 1,
+                total_tables,
+                table_config.source_table,
+                table_config.target_table,
+            );
+
+            match strategy
                 .execute(
                     &pipeline_clone,
                     table_config,
@@ -72,23 +88,48 @@ impl SyncService {
                     event_sender.clone(),
                     controller,
                 )
-                .await?;
+                .await
+            {
+                Ok(output) => {
+                    if let Err(e) = storage.save_sync_run(&output.run).await {
+                        tracing::error!("[sync] Failed to persist sync run: {e}");
+                    }
 
-            if let Err(e) = storage.save_sync_run(&output.run).await {
-                tracing::error!("Failed to persist sync run: {e}");
+                    tracing::info!(
+                        "[sync] Table {} completed: {} rows in {} batches, {} errors",
+                        table_config.source_table,
+                        output.total_rows,
+                        output.batch_count,
+                        output.error_count,
+                    );
+                }
+                Err(e) => {
+                    pipeline_errors += 1;
+                    tracing::error!(
+                        "[sync] Table {} failed: {} — skipping and continuing with next table",
+                        table_config.source_table,
+                        e,
+                    );
+                    if let Some(ref sender) = event_sender {
+                        let _ = sender.send(SyncEvent::RowError {
+                            table: table_config.source_table.clone(),
+                            row_key: None,
+                            error: format!("Table sync failed: {}", e),
+                        });
+                    }
+                }
             }
-
-            tracing::info!(
-                "Sync completed for table {}: {} rows in {} batches, {} errors",
-                table_config.source_table,
-                output.total_rows,
-                output.batch_count,
-                output.error_count,
-            );
         }
 
-        // Clean up sync control
         controller.remove(&pipeline_id).await;
+
+        tracing::info!(
+            "[sync] Pipeline '{}' finished: {}/{} tables completed, {} table errors",
+            pipeline_clone.name,
+            total_tables.saturating_sub(pipeline_errors as u32),
+            total_tables,
+            pipeline_errors,
+        );
 
         if let Some(ref sender) = event_sender {
             let _ = sender.send(SyncEvent::Completed);

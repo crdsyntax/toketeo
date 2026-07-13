@@ -1,4 +1,4 @@
-use crate::db::{CapabilityProvider, DataReader, DataWriter, DbDriver, DbType};
+use crate::db::{CapabilityProvider, DataReader, DataWriter, DbDriver, DbType, UpsertResult};
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
@@ -556,15 +556,19 @@ impl DataReader for SqlServerDriver {
             quote_ss(table)
         };
 
-        let cols: Vec<String> = columns.iter().map(|c| quote_ss(c)).collect();
-        let cols_str = cols.join(", ");
+        let select_clause = if columns.is_empty() {
+            "*".to_string()
+        } else {
+            let cols: Vec<String> = columns.iter().map(|c| quote_ss(c)).collect();
+            cols.join(", ")
+        };
 
         let query = if let Some(ref key) = last_key {
             let key_str = json_to_ss_string(key);
             format!(
                 "SELECT TOP ({}) {} FROM {} WHERE {} > {} ORDER BY {} ASC",
                 batch_size,
-                cols_str,
+                select_clause,
                 table_ref,
                 quote_ss(pk_column),
                 key_str,
@@ -573,7 +577,7 @@ impl DataReader for SqlServerDriver {
         } else {
             format!(
                 "SELECT TOP ({}) {} FROM {} ORDER BY {} ASC",
-                batch_size, cols_str, table_ref, quote_ss(pk_column),
+                batch_size, select_clause, table_ref, quote_ss(pk_column),
             )
         };
 
@@ -631,9 +635,9 @@ impl DataWriter for SqlServerDriver {
         columns: &[String],
         primary_keys: &[String],
         rows: &[serde_json::Value],
-    ) -> AppResult<u64> {
+    ) -> AppResult<UpsertResult> {
         if rows.is_empty() || columns.is_empty() {
-            return Ok(0);
+            return Ok(UpsertResult::default());
         }
 
         let table_ref = if let Some(s) = schema {
@@ -696,7 +700,7 @@ impl DataWriter for SqlServerDriver {
             total_affected += result.total();
         }
 
-        Ok(total_affected)
+        Ok(UpsertResult { affected: total_affected, skipped: 0 })
     }
 }
 

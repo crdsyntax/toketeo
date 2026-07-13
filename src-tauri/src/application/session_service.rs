@@ -249,7 +249,7 @@ mod tests {
             _: &[String],
             _: &[String],
             _: &[serde_json::Value],
-        ) -> AppResult<u64> {
+        ) -> AppResult<crate::db::UpsertResult> {
             todo!()
         }
     }

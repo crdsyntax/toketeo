@@ -196,6 +196,7 @@ impl Storage {
                 table_name TEXT NOT NULL,
                 rows_extracted INTEGER NOT NULL DEFAULT 0,
                 rows_loaded INTEGER NOT NULL DEFAULT 0,
+                skipped_rows INTEGER NOT NULL DEFAULT 0,
                 duration_ms INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL,
                 error_message TEXT
@@ -248,6 +249,10 @@ impl Storage {
             .execute(&pool)
             .await;
         let _ = sqlx::query("ALTER TABLE connections ADD COLUMN ssh_nonce BLOB")
+            .execute(&pool)
+            .await;
+
+        let _ = sqlx::query("ALTER TABLE sync_batches ADD COLUMN skipped_rows INTEGER NOT NULL DEFAULT 0")
             .execute(&pool)
             .await;
 
@@ -742,7 +747,11 @@ impl Storage {
     // ── Sync Pipelines ──
 
     pub async fn save_sync_pipeline(&self, pipeline: &SyncPipeline) -> AppResult<SyncPipeline> {
-        let config = serde_json::to_string(&pipeline.tables).unwrap_or_default();
+        let config = serde_json::to_string(&serde_json::json!({
+            "source_schema": pipeline.source_schema,
+            "target_schema": pipeline.target_schema,
+            "tables": pipeline.tables,
+        })).unwrap_or_default();
         let now = chrono::Utc::now().to_rfc3339();
         let pipeline_id = pipeline.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let created_at = pipeline.created_at.clone().unwrap_or_else(|| now.clone());
@@ -783,6 +792,8 @@ impl Storage {
             name: pipeline.name.clone(),
             source_connection_id: pipeline.source_connection_id.clone(),
             target_connection_id: pipeline.target_connection_id.clone(),
+            source_schema: pipeline.source_schema.clone(),
+            target_schema: pipeline.target_schema.clone(),
             mode: pipeline.mode.clone(),
             status: pipeline.status.clone(),
             tables: pipeline.tables.clone(),
@@ -954,11 +965,12 @@ impl Storage {
 
     pub async fn save_sync_batch(&self, batch: &SyncBatch) -> AppResult<()> {
         sqlx::query(
-            "INSERT INTO sync_batches (id, run_id, batch_number, table_name, rows_extracted, rows_loaded, duration_ms, status, error_message)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO sync_batches (id, run_id, batch_number, table_name, rows_extracted, rows_loaded, skipped_rows, duration_ms, status, error_message)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 rows_extracted = excluded.rows_extracted,
                 rows_loaded = excluded.rows_loaded,
+                skipped_rows = excluded.skipped_rows,
                 duration_ms = excluded.duration_ms,
                 status = excluded.status,
                 error_message = excluded.error_message"
@@ -969,6 +981,7 @@ impl Storage {
         .bind(&batch.table_name)
         .bind(batch.rows_extracted as i64)
         .bind(batch.rows_loaded as i64)
+        .bind(batch.skipped_rows as i64)
         .bind(batch.duration_ms as i64)
         .bind(&batch.status)
         .bind(&batch.error_message)
@@ -1080,13 +1093,39 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
         .unwrap_or(SyncMode::Full);
     let status: PipelineStatus = serde_json::from_value(serde_json::Value::String(status_str))
         .unwrap_or(PipelineStatus::Draft);
-    let tables: Vec<SyncTableConfig> = serde_json::from_str(&config_str).unwrap_or_default();
+
+    // Support both old format (just a tables array) and new format (object with schemas + tables)
+    let (tables, source_schema, target_schema) = if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&config_str) {
+        match obj {
+            serde_json::Value::Object(map) => {
+                let tables: Vec<SyncTableConfig> = map.get("tables")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                let source_schema = map.get("source_schema")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or(None);
+                let target_schema = map.get("target_schema")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or(None);
+                (tables, source_schema, target_schema)
+            }
+            serde_json::Value::Array(_) => {
+                let tables: Vec<SyncTableConfig> = serde_json::from_str(&config_str).unwrap_or_default();
+                (tables, None, None)
+            }
+            _ => (vec![], None, None),
+        }
+    } else {
+        (vec![], None, None)
+    };
 
     Ok(SyncPipeline {
         id: Some(row.get("id")),
         name: row.get("name"),
         source_connection_id: row.get("source_connection_id"),
         target_connection_id: row.get("target_connection_id"),
+        source_schema,
+        target_schema,
         mode,
         status,
         tables,
@@ -1122,6 +1161,7 @@ fn row_to_sync_batch(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncBatch> {
         table_name: row.get("table_name"),
         rows_extracted: row.get::<i64, _>("rows_extracted") as u64,
         rows_loaded: row.get::<i64, _>("rows_loaded") as u64,
+        skipped_rows: row.try_get::<i64, _>("skipped_rows").map(|v| v as u64).unwrap_or(0),
         duration_ms: row.get::<i64, _>("duration_ms") as u64,
         status: row.get("status"),
         error_message: row.get("error_message"),

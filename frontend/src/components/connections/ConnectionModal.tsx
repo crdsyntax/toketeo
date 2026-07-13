@@ -457,6 +457,15 @@ export function ConnectionModal({
                     </button>
                   </div>
 
+                  {!form.authEnabled && (
+                    <div className="flex items-center gap-2 p-3 bg-amber-500/5 border border-amber-500/20 text-amber-500 animate-in fade-in duration-200">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider">
+                        Username and password will not be stored for this connection
+                      </p>
+                    </div>
+                  )}
+
                   <div className={cn("space-y-4", !form.authEnabled && "opacity-40 pointer-events-none")}>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">

@@ -60,7 +60,14 @@ pub trait DataWriter: Send + Sync {
         columns: &[String],
         primary_keys: &[String],
         rows: &[serde_json::Value],
-    ) -> AppResult<u64>;
+    ) -> AppResult<UpsertResult>;
+}
+
+/// Resultado de un upsert batch: filas afectadas + filas omitidas (duplicados en MongoDB).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UpsertResult {
+    pub affected: u64,
+    pub skipped: u64,
 }
 
 #[async_trait]
@@ -199,7 +206,7 @@ impl DataWriter for std::sync::Arc<dyn DbDriver> {
         columns: &[String],
         primary_keys: &[String],
         rows: &[serde_json::Value],
-    ) -> AppResult<u64> {
+    ) -> AppResult<UpsertResult> {
         (**self).upsert_rows(table, schema, columns, primary_keys, rows).await
     }
 }

@@ -715,6 +715,19 @@ fn quote_identifier(db_type: &crate::db::DbType, name: &str) -> String {
     }
 }
 
+/// Rewrites a `CREATE TABLE` DDL statement to use a different table name
+/// and adds `IF NOT EXISTS`. Expects MySQL-style DDL from `SHOW CREATE TABLE`.
+fn rewrite_ddl_for_target(ddl: &str, target_table: &str) -> String {
+    let target_quoted = format!("`{}`", target_table.replace('`', "``"));
+    if let Some(paren_pos) = ddl.find('(') {
+        let before_paren = &ddl[..paren_pos];
+        if before_paren.to_uppercase().contains("CREATE TABLE") {
+            return format!("CREATE TABLE IF NOT EXISTS {}{}", target_quoted, &ddl[paren_pos..]);
+        }
+    }
+    ddl.to_string()
+}
+
 #[tauri::command]
 pub async fn drop_column(
     id: String,
@@ -1197,6 +1210,8 @@ pub async fn validate_sync_pipeline(
 pub async fn validate_sync_config(
     source_connection_id: String,
     target_connection_id: String,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
     tables: Vec<crate::models::sync::SyncTableConfig>,
     mode: crate::models::sync::SyncMode,
     batch_size: Option<usize>,
@@ -1210,6 +1225,8 @@ pub async fn validate_sync_config(
         name: String::new(),
         source_connection_id,
         target_connection_id,
+        source_schema,
+        target_schema,
         mode,
         status: crate::models::sync::PipelineStatus::Draft,
         tables,
@@ -1255,7 +1272,27 @@ pub async fn start_sync(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> AppResult<()> {
-    let pipeline = state.storage.get_sync_pipeline(&id).await?;
+    let mut pipeline = state.storage.get_sync_pipeline(&id).await?;
+
+    // Fill schemas from connection configs if pipeline doesn't have them
+    if pipeline.source_schema.is_none() {
+        if let Ok(cfg) = state.storage.get_connection(&pipeline.source_connection_id).await {
+            pipeline.source_schema = cfg.database.clone();
+        }
+    }
+    if pipeline.target_schema.is_none() {
+        if let Ok(cfg) = state.storage.get_connection(&pipeline.target_connection_id).await {
+            pipeline.target_schema = cfg.database.clone();
+        }
+    }
+
+    tracing::info!(
+        "[sync] Starting pipeline '{}': source_schema={:?}, target_schema={:?}",
+        pipeline.name,
+        pipeline.source_schema,
+        pipeline.target_schema,
+    );
+
     let source_driver = get_or_connect_driver(&state, &pipeline.source_connection_id).await?;
     let target_driver = get_or_connect_driver(&state, &pipeline.target_connection_id).await?;
 
@@ -1274,14 +1311,86 @@ pub async fn start_sync(
 
     let pipeline_id = pipeline.id.clone().unwrap_or_default();
     state.set_sync_control(&pipeline_id, crate::state::SyncControl::Running).await;
+    if let Err(e) = storage.update_sync_pipeline_status(&pipeline_id, PipelineStatus::Running).await {
+        tracing::error!("[sync] Failed to update pipeline status to Running: {e}");
+    }
 
     let controller = state.sync_controller.clone();
 
     tokio::spawn(async move {
         let mut pipeline = pipeline;
 
-        // Parallelize PK auto-detection (chunked to avoid connection pool saturation)
-        const PK_CHUNK_SIZE: usize = 1;
+        // Auto-create missing tables on target using source DDL
+        {
+            let source_db = source_driver.db_type();
+            let target_db = target_driver.db_type();
+            let same_engine = matches!(
+                (&source_db, &target_db),
+                (crate::db::DbType::Mysql, crate::db::DbType::Mysql)
+                | (crate::db::DbType::Mysql, crate::db::DbType::Mariadb)
+                | (crate::db::DbType::Mariadb, crate::db::DbType::Mysql)
+                | (crate::db::DbType::Mariadb, crate::db::DbType::Mariadb)
+            );
+
+            if same_engine {
+                let existing = target_driver.fetch_tables(pipeline.target_schema.clone(), None)
+                    .await
+                    .unwrap_or_default();
+                let existing_lower: Vec<String> = existing.into_iter().map(|t| t.to_lowercase()).collect();
+
+                for table_config in &pipeline.tables {
+                    if existing_lower.iter().any(|t| t == &table_config.target_table.to_lowercase()) {
+                        continue;
+                    }
+
+                    tracing::info!(
+                        "[sync] Target table '{}' not found — creating from source DDL",
+                        table_config.target_table,
+                    );
+
+                    match source_driver.fetch_ddl(
+                        &table_config.source_table,
+                        "table",
+                        pipeline.source_schema.clone(),
+                    ).await {
+                        Ok(ddl) => {
+                            let create_sql = rewrite_ddl_for_target(&ddl, &table_config.target_table);
+                            tracing::debug!("[sync] Auto-create DDL: {}", create_sql);
+                            let exec_result = match pipeline.target_schema.as_deref() {
+                                Some(schema) => target_driver.execute_with_schema(&create_sql, schema).await,
+                                None => target_driver.execute(&create_sql).await,
+                            };
+                            match exec_result {
+                                Ok(_) => {
+                                    tracing::info!("[sync] Created target table '{}'", table_config.target_table);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "[sync] Failed to create target table '{}': {}",
+                                        table_config.target_table,
+                                        e,
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "[sync] Could not read DDL for source table '{}': {}",
+                                table_config.source_table,
+                                e,
+                            );
+                        }
+                    }
+                }
+            } else {
+                tracing::info!(
+                    "[sync] Source ({:?}) and target ({:?}) engines differ — skipping auto table creation",
+                    source_db,
+                    target_db,
+                );
+            }
+        }
+
         let tables_needing_pk: Vec<usize> = pipeline
             .tables
             .iter()
@@ -1290,34 +1399,47 @@ pub async fn start_sync(
             .map(|(i, _)| i)
             .collect();
 
-        for chunk in tables_needing_pk.chunks(PK_CHUNK_SIZE) {
-            let futures: Vec<_> = chunk
-                .iter()
-                .map(|&idx| {
-                    let src = source_driver.clone();
-                    let table = pipeline.tables[idx].source_table.clone();
-                    async move {
-                        let cols = src.fetch_columns(&table, None).await;
-                        (idx, table, cols)
-                    }
-                })
-                .collect();
+        if !tables_needing_pk.is_empty() {
+            tracing::info!("[sync] Auto-detecting PKs for {} tables", tables_needing_pk.len());
+            const PK_CHUNK_SIZE: usize = 5;
+            for chunk in tables_needing_pk.chunks(PK_CHUNK_SIZE) {
+                let futures: Vec<_> = chunk
+                    .iter()
+                    .map(|&idx| {
+                        let src = source_driver.clone();
+                        let table = pipeline.tables[idx].source_table.clone();
+                        let schema = pipeline.source_schema.clone();
+                        async move {
+                            let cols = src.fetch_columns(&table, schema).await;
+                            (idx, table, cols)
+                        }
+                    })
+                    .collect();
 
-            let results = futures::future::join_all(futures).await;
-            for (idx, _table_name, cols_result) in results {
-                if let Ok(cols) = cols_result {
-                    let pks: Vec<String> = cols
-                        .iter()
-                        .filter(|c| {
-                            c.get("isPrimaryKey")
-                                .or_else(|| c.get("isPrimary"))
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false)
-                        })
-                        .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
-                        .collect();
-                    if !pks.is_empty() {
-                        pipeline.tables[idx].primary_key = Some(pks);
+                let results = futures::future::join_all(futures).await;
+                for (idx, table_name, cols_result) in results {
+                    match cols_result {
+                        Ok(cols) => {
+                            let pks: Vec<String> = cols
+                                .iter()
+                                .filter(|c| {
+                                    c.get("isPrimaryKey")
+                                        .or_else(|| c.get("isPrimary"))
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false)
+                                })
+                                .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
+                                .collect();
+                            if !pks.is_empty() {
+                                tracing::info!("[sync] PK detected for {}: {:?}", table_name, pks);
+                                pipeline.tables[idx].primary_key = Some(pks);
+                            } else {
+                                tracing::warn!("[sync] No PK found for table {}, falling back to 'id'", table_name);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("[sync] Failed to fetch columns for {}: {}", table_name, e);
+                        }
                     }
                 }
             }
@@ -1326,15 +1448,25 @@ pub async fn start_sync(
         let source: &dyn crate::db::DataReader = &*source_driver;
         let target: &dyn crate::db::DataWriter = &*target_driver;
 
-        if let Err(e) = SyncService::execute_pipeline(
+        let pipeline_result = SyncService::execute_pipeline(
             &pipeline,
             source,
             target,
             db_type,
-            storage,
+            storage.clone(),
             Some(tx),
             &controller,
-        ).await {
+        ).await;
+
+        let final_status = match &pipeline_result {
+            Ok(_) => PipelineStatus::Completed,
+            Err(_) => PipelineStatus::Failed,
+        };
+        if let Err(e) = storage.update_sync_pipeline_status(&pipeline_id, final_status).await {
+            tracing::error!("[sync] Failed to update pipeline status: {e}");
+        }
+
+        if let Err(e) = pipeline_result {
             let _ = app_handle.emit("sync:error", &e.to_string());
         }
 

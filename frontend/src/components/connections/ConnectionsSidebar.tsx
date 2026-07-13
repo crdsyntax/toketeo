@@ -1,4 +1,4 @@
-import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2, AlertTriangle, Trash2 } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2, AlertTriangle, Trash2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -401,6 +401,41 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             >
               <Unplug className="w-3.5 h-3.5 text-slate-400" />
               Disconnect
+            </button>
+            <button
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+              onClick={async (e) => {
+                e.stopPropagation()
+                setContextMenu({ visible: false, x: 0, y: 0 })
+                if (!contextMenu.connId) return
+                const connId = contextMenu.connId
+                const conn = connections.find((c) => c.id === connId)
+                if (!conn) return
+                try {
+                  await onConnect(conn)
+                  toast.success(`Connection "${conn.name}" refreshed`)
+                } catch (err) {
+                  toast.error(`Refresh failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                }
+              }}
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+              Refresh Connection
+            </button>
+            <button
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                setContextMenu({ visible: false, x: 0, y: 0 })
+                if (!contextMenu.connId) return
+                queryClient.invalidateQueries({ queryKey: ['databases', contextMenu.connId] })
+                queryClient.invalidateQueries({ queryKey: ['schemas', contextMenu.connId] })
+                queryClient.invalidateQueries({ queryKey: ['tables', contextMenu.connId] })
+                toast.success('Schemas refreshed')
+              }}
+            >
+              <Database className="w-3.5 h-3.5 text-slate-400" />
+              Refresh Schemas
             </button>
             <div className="border-t border-slate-700/40 my-1" />
             <button

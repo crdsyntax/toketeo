@@ -3,6 +3,7 @@ use crate::db::DataReader;
 use crate::db::DataWriter;
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
+use crate::db::UpsertResult;
 use crate::error::{ AppError, AppResult };
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
@@ -368,38 +369,43 @@ impl DbDriver for MySqlDriver {
         table: &str,
         schema: Option<String>
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query =
-            "SELECT 
-            column_name as name, 
-            column_type as type, 
-            is_nullable = 'YES' as isNullable, 
-            column_key = 'PRI' as isPrimaryKey, 
-            column_default as defaultValue, 
-            column_comment as comment
+        let query = "SELECT 
+            column_name as name,
+            column_type as type,
+            is_nullable as isNullable,
+            column_key as keyType,
+            column_default as defaultValue,
+            extra as extra
             FROM information_schema.columns 
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())
             ORDER BY ordinal_position";
 
-        let rows = sqlx::query(query).bind(table).bind(schema).fetch_all(&self.pool).await?;
+        let rows = sqlx::query(query)
+            .bind(table)
+            .bind(schema)
+            .fetch_all(&self.pool).await?;
 
         let mut cols = Vec::new();
         for row in rows {
             let mut map = serde_json::Map::new();
-            map.insert("name".into(), row.get::<String, _>("name").into());
-            map.insert("type".into(), row.get::<String, _>("type").into());
+            let name: String = row.try_get("name").unwrap_or_default();
+            let col_type: String = row.try_get("type").unwrap_or_default();
+            let nullable_raw: String = row.try_get("isNullable").unwrap_or_default();
+            let key_raw: String = row.try_get("keyType").unwrap_or_default();
+            let default_val: Option<String> = row.try_get("defaultValue").ok().flatten();
+            let extra: Option<String> = row.try_get("extra").ok().flatten();
 
-            let is_nullable =
-                row.try_get::<i64, _>("isNullable").unwrap_or(0) == 1 ||
-                row.try_get::<i32, _>("isNullable").unwrap_or(0) == 1;
-            map.insert("isNullable".into(), is_nullable.into());
-
-            let is_pk =
-                row.try_get::<i64, _>("isPrimaryKey").unwrap_or(0) == 1 ||
-                row.try_get::<i32, _>("isPrimaryKey").unwrap_or(0) == 1;
-            map.insert("isPrimaryKey".into(), is_pk.into());
-
-            map.insert("defaultValue".into(), row.get::<Option<String>, _>("defaultValue").into());
-            map.insert("comment".into(), row.get::<Option<String>, _>("comment").into());
+            map.insert("name".into(), name.into());
+            map.insert("type".into(), col_type.into());
+            map.insert("isNullable".into(), (nullable_raw == "YES").into());
+            map.insert("isPrimaryKey".into(), (key_raw == "PRI").into());
+            map.insert("defaultValue".into(), default_val.into());
+            map.insert("comment".into(), serde_json::Value::Null);
+            if let Some(ref e) = extra {
+                if e.contains("auto_increment") {
+                    map.insert("isAutoIncrement".into(), true.into());
+                }
+            }
             cols.push(serde_json::Value::Object(map));
         }
         Ok(cols)
@@ -655,20 +661,24 @@ impl DataReader for MySqlDriver {
             quote_mysql(table)
         };
 
-        let cols: Vec<String> = columns.iter().map(|c| quote_mysql(c)).collect();
-        let cols_str = cols.join(", ");
+        let select_clause = if columns.is_empty() {
+            "*".to_string()
+        } else {
+            let cols: Vec<String> = columns.iter().map(|c| quote_mysql(c)).collect();
+            cols.join(", ")
+        };
 
-        let mut query = format!(
-            "SELECT {} FROM {} ORDER BY {} ASC",
-            cols_str, table_ref, quote_mysql(pk_column)
-        );
-
-        if last_key.is_some() {
-            query = format!(
+        let mut query = if last_key.is_some() {
+            format!(
                 "SELECT {} FROM {} WHERE {} > ? ORDER BY {} ASC",
-                cols_str, table_ref, quote_mysql(pk_column), quote_mysql(pk_column)
-            );
-        }
+                select_clause, table_ref, quote_mysql(pk_column), quote_mysql(pk_column)
+            )
+        } else {
+            format!(
+                "SELECT {} FROM {} ORDER BY {} ASC",
+                select_clause, table_ref, quote_mysql(pk_column)
+            )
+        };
 
         query = format!("{} LIMIT ?", query);
 
@@ -698,9 +708,16 @@ impl DataReader for MySqlDriver {
 
         for row in rows {
             let mut map = serde_json::Map::new();
-            for (i, col_name) in columns.iter().enumerate() {
-                let value = self.decode_column(&row, i);
-                map.insert(col_name.clone(), value);
+            if columns.is_empty() {
+                for (i, col) in row.columns().iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    map.insert(col.name().to_string(), value);
+                }
+            } else {
+                for (i, col_name) in columns.iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    map.insert(col_name.clone(), value);
+                }
             }
             result.push(serde_json::Value::Object(map));
         }
@@ -736,9 +753,9 @@ impl DataWriter for MySqlDriver {
         columns: &[String],
         _primary_keys: &[String],
         rows: &[serde_json::Value],
-    ) -> AppResult<u64> {
+    ) -> AppResult<UpsertResult> {
         if rows.is_empty() || columns.is_empty() {
-            return Ok(0);
+            return Ok(UpsertResult::default());
         }
 
         let table_ref = if let Some(s) = schema {
@@ -761,35 +778,89 @@ impl DataWriter for MySqlDriver {
             .collect();
         let update_str = update_parts.join(", ");
 
-        let query = format!(
+        let upsert_query = format!(
             "INSERT INTO {} ({}) VALUES {} ON DUPLICATE KEY UPDATE {}",
             table_ref, cols_str, values_str, update_str
         );
 
-        let mut qb = sqlx::query(&query);
+        let ignore_query = format!(
+            "INSERT IGNORE INTO {} ({}) VALUES {}",
+            table_ref, cols_str, values_str
+        );
 
-        for row in rows {
-            for col in columns {
-                qb = match row.get(col) {
-                    Some(Value::Null) | None => qb.bind(None::<String>),
-                    Some(Value::String(s)) => qb.bind(s.clone()),
-                    Some(Value::Number(n)) => {
-                        if let Some(i) = n.as_i64() {
-                            qb.bind(i)
-                        } else if let Some(f) = n.as_f64() {
-                            qb.bind(f)
-                        } else {
-                            qb.bind(n.to_string())
+        // Collect bind values once so we can reuse for fallback
+        let bind_values: Vec<Option<String>> = rows
+            .iter()
+            .flat_map(|row| {
+                columns.iter().map(move |col| {
+                    match row.get(col) {
+                        Some(Value::Null) | None => None,
+                        Some(Value::String(s)) => Some(s.clone()),
+                        Some(Value::Number(n)) => {
+                            if let Some(i) = n.as_i64() {
+                                Some(i.to_string())
+                            } else if let Some(f) = n.as_f64() {
+                                Some(f.to_string())
+                            } else {
+                                Some(n.to_string())
+                            }
                         }
+                        Some(Value::Bool(b)) => Some(b.to_string()),
+                        _ => None,
                     }
-                    Some(Value::Bool(b)) => qb.bind(*b),
-                    _ => qb.bind(None::<String>),
-                };
+                })
+            })
+            .collect();
+
+        // Helper to bind all values onto a query builder
+        fn bind_all<'a>(
+            mut qb: sqlx::query::Query<'a, sqlx::MySql, sqlx::mysql::MySqlArguments>,
+            bind_values: &'a [Option<String>],
+        ) -> sqlx::query::Query<'a, sqlx::MySql, sqlx::mysql::MySqlArguments> {
+            for val in bind_values {
+                qb = qb.bind(val.as_deref());
             }
+            qb
         }
 
-        let result = qb.execute(&self.pool).await?;
-        Ok(result.rows_affected() as u64)
+        // Try ON DUPLICATE KEY UPDATE first
+        let qb = sqlx::query(&upsert_query);
+        let qb = bind_all(qb, &bind_values);
+
+        match qb.execute(&self.pool).await {
+            Ok(result) => Ok(UpsertResult { affected: result.rows_affected() as u64, skipped: 0 }),
+            Err(upsert_err) => {
+                tracing::warn!(
+                    "[mysql] upsert_rows ON DUPLICATE KEY failed for {}: {} — retrying with INSERT IGNORE",
+                    table_ref,
+                    upsert_err,
+                );
+                // Fallback to INSERT IGNORE (skips rows that violate constraints)
+                let qb2 = sqlx::query(&ignore_query);
+                let qb2 = bind_all(qb2, &bind_values);
+                match qb2.execute(&self.pool).await {
+                    Ok(result) => {
+                        let inserted = result.rows_affected();
+                        tracing::warn!(
+                            "[mysql] INSERT IGNORE succeeded for {}: {} rows inserted (some may have been skipped)",
+                            table_ref,
+                            inserted,
+                        );
+                        Ok(UpsertResult { affected: inserted, skipped: 0 })
+                    }
+                    Err(ignore_err) => {
+                        // Both strategies failed — propagate the original error
+                        tracing::error!(
+                            "[mysql] Both upsert strategies failed for {}: upsert={}, ignore={}",
+                            table_ref,
+                            upsert_err,
+                            ignore_err,
+                        );
+                        Err(upsert_err.into())
+                    }
+                }
+            }
+        }
     }
 }
 

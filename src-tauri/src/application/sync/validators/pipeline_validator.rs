@@ -211,6 +211,8 @@ mod tests {
             name: "test".into(),
             source_connection_id: "src".into(),
             target_connection_id: "tgt".into(),
+            source_schema: None,
+            target_schema: None,
             mode: SyncMode::Full,
             status: crate::models::sync::PipelineStatus::Draft,
             tables,
@@ -262,7 +264,7 @@ mod tests {
                     _: &[String],
                     _: &[String],
                     _: &[serde_json::Value],
-                ) -> crate::error::AppResult<u64> {
+                ) -> crate::error::AppResult<crate::db::UpsertResult> {
                     unimplemented!()
                 }
             }
@@ -809,7 +811,7 @@ mod tests {
         }
         #[async_trait]
         impl DataWriter for FailingMongo {
-            async fn upsert_rows(&self, _: &str, _: Option<&str>, _: &[String], _: &[String], _: &[serde_json::Value]) -> crate::error::AppResult<u64> { unimplemented!() }
+            async fn upsert_rows(&self, _: &str, _: Option<&str>, _: &[String], _: &[String], _: &[serde_json::Value]) -> crate::error::AppResult<crate::db::UpsertResult> { unimplemented!() }
         }
         #[async_trait]
         impl DbDriver for FailingMongo {

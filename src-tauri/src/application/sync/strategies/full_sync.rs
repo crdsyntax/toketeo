@@ -31,7 +31,15 @@ impl SyncStrategy for FullSync {
             .as_ref()
             .and_then(|p| p.first())
             .cloned()
-            .unwrap_or_else(|| "_id".to_string());
+            .unwrap_or_else(|| "id".to_string());
+
+        tracing::info!(
+            "[full_sync] Table '{}': pk={}, columns={}, batch_size={}",
+            table_config.source_table,
+            pk,
+            table_config.column_mappings.len(),
+            pipeline.batch_size,
+        );
 
         let mut mappings = table_config.column_mappings.clone();
         let mut columns: Vec<String> = mappings
@@ -51,7 +59,10 @@ impl SyncStrategy for FullSync {
         let run_id = Uuid::new_v4().to_string();
         let started_at = chrono::Utc::now().to_rfc3339();
 
-        let total_expected = extractor.count(&table_config.source_table, None).await.unwrap_or(0);
+        let source_schema = pipeline.source_schema.as_deref();
+        let target_schema = pipeline.target_schema.as_deref();
+
+        let total_expected = extractor.count(&table_config.source_table, source_schema).await.unwrap_or(0);
 
         if let Some(ref sender) = event_sender {
             let _ = sender.send(SyncEvent::Progress {
@@ -106,7 +117,7 @@ impl SyncStrategy for FullSync {
             let output = extractor
                 .extract(
                     &table_config.source_table,
-                    None,
+                    source_schema,
                     &columns,
                     &pk,
                     last_key,
@@ -141,20 +152,50 @@ impl SyncStrategy for FullSync {
                 &mappings,
             )?;
 
-            let rows_loaded = writer
+            let upsert_result = match writer
                 .upsert_rows(
                     &table_config.target_table,
-                    None,
+                    target_schema,
                     &dest_columns,
                     table_config.primary_key.as_deref().unwrap_or(&[]),
                     &transformed,
                 )
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(
+                        "[full_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
+                        table_config.source_table,
+                        batch_number,
+                        e,
+                    );
+                    if let Some(ref sender) = event_sender {
+                        let _ = sender.send(SyncEvent::RowError {
+                            table: table_config.source_table.clone(),
+                            row_key: None,
+                            error: format!("Batch {} upsert failed: {}", batch_number, e),
+                        });
+                    }
+                    crate::db::UpsertResult::default()
+                }
+            };
 
-            processed_rows += rows_loaded;
-            let batch_errors = batch_size as u64 - rows_loaded;
+            processed_rows += upsert_result.affected;
+            let batch_errors = batch_size as u64 - upsert_result.affected - upsert_result.skipped;
             error_count += batch_errors;
             let duration = batch_start.elapsed().as_millis() as u64;
+
+            tracing::debug!(
+                "[full_sync] Table '{}' batch {}: extracted={}, loaded={}, skipped={}, errors={}, duration={}ms",
+                table_config.source_table,
+                batch_number,
+                batch_size,
+                upsert_result.affected,
+                upsert_result.skipped,
+                batch_errors,
+                duration,
+            );
 
             let batch_id = Uuid::new_v4().to_string();
             let sync_batch = SyncBatch {
@@ -163,7 +204,8 @@ impl SyncStrategy for FullSync {
                 batch_number,
                 table_name: table_config.source_table.clone(),
                 rows_extracted: batch_size as u64,
-                rows_loaded,
+                rows_loaded: upsert_result.affected,
+                skipped_rows: upsert_result.skipped,
                 duration_ms: duration,
                 status: if batch_errors == 0 { "completed".to_string() } else { "completed_with_errors".to_string() },
                 error_message: if batch_errors > 0 { Some(format!("{batch_errors} rows failed")) } else { None },
@@ -190,7 +232,8 @@ impl SyncStrategy for FullSync {
                 let _ = sender.send(SyncEvent::BatchCompleted {
                     table: table_config.source_table.clone(),
                     batch_number,
-                    rows_loaded,
+                    rows_loaded: upsert_result.affected,
+                    skipped: upsert_result.skipped,
                     duration_ms: duration,
                 });
                 if batch_errors > 0 {
@@ -363,11 +406,11 @@ mod tests {
             _columns: &[String],
             _primary_keys: &[String],
             rows: &[serde_json::Value],
-        ) -> crate::error::AppResult<u64> {
+        ) -> crate::error::AppResult<crate::db::UpsertResult> {
             let mut guard = self.written.lock().await;
             let entry = guard.entry(table.to_string()).or_insert_with(Vec::new);
             entry.extend(rows.iter().cloned());
-            Ok(rows.len() as u64)
+            Ok(crate::db::UpsertResult { affected: rows.len() as u64, skipped: 0 })
         }
     }
 
@@ -379,6 +422,8 @@ mod tests {
             name: "Cross DB Sync Test".into(),
             source_connection_id: "source-pg".into(),
             target_connection_id: "target-mysql".into(),
+            source_schema: None,
+            target_schema: None,
             mode: SyncMode::Full,
             status: PipelineStatus::Ready,
             tables,

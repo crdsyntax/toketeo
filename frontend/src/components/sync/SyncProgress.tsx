@@ -1,20 +1,16 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { Loader2, CheckCircle2, AlertTriangle, Database, ArrowRightFromLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SyncEvent, SyncRun } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
 
-interface SyncProgressProps {
-  run: SyncRun
-  onEvent?: (event: SyncEvent) => void
-}
-
-interface ProgressState {
+export interface ProgressState {
   completedBatches: number
   processedRows: number
   totalRows: number
   errors: number
+  skipped: number
   currentTable: string
   tableIndex: number
   totalTables: number
@@ -23,44 +19,43 @@ interface ProgressState {
   estimatedMs: number
 }
 
-interface MiniLog {
+export interface MiniLog {
   type: 'batch' | 'error' | 'phase'
   table: string
   message: string
   time: Date
 }
 
-export function SyncProgress({ run, onEvent }: SyncProgressProps) {
-  const [progress, setProgress] = useState<ProgressState>({
-    completedBatches: 0,
-    processedRows: run.processed_rows,
-    totalRows: run.total_rows,
-    errors: run.error_count,
-    currentTable: '',
-    tableIndex: 0,
-    totalTables: 0,
-    phase: 'idle',
-    elapsedMs: 0,
-    estimatedMs: 0,
-  })
-  const [logs, setLogs] = useState<MiniLog[]>([])
-  const [startTime] = useState(Date.now())
+interface SyncProgressProps {
+  run: SyncRun
+  progress: ProgressState
+  logs: MiniLog[]
+  onProgressChange: (state: ProgressState) => void
+  onLogsChange: (logs: MiniLog[]) => void
+  onEvent?: (event: SyncEvent) => void
+}
+
+export const createInitialProgress = (run: SyncRun): ProgressState => ({
+  completedBatches: 0,
+  processedRows: run.processed_rows,
+  totalRows: run.total_rows,
+  errors: run.error_count,
+  skipped: 0,
+  currentTable: '',
+  tableIndex: 0,
+  totalTables: 0,
+  phase: run.status === PipelineStatus.Completed ? 'done' : 'idle',
+  elapsedMs: 0,
+  estimatedMs: 0,
+})
+
+export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChange, onEvent }: SyncProgressProps) {
+  const startTime = useRef(Date.now())
   const processedAtStart = useRef(run.processed_rows)
 
+  // Reset start time when run changes
   useEffect(() => {
-    setProgress({
-      completedBatches: 0,
-      processedRows: run.processed_rows,
-      totalRows: run.total_rows,
-      errors: run.error_count,
-      currentTable: '',
-      tableIndex: 0,
-      totalTables: 0,
-      phase: 'idle',
-      elapsedMs: 0,
-      estimatedMs: 0,
-    })
-    setLogs([])
+    startTime.current = Date.now()
     processedAtStart.current = run.processed_rows
   }, [run.id])
 
@@ -71,19 +66,19 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
 
       if (e.TableStarted) {
         const ts = e.TableStarted!
-        setProgress((p) => ({
+        onProgressChange((p) => ({
           ...p,
           currentTable: ts.table,
           tableIndex: ts.table_index,
           totalTables: ts.total_tables,
           phase: 'extracting',
         }))
-        setLogs((prev) => [
+        onLogsChange((prev) => [
           { type: 'phase', table: ts.table, message: `Tabla ${ts.table_index}/${ts.total_tables}: ${ts.table}`, time: new Date() },
           ...prev,
-        ].slice(0, 5))
+        ].slice(0, 10))
       } else if (e.Progress) {
-        setProgress((p) => ({
+        onProgressChange((p) => ({
           ...p,
           processedRows: e.Progress!.processed_rows,
           totalRows: e.Progress!.total_rows,
@@ -92,9 +87,9 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
         }))
       } else if (e.BatchCompleted) {
         const batch = e.BatchCompleted!
-        setProgress((p) => {
+        onProgressChange((p) => {
           const now = Date.now()
-          const elapsed = now - startTime
+          const elapsed = now - startTime.current
           const rowsPerMs = p.processedRows / Math.max(elapsed, 1)
           const remaining = Math.max(p.totalRows - p.processedRows, 0)
           const estimated = rowsPerMs > 0 ? remaining / rowsPerMs : 0
@@ -102,40 +97,41 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
             ...p,
             completedBatches: p.completedBatches + 1,
             processedRows: p.processedRows + batch.rows_loaded,
+            skipped: p.skipped + batch.skipped,
             currentTable: batch.table,
             phase: 'loading',
             elapsedMs: elapsed,
             estimatedMs: estimated,
           }
         })
-        setLogs((prev) => [
+        onLogsChange((prev) => [
           { type: 'batch', table: batch.table, message: `Lote ${batch.batch_number}: ${batch.rows_loaded} filas en ${batch.duration_ms}ms`, time: new Date() },
           ...prev,
-        ].slice(0, 5))
+        ].slice(0, 10))
       } else if (e.RowError) {
-        setProgress((p) => ({ ...p, errors: p.errors + 1 }))
-        setLogs((prev) => [
+        onProgressChange((p) => ({ ...p, errors: p.errors + 1 }))
+        onLogsChange((prev) => [
           { type: 'error', table: e.RowError!.table, message: e.RowError!.error, time: new Date() },
           ...prev,
-        ].slice(0, 5))
+        ].slice(0, 10))
       } else if (e.PhaseCompleted) {
-        setProgress((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
-        setLogs((prev) => [
+        onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime.current }))
+        onLogsChange((prev) => [
           { type: 'phase', table: e.PhaseCompleted!.table, message: `Completado: ${e.PhaseCompleted!.total_rows} filas`, time: new Date() },
           ...prev,
-        ].slice(0, 5))
+        ].slice(0, 10))
       } else if (e.Error) {
-        setProgress((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime }))
-        setLogs((prev) => [
+        onProgressChange((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime.current }))
+        onLogsChange((prev) => [
           { type: 'error', table: '', message: e.Error!.message, time: new Date() },
           ...prev,
-        ].slice(0, 5))
+        ].slice(0, 10))
       } else if (e.Completed) {
-        setProgress((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
-        setLogs((prev) => [
+        onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime.current }))
+        onLogsChange((prev) => [
           { type: 'phase', table: '', message: 'Sincronización completada', time: new Date() },
           ...prev,
-        ].slice(0, 5))
+        ].slice(0, 10))
       }
     })
 
@@ -146,10 +142,10 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
   useEffect(() => {
     if (run.status !== PipelineStatus.Running) return
     const interval = setInterval(() => {
-      setProgress((p) => ({ ...p, elapsedMs: Date.now() - startTime }))
+      onProgressChange((p) => ({ ...p, elapsedMs: Date.now() - startTime.current }))
     }, 1000)
     return () => clearInterval(interval)
-  }, [run.status, startTime])
+  }, [run.status])
 
   const isRunning = run.status === PipelineStatus.Running
   const isCompleted = run.status === PipelineStatus.Completed
@@ -199,7 +195,7 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
       </div>
 
       {/* Big counter */}
-      <div className="p-6 flex items-center justify-center gap-8">
+      <div className="p-6 flex items-center justify-center gap-6">
         <div className="text-center">
           <p className="text-4xl font-bold font-mono tabular-nums">
             {progress.processedRows.toLocaleString()}
@@ -217,6 +213,16 @@ export function SyncProgress({ run, onEvent }: SyncProgressProps) {
             errores
           </p>
         </div>
+        {progress.skipped > 0 && (
+          <div className="text-center">
+            <p className="text-4xl font-bold font-mono tabular-nums text-amber-600">
+              {progress.skipped}
+            </p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+              omitidas
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}

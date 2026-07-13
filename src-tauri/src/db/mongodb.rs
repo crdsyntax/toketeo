@@ -1,6 +1,7 @@
 use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
+use crate::db::UpsertResult;
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
@@ -824,9 +825,9 @@ impl DataWriter for MongoDbDriver {
         columns: &[String],
         primary_keys: &[String],
         rows: &[serde_json::Value],
-    ) -> AppResult<u64> {
+    ) -> AppResult<UpsertResult> {
         if rows.is_empty() || columns.is_empty() {
-            return Ok(0);
+            return Ok(UpsertResult::default());
         }
 
         let (db_name, collection_name) = resolve_table_names(table, schema, &self._default_db)?;
@@ -834,7 +835,7 @@ impl DataWriter for MongoDbDriver {
         let pk_field = primary_keys.first().map(|s| s.as_str()).unwrap_or("_id");
 
         let mut affected = 0u64;
-        let mut error_count = 0u64;
+        let mut skipped = 0u64;
 
         for row in rows {
             let mut filter_doc = Document::new();
@@ -856,25 +857,27 @@ impl DataWriter for MongoDbDriver {
                 Ok(result) => {
                     if result.upserted_id.is_some() {
                         affected += 1;
+                    } else if result.modified_count > 0 {
+                        affected += 1;
                     } else {
-                        affected += result.modified_count;
+                        skipped += 1;
                     }
                 }
                 Err(e) => {
                     tracing::warn!("[MongoDB upsert_rows] row upsert failed: {e}");
-                    error_count += 1;
+                    skipped += 1;
                 }
             }
         }
 
-        if error_count > 0 {
+        if skipped > 0 {
             tracing::warn!(
-                "[MongoDB upsert_rows] {affected} rows affected, {error_count} errors in batch of {}",
+                "[MongoDB upsert_rows] {affected} rows affected, {skipped} skipped in batch of {}",
                 rows.len(),
             );
         }
 
-        Ok(affected)
+        Ok(UpsertResult { affected, skipped })
     }
 }
 

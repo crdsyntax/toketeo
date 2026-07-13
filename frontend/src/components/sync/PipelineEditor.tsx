@@ -25,8 +25,8 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
   const [targetId, setTargetId] = useState(pipeline?.target_connection_id ?? '')
   const [mode, setMode] = useState<SyncMode>(pipeline?.mode ?? SyncMode.Full)
   const [tables, setTables] = useState<SyncTableConfig[]>(pipeline?.tables ?? [])
-  const [sourceSchema, setSourceSchema] = useState('')
-  const [targetSchema, setTargetSchema] = useState('')
+  const [sourceSchema, setSourceSchema] = useState(pipeline?.source_schema ?? '')
+  const [targetSchema, setTargetSchema] = useState(pipeline?.target_schema ?? '')
   const [saving, setSaving] = useState(false)
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +67,8 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
     name,
     source_connection_id: sourceId,
     target_connection_id: targetId,
+    source_schema: sourceSchema || undefined,
+    target_schema: targetSchema || undefined,
     mode,
     tables,
     batch_size: 0,

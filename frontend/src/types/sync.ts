@@ -39,6 +39,8 @@ export interface SyncPipeline {
   name: string;
   source_connection_id: string;
   target_connection_id: string;
+  source_schema?: string;
+  target_schema?: string;
   mode: SyncMode;
   status: PipelineStatus;
   tables: SyncTableConfig[];
@@ -99,6 +101,7 @@ export interface SyncBatch {
   table_name: string;
   rows_extracted: number;
   rows_loaded: number;
+  skipped_rows: number;
   duration_ms: number;
   status: string;
   error_message?: string;
@@ -150,7 +153,7 @@ export enum DiffType {
 
 export interface SyncEvent {
   TableStarted?: { table: string; table_index: number; total_tables: number };
-  BatchCompleted?: { table: string; batch_number: number; rows_loaded: number; duration_ms: number };
+  BatchCompleted?: { table: string; batch_number: number; rows_loaded: number; skipped: number; duration_ms: number };
   RowError?: { table: string; row_key?: string; error: string };
   PhaseCompleted?: { table: string; total_rows: number };
   Progress?: { table: string; processed_rows: number; total_rows: number; error_count: number };

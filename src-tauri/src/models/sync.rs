@@ -56,6 +56,10 @@ pub struct SyncPipeline {
     pub name: String,
     pub source_connection_id: String,
     pub target_connection_id: String,
+    #[serde(default)]
+    pub source_schema: Option<String>,
+    #[serde(default)]
+    pub target_schema: Option<String>,
     pub mode: SyncMode,
     #[serde(default)]
     pub status: PipelineStatus,
@@ -138,6 +142,7 @@ pub struct SyncBatch {
     pub table_name: String,
     pub rows_extracted: u64,
     pub rows_loaded: u64,
+    pub skipped_rows: u64,
     pub duration_ms: u64,
     pub status: String,
     pub error_message: Option<String>,

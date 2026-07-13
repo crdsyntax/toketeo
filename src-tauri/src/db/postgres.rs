@@ -1,6 +1,7 @@
 use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
+use crate::db::UpsertResult;
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
@@ -639,14 +640,18 @@ impl DataReader for PostgresDriver {
             quote_pg(table)
         };
 
-        let cols: Vec<String> = columns.iter().map(|c| quote_pg(c)).collect();
-        let cols_str = cols.join(", ");
+        let select_clause = if columns.is_empty() {
+            "*".to_string()
+        } else {
+            let cols: Vec<String> = columns.iter().map(|c| quote_pg(c)).collect();
+            cols.join(", ")
+        };
 
         let (query, has_filter) = if last_key.is_some() {
             (
                 format!(
                     "SELECT {} FROM {} WHERE {} > $1 ORDER BY {} ASC LIMIT $2",
-                    cols_str, table_ref, quote_pg(pk_column), quote_pg(pk_column)
+                    select_clause, table_ref, quote_pg(pk_column), quote_pg(pk_column)
                 ),
                 true,
             )
@@ -654,7 +659,7 @@ impl DataReader for PostgresDriver {
             (
                 format!(
                     "SELECT {} FROM {} ORDER BY {} ASC LIMIT $1",
-                    cols_str, table_ref, quote_pg(pk_column)
+                    select_clause, table_ref, quote_pg(pk_column)
                 ),
                 false,
             )
@@ -689,9 +694,16 @@ impl DataReader for PostgresDriver {
 
         for row in rows {
             let mut map = serde_json::Map::new();
-            for (i, col_name) in columns.iter().enumerate() {
-                let value = self.decode_column(&row, i);
-                map.insert(col_name.clone(), value);
+            if columns.is_empty() {
+                for (i, col) in row.columns().iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    map.insert(col.name().to_string(), value);
+                }
+            } else {
+                for (i, col_name) in columns.iter().enumerate() {
+                    let value = self.decode_column(&row, i);
+                    map.insert(col_name.clone(), value);
+                }
             }
             result.push(serde_json::Value::Object(map));
         }
@@ -727,9 +739,9 @@ impl DataWriter for PostgresDriver {
         columns: &[String],
         primary_keys: &[String],
         rows: &[serde_json::Value],
-    ) -> AppResult<u64> {
+    ) -> AppResult<UpsertResult> {
         if rows.is_empty() || columns.is_empty() {
-            return Ok(0);
+            return Ok(UpsertResult::default());
         }
 
         let table_ref = if let Some(s) = schema {
@@ -796,7 +808,7 @@ impl DataWriter for PostgresDriver {
         }
 
         let result = qb.execute(&self.pool).await?;
-        Ok(result.rows_affected() as u64)
+        Ok(UpsertResult { affected: result.rows_affected() as u64, skipped: 0 })
     }
 }
 

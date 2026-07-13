@@ -31,7 +31,15 @@ impl SyncStrategy for IncrementalSync {
             .as_ref()
             .and_then(|p| p.first())
             .cloned()
-            .unwrap_or_else(|| "_id".to_string());
+            .unwrap_or_else(|| "id".to_string());
+
+        tracing::info!(
+            "[incremental_sync] Table '{}': pk={}, columns={}, batch_size={}",
+            table_config.source_table,
+            pk,
+            table_config.column_mappings.len(),
+            pipeline.batch_size,
+        );
 
         let mut mappings = table_config.column_mappings.clone();
         let mut columns: Vec<String> = mappings
@@ -63,7 +71,10 @@ impl SyncStrategy for IncrementalSync {
         let mut processed_rows: u64 = 0;
         let mut error_count: u64 = 0;
 
-        let total_expected = extractor.count(&table_config.source_table, None).await.unwrap_or(0);
+        let source_schema = pipeline.source_schema.as_deref();
+        let target_schema = pipeline.target_schema.as_deref();
+
+        let total_expected = extractor.count(&table_config.source_table, source_schema).await.unwrap_or(0);
 
         if let Some(ref sender) = event_sender {
             let _ = sender.send(SyncEvent::Progress {
@@ -126,7 +137,7 @@ impl SyncStrategy for IncrementalSync {
             let output = extractor
                 .extract(
                     &table_config.source_table,
-                    None,
+                    source_schema,
                     &columns,
                     &pk,
                     last_key,
@@ -161,18 +172,37 @@ impl SyncStrategy for IncrementalSync {
                 &mappings,
             )?;
 
-            let rows_loaded = writer
+            let upsert_result = match writer
                 .upsert_rows(
                     &table_config.target_table,
-                    None,
+                    target_schema,
                     &dest_columns,
                     table_config.primary_key.as_deref().unwrap_or(&[]),
                     &transformed,
                 )
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(
+                        "[incremental_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
+                        table_config.source_table,
+                        batch_number,
+                        e,
+                    );
+                    if let Some(ref sender) = event_sender {
+                        let _ = sender.send(SyncEvent::RowError {
+                            table: table_config.source_table.clone(),
+                            row_key: None,
+                            error: format!("Batch {} upsert failed: {}", batch_number, e),
+                        });
+                    }
+                    crate::db::UpsertResult::default()
+                }
+            };
 
-            processed_rows += rows_loaded;
-            let batch_errors = batch_size as u64 - rows_loaded;
+            processed_rows += upsert_result.affected;
+            let batch_errors = batch_size as u64 - upsert_result.affected - upsert_result.skipped;
             error_count += batch_errors;
             let duration = batch_start.elapsed().as_millis() as u64;
 
@@ -183,7 +213,8 @@ impl SyncStrategy for IncrementalSync {
                 batch_number,
                 table_name: table_config.source_table.clone(),
                 rows_extracted: batch_size as u64,
-                rows_loaded,
+                rows_loaded: upsert_result.affected,
+                skipped_rows: upsert_result.skipped,
                 duration_ms: duration,
                 status: if batch_errors == 0 { "completed".to_string() } else { "completed_with_errors".to_string() },
                 error_message: if batch_errors > 0 { Some(format!("{batch_errors} rows failed")) } else { None },
@@ -224,7 +255,8 @@ impl SyncStrategy for IncrementalSync {
                 let _ = sender.send(SyncEvent::BatchCompleted {
                     table: table_config.source_table.clone(),
                     batch_number,
-                    rows_loaded,
+                    rows_loaded: upsert_result.affected,
+                    skipped: upsert_result.skipped,
                     duration_ms: duration,
                 });
                 if batch_errors > 0 {

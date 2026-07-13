@@ -67,18 +67,26 @@ function BatchRow({ batch }: { batch: SyncBatch }) {
           !isSuccess && !isError && 'bg-muted-foreground',
         )} />
 
-        <div className="flex-1 grid grid-cols-5 gap-2 text-xs">
+        <div className="flex-1 grid grid-cols-6 gap-2 text-xs">
           <span className="font-mono font-bold text-foreground">#{batch.batch_number}</span>
           <span className="font-mono text-muted-foreground truncate">{batch.table_name}</span>
           <span className="font-mono text-muted-foreground">{batch.rows_loaded} / {batch.rows_extracted} rows</span>
           <span className="font-mono text-muted-foreground">{batch.duration_ms}ms</span>
-          <span className={cn(
-            "font-bold uppercase tracking-wider text-[10px]",
-            isSuccess && 'text-emerald-500',
-            isError && 'text-destructive',
-          )}>
-            {batch.status}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className={cn(
+              "font-bold uppercase tracking-wider text-[10px]",
+              isSuccess && 'text-emerald-500',
+              isError && 'text-destructive',
+            )}>
+              {batch.status}
+            </span>
+            {batch.skipped_rows > 0 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                {batch.skipped_rows} skipped
+              </span>
+            )}
+          </div>
+          <span />
         </div>
 
         {batch.error_message && (

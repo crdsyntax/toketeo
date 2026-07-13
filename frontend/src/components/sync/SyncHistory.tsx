@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Clock, CheckCircle2, XCircle, Loader2, PauseCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { Clock, CheckCircle2, XCircle, Loader2, PauseCircle, ChevronDown, ChevronRight, Database } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { syncService } from '@/services/sync.service'
 import type { SyncRun, SyncBatch } from '@/types/sync'
@@ -55,6 +55,32 @@ function RunDetail({ runId }: { runId: string }) {
           {b.error_message && <span className="text-destructive">{b.error_message}</span>}
         </div>
       ))}
+    </div>
+  )
+}
+
+function RunTableSummary({ runId }: { runId: string }) {
+  const { data: batches } = useQuery({
+    queryKey: ['sync-batches', runId],
+    queryFn: () => syncService.listBatches(runId),
+    staleTime: 60 * 1000,
+  })
+
+  if (!batches || batches.length === 0) return null
+
+  const tableNames = [...new Set(batches.map((b) => b.table_name))]
+
+  return (
+    <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground/70 mt-1 flex-wrap">
+      <Database className="w-2.5 h-2.5 shrink-0" />
+      <span className="font-bold uppercase tracking-wider">Tablas:</span>
+      {tableNames.length <= 5 ? (
+        tableNames.map((t) => (
+          <span key={t} className="font-mono">{t}{t !== tableNames[tableNames.length - 1] ? ',' : ''}</span>
+        ))
+      ) : (
+        <span className="font-mono">{tableNames.slice(0, 4).join(', ')}, +{tableNames.length - 4} más</span>
+      )}
     </div>
   )
 }
@@ -152,6 +178,8 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
                   )}
                   <span>{run.batch_count} lote{run.batch_count !== 1 ? 's' : ''}</span>
                 </div>
+
+                <RunTableSummary runId={run.id} />
 
                 {run.started_at && (
                   <p className="text-[9px] text-muted-foreground/60 mt-1 font-mono">

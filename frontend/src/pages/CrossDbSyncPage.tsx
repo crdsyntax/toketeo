@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils'
 import { connectionService } from '@/services/connection.service'
 import { syncService } from '@/services/sync.service'
 import { SyncWizard } from '@/components/sync/wizard/SyncWizard'
-import { SyncProgress } from '@/components/sync/SyncProgress'
+import { SyncProgress, createInitialProgress } from '@/components/sync/SyncProgress'
+import type { ProgressState, MiniLog } from '@/components/sync/SyncProgress'
 import { SyncLogViewer } from '@/components/sync/SyncLogViewer'
 import { SyncHistory } from '@/components/sync/SyncHistory'
 import type { SyncPipeline, SyncRun } from '@/types/sync'
@@ -45,10 +46,21 @@ export function CrossDbSyncPage() {
   const [pausedId, setPausedId] = useState<string | null>(null)
   const [selectedPipeline, setSelectedPipeline] = useState<SyncPipeline | null>(null)
   const [activeRun, setActiveRun] = useState<SyncRun | null>(null)
+  const [progressState, setProgressState] = useState<ProgressState>(() => createInitialProgress({ processed_rows: 0, total_rows: 0, error_count: 0 } as SyncRun))
+  const [progressLogs, setProgressLogs] = useState<MiniLog[]>([])
   const [detailTab, setDetailTab] = useState<DetailTab>('history')
   const virtualRunCounter = useRef(0)
+  const executingPipelineIdRef = useRef<string | null>(null)
   const [latestRuns, setLatestRuns] = useState<Record<string, SyncRun>>({})
   const queryClient = useQueryClient()
+
+  // Reset progress state when activeRun changes
+  useEffect(() => {
+    if (activeRun) {
+      setProgressState(createInitialProgress(activeRun))
+      setProgressLogs([])
+    }
+  }, [activeRun?.id])
 
   const { data: pipelines, isLoading } = useQuery({
     queryKey: ['sync-pipelines'],
@@ -102,6 +114,7 @@ export function CrossDbSyncPage() {
 
   const handleStart = async (p: SyncPipeline) => {
     setExecutingId(p.id)
+    executingPipelineIdRef.current = p.id
     virtualRunCounter.current += 1
     queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
       old?.map((pipe) => pipe.id === p.id ? { ...pipe, status: PipelineStatus.Running } : pipe)
@@ -122,6 +135,7 @@ export function CrossDbSyncPage() {
       await syncService.start(p.id)
     } catch {
       setExecutingId(null)
+      executingPipelineIdRef.current = null
       queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
         old?.map((pipe) => pipe.id === p.id ? { ...pipe, status: PipelineStatus.Ready } : pipe)
       )
@@ -154,6 +168,7 @@ export function CrossDbSyncPage() {
     try {
       await syncService.cancel(id)
       setExecutingId(null)
+      executingPipelineIdRef.current = null
       queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
         old?.map((p) => p.id === id ? { ...p, status: PipelineStatus.Cancelled } : p)
       )
@@ -184,13 +199,41 @@ export function CrossDbSyncPage() {
         }))
       }
       if (e.Completed) {
+        const pipeId = executingPipelineIdRef.current
         setExecutingId(null)
+        executingPipelineIdRef.current = null
+        // Optimistic: mark run as completed immediately so detail panel shows "Completado"
+        setActiveRun((prev) => prev ? { ...prev, status: PipelineStatus.Completed, completed_at: new Date().toISOString() } : prev)
+        if (pipeId) {
+          queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+            old?.map((p) => p.id === pipeId ? { ...p, status: PipelineStatus.Completed } : pipe)
+          )
+        }
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
         queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+        // Fetch the latest run so the "Registros" tab updates to the newest execution
+        if (pipeId) {
+          syncService.listRuns(pipeId).then((runs) => {
+            if (runs.length > 0) {
+              const latest = runs[0]
+              setActiveRun(latest)
+              setLatestRuns((prev) => ({ ...prev, [pipeId]: latest }))
+            }
+          }).catch(() => {})
+        }
         toast.success('Sincronización completada')
       }
       if (e.Error) {
+        const pipeId = executingPipelineIdRef.current
         setExecutingId(null)
+        executingPipelineIdRef.current = null
+        // Optimistic: mark run as failed immediately
+        setActiveRun((prev) => prev ? { ...prev, status: PipelineStatus.Failed, error_count: prev.error_count + 1 } : prev)
+        if (pipeId) {
+          queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
+            old?.map((p) => p.id === pipeId ? { ...p, status: PipelineStatus.Failed } : pipe)
+          )
+        }
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
         queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
         toast.error(`Error en sincronización: ${e.Error.message}`)
@@ -202,6 +245,7 @@ export function CrossDbSyncPage() {
   useEffect(() => {
     const unlisten = listen<string>('sync:error', (event) => {
       setExecutingId(null)
+      executingPipelineIdRef.current = null
       queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
       queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
       toast.error(`Error en sincronización: ${event.payload}`)
@@ -426,7 +470,7 @@ export function CrossDbSyncPage() {
 
             {detailTab === 'progress' && (
               activeRun ? (
-                <SyncProgress run={activeRun} />
+                <SyncProgress run={activeRun} progress={progressState} logs={progressLogs} onProgressChange={setProgressState} onLogsChange={setProgressLogs} />
               ) : (
                 <div className="border border-border bg-muted/20 p-6 text-center">
                   <p className="text-xs text-muted-foreground">Selecciona una ejecución del historial para ver su progreso, o inicia una nueva sincronización.</p>

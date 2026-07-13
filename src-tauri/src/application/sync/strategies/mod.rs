@@ -42,6 +42,7 @@ pub enum SyncEvent {
         table: String,
         batch_number: u64,
         rows_loaded: u64,
+        skipped: u64,
         duration_ms: u64,
     },
     RowError {

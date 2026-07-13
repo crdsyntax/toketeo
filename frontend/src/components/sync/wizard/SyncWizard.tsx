@@ -37,8 +37,8 @@ export function SyncWizard({ pipeline, onClose }: SyncWizardProps) {
   const [schedule, setSchedule] = useState<'once' | 'recurring' | 'cron'>('once')
   const [cronExpression, setCronExpression] = useState('')
   const [sourceColumns, setSourceColumns] = useState<Record<number, string[]>>({})
-  const [sourceSchema, setSourceSchema] = useState('')
-  const [targetSchema, setTargetSchema] = useState('')
+  const [sourceSchema, setSourceSchema] = useState(pipeline?.source_schema ?? '')
+  const [targetSchema, setTargetSchema] = useState(pipeline?.target_schema ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -87,6 +87,8 @@ export function SyncWizard({ pipeline, onClose }: SyncWizardProps) {
         name,
         source_connection_id: sourceId,
         target_connection_id: targetId,
+        source_schema: sourceSchema || undefined,
+        target_schema: targetSchema || undefined,
         mode,
         tables,
         batch_size: 0,
@@ -102,8 +104,12 @@ export function SyncWizard({ pipeline, onClose }: SyncWizardProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-secondary/95 border border-border shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-y-0 right-0 z-50 flex animate-in fade-in duration-200">
+      {/* Backdrop — starts after the sidebar (w-72) so sidebar remains clickable */}
+      <div className="fixed inset-y-0 left-72 right-0 bg-background/40 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="relative ml-auto w-full max-w-4xl bg-secondary/95 border-l border-border shadow-2xl flex flex-col h-full overflow-hidden animate-in slide-in-from-right duration-300">
         <div className="p-6 border-b border-border flex items-center justify-between bg-background/50">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 bg-primary/10 border border-primary/20 flex items-center justify-center">
