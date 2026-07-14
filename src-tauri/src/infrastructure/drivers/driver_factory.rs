@@ -1,6 +1,7 @@
 use crate::db::mongodb::MongoDbDriver;
 use crate::db::mysql::MySqlDriver;
 use crate::db::postgres::PostgresDriver;
+use crate::db::redis::RedisDriver;
 use crate::db::sqlserver::SqlServerDriver;
 use crate::db::{DbDriver, DbType, PoolConfig};
 use crate::error::AppResult;
@@ -22,6 +23,7 @@ impl DriverFactory {
             }
             DbType::Mongodb => Ok(Arc::new(MongoDbDriver::new(url, pool_config).await?)),
             DbType::Sqlserver => Ok(Arc::new(SqlServerDriver::new(url).await?)),
+            DbType::Redis => Ok(Arc::new(RedisDriver::new(url, transactional, pool_config).await?)),
             _ => Err(crate::error::AppError::Validation(format!(
                 "Database engine '{:?}' is not yet implemented",
                 db_type

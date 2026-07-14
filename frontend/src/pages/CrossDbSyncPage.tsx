@@ -206,7 +206,7 @@ export function CrossDbSyncPage() {
         setActiveRun((prev) => prev ? { ...prev, status: PipelineStatus.Completed, completed_at: new Date().toISOString() } : prev)
         if (pipeId) {
           queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
-            old?.map((p) => p.id === pipeId ? { ...p, status: PipelineStatus.Completed } : pipe)
+            old?.map((p) => p.id === pipeId ? { ...p, status: PipelineStatus.Completed } : p)
           )
         }
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
@@ -231,7 +231,7 @@ export function CrossDbSyncPage() {
         setActiveRun((prev) => prev ? { ...prev, status: PipelineStatus.Failed, error_count: prev.error_count + 1 } : prev)
         if (pipeId) {
           queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
-            old?.map((p) => p.id === pipeId ? { ...p, status: PipelineStatus.Failed } : pipe)
+            old?.map((p) => p.id === pipeId ? { ...p, status: PipelineStatus.Failed } : p)
           )
         }
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })

@@ -23,6 +23,7 @@ serde_json = "1.0"
 tokio = { version = "1.43.0", features = ["full"] }
 sqlx = { version = "0.8.3", features = [ "runtime-tokio-rustls", "mysql", "postgres", "sqlite", "chrono", "rust_decimal" ] }
 mongodb = "3.2.1"
+fred = "9"
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
 tokio-util = "0.7"
 url = "2"

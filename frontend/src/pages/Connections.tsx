@@ -266,7 +266,7 @@ export default function Connections() {
         isTesting={isTesting}
         testMessage={testMessage}
       />
-      {showWizard && <ConnectionWizard onClose={() => setShowWizard(false)} />}
+      {showWizard && <ConnectionWizard onClose={() => setShowWizard(false)} onSave={handleSave} />}
     </div>
   )
 }

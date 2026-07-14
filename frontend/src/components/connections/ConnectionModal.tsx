@@ -201,8 +201,10 @@ export function ConnectionModal({
           <div className="flex gap-2">
             {[
               { id: 'general', label: 'General', icon: Cpu },
-              { id: 'pool', label: 'Pool & Timeout', icon: Clock },
-              { id: 'ssh', label: 'SSH Tunnel', icon: Lock }
+              ...(form.type !== DatabaseType.REDIS ? [
+                { id: 'pool', label: 'Pool & Timeout', icon: Clock },
+                { id: 'ssh', label: 'SSH Tunnel', icon: Lock }
+              ] : [])
             ].map((tab) => (
               <button 
                 key={tab.id}
@@ -272,12 +274,13 @@ export function ConnectionModal({
 
               <div className="space-y-3">
                 <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Database Engine</label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-5 gap-2">
                   {[
                     { id: DatabaseType.MARIADB, label: 'MySQL' },
                     { id: DatabaseType.POSTGRES, label: 'Postgres' },
                     { id: DatabaseType.MONGODB, label: 'MongoDB' },
-                    { id: DatabaseType.SQLSERVER, label: 'MSSQL' }
+                    { id: DatabaseType.SQLSERVER, label: 'MSSQL' },
+                    { id: DatabaseType.REDIS, label: 'Redis' }
                   ].map((engine) => (
                     <button
                       key={engine.id}
@@ -285,7 +288,8 @@ export function ConnectionModal({
                         const defaultPort = 
                           engine.id === DatabaseType.POSTGRES ? 5432 : 
                           engine.id === DatabaseType.MONGODB ? 27017 : 
-                          engine.id === DatabaseType.SQLSERVER ? 1433 : 3306
+                          engine.id === DatabaseType.SQLSERVER ? 1433 :
+                          engine.id === DatabaseType.REDIS ? 6379 : 3306
                         setForm({ ...form, type: engine.id as DatabaseType, port: defaultPort })
                       }}
                       className={cn(
@@ -326,6 +330,7 @@ export function ConnectionModal({
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                {form.type !== DatabaseType.REDIS && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Username</label>
                   <input 
@@ -335,8 +340,9 @@ export function ConnectionModal({
                     placeholder="root"
                   />
                 </div>
+                )}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Password</label>
+                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Password {form.type === DatabaseType.REDIS ? '(optional)' : ''}</label>
                   <div className="relative">
                     <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                     <input 
@@ -390,18 +396,19 @@ export function ConnectionModal({
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Default Schema</label>
+                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{form.type === DatabaseType.REDIS ? 'Database (0-15)' : 'Default Schema'}</label>
                 <div className="relative">
                   <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                   <input 
                     className="w-full bg-background border border-border pl-10 pr-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                     value={form.database}
                     onChange={(e) => setForm({ ...form, database: e.target.value })}
-                    placeholder="database_name"
+                    placeholder={form.type === DatabaseType.REDIS ? '0' : 'database_name'}
                   />
                 </div>
               </div>
 
+              {form.type !== DatabaseType.REDIS && (
               <div className="flex items-center justify-between p-4 bg-background border border-border">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-primary/5 border border-primary/10 flex items-center justify-center text-primary">
@@ -425,6 +432,7 @@ export function ConnectionModal({
                   )} />
                 </button>
               </div>
+              )}
 
               {form.type === DatabaseType.MONGODB && (
                 <div className="p-4 border border-primary/20 bg-primary/5 space-y-4 animate-in fade-in duration-300">

@@ -17,18 +17,19 @@ export interface EngineCapabilities {
 export const getEngineCapabilities = (dbType: DatabaseType | undefined): EngineCapabilities => {
   const isMongoDB = dbType === DatabaseType.MONGODB;
   const isSQLite = dbType === DatabaseType.SQLITE;
+  const isRedis = dbType === DatabaseType.REDIS;
 
   return {
-    supportsSchemas: !isSQLite && !isMongoDB,
-    supportsProcedures: !isSQLite && !isMongoDB,
-    supportsTriggers: !isMongoDB,
-    supportsFunctions: !isSQLite && !isMongoDB,
-    supportsForeignKeys: !isMongoDB,
-    supportsConstraints: !isMongoDB,
-    supportsDdlExecution: !isMongoDB,
-    supportsIndexes: true, // MongoDB also supports indexes
-    schemaLabel: isMongoDB ? 'Database' : 'Schema',
-    tableLabel: isMongoDB ? 'Collection' : 'Table',
-    columnLabel: isMongoDB ? 'Field' : 'Column',
+    supportsSchemas: !isSQLite && !isMongoDB && !isRedis,
+    supportsProcedures: !isSQLite && !isMongoDB && !isRedis,
+    supportsTriggers: !isMongoDB && !isRedis,
+    supportsFunctions: !isSQLite && !isMongoDB && !isRedis,
+    supportsForeignKeys: !isMongoDB && !isRedis,
+    supportsConstraints: !isMongoDB && !isRedis,
+    supportsDdlExecution: !isMongoDB && !isRedis,
+    supportsIndexes: !isRedis, // Redis indexes are key namespaces
+    schemaLabel: isRedis ? 'Namespace' : isMongoDB ? 'Database' : 'Schema',
+    tableLabel: isRedis ? 'Key Pattern' : isMongoDB ? 'Collection' : 'Table',
+    columnLabel: isRedis ? 'Field' : isMongoDB ? 'Field' : 'Column',
   };
 };

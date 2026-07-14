@@ -17,6 +17,7 @@ import { IndexesTab } from './tabs/IndexesTab';
 import { ForeignKeysTab } from './tabs/ForeignKeysTab';
 import { ConstraintsTab } from './tabs/ConstraintsTab';
 import { DataTab } from './tabs/DataTab';
+import { RedisDataTab } from './tabs/RedisDataTab';
 import { DdlTab } from './tabs/DdlTab';
 import { ModelExportModal } from './ModelExportModal';
 import type { ExplorerTabState } from '@/store/useAppStore';
@@ -65,6 +66,7 @@ interface ObjectDetailProps {
   setFilter: (f: string) => void;
   currentSchema?: string;
   isMongoDB?: boolean;
+  isRedis?: boolean;
 }
 
 export function ObjectDetail(props: ObjectDetailProps) {
@@ -111,6 +113,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
     setFilter,
     currentSchema,
     isMongoDB = false,
+    isRedis = false,
   } = props;
   
   const [modelModalOpen, setModelModalOpen] = useState(false);
@@ -210,70 +213,20 @@ export function ObjectDetail(props: ObjectDetailProps) {
 
         {/* === TABS NAV === */}
         <div className="flex bg-muted p-1 rounded-none items-center">
-       
-          {(selectedItem?.type === DatabaseObjectType.TABLE ||
-            selectedItem?.type === DatabaseObjectType.VIEW ||
-            selectedItem?.type === DatabaseObjectType.PROCEDURE) && (
+          {isRedis ? (
             <>
-              {(selectedItem?.type === DatabaseObjectType.TABLE ||
-                selectedItem?.type === DatabaseObjectType.VIEW) && (
-                <button
-                  onClick={() => setActiveTab(ExplorerTab.COLUMNS)}
-                  className={cn(
-                    'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                    activeTab === ExplorerTab.COLUMNS
-                      ? 'bg-background shadow-sm'
-                      : 'hover:bg-background/50',
-                  )}
-                >
-                  <List className="w-3.5 h-3.5" />
-                  {isMongoDB ? 'Schema' : 'Columns'}
-                </button>
-              )}
-              {selectedItem?.type === DatabaseObjectType.TABLE && (
-                <>
-                  <button
-                    onClick={() => setActiveTab(ExplorerTab.INDEXES)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                      activeTab === ExplorerTab.INDEXES
-                        ? 'bg-background shadow-sm'
-                        : 'hover:bg-background/50',
-                    )}
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    Indexes
-                  </button>
-                  {!isMongoDB && (
-                    <>
-                      <button
-                        onClick={() => setActiveTab(ExplorerTab.FOREIGN_KEYS)}
-                        className={cn(
-                          'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                          activeTab === ExplorerTab.FOREIGN_KEYS
-                            ? 'bg-background shadow-sm'
-                            : 'hover:bg-background/50',
-                        )}
-                      >
-                        <List className="w-3.5 h-3.5" />
-                        FKs
-                      </button>
-                      <button
-                        onClick={() => setActiveTab(ExplorerTab.CONSTRAINTS)}
-                        className={cn(
-                          'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                          activeTab === ExplorerTab.CONSTRAINTS
-                            ? 'bg-background shadow-sm'
-                            : 'hover:bg-background/50',
-                        )}
-                      >
-                        <List className="w-3.5 h-3.5" />
-                        Constraints
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
+              <button
+                onClick={() => setActiveTab(ExplorerTab.COLUMNS)}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                  activeTab === ExplorerTab.COLUMNS
+                    ? 'bg-background shadow-sm'
+                    : 'hover:bg-background/50',
+                )}
+              >
+                <List className="w-3.5 h-3.5" />
+                Keys
+              </button>
               <button
                 onClick={() => setActiveTab(ExplorerTab.DATA)}
                 className={cn(
@@ -284,23 +237,103 @@ export function ObjectDetail(props: ObjectDetailProps) {
                 )}
               >
                 <Table className="w-3.5 h-3.5" />
-                {selectedItem?.type === DatabaseObjectType.PROCEDURE ? 'Execution' : 'Data'}
+                Command
               </button>
             </>
-          )}
-          {!isMongoDB && (
-            <button
-              onClick={() => setActiveTab(ExplorerTab.DDL)}
-              className={cn(
-                'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
-                activeTab === ExplorerTab.DDL
-                  ? 'bg-background shadow-sm'
-                  : 'hover:bg-background/50',
+          ) : (
+            <>
+              {(selectedItem?.type === DatabaseObjectType.TABLE ||
+                selectedItem?.type === DatabaseObjectType.VIEW ||
+                selectedItem?.type === DatabaseObjectType.PROCEDURE) && (
+                <>
+                  {(selectedItem?.type === DatabaseObjectType.TABLE ||
+                    selectedItem?.type === DatabaseObjectType.VIEW) && (
+                    <button
+                      onClick={() => setActiveTab(ExplorerTab.COLUMNS)}
+                      className={cn(
+                        'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                        activeTab === ExplorerTab.COLUMNS
+                          ? 'bg-background shadow-sm'
+                          : 'hover:bg-background/50',
+                      )}
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      {isMongoDB ? 'Schema' : 'Columns'}
+                    </button>
+                  )}
+                  {selectedItem?.type === DatabaseObjectType.TABLE && (
+                    <>
+                      <button
+                        onClick={() => setActiveTab(ExplorerTab.INDEXES)}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                          activeTab === ExplorerTab.INDEXES
+                            ? 'bg-background shadow-sm'
+                            : 'hover:bg-background/50',
+                        )}
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        Indexes
+                      </button>
+                      {!isMongoDB && (
+                        <>
+                          <button
+                            onClick={() => setActiveTab(ExplorerTab.FOREIGN_KEYS)}
+                            className={cn(
+                              'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                              activeTab === ExplorerTab.FOREIGN_KEYS
+                                ? 'bg-background shadow-sm'
+                                : 'hover:bg-background/50',
+                            )}
+                          >
+                            <List className="w-3.5 h-3.5" />
+                            FKs
+                          </button>
+                          <button
+                            onClick={() => setActiveTab(ExplorerTab.CONSTRAINTS)}
+                            className={cn(
+                              'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                              activeTab === ExplorerTab.CONSTRAINTS
+                                ? 'bg-background shadow-sm'
+                                : 'hover:bg-background/50',
+                            )}
+                          >
+                            <List className="w-3.5 h-3.5" />
+                            Constraints
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                  <button
+                    onClick={() => setActiveTab(ExplorerTab.DATA)}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                      activeTab === ExplorerTab.DATA
+                        ? 'bg-background shadow-sm'
+                        : 'hover:bg-background/50',
+                    )}
+                  >
+                    <Table className="w-3.5 h-3.5" />
+                    {selectedItem?.type === DatabaseObjectType.PROCEDURE ? 'Execution' : 'Data'}
+                  </button>
+                </>
               )}
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              Definition
-            </button>
+              {!isMongoDB && (
+                <button
+                  onClick={() => setActiveTab(ExplorerTab.DDL)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-none transition-colors',
+                    activeTab === ExplorerTab.DDL
+                      ? 'bg-background shadow-sm'
+                      : 'hover:bg-background/50',
+                  )}
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  Definition
+                </button>
+              )}
+            </>
           )}
           
           {selectedItem?.type === DatabaseObjectType.TABLE && (
@@ -363,22 +396,40 @@ export function ObjectDetail(props: ObjectDetailProps) {
           (selectedItem.type === DatabaseObjectType.TABLE ||
             selectedItem.type === DatabaseObjectType.VIEW ||
             selectedItem.type === DatabaseObjectType.PROCEDURE) && (
-            <DataTab
-              selectedItem={selectedItem}
-              isLoading={isLoadingData}
-              executionStatus={executionStatus}
-              executionError={executionError}
-              queryData={queryData}
-              pageSize={pageSize}
-              setPageSize={setPageSize}
-              page={page}
-              setPage={setPage}
-              handleExecute={handleExecute}
-              handleCancel={handleCancel}
-              updateCell={updateCell}
-              filter={filter}
-              setFilter={setFilter}
-            />
+            isRedis ? (
+              <RedisDataTab
+                selectedItem={selectedItem}
+                isLoading={isLoadingData}
+                executionStatus={executionStatus}
+                executionError={executionError}
+                queryData={queryData}
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+                page={page}
+                setPage={setPage}
+                handleExecute={handleExecute}
+                handleCancel={handleCancel}
+                filter={filter}
+                setFilter={setFilter}
+              />
+            ) : (
+              <DataTab
+                selectedItem={selectedItem}
+                isLoading={isLoadingData}
+                executionStatus={executionStatus}
+                executionError={executionError}
+                queryData={queryData}
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+                page={page}
+                setPage={setPage}
+                handleExecute={handleExecute}
+                handleCancel={handleCancel}
+                updateCell={updateCell}
+                filter={filter}
+                setFilter={setFilter}
+              />
+            )
           )}
 
         {activeTab === ExplorerTab.DDL && (

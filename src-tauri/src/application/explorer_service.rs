@@ -666,6 +666,16 @@ impl ExplorerService {
             return driver.execute(&mongo_query.to_string()).await;
         }
 
+        // Handle Redis separately
+        if matches!(db_type, crate::db::DbType::Redis) {
+            let query_str = if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+                f.to_string()
+            } else {
+                format!("SCAN {} MATCH {}:* COUNT {}", offset, name, effective_page_size)
+            };
+            return driver.execute(&query_str).await;
+        }
+
         let full_name = if let Some(schema) = database.as_ref() {
             format!(
                 "{}{}{}.{}{}{}",

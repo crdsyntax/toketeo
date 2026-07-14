@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import type { DatabaseObject, QueryResult } from '@/types/database'
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType, DatabaseType } from '@/types/database'
-import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy } from 'lucide-react'
+import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ContextMenu } from '@/components/ui/ContextMenu'
 
@@ -34,14 +34,17 @@ export function Sidebar({
   setParamsValues, setActiveTab, isCollapsed, onToggle, dbType
 }: SidebarProps) {
   const isMongoDB = dbType === DatabaseType.MONGODB
+  const isRedis = dbType === DatabaseType.REDIS
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: { name: string; type: DatabaseObjectType } } | null>(null);
 
   // For MongoDB only show Collections (= Tables) and Views (if any)
-  const visibleTabs = isMongoDB
+  // For Redis only show Keys (= Tables)
+  const visibleTabs = isMongoDB || isRedis
     ? [SidebarTab.TABLES]
     : [SidebarTab.TABLES, SidebarTab.VIEWS, SidebarTab.PROCEDURES, SidebarTab.TRIGGERS, SidebarTab.FUNCTIONS]
 
   const getTabLabel = (tab: SidebarTab): string => {
+    if (isRedis && tab === SidebarTab.TABLES) return 'Keys'
     if (isMongoDB && tab === SidebarTab.TABLES) return 'Collections'
     switch (tab) {
       case SidebarTab.TABLES: return 'Tables'
@@ -54,6 +57,7 @@ export function Sidebar({
   }
 
   const getTabIcon = (tab: SidebarTab) => {
+    if (isRedis && tab === SidebarTab.TABLES) return Zap
     if (isMongoDB && tab === SidebarTab.TABLES) return Database
     switch (tab) {
       case SidebarTab.TABLES: return Table2
@@ -107,6 +111,11 @@ export function Sidebar({
                 {isMongoDB && (
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/30">
                     MongoDB
+                  </span>
+                )}
+                {isRedis && (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                    Redis
                   </span>
                 )}
               </div>
@@ -165,7 +174,9 @@ export function Sidebar({
                       (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
                     )}
                   >
-                    {isMongoDB && sidebarTab === SidebarTab.TABLES
+                    {isRedis && sidebarTab === SidebarTab.TABLES
+                      ? <Zap className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-amber-400" : "text-muted-foreground")} />
+                      : isMongoDB && sidebarTab === SidebarTab.TABLES
                       ? <Database className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-orange-400" : "text-muted-foreground")} />
                       : (() => {
                           const Icon = getTabIcon(sidebarTab)
@@ -189,7 +200,7 @@ export function Sidebar({
           onDismiss={() => setContextMenu(null)}
           groups={[
             {
-              title: contextMenu.item.type,
+              title: isRedis ? 'Key Actions' : contextMenu.item.type,
               items: [
                 {
                   label: 'Copy Name',
@@ -208,7 +219,22 @@ export function Sidebar({
                     setParamsValues({});
                     setActiveTab((contextMenu.item.type === DatabaseObjectType.TABLE || contextMenu.item.type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL);
                   }
-                }
+                },
+                ...(isRedis ? [
+                  {
+                    label: 'Delete Key',
+                    icon: <Trash2 className="w-3.5 h-3.5" />,
+                    onClick: () => {
+                      setSelectedItem(contextMenu.item);
+                      setPage(0);
+                      setSocketResults(null);
+                      setExecutionStatus(ExecutionStatus.IDLE);
+                      setExecutionError(null);
+                      setParamsValues({});
+                      setActiveTab(ExplorerTab.DATA);
+                    }
+                  }
+                ] : [])
               ]
             }
           ]}

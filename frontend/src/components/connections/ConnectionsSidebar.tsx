@@ -26,6 +26,7 @@ const DB_TYPE_COLORS: Record<string, string> = {
   mariadb: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10',
   mongodb: 'text-green-400 border-green-500/30 bg-green-500/10',
   mssql: 'text-red-400 border-red-500/30 bg-red-500/10',
+  redis: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -39,6 +40,7 @@ function TypeBadge({ type }: { type: string }) {
        type === 'mariadb' ? 'MA' :
        type === 'mongodb' ? 'MO' :
        type === 'mssql' ? 'MS' :
+       type === 'redis' ? 'RE' :
        type?.slice(0, 2).toUpperCase()}
     </span>
   )
@@ -199,12 +201,19 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         queryClient.invalidateQueries({ queryKey: ['functions'] })
         navigate('/explorer')
       }
-      // Fire the backend call in the background so the pool is updated,
-      // but don't block the UI if it fails (explorer queries use explicit
-      // schema parameters and work regardless of the pool's default db).
-      schemaService.switchSchema(conn.id, schema).catch((e) => {
-        console.error('Backend schema switch failed (non-critical):', e)
-      })
+      // Redis uses SELECT (switch_database), not switch_schema
+      if (conn.type === 'redis') {
+        schemaService.switchDatabase(conn.id, schema).catch((e) => {
+          console.error('Backend database switch failed (non-critical):', e)
+        })
+      } else {
+        // Fire the backend call in the background so the pool is updated,
+        // but don't block the UI if it fails (explorer queries use explicit
+        // schema parameters and work regardless of the pool's default db).
+        schemaService.switchSchema(conn.id, schema).catch((e) => {
+          console.error('Backend schema switch failed (non-critical):', e)
+        })
+      }
     } catch (e) {
       toast.error(`Failed to switch schema: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
@@ -377,7 +386,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               {expandedConnId === conn.id && (
                 <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
                   <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
-                    {conn.type === 'postgres' ? (
+                    {conn.type === 'postgres' || conn.type === 'redis' ? (
                       <PostgresContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                     ) : (
                       <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />

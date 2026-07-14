@@ -131,6 +131,23 @@ impl ConnectionStringBuilder {
 
                 Ok(url)
             }
+            DbType::Redis => {
+                let mut url = if !password.is_empty() {
+                    format!("redis://:{}@{}:{}", password, host, port)
+                } else if !user.is_empty() {
+                    format!("redis://:{}@{}:{}", user, host, port)
+                } else {
+                    format!("redis://:{}@{}:{}", "", host, port)
+                };
+
+                let db_str = database.strip_prefix("db").unwrap_or(database);
+                let db_num = db_str.parse::<u8>().unwrap_or(0);
+                if db_num > 0 {
+                    url.push_str(&format!("/{}", db_num));
+                }
+
+                Ok(url)
+            }
             _ => Err(AppError::Validation(format!(
                 "Unsupported database engine for connection string: {:?}",
                 config.db_type

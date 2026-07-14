@@ -2,7 +2,7 @@ import { Code, Play, X, AlertCircle } from 'lucide-react'
 import { Sidebar } from '@/components/explorer/Sidebar'
 import { ObjectDetail } from '@/components/explorer/ObjectDetail'
 import { useExplorer } from '@/hooks/useExplorer'
-import { ExecutionStatus } from '@/types/database'
+import { ExecutionStatus, DatabaseType } from '@/types/database'
 
 export default function Explorer() {
   const {
@@ -198,6 +198,7 @@ export default function Explorer() {
             setFilter={setFilter}
             currentSchema={currentSchema}
             isMongoDB={isMongoDB}
+            isRedis={dbType === DatabaseType.REDIS}
           />
         </div>
       </div>

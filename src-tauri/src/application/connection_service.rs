@@ -99,6 +99,11 @@ impl ConnectionService {
     async fn merge_sensitive_data(state: &AppState, config: &mut DbConnectionConfig) {
         if let Some(id) = config.id {
             if let Ok(mut db_config) = state.storage.get_connection(&id.to_string()).await {
+                tracing::debug!("merge_sensitive_data: loaded from storage, auth_enabled={:?}, incoming_password_present={}, stored_password_enc_present={}", 
+                    config.auth_enabled,
+                    config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false),
+                    db_config.password_enc.is_some()
+                );
                 // Decrypt stored secrets if session is unlocked
                 if let Ok(key) = state.require_unlock().await {
                     let _ = Self::decrypt_connection(&mut db_config, &key);
@@ -149,6 +154,10 @@ impl ConnectionService {
                         }
                     }
                 }
+
+                tracing::debug!("merge_sensitive_data: after merge, final_password_present={}", 
+                    config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false)
+                );
             }
         }
     }
@@ -158,6 +167,10 @@ impl ConnectionService {
         mut config: DbConnectionConfig,
     ) -> AppResult<String> {
         tracing::debug!("Saving connection: {:?}", config.name);
+        // Redis always needs auth — force auth_enabled before merge so password is never cleared
+        if config.db_type == crate::db::DbType::Redis {
+            config.auth_enabled = Some(true);
+        }
         Self::merge_sensitive_data(state, &mut config).await;
         if let Ok(key) = state.require_unlock().await {
             Self::encrypt_connection(&mut config, &key)?;
@@ -245,6 +258,11 @@ impl ConnectionService {
     }
 
     pub async fn connect(state: &AppState, mut config: DbConnectionConfig) -> AppResult<String> {
+        // Redis always needs auth capability — force auth_enabled before merge so password is never cleared
+        if config.db_type == crate::db::DbType::Redis {
+            config.auth_enabled = Some(true);
+        }
+
         Self::merge_sensitive_data(state, &mut config).await;
 
         tracing::info!(
@@ -280,7 +298,11 @@ impl ConnectionService {
         };
 
         let url = ConnectionStringBuilder::build(&config)?;
-        tracing::debug!("Connection string built successfully (sensitive data hidden)");
+        tracing::debug!("Connection string built: db_type={:?}, auth_enabled={:?}, password_present={}, user_present={}", 
+            config.db_type, config.auth_enabled, 
+            config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false),
+            !config.user.is_empty()
+        );
 
         let is_transactional = config.environment.to_lowercase() == "production";
         let pool_config: Option<PoolConfig> = (&config).into();
@@ -301,7 +323,7 @@ impl ConnectionService {
             };
 
         if is_transactional {
-            if config.db_type != crate::db::DbType::Mongodb {
+            if config.db_type != crate::db::DbType::Mongodb && config.db_type != crate::db::DbType::Redis {
                 let begin_sql = match config.db_type {
                     crate::db::DbType::Postgres => "BEGIN",
                     crate::db::DbType::Mysql | crate::db::DbType::Mariadb => "START TRANSACTION",
@@ -311,7 +333,7 @@ impl ConnectionService {
                 driver.execute(begin_sql).await?;
                 tracing::info!("Production transaction mode enabled for connection {}", id);
             } else {
-                tracing::info!("Production transaction mode requested but skipped for MongoDB (unsupported standard BEGIN)");
+                tracing::info!("Production transaction mode requested but skipped for {:?} (unsupported standard BEGIN)", config.db_type);
             }
         }
 

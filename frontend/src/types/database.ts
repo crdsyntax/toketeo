@@ -41,6 +41,7 @@ export enum DatabaseType {
   MONGODB = 'mongodb',
   SQLSERVER = 'sqlserver',
   SQLITE = 'sqlite',
+  REDIS = 'redis',
 }
 
 export enum Environment {

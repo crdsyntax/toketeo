@@ -14,6 +14,7 @@ pub enum DbType {
     Sqlite,
     Mongodb,
     Sqlserver,
+    Redis,
 }
 
 impl std::fmt::Display for DbType {
@@ -25,6 +26,7 @@ impl std::fmt::Display for DbType {
             DbType::Sqlite => "sqlite",
             DbType::Mongodb => "mongodb",
             DbType::Sqlserver => "sqlserver",
+            DbType::Redis => "redis",
         };
         write!(f, "{}", s)
     }
@@ -151,6 +153,7 @@ pub mod mongodb;
 pub mod common;
 pub mod mysql;
 pub mod postgres;
+pub mod redis;
 pub mod sqlserver;
 
 #[derive(Debug, Clone)]

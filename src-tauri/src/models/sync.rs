@@ -31,6 +31,7 @@ pub enum UpsertStrategy {
     OnDuplicateKey,  // MySQL / MariaDB
     Merge,           // SQL Server
     UpsertDoc,       // MongoDB
+    Hset,            // Redis
 }
 
 /// Capacidades expuestas por cada driver.

@@ -1251,6 +1251,7 @@ async fn get_or_connect_driver(state: &AppState, conn_id: &str) -> AppResult<Arc
             | crate::db::DbType::Sqlserver => driver.execute("SELECT 1").await.is_ok(),
             // MongoDB doesn't support SQL — use fetch_databases instead
             crate::db::DbType::Mongodb => driver.fetch_databases().await.is_ok(),
+            crate::db::DbType::Redis => driver.execute("PING").await.is_ok(),
         };
         if healthy {
             return Ok(driver);

@@ -186,7 +186,7 @@ impl AppState {
             })?;
             session.touch();
             db_type = session.driver.db_type();
-            if db_type == DbType::Mongodb {
+            if db_type == DbType::Mongodb || db_type == DbType::Redis {
                 return Ok(());
             }
             driver = session.driver.clone();
@@ -216,7 +216,7 @@ impl AppState {
             transactional = session.transactional;
             accumulated = session.accumulated_rows_affected;
             session.accumulated_rows_affected = 0;
-            if db_type == DbType::Mongodb {
+            if db_type == DbType::Mongodb || db_type == DbType::Redis {
                 return Ok(0);
             }
             driver = session.driver.clone();
@@ -247,7 +247,7 @@ impl AppState {
             db_type = session.driver.db_type();
             transactional = session.transactional;
             session.accumulated_rows_affected = 0;
-            if db_type == DbType::Mongodb {
+            if db_type == DbType::Mongodb || db_type == DbType::Redis {
                 return Ok(());
             }
             driver = session.driver.clone();

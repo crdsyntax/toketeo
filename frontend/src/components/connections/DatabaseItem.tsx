@@ -38,6 +38,7 @@ export function DatabaseItem({ conn, dbName, activeConnection, onSelect, onSchem
       <div 
         className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-muted/80 hover:text-foreground transition-colors rounded-sm"
         onClick={toggleExpand}
+        onDoubleClick={() => onSelect(conn, dbName)}
       >
         <ChevronDown className={cn("w-3 h-3 transition-transform", !isExpanded && "-rotate-90")} />
         <Database className="w-3 h-3 text-blue-400" />

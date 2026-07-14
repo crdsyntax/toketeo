@@ -9,6 +9,7 @@ The system already includes:
 * PostgreSQL connection (full metadata: databases → schemas → tables/objects)
 * MongoDB connection implemented
 * SQL Server support not validated
+* Redis planned (full plan: [`redis-integration-plan.md`](./redis-integration-plan.md))
 * Monaco-based SQL editor
 * Column inspector (types, defaults, nullability, PK detection)
 * Index / FK / constraints visualization
@@ -105,6 +106,49 @@ The system already includes:
   * `get_db_type` command exposes engine type to frontend
   * Engine-aware UI: Sidebar and ObjectDetail adapt per motor
 * [ ] SQLite integration for local persistence layer (if required)
+
+---
+
+## Phase 14: Redis Engine Integration
+
+Full plan: [`redis-integration-plan.md`](./redis-integration-plan.md)
+
+### Backend
+
+* [ ] Add `fred = "9"` dependency to `Cargo.toml`
+* [ ] Add `DbType::Redis` variant to `DbType` enum + `Display` impl
+* [ ] Add `UpsertStrategy::Hset` variant
+* [ ] Implement `RedisDriver` (`src-tauri/src/db/redis.rs`):
+  * [ ] `DbDriver` trait — `fetch_databases()` via `INFO KEYSPACE`, `fetch_tables()` via `SCAN`, `execute()` for free Redis commands
+  * [ ] `DataReader` trait — keyset-based pagination adapted to SCAN cursor
+  * [ ] `DataWriter` trait — `SET`/`HSET`/`LPUSH`/`SADD` depending on key type
+  * [ ] `CapabilityProvider` — `supports_transactions: false`, `supports_keyset_pagination: false`
+  * [ ] `redis_value_to_json()` converter (String, Integer, Double, Array, Boolean, Nil)
+  * [ ] Output normalization for `execute()` — GET→1 row, HGETALL→N rows, LRANGE→N rows, etc.
+* [ ] Add Redis arm to `DriverFactory::create()`
+* [ ] Add `redis://` URL format to `ConnectionStringBuilder`
+* [ ] Skip transaction `BEGIN` for Redis in `state.rs` + `connection_service.rs`
+* [ ] Add `PING` connection test in `commands.rs`
+
+### Frontend
+
+* [ ] Add `REDIS = 'redis'` to `DatabaseType` enum (also add missing `MYSQL`)
+* [ ] Add Redis to Connection Wizard (icon: `⚡`, color: amber, port: 6379, database number field)
+* [ ] Add Redis sidebar color (`text-amber-400`)
+* [ ] Create `redisLanguage.ts` for Monaco syntax highlighting
+* [ ] Adapt `DataTab.tsx` for Redis mode:
+  * [ ] SCAN pattern input replacing WHERE clause
+  * [ ] Dynamic columns based on key type (String, Hash, List, Set, Sorted Set)
+  * [ ] Hide DDL/FK/Constraints/Index tabs
+* [ ] Adapt Query Editor for Redis command mode
+* [ ] Add Redis functions to `schema.service.ts`
+* [ ] Update `EngineCapabilities` for Redis (no schemas, no views, no procedures, etc.)
+
+### Tests
+
+* [ ] Unit tests for `redis_value_to_json()` converter
+* [ ] Unit tests for output normalization in `execute()`
+* [ ] Integration test: connect to local Redis, list databases, scan keys, execute commands
 
 ---
 

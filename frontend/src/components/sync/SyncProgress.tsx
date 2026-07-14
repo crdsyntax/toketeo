@@ -30,8 +30,8 @@ interface SyncProgressProps {
   run: SyncRun
   progress: ProgressState
   logs: MiniLog[]
-  onProgressChange: (state: ProgressState) => void
-  onLogsChange: (logs: MiniLog[]) => void
+  onProgressChange: (state: ProgressState | ((prev: ProgressState) => ProgressState)) => void
+  onLogsChange: (logs: MiniLog[] | ((prev: MiniLog[]) => MiniLog[])) => void
   onEvent?: (event: SyncEvent) => void
 }
 
@@ -74,7 +74,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           phase: 'extracting',
         }))
         onLogsChange((prev) => [
-          { type: 'phase', table: ts.table, message: `Tabla ${ts.table_index}/${ts.total_tables}: ${ts.table}`, time: new Date() },
+          { type: 'phase' as const, table: ts.table, message: `Tabla ${ts.table_index}/${ts.total_tables}: ${ts.table}`, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.Progress) {
@@ -105,31 +105,31 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           }
         })
         onLogsChange((prev) => [
-          { type: 'batch', table: batch.table, message: `Lote ${batch.batch_number}: ${batch.rows_loaded} filas en ${batch.duration_ms}ms`, time: new Date() },
+          { type: 'batch' as const, table: batch.table, message: `Lote ${batch.batch_number}: ${batch.rows_loaded} filas en ${batch.duration_ms}ms`, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.RowError) {
         onProgressChange((p) => ({ ...p, errors: p.errors + 1 }))
         onLogsChange((prev) => [
-          { type: 'error', table: e.RowError!.table, message: e.RowError!.error, time: new Date() },
+          { type: 'error' as const, table: e.RowError!.table, message: e.RowError!.error, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.PhaseCompleted) {
         onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime.current }))
         onLogsChange((prev) => [
-          { type: 'phase', table: e.PhaseCompleted!.table, message: `Completado: ${e.PhaseCompleted!.total_rows} filas`, time: new Date() },
+          { type: 'phase' as const, table: e.PhaseCompleted!.table, message: `Completado: ${e.PhaseCompleted!.total_rows} filas`, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.Error) {
         onProgressChange((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime.current }))
         onLogsChange((prev) => [
-          { type: 'error', table: '', message: e.Error!.message, time: new Date() },
+          { type: 'error' as const, table: '', message: e.Error!.message, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.Completed) {
         onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime.current }))
         onLogsChange((prev) => [
-          { type: 'phase', table: '', message: 'Sincronización completada', time: new Date() },
+          { type: 'phase' as const, table: '', message: 'Sincronización completada', time: new Date() },
           ...prev,
         ].slice(0, 10))
       }
