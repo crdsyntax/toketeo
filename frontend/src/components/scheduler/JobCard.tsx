@@ -1,10 +1,11 @@
 import { Play, Pencil, Trash2, CalendarClock, Database, FileJson, FileSpreadsheet, FileDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { JobType } from '@/types/database'
-import type { ScheduledJob } from '@/types/database'
+import type { ScheduledJob, Connection } from '@/types/database'
 
 interface JobCardProps {
   job: ScheduledJob
+  connections: Connection[]
   onEdit: (job: ScheduledJob) => void
   onDelete: (job: ScheduledJob) => void
   onRunNow: (job: ScheduledJob) => void
@@ -22,9 +23,11 @@ function formatDate(dateStr: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function JobCard({ job, onEdit, onDelete, onRunNow }: JobCardProps) {
+export function JobCard({ job, connections, onEdit, onDelete, onRunNow }: JobCardProps) {
   const config = jobTypeConfig[job.jobType]
   const Icon = config.icon
+  const conn = connections.find((c) => c.id === job.connectionId)
+  const connLabel = conn ? `${conn.name} (${conn.type.toUpperCase()})` : job.connectionId.slice(0, 8)
 
   return (
     <div className="group relative flex items-start gap-3 p-4 rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors">
@@ -44,7 +47,7 @@ export function JobCard({ job, onEdit, onDelete, onRunNow }: JobCardProps) {
           <span className="font-mono">{job.cronExpression}</span>
           <span className="flex items-center gap-1">
             <Database className="w-3 h-3" />
-            {job.connectionId.slice(0, 8)}
+            {connLabel}
           </span>
         </div>
 

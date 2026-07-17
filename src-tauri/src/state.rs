@@ -44,6 +44,7 @@ pub struct AppState {
     pub storage: Arc<Storage>,
     pub master_key: RwLock<Option<[u8; 32]>>,
     pub session_expires_at: RwLock<Option<std::time::Instant>>,
+    pub ui_locked: RwLock<bool>,
     pub sync_controller: SyncController,
 }
 
@@ -54,6 +55,7 @@ impl AppState {
             storage: Arc::new(storage),
             master_key: RwLock::new(None),
             session_expires_at: RwLock::new(None),
+            ui_locked: RwLock::new(true),
             sync_controller: SyncController::new(),
         }
     }
@@ -71,6 +73,10 @@ impl AppState {
     }
 
     pub async fn require_unlock(&self) -> crate::error::AppResult<[u8; 32]> {
+        let locked = self.ui_locked.read().await;
+        if *locked {
+            return Err(crate::error::AppError::Unauthorized("Session locked".into()));
+        }
         let key = self.master_key.read().await;
         if let Some(k) = *key {
             let expired = self.session_expires_at.read().await;
@@ -85,18 +91,35 @@ impl AppState {
         }
     }
 
+    /// Returns the master key for decryption purposes (connect, reconnect, etc.)
+    /// regardless of UI lock state. The key must have been derived at least once
+    /// since app start.
+    pub async fn get_decryption_key(&self) -> crate::error::AppResult<[u8; 32]> {
+        let key = self.master_key.read().await;
+        match *key {
+            Some(k) => Ok(k),
+            None => Err(crate::error::AppError::Unauthorized("Session locked".into())),
+        }
+    }
+
     pub async fn set_master_key(&self, key: [u8; 32], timeout_secs: u64) {
         *self.master_key.write().await = Some(key);
         *self.session_expires_at.write().await =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs));
+        *self.ui_locked.write().await = false;
     }
 
     pub async fn clear_master_key(&self) {
         *self.master_key.write().await = None;
         *self.session_expires_at.write().await = None;
+        *self.ui_locked.write().await = true;
     }
 
     pub async fn is_session_unlocked(&self) -> bool {
+        let locked = self.ui_locked.read().await;
+        if *locked {
+            return false;
+        }
         let key = self.master_key.read().await;
         if key.is_none() {
             return false;

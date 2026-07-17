@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { Tooltip } from '@/components/ui/Tooltip'
+import { DatabaseType } from '@/types/database'
 import type { Connection } from '@/types/database'
 import { SyncMode } from '@/types/sync'
 
@@ -32,17 +33,61 @@ export function Step1Connections({
   targetSchema, onTargetSchemaChange,
 }: Step1ConnectionsProps) {
   const queryClient = useQueryClient()
+  const [sourceDatabase, setSourceDatabase] = useState('')
+  const [targetDatabase, setTargetDatabase] = useState('')
+
+  const sourceConn = connections.find((c) => c.id === sourceId)
+  const targetConn = connections.find((c) => c.id === targetId)
+  const isSourcePostgres = sourceConn?.type === DatabaseType.POSTGRES
+  const isTargetPostgres = targetConn?.type === DatabaseType.POSTGRES
+
+  const { data: sourceDatabases, isLoading: loadingSourceDatabases } = useQuery({
+    queryKey: ['databases', sourceId],
+    queryFn: () => schemaService.getDatabases(sourceId),
+    enabled: isSourcePostgres && !!sourceId,
+  })
+
+  const { data: targetDatabases, isLoading: loadingTargetDatabases } = useQuery({
+    queryKey: ['databases', targetId],
+    queryFn: () => schemaService.getDatabases(targetId),
+    enabled: isTargetPostgres && !!targetId,
+  })
+
+  useEffect(() => {
+    if (isSourcePostgres && sourceDatabases && sourceDatabases.length > 0 && !sourceDatabase) {
+      setSourceDatabase(sourceDatabases[0])
+    }
+  }, [isSourcePostgres, sourceDatabases])
+
+  useEffect(() => {
+    if (isTargetPostgres && targetDatabases && targetDatabases.length > 0 && !targetDatabase) {
+      setTargetDatabase(targetDatabases[0])
+    }
+  }, [isTargetPostgres, targetDatabases])
+
+  const sourceSchemasEnabled = isSourcePostgres ? (!!sourceId && !!sourceDatabase) : !!sourceId
+  const targetSchemasEnabled = isTargetPostgres ? (!!targetId && !!targetDatabase) : !!targetId
 
   const { data: sourceSchemas, isLoading: loadingSourceSchemas, error: sourceSchemasError } = useQuery({
-    queryKey: ['schemas', sourceId],
-    queryFn: () => schemaService.getSchemas(sourceId),
-    enabled: !!sourceId,
+    queryKey: ['schemas', sourceId, ...(isSourcePostgres ? [sourceDatabase] : [])],
+    queryFn: async () => {
+      if (isSourcePostgres && sourceDatabase) {
+        await schemaService.switchDatabase(sourceId, sourceDatabase)
+      }
+      return schemaService.getSchemas(sourceId)
+    },
+    enabled: sourceSchemasEnabled,
   })
 
   const { data: targetSchemas, isLoading: loadingTargetSchemas, error: targetSchemasError } = useQuery({
-    queryKey: ['schemas', targetId],
-    queryFn: () => schemaService.getSchemas(targetId),
-    enabled: !!targetId,
+    queryKey: ['schemas', targetId, ...(isTargetPostgres ? [targetDatabase] : [])],
+    queryFn: async () => {
+      if (isTargetPostgres && targetDatabase) {
+        await schemaService.switchDatabase(targetId, targetDatabase)
+      }
+      return schemaService.getSchemas(targetId)
+    },
+    enabled: targetSchemasEnabled,
   })
 
   useEffect(() => {
@@ -78,9 +123,13 @@ export function Step1Connections({
               Conexión Origen
             </label>
             <button
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['connections'] })}
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['connections'] })
+                if (isSourcePostgres && sourceId) queryClient.invalidateQueries({ queryKey: ['databases', sourceId] })
+                if (sourceId) queryClient.invalidateQueries({ queryKey: ['schemas', sourceId] })
+              }}
               className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
-              title="Recargar conexiones"
+              title="Recargar"
             >
               <RefreshCw className="w-3 h-3" />
               Recargar
@@ -92,6 +141,7 @@ export function Step1Connections({
             onChange={(e) => {
               onSourceIdChange(e.target.value)
               onSourceSchemaChange('')
+              setSourceDatabase('')
             }}
           >
             <option value="">— Seleccionar —</option>
@@ -101,7 +151,31 @@ export function Step1Connections({
               </option>
             ))}
           </select>
-          {sourceId && (
+          {isSourcePostgres && sourceId && (
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
+              {loadingSourceDatabases ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Cargando bases de datos...
+                </div>
+              ) : (
+                <select
+                  className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
+                  value={sourceDatabase}
+                  onChange={(e) => {
+                    setSourceDatabase(e.target.value)
+                    onSourceSchemaChange('')
+                  }}
+                >
+                  <option value="">— Seleccionar DB —</option>
+                  {(sourceDatabases ?? []).map((db) => (
+                    <option key={db} value={db}>{db}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+          {sourceId && (isSourcePostgres ? !!sourceDatabase : true) && (
             <div className="space-y-1">
               <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Schema Origen</label>
               {loadingSourceSchemas ? (
@@ -134,15 +208,30 @@ export function Step1Connections({
         </div>
 
         <div className="space-y-3">
-          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            Conexión Destino
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              Conexión Destino
+            </label>
+            <button
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['connections'] })
+                if (isTargetPostgres && targetId) queryClient.invalidateQueries({ queryKey: ['databases', targetId] })
+                if (targetId) queryClient.invalidateQueries({ queryKey: ['schemas', targetId] })
+              }}
+              className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+              title="Recargar"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Recargar
+            </button>
+          </div>
           <select
             className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
             value={targetId}
             onChange={(e) => {
               onTargetIdChange(e.target.value)
               onTargetSchemaChange('')
+              setTargetDatabase('')
             }}
           >
             <option value="">— Seleccionar —</option>
@@ -152,7 +241,31 @@ export function Step1Connections({
               </option>
             ))}
           </select>
-          {targetId && (
+          {isTargetPostgres && targetId && (
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
+              {loadingTargetDatabases ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Cargando bases de datos...
+                </div>
+              ) : (
+                <select
+                  className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
+                  value={targetDatabase}
+                  onChange={(e) => {
+                    setTargetDatabase(e.target.value)
+                    onTargetSchemaChange('')
+                  }}
+                >
+                  <option value="">— Seleccionar DB —</option>
+                  {(targetDatabases ?? []).map((db) => (
+                    <option key={db} value={db}>{db}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+          {targetId && (isTargetPostgres ? !!targetDatabase : true) && (
             <div className="space-y-1">
               <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Schema Destino</label>
               {loadingTargetSchemas ? (

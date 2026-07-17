@@ -5,7 +5,8 @@ import { FeatureGate } from '@/components/gamification/FeatureGate'
 import { JobCard } from '@/components/scheduler/JobCard'
 import { JobFormModal } from '@/components/scheduler/JobFormModal'
 import { useSchedulerStore } from '@/store/schedulerStore'
-import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload } from '@/types/database'
+import { connectionService } from '@/services/connection.service'
+import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload, Connection } from '@/types/database'
 import toast from 'react-hot-toast'
 import { listen } from '@tauri-apps/api/event'
 
@@ -14,9 +15,11 @@ export function SchedulerPage() {
   const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [connections, setConnections] = useState<Connection[]>([])
 
   useEffect(() => {
     fetchJobs()
+    connectionService.getAll().then(setConnections).catch(() => {})
   }, [fetchJobs])
 
   useEffect(() => {
@@ -133,6 +136,7 @@ export function SchedulerPage() {
                 <JobCard
                   key={job.id}
                   job={job}
+                  connections={connections}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   onRunNow={handleRunNow}

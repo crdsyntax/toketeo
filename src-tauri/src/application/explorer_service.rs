@@ -561,6 +561,47 @@ impl ExplorerService {
                 re.replace_all(&wrapped, r#"$1"$2"$3"#).to_string()
             }
 
+            fn fix_mongo_shell_types(s: &str) -> String {
+                let re_oid = regex::Regex::new(r#"ObjectId\(\s*["']([0-9a-fA-F]{24})["']\s*\)"#).unwrap();
+                let re_numlong = regex::Regex::new(r#"NumberLong\(\s*["']?(\d+)["']?\s*\)"#).unwrap();
+                let re_numint = regex::Regex::new(r#"NumberInt\(\s*["']?(-?\d+)["']?\s*\)"#).unwrap();
+                let re_numdec = regex::Regex::new(r#"NumberDecimal\(\s*["']([0-9.]+)["']\s*\)"#).unwrap();
+                let re_isodate = regex::Regex::new(r#"ISODate\(\s*["']([^"']+)["']\s*\)"#).unwrap();
+                let re_timestamp = regex::Regex::new(r#"Timestamp\(\s*(\d+)\s*,\s*(\d+)\s*\)"#).unwrap();
+                let s = re_oid.replace_all(s, r#"{"$oid":"$1"}"#);
+                let s = re_numlong.replace_all(&s, r#"{"$numberLong":"$1"}"#);
+                let s = re_numint.replace_all(&s, r#"{"$numberInt":"$1"}"#);
+                let s = re_numdec.replace_all(&s, r#"{"$numberDecimal":"$1"}"#);
+                let s = re_isodate.replace_all(&s, r#"{"$date":"$1"}"#);
+                let s = re_timestamp.replace_all(&s, r#"{"$timestamp":{"t":$2,"i":$1}}"#);
+                s.to_string()
+            }
+
+            fn coerce_id_values(val: &mut serde_json::Value) {
+                if let Some(obj) = val.as_object_mut() {
+                    let keys: Vec<String> = obj.keys().cloned().collect();
+                    for key in keys {
+                        if key == "_id" {
+                            if let Some(serde_json::Value::String(s)) = obj.get(&key) {
+                                if is_oid_hex(s) {
+                                    obj.insert("_id".to_string(), serde_json::json!({ "$oid": s }));
+                                }
+                            }
+                        } else if let Some(v) = obj.get_mut(&key) {
+                            coerce_id_values(v);
+                        }
+                    }
+                } else if let Some(arr) = val.as_array_mut() {
+                    for item in arr.iter_mut() {
+                        coerce_id_values(item);
+                    }
+                }
+            }
+
+            fn is_oid_hex(s: &str) -> bool {
+                s.len() == 24 && s.chars().all(|c| c.is_ascii_hexdigit())
+            }
+
             fn parse_mongo_field(value: serde_json::Value, label: &str) -> AppResult<serde_json::Value> {
                 let raw = match &value {
                     serde_json::Value::String(s) => s.clone(),
@@ -572,6 +613,7 @@ impl ExplorerService {
                         _ => Err(AppError::Validation(format!("${} value cannot be empty", label))),
                     };
                 }
+                let raw = fix_mongo_shell_types(&raw);
                 match serde_json::from_str::<serde_json::Value>(&raw) {
                     Ok(v) => Ok(v),
                     Err(_) => {
@@ -612,7 +654,8 @@ impl ExplorerService {
 
             let mut find_filter = serde_json::json!({});
             if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
-                match serde_json::from_str::<serde_json::Value>(f) {
+                let fixed = fix_mongo_shell_types(f);
+                match serde_json::from_str::<serde_json::Value>(&fixed) {
                     Ok(mut parsed) => {
                         if let Some(o) = parsed.as_object_mut() {
                             if o.contains_key("$find") || o.contains_key("$project") || o.contains_key("$sort") || o.contains_key("$collation") || o.contains_key("$hint") {
@@ -631,6 +674,8 @@ impl ExplorerService {
                     Err(e) => return Err(AppError::Validation(format!("MongoDB filter must be valid JSON: {}", e))),
                 }
             }
+
+            coerce_id_values(&mut find_filter);
 
             // Validate field names against known columns
             let find_keys = collect_field_keys(&find_filter);
@@ -821,13 +866,16 @@ impl ExplorerService {
                     let col_list = columns.join(", ");
                     output.push_str(&format!("--\n-- Data for table {}\n--\n\n", full_name));
                     for row in &result.rows {
-                        if let Some(arr) = row.as_array() {
-                            let values: Vec<String> = arr.iter().map(|v| match v {
-                                serde_json::Value::Null => "NULL".to_string(),
-                                serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-                                serde_json::Value::Number(n) => n.to_string(),
-                                serde_json::Value::Bool(b) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
-                                other => format!("'{}'", other.to_string().replace('\'', "''")),
+                        if let Some(obj) = row.as_object() {
+                            let values: Vec<String> = result.columns.iter().map(|col| {
+                                let v = obj.get(col).unwrap_or(&serde_json::Value::Null);
+                                match v {
+                                    serde_json::Value::Null => "NULL".to_string(),
+                                    serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+                                    serde_json::Value::Number(n) => n.to_string(),
+                                    serde_json::Value::Bool(b) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
+                                    other => format!("'{}'", other.to_string().replace('\'', "''")),
+                                }
                             }).collect();
                             output.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_name, col_list, values.join(", ")));
                         }
@@ -1092,11 +1140,13 @@ impl ExplorerService {
     /// Restore only the selected tables from a dump file.
     /// Re-reads the file, splits by semicolons, and executes statements
     /// that reference any of the selected table names.
+    /// Uses execute_with_schema for PostgreSQL to ensure search_path is set on each connection.
     pub async fn restore_database_selected(
         state: &AppState,
         id: &str,
         file_path: &str,
         tables: &[String],
+        schema: &str,
     ) -> AppResult<()> {
         let bytes = tokio::fs::read(file_path)
             .await
@@ -1104,11 +1154,11 @@ impl ExplorerService {
         let content = String::from_utf8_lossy(&bytes);
 
         let driver = state.get_connection(id).await?;
-
-        let _ = driver.execute("BEGIN").await;
+        let is_postgres = matches!(driver.db_type(), crate::db::DbType::Postgres);
 
         let mut current_query = String::new();
         let mut errors = Vec::new();
+
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with("--") || trimmed.starts_with("/*") {
@@ -1134,7 +1184,12 @@ impl ExplorerService {
                     });
 
                 if should_execute {
-                    if let Err(e) = driver.execute(&current_query).await {
+                    let exec_result = if is_postgres {
+                        driver.execute_with_schema(&current_query, schema).await
+                    } else {
+                        driver.execute(&current_query).await
+                    };
+                    if let Err(e) = exec_result {
                         errors.push(format!("Error in statement near '{}': {}", &trimmed[..trimmed.len().min(80)], e));
                     }
                 }
@@ -1156,14 +1211,18 @@ impl ExplorerService {
                         || upper_stmt.contains(&format!(" {},", tu))
                 });
             if should_execute {
-                if let Err(e) = driver.execute(&current_query).await {
+                let exec_result = if is_postgres {
+                    driver.execute_with_schema(&current_query, schema).await
+                } else {
+                    driver.execute(&current_query).await
+                };
+                if let Err(e) = exec_result {
                     errors.push(format!("Error in trailing statement: {}", e));
                 }
             }
         }
 
         if !errors.is_empty() {
-            let _ = driver.execute("ROLLBACK").await;
             return Err(AppError::Internal(format!(
                 "Restore completed with {} error(s). First error: {}",
                 errors.len(),
@@ -1171,7 +1230,6 @@ impl ExplorerService {
             )));
         }
 
-        let _ = driver.execute("COMMIT").await;
         Ok(())
     }
 }

@@ -2,12 +2,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Download, UploadCloud, Sparkles } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
-import { useState } from 'react'
+import { DatabaseType } from '@/types/database'
+import { useState, useMemo } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useNavigate } from 'react-router-dom'
 import { ConnectionCard } from '@/components/connections/ConnectionCard'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
 import { ConnectionWizard } from '@/components/connections/ConnectionWizard'
+import { cn } from '@/lib/utils'
+import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
 
 export default function Connections() {
   const queryClient = useQueryClient()
@@ -26,11 +29,37 @@ export default function Connections() {
   const [isExporting, setIsExporting] = useState(false)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [testMessage, setTestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [activeEngineFilter, setActiveEngineFilter] = useState<DatabaseType | 'all'>('all')
 
   const { data: connections, isLoading } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
+
+  const filteredConnections = useMemo(() => {
+    if (!connections) return []
+    if (activeEngineFilter === 'all') return connections
+    return connections.filter((conn) => conn.type === activeEngineFilter)
+  }, [connections, activeEngineFilter])
+
+  const engineCounts = useMemo(() => {
+    if (!connections) return {} as Record<DatabaseType, number>
+    const counts: Record<DatabaseType, number> = {
+      [DatabaseType.POSTGRES]: 0,
+      [DatabaseType.MARIADB]: 0,
+      [DatabaseType.MYSQL]: 0,
+      [DatabaseType.MONGODB]: 0,
+      [DatabaseType.SQLSERVER]: 0,
+      [DatabaseType.SQLITE]: 0,
+      [DatabaseType.REDIS]: 0,
+    }
+    connections.forEach((conn) => {
+      if (counts[conn.type] !== undefined) {
+        counts[conn.type]++
+      }
+    })
+    return counts
+  }, [connections])
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateConnectionDto) => {
@@ -217,6 +246,49 @@ export default function Connections() {
         </div>
       )}
 
+      <div className="flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none">
+        <button
+          onClick={() => setActiveEngineFilter('all')}
+          className={cn(
+            'flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
+            activeEngineFilter === 'all'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+          )}
+        >
+          All
+          {connections && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/50">
+              {connections.length}
+            </span>
+          )}
+        </button>
+        {ENGINE_ORDER.map((engineType) => {
+          const count = engineCounts[engineType]
+          if (count === 0) return null
+          const config = getEngineConfig(engineType)
+          const EngineIcon = config.icon
+          return (
+            <button
+              key={engineType}
+              onClick={() => setActiveEngineFilter(engineType)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
+                activeEngineFilter === engineType
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              )}
+            >
+              <EngineIcon className={cn('w-3 h-3', activeEngineFilter === engineType ? config.textClass : '')} />
+              {config.label}
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/50">
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       {connectingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" />
@@ -238,7 +310,7 @@ export default function Connections() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {connections?.map((conn) => (
+          {filteredConnections.map((conn) => (
             <ConnectionCard 
               key={conn.id} 
               connection={conn} 

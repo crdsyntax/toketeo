@@ -45,6 +45,8 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
   )
   const [loadingDbs, setLoadingDbs] = useState(false)
   const [loadingTables, setLoadingTables] = useState(false)
+  const [dbError, setDbError] = useState<string | null>(null)
+  const [tablesError, setTablesError] = useState<string | null>(null)
 
   useEffect(() => {
     connectionService.getAll().then(setConnections).catch(() => {})
@@ -58,8 +60,12 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
       setSelectedDatabase('')
       setTables([])
       setSelectedTables(new Set())
+      setDbError(null)
+      setTablesError(null)
       return
     }
+    setDbError(null)
+    setTablesError(null)
     setLoadingDbs(true)
     schedulerService.getDatabases(connectionId)
       .then((dbs) => {
@@ -68,7 +74,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           setSelectedDatabase(dbs[0])
         }
       })
-      .catch(() => {})
+      .catch((e) => setDbError(String(e)))
       .finally(() => setLoadingDbs(false))
   }, [connectionId, isBackup, job])
 
@@ -76,8 +82,10 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
     if (!isBackup || !connectionId || !selectedDatabase) {
       setTables([])
       setSelectedTables(new Set())
+      setTablesError(null)
       return
     }
+    setTablesError(null)
     setLoadingTables(true)
     schedulerService.getTables(connectionId, selectedDatabase)
       .then((tbls) => {
@@ -89,7 +97,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           setSelectedTables(new Set(tbls.filter((t) => existing.has(t))))
         }
       })
-      .catch(() => {})
+      .catch((e) => setTablesError(String(e)))
       .finally(() => setLoadingTables(false))
   }, [connectionId, selectedDatabase, isBackup, job])
 
@@ -160,7 +168,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
               >
                 <option value="">Select connection...</option>
                 {connections.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name} ({c.type.toUpperCase()})</option>
                 ))}
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-muted-foreground">
@@ -207,6 +215,8 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading databases...
                 </div>
+              ) : dbError ? (
+                <p className="text-xs text-destructive mt-1">{dbError}</p>
               ) : databases.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-1">No databases found</p>
               ) : (
@@ -243,6 +253,8 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading...
                 </div>
+              ) : tablesError ? (
+                <p className="text-xs text-destructive mt-1">{tablesError}</p>
               ) : tables.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-1">No tables found</p>
               ) : (

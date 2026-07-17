@@ -750,19 +750,29 @@ impl DataWriter for PostgresDriver {
             quote_pg(table)
         };
 
+        let target_schema = schema.unwrap_or("public");
+        let col_types = self.fetch_column_types(table, target_schema).await;
+
         let quoted_cols: Vec<String> = columns.iter().map(|c| quote_pg(c)).collect();
         let cols_str = quoted_cols.join(", ");
 
-        // Build placeholders: $1, $2, $3, ...
+        // Build placeholders with explicit ::type casts so PostgreSQL
+        // handles type conversion server-side. This avoids the need for
+        // Rust-side type matching and works for ALL PostgreSQL types.
         let mut param_idx = 1;
         let mut all_placeholders = Vec::new();
         for _ in 0..rows.len() {
             let row_placeholders: Vec<String> = columns
                 .iter()
-                .map(|_| {
+                .map(|col| {
                     let p = format!("${}", param_idx);
                     param_idx += 1;
-                    p
+                    let cast = col_types
+                        .get(col.as_str())
+                        .and_then(|t| Self::pg_type_cast(t))
+                        .map(|c| format!("::{}", c))
+                        .unwrap_or_default();
+                    format!("{}{}", p, cast)
                 })
                 .collect();
             all_placeholders.push(format!("({})", row_placeholders.join(", ")));
@@ -789,21 +799,7 @@ impl DataWriter for PostgresDriver {
 
         for row in rows {
             for col in columns {
-                qb = match row.get(col) {
-                    Some(serde_json::Value::Null) | None => qb.bind(None::<String>),
-                    Some(serde_json::Value::String(s)) => qb.bind(s.clone()),
-                    Some(serde_json::Value::Number(n)) => {
-                        if let Some(i) = n.as_i64() {
-                            qb.bind(i)
-                        } else if let Some(f) = n.as_f64() {
-                            qb.bind(f)
-                        } else {
-                            qb.bind(n.to_string())
-                        }
-                    }
-                    Some(serde_json::Value::Bool(b)) => qb.bind(*b),
-                    _ => qb.bind(None::<String>),
-                };
+                qb = Self::bind_json_value(qb, row.get(col).cloned());
             }
         }
 
@@ -821,25 +817,160 @@ impl PostgresDriver {
         let type_name = col.type_info().name();
 
         match type_name {
-            "INT2" | "INT4" | "INT8" | "OID" => row
-                .try_get::<i64, _>(i)
-                .map(Into::into)
+            "INT2" => row
+                .try_get::<Option<i16>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::Number(v.into()))
+                .unwrap_or(serde_json::Value::Null),
+            "INT4" | "OID" => row
+                .try_get::<Option<i32>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::Number(v.into()))
+                .unwrap_or(serde_json::Value::Null),
+            "INT8" => row
+                .try_get::<Option<i64>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::Number(v.into()))
                 .unwrap_or(serde_json::Value::Null),
             "FLOAT4" | "FLOAT8" | "NUMERIC" => row
-                .try_get::<f64, _>(i)
-                .map(Into::into)
+                .try_get::<Option<f64>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::Number(
+                    serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0))
+                ))
                 .unwrap_or(serde_json::Value::Null),
             "BOOL" => row
-                .try_get::<bool, _>(i)
+                .try_get::<Option<bool>, _>(i)
+                .ok()
+                .flatten()
                 .map(Into::into)
                 .unwrap_or(serde_json::Value::Null),
             "JSON" | "JSONB" => row
-                .try_get::<serde_json::Value, _>(i)
+                .try_get::<Option<serde_json::Value>, _>(i)
+                .ok()
+                .flatten()
+                .map(sanitize_json_value)
+                .unwrap_or(serde_json::Value::Null),
+            "TIMESTAMPTZ" => row
+                .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::String(v.to_rfc3339()))
+                .unwrap_or(serde_json::Value::Null),
+            "TIMESTAMP" => row
+                .try_get::<Option<chrono::NaiveDateTime>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::String(v.format("%Y-%m-%dT%H:%M:%S%.f").to_string()))
+                .unwrap_or(serde_json::Value::Null),
+            "DATE" => row
+                .try_get::<Option<chrono::NaiveDate>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::String(v.format("%Y-%m-%d").to_string()))
+                .unwrap_or(serde_json::Value::Null),
+            "TIME" | "TIMETZ" => row
+                .try_get::<Option<chrono::NaiveTime>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::String(v.format("%H:%M:%S%.f").to_string()))
+                .unwrap_or(serde_json::Value::Null),
+            "UUID" => row
+                .try_get::<Option<uuid::Uuid>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| serde_json::Value::String(v.to_string()))
                 .unwrap_or(serde_json::Value::Null),
             _ => row
-                .try_get::<String, _>(i)
-                .map(Into::into)
+                .try_get::<Option<String>, _>(i)
+                .ok()
+                .flatten()
+                .map(|s| serde_json::Value::String(sanitize_string(&s)))
                 .unwrap_or(serde_json::Value::Null),
+        }
+    }
+
+    /// Query the target table's column types from information_schema.
+    /// Returns a map of column_name -> data_type (lowercase).
+    async fn fetch_column_types(&self, table: &str, schema: &str) -> std::collections::HashMap<String, String> {
+        let rows = sqlx::query(
+            r#"SELECT column_name, data_type
+               FROM information_schema.columns
+               WHERE table_name = $1 AND table_schema = $2"#
+        )
+        .bind(table)
+        .bind(schema)
+        .fetch_all(&self.pool)
+        .await;
+
+        match rows {
+            Ok(rows) => rows.into_iter().filter_map(|r| {
+                let name: String = r.try_get("column_name").ok()?;
+                let ty: String = r.try_get("data_type").ok()?;
+                Some((name, ty))
+            }).collect(),
+            Err(_) => std::collections::HashMap::new(),
+        }
+    }
+
+    /// Map information_schema.columns.data_type to a PostgreSQL type cast name.
+    fn pg_type_cast(data_type: &str) -> Option<&'static str> {
+        match data_type {
+            "smallint" => Some("smallint"),
+            "integer" => Some("integer"),
+            "bigint" | "oid" => Some("bigint"),
+            "real" => Some("real"),
+            "double precision" => Some("double precision"),
+            "numeric" | "decimal" | "money" => Some("numeric"),
+            "boolean" => Some("boolean"),
+            "json" => Some("json"),
+            "jsonb" => Some("jsonb"),
+            "timestamp with time zone" => Some("timestamptz"),
+            "timestamp without time zone" => Some("timestamp"),
+            "date" => Some("date"),
+            "time with time zone" => Some("timetz"),
+            "time without time zone" => Some("time"),
+            "uuid" => Some("uuid"),
+            "bytea" => Some("bytea"),
+            "character varying" | "varchar" | "character" | "char" | "text" => Some("text"),
+            _ => None,
+        }
+    }
+
+    /// Bind a JSON value as a query parameter. Since SQL placeholders use
+    /// explicit ::type casts, we only need to bind the raw value — PostgreSQL
+    /// handles the type conversion.
+    /// Null bytes (0x00) are stripped from strings to avoid UTF8 encoding errors.
+    fn bind_json_value<'a>(
+        qb: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
+        val: Option<serde_json::Value>,
+    ) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+        match val {
+            None | Some(serde_json::Value::Null) => qb.bind(None::<String>),
+            Some(serde_json::Value::String(s)) => {
+                let clean = sanitize_string(&s);
+                qb.bind(clean)
+            }
+            Some(serde_json::Value::Number(n)) => {
+                if let Some(i) = n.as_i64() {
+                    qb.bind(i)
+                } else if let Some(f) = n.as_f64() {
+                    qb.bind(f)
+                } else {
+                    qb.bind(n.to_string())
+                }
+            }
+            Some(serde_json::Value::Bool(b)) => qb.bind(b),
+            Some(v) => {
+                // Array, Object, or any other — sanitize null bytes then serialize to JSON string
+                let clean = sanitize_json_value(v);
+                let s = serde_json::to_string(&clean).unwrap_or_default();
+                qb.bind(s)
+            }
         }
     }
 
@@ -1006,22 +1137,23 @@ impl PostgresDriver {
                     }
                 }
                 "user-defined" => {
+                    // User-defined types (enums etc.) won't exist on target — map to text
                     if let Some(ref udt) = udt_name {
                         if udt.starts_with('_') {
-                            format!("{}[]", &udt[1..])
+                            "text[]".to_string()
                         } else {
-                            udt.clone()
+                            "text".to_string()
                         }
                     } else {
-                        data_type.clone()
+                        "text".to_string()
                     }
                 }
                 "ARRAY" => {
                     if let Some(ref udt) = udt_name {
                         if udt.starts_with('_') {
-                            format!("{}[]", &udt[1..])
+                            "text[]".to_string()
                         } else {
-                            format!("{}[]", udt)
+                            "text[]".to_string()
                         }
                     } else {
                         "text[]".to_string()
@@ -1037,7 +1169,9 @@ impl PostgresDriver {
             }
 
             if let Some(ref d) = default_val {
-                def.push_str(&format!(" DEFAULT {}", d));
+                if is_safe_default(d) {
+                    def.push_str(&format!(" DEFAULT {}", d));
+                }
             }
 
             col_defs.push(def);
@@ -1056,6 +1190,75 @@ impl PostgresDriver {
             schema_quoted, name_quoted, col_defs.join(",\n")
         ))
     }
+}
+
+/// Remove null bytes (0x00) from a string.
+/// PostgreSQL rejects strings containing null bytes when the database encoding is UTF8.
+fn sanitize_string(s: &str) -> String {
+    if s.contains('\0') {
+        s.replace('\0', "")
+    } else {
+        s.to_string()
+    }
+}
+
+/// Recursively strip null bytes (0x00) from all string values and keys
+/// inside a serde_json::Value tree. This prevents null bytes from reaching
+/// PostgreSQL where they cause UTF-8 encoding errors, especially in JSONB columns.
+fn sanitize_json_value(val: serde_json::Value) -> serde_json::Value {
+    match val {
+        serde_json::Value::String(s) => serde_json::Value::String(sanitize_string(&s)),
+        serde_json::Value::Object(map) => {
+            let sanitized: serde_json::Map<String, serde_json::Value> = map
+                .into_iter()
+                .map(|(k, v)| (sanitize_string(&k), sanitize_json_value(v)))
+                .collect();
+            serde_json::Value::Object(sanitized)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sanitize_json_value).collect())
+        }
+        other => other,
+    }
+}
+
+/// Check if a column_default value is safe to include in cross-database DDL.
+/// Unsafe defaults reference source-specific state (sequences, USER keyword, etc.)
+/// that doesn't exist on the target database.
+fn is_safe_default(default: &str) -> bool {
+    let lower = default.to_lowercase().trim().to_string();
+
+    // String literals: 'value' or 'value'::type
+    if default.trim().starts_with('\'') {
+        return true;
+    }
+    // Numeric literals
+    if default.trim().parse::<f64>().is_ok() {
+        return true;
+    }
+    // Boolean
+    if lower == "true" || lower == "false" {
+        return true;
+    }
+    // NULL
+    if lower == "null" {
+        return true;
+    }
+    // now() and time functions
+    if lower == "now()" || lower == "current_timestamp" || lower == "current_date" || lower == "current_time" {
+        return true;
+    }
+    // gen_random_uuid()
+    if lower == "gen_random_uuid()" {
+        return true;
+    }
+    // Expression with cast: ('value')::type
+    if default.trim().starts_with('(') && default.contains("::") {
+        return true;
+    }
+
+    // Everything else is unsafe: USER, CURRENT_USER, nextval(), etc.
+    false
 }
 
 impl CapabilityProvider for PostgresDriver {

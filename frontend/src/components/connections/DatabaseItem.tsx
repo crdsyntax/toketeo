@@ -10,11 +10,13 @@ interface DatabaseItemProps {
   conn: Connection
   dbName: string
   activeConnection: Connection | null
+  activeDatabaseName?: string | null
   onSelect: (conn: Connection, schema: string) => void
+  onSelectSchema?: (conn: Connection, dbName: string, schema: string) => void
   onSchemaContextMenu?: (e: React.MouseEvent, conn: Connection, schema: string) => void
 }
 
-export function DatabaseItem({ conn, dbName, activeConnection, onSelect, onSchemaContextMenu }: DatabaseItemProps) {
+export function DatabaseItem({ conn, dbName, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onSchemaContextMenu }: DatabaseItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const { data: schemas = [], refetch } = useQuery({
@@ -38,7 +40,7 @@ export function DatabaseItem({ conn, dbName, activeConnection, onSelect, onSchem
       <div 
         className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-muted/80 hover:text-foreground transition-colors rounded-sm"
         onClick={toggleExpand}
-        onDoubleClick={() => onSelect(conn, dbName)}
+        onDoubleClick={(e) => { e.stopPropagation(); if (!isExpanded) toggleExpand(); }}
       >
         <ChevronDown className={cn("w-3 h-3 transition-transform", !isExpanded && "-rotate-90")} />
         <Database className="w-3 h-3 text-blue-400" />
@@ -47,7 +49,7 @@ export function DatabaseItem({ conn, dbName, activeConnection, onSelect, onSchem
       {isExpanded && (
         <div className="pl-6 ml-1 border-l border-border/50 space-y-0.5">
           {schemas.map(schema => (
-            <SchemaItem key={schema} conn={conn} schema={schema} isSelected={activeConnection?.id === conn.id && activeConnection?.database === schema} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
+            <SchemaItem key={schema} conn={conn} schema={schema} isSelected={activeConnection?.id === conn.id && activeDatabaseName === dbName && activeConnection?.database === schema} onSelect={onSelectSchema ? (c, s) => onSelectSchema(c, dbName, s) : onSelect} onContextMenu={onSchemaContextMenu} />
           ))}
         </div>
       )}

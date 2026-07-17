@@ -104,8 +104,8 @@ impl ConnectionService {
                     config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false),
                     db_config.password_enc.is_some()
                 );
-                // Decrypt stored secrets if session is unlocked
-                if let Ok(key) = state.require_unlock().await {
+                // Decrypt stored secrets using the decryption key (available regardless of UI lock state)
+                if let Ok(key) = state.get_decryption_key().await {
                     let _ = Self::decrypt_connection(&mut db_config, &key);
                 }
 
@@ -172,7 +172,7 @@ impl ConnectionService {
             config.auth_enabled = Some(true);
         }
         Self::merge_sensitive_data(state, &mut config).await;
-        if let Ok(key) = state.require_unlock().await {
+        if let Ok(key) = state.get_decryption_key().await {
             Self::encrypt_connection(&mut config, &key)?;
         }
         state.storage.save_connection(config).await
@@ -349,7 +349,7 @@ impl ConnectionService {
 
     pub async fn diagnose_connection(state: &AppState, id: &str) -> AppResult<serde_json::Value> {
         let mut config = state.storage.get_connection(id).await?;
-        if let Ok(key) = state.require_unlock().await {
+        if let Ok(key) = state.get_decryption_key().await {
             Self::decrypt_connection(&mut config, &key)?;
         }
         let url = ConnectionStringBuilder::build(&config)?;
@@ -367,7 +367,7 @@ impl ConnectionService {
 
     pub async fn switch_database(state: &AppState, id: &str, new_db: &str) -> AppResult<()> {
         let mut config = state.storage.get_connection(id).await?;
-        if let Ok(key) = state.require_unlock().await {
+        if let Ok(key) = state.get_decryption_key().await {
             Self::decrypt_connection(&mut config, &key)?;
         }
         config.database = Some(new_db.to_string());
@@ -391,7 +391,7 @@ impl ConnectionService {
         tracing::info!("Reconnecting session: {}", id);
         let _ = state.remove_connection(id).await;
         let mut config = state.storage.get_connection(id).await?;
-        if let Ok(key) = state.require_unlock().await {
+        if let Ok(key) = state.get_decryption_key().await {
             Self::decrypt_connection(&mut config, &key)?;
         }
         Self::connect(state, config).await

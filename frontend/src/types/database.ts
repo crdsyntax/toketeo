@@ -37,6 +37,7 @@ export enum SidebarTab {
 
 export enum DatabaseType {
   MARIADB = 'mariadb',
+  MYSQL = 'mysql',
   POSTGRES = 'postgres',
   MONGODB = 'mongodb',
   SQLSERVER = 'sqlserver',
