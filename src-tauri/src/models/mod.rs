@@ -219,8 +219,8 @@ pub struct ScheduledJob {
     pub connection_id: Uuid,
     #[serde(rename = "jobType")]
     pub job_type: JobType,
-    #[serde(rename = "cronExpression")]
-    pub cron_expression: String,
+    #[serde(rename = "cronExpression", skip_serializing_if = "Option::is_none")]
+    pub cron_expression: Option<String>,
     pub config: serde_json::Value,
     pub enabled: bool,
     #[serde(rename = "lastRun")]

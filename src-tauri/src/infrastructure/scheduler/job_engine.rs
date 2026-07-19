@@ -4,10 +4,12 @@ use crate::models::ScheduledJob;
 use crate::storage::Storage;
 use chrono::Utc;
 use cron::Schedule;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 #[derive(Clone, serde::Serialize)]
@@ -17,17 +19,26 @@ pub struct JobCompletedPayload {
     #[serde(rename = "jobName")]
     pub job_name: String,
     pub status: String,
-    #[serde(rename = "outputPath")]
-    pub output_path: Option<String>,
+    #[serde(rename = "outputDir")]
+    pub output_dir: Option<String>,
     pub error: Option<String>,
     #[serde(rename = "rowsAffected")]
     pub rows_affected: Option<i64>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct JobStartedPayload {
+    #[serde(rename = "jobId")]
+    pub job_id: String,
+    #[serde(rename = "jobName")]
+    pub job_name: String,
 }
 
 pub struct JobEngine {
     storage: Arc<Storage>,
     app_handle: Option<AppHandle>,
     shutdown_tx: Option<oneshot::Sender<()>>,
+    cancel_tokens: std::sync::Mutex<HashMap<String, CancellationToken>>,
 }
 
 impl Drop for JobEngine {
@@ -44,11 +55,34 @@ impl JobEngine {
             storage,
             app_handle: None,
             shutdown_tx: None,
+            cancel_tokens: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
     pub fn set_app_handle(&mut self, handle: AppHandle) {
         self.app_handle = Some(handle);
+    }
+
+    pub fn cancel_job(&self, job_id: &str) -> bool {
+        if let Ok(tokens) = self.cancel_tokens.lock() {
+            if let Some(token) = tokens.get(job_id) {
+                token.cancel();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn register_token(&self, job_id: &str, token: CancellationToken) {
+        if let Ok(mut tokens) = self.cancel_tokens.lock() {
+            tokens.insert(job_id.to_string(), token);
+        }
+    }
+
+    pub fn remove_token(&self, job_id: &str) {
+        if let Ok(mut tokens) = self.cancel_tokens.lock() {
+            tokens.remove(job_id);
+        }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -86,12 +120,17 @@ impl JobEngine {
 
         for mut job in jobs {
             if should_run_now(&job, &now) {
-                let result = execute_job(&engine.storage, &mut job, &engine.app_handle).await;
+                let token = CancellationToken::new();
+                engine.register_token(&job.id.to_string(), token.clone());
+                let result = execute_job(&engine.storage, &mut job, &engine.app_handle, Some(token.clone())).await;
+                engine.remove_token(&job.id.to_string());
                 match result {
                     Ok(payload) => {
                         job.last_run = Some(now);
-                        if let Ok(schedule) = Schedule::from_str(&job.cron_expression) {
-                            job.next_run = schedule.after(&now).next();
+                        if let Some(ref cron_str) = job.cron_expression {
+                            if let Ok(schedule) = Schedule::from_str(cron_str) {
+                                job.next_run = schedule.after(&now).next();
+                            }
                         }
                         let _ = engine.storage.save_scheduled_job(&job).await;
 
@@ -106,7 +145,7 @@ impl JobEngine {
                                 job_id: job.id.to_string(),
                                 job_name: job.name.clone(),
                                 status: "error".into(),
-                                output_path: None,
+                                output_dir: None,
                                 error: Some(e.to_string()),
                                 rows_affected: None,
                             };
@@ -122,13 +161,18 @@ impl JobEngine {
 }
 
 fn should_run_now(job: &ScheduledJob, now: &chrono::DateTime<Utc>) -> bool {
+    let cron_str = match &job.cron_expression {
+        Some(s) if !s.is_empty() => s,
+        _ => return false,
+    };
+
     if let Some(next_run) = job.next_run {
         if *now < next_run {
             return false;
         }
     }
 
-    let schedule = match Schedule::from_str(&job.cron_expression) {
+    let schedule = match Schedule::from_str(cron_str) {
         Ok(s) => s,
         Err(_) => return false,
     };
@@ -147,13 +191,15 @@ fn should_run_now(job: &ScheduledJob, now: &chrono::DateTime<Utc>) -> bool {
     }
 }
 
-pub async fn execute_job_now(storage: &Arc<Storage>, app_handle: &Option<AppHandle>, job_id: &str) -> AppResult<JobCompletedPayload> {
+pub async fn execute_job_now(storage: &Arc<Storage>, app_handle: &Option<AppHandle>, job_id: &str, cancel_token: Option<CancellationToken>) -> AppResult<JobCompletedPayload> {
     let mut job = storage.get_scheduled_job(job_id).await?;
-    let result = execute_job(storage, &mut job, app_handle).await?;
+    let result = execute_job(storage, &mut job, app_handle, cancel_token).await?;
 
     job.last_run = Some(Utc::now());
-    if let Ok(schedule) = Schedule::from_str(&job.cron_expression) {
-        job.next_run = schedule.after(&Utc::now()).next();
+    if let Some(ref cron_str) = job.cron_expression {
+        if let Ok(schedule) = Schedule::from_str(cron_str) {
+            job.next_run = schedule.after(&Utc::now()).next();
+        }
     }
     let _ = storage.save_scheduled_job(&job).await;
 
@@ -167,12 +213,30 @@ pub async fn execute_job_now(storage: &Arc<Storage>, app_handle: &Option<AppHand
 async fn execute_job(
     storage: &Arc<Storage>,
     job: &mut ScheduledJob,
-    _app_handle: &Option<AppHandle>,
+    app_handle: &Option<AppHandle>,
+    cancel_token: Option<CancellationToken>,
 ) -> AppResult<JobCompletedPayload> {
     let job_id = job.id;
     let started_at = Utc::now();
 
-    let result = JobExecutor::execute(job, storage).await;
+    if let Some(ref handle) = app_handle {
+        let _ = handle.emit("scheduler:job-started", &JobStartedPayload {
+            job_id: job_id.to_string(),
+            job_name: job.name.clone(),
+        });
+    }
+
+    if let Some(ref token) = cancel_token {
+        if token.is_cancelled() {
+            return Err(crate::error::AppError::Internal("Job cancelled".into()));
+        }
+    }
+
+    let result = if let Some(ref handle) = app_handle {
+        JobExecutor::execute(job, storage, handle, cancel_token).await
+    } else {
+        return Err(crate::error::AppError::Internal("No app handle available".into()));
+    };
 
     let finished_at = Utc::now();
 
@@ -182,7 +246,7 @@ async fn execute_job(
         started_at,
         finished_at,
         status: if result.is_success() { "success".into() } else { "error".into() },
-        output_path: result.output_path.clone(),
+        output_path: result.output_dir.clone(),
         error: result.error.clone(),
         rows_affected: result.rows_affected,
     };
@@ -193,7 +257,7 @@ async fn execute_job(
         job_id: job_id.to_string(),
         job_name: job.name.clone(),
         status: if result.is_success() { "success".into() } else { "error".into() },
-        output_path: result.output_path,
+        output_dir: result.output_dir,
         error: result.error,
         rows_affected: result.rows_affected,
     };

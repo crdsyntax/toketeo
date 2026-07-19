@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Clock, Database, FileDown, FileJson, FileSpreadsheet, Loader2 } from 'lucide-react'
+import { X, Clock, Database, FileDown, FileJson, FileSpreadsheet, Loader2, FolderOpen, ToggleLeft, ToggleRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { JobType, DatabaseType } from '@/types/database'
 import type { ScheduledJob, CreateScheduledJobDto } from '@/types/database'
@@ -33,8 +33,10 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
   const [connectionId, setConnectionId] = useState(job?.connectionId ?? '')
   const [jobType, setJobType] = useState(job?.jobType ?? JobType.Backup)
   const [cronExpression, setCronExpression] = useState(job?.cronExpression ?? '')
+  const [manualOnly, setManualOnly] = useState(!job?.cronExpression)
   const [query, setQuery] = useState((job?.config?.query as string) ?? '')
-  const [outputDir, setOutputDir] = useState((job?.config?.outputDir as string) ?? '/tmp')
+  const [outputDir, setOutputDir] = useState((job?.config?.outputDir as string) ?? '')
+  const [loadingFolder, setLoadingFolder] = useState(false)
   const [connections, setConnections] = useState<Connection[]>([])
 
   const [databases, setDatabases] = useState<string[]>([])
@@ -55,7 +57,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
   const isBackup = jobType === JobType.Backup
 
   useEffect(() => {
-    if (!isBackup || !connectionId) {
+    if (!connectionId) {
       setDatabases([])
       setSelectedDatabase('')
       setTables([])
@@ -76,10 +78,10 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
       })
       .catch((e) => setDbError(String(e)))
       .finally(() => setLoadingDbs(false))
-  }, [connectionId, isBackup, job])
+  }, [connectionId, job])
 
   useEffect(() => {
-    if (!isBackup || !connectionId || !selectedDatabase) {
+    if (!connectionId || !selectedDatabase) {
       setTables([])
       setSelectedTables(new Set())
       setTablesError(null)
@@ -99,7 +101,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
       })
       .catch((e) => setTablesError(String(e)))
       .finally(() => setLoadingTables(false))
-  }, [connectionId, selectedDatabase, isBackup, job])
+  }, [connectionId, selectedDatabase, job])
 
   const toggleTable = useCallback((table: string) => {
     setSelectedTables((prev) => {
@@ -119,17 +121,20 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
   }, [tables, selectedTables])
 
   const handleSave = () => {
-    const config: Record<string, unknown> = { outputDir }
-    if (isBackup) {
+    const config: Record<string, unknown> = {}
+    if (outputDir) config.outputDir = outputDir
+    if (isBackup || selectedTables.size > 0) {
       config.database = selectedDatabase
       config.tables = Array.from(selectedTables)
-    } else {
+    }
+    if (!isBackup && selectedTables.size === 0) {
       config.query = query
     }
-    onSave({ name, connectionId, jobType, cronExpression, config })
+    const cron = manualOnly ? null : cronExpression || null
+    onSave({ name, connectionId, jobType, cronExpression: cron, config })
   }
 
-  const canSave = name && connectionId && cronExpression && (isBackup || query)
+  const canSave = name && connectionId && (manualOnly || cronExpression) && (isBackup || selectedTables.size > 0 || query)
 
   const selectedConn = connections.find((c) => c.id === connectionId)
 
@@ -205,8 +210,8 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           </div>
 
-          {/* Database (Backup only) */}
-          {isBackup && connectionId && (
+          {/* Database (Backup, Report, CSV) */}
+          {connectionId && (
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Database
@@ -233,8 +238,8 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           )}
 
-          {/* Tables / Collections (Backup only) */}
-          {isBackup && selectedDatabase && (
+          {/* Tables / Collections (Backup, Report, CSV) */}
+          {selectedDatabase && (
             <div>
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -278,37 +283,63 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           )}
 
-          {/* Cron Expression */}
+          {/* Cron Schedule */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Cron Expression
-            </label>
-            <input
-              value={cronExpression}
-              onChange={(e) => setCronExpression(e.target.value)}
-              className="w-full mt-1 px-3 py-2 text-sm font-mono bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground/40"
-              placeholder="0 8 * * *"
-            />
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {CRON_PRESETS.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => setCronExpression(p.value)}
-                  className={cn(
-                    'px-2 py-0.5 text-[9px] font-medium rounded-md border transition-colors',
-                    cronExpression === p.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:bg-muted/40',
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Schedule
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !manualOnly
+                  setManualOnly(next)
+                  if (next) setCronExpression('')
+                }}
+                className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {manualOnly ? (
+                  <><ToggleLeft className="w-4 h-4" /> Manual only</>
+                ) : (
+                  <><ToggleRight className="w-4 h-4 text-primary" /> Scheduled</>
+                )}
+              </button>
             </div>
+            {!manualOnly && (
+              <>
+                <input
+                  value={cronExpression}
+                  onChange={(e) => setCronExpression(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-sm font-mono bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground/40"
+                  placeholder="0 8 * * *"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {CRON_PRESETS.map((p) => (
+                    <button
+                      key={p.value}
+                      onClick={() => setCronExpression(p.value)}
+                      className={cn(
+                        'px-2 py-0.5 text-[9px] font-medium rounded-md border transition-colors',
+                        cronExpression === p.value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-muted/40',
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {manualOnly && (
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                This job will only run when you click "Run Now"
+              </p>
+            )}
           </div>
 
-          {/* Query (for Report / CSV) */}
-          {!isBackup && (
+          {/* Query (for Report / CSV when no tables selected) */}
+          {!isBackup && selectedTables.size === 0 && (
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SQL Query</label>
               <textarea
@@ -324,12 +355,30 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           {/* Output Directory */}
           <div>
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Output Directory</label>
-            <input
-              value={outputDir}
-              onChange={(e) => setOutputDir(e.target.value)}
-              className="w-full mt-1 px-3 py-2 text-sm font-mono bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground/40"
-              placeholder="/tmp"
-            />
+            <div className="flex gap-1.5 mt-1">
+              <input
+                value={outputDir}
+                onChange={(e) => setOutputDir(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm font-mono bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground/40"
+                placeholder="Select a folder..."
+              />
+              <button
+                type="button"
+                disabled={loadingFolder}
+                onClick={async () => {
+                  setLoadingFolder(true)
+                  try {
+                    const folder = await schedulerService.selectFolder()
+                    if (folder) setOutputDir(folder)
+                  } finally {
+                    setLoadingFolder(false)
+                  }
+                }}
+                className="px-3 py-2 rounded-lg border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                {loadingFolder ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
 

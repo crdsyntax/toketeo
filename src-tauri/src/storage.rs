@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;
 use sqlx::{Row, sqlite::SqlitePool};
 use std::path::PathBuf;
+use std::sync::RwLock;
 use uuid::Uuid;
 use zeroize::Zeroize;
 
@@ -13,6 +14,7 @@ use crate::application::audit_service::AuditEntry;
 
 pub struct Storage {
     pool: SqlitePool,
+    master_key: RwLock<Option<[u8; 32]>>,
 }
 
 impl Storage {
@@ -256,7 +258,15 @@ impl Storage {
             .execute(&pool)
             .await;
 
-        Ok(Self { pool })
+        Ok(Self { pool, master_key: RwLock::new(None) })
+    }
+
+    pub fn set_master_key(&self, key: [u8; 32]) {
+        *self.master_key.write().unwrap() = Some(key);
+    }
+
+    pub fn get_master_key(&self) -> Option<[u8; 32]> {
+        *self.master_key.read().unwrap()
     }
 
     pub async fn save_audit_log(&self, entry: AuditEntry) -> AppResult<()> {
@@ -598,7 +608,7 @@ impl Storage {
         .bind(&job.name)
         .bind(&connection_id)
         .bind(&job_type)
-        .bind(&job.cron_expression)
+        .bind(job.cron_expression.as_deref().unwrap_or(""))
         .bind(&config)
         .bind(job.enabled as i64)
         .bind(last_run)
@@ -674,7 +684,10 @@ impl Storage {
                 Uuid::parse_str(&cid).unwrap_or_default()
             },
             job_type,
-            cron_expression: row.get("cron_expression"),
+            cron_expression: {
+                let ce: String = row.get("cron_expression");
+                if ce.is_empty() { None } else { Some(ce) }
+            },
             config: serde_json::from_str(&config_str).unwrap_or_default(),
             enabled: row.get::<i64, _>("enabled") != 0,
             last_run: last_run_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&Utc))),

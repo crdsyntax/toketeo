@@ -41,6 +41,7 @@ const STATUS_CONFIG: Record<PipelineStatus, { color: string; label: string; icon
 
 export function CrossDbSyncPage() {
   const [showEditor, setShowEditor] = useState(false)
+  const [wizardMinimized, setWizardMinimized] = useState(false)
   const [editingPipeline, setEditingPipeline] = useState<SyncPipeline | null>(null)
   const [executingId, setExecutingId] = useState<string | null>(null)
   const [pausedId, setPausedId] = useState<string | null>(null)
@@ -99,16 +100,19 @@ export function CrossDbSyncPage() {
   const handleEdit = (p: SyncPipeline) => {
     setEditingPipeline(p)
     setShowEditor(true)
+    setWizardMinimized(false)
   }
 
   const handleCreate = () => {
     setEditingPipeline(null)
     setShowEditor(true)
+    setWizardMinimized(false)
   }
 
   const handleClose = () => {
     setShowEditor(false)
     setEditingPipeline(null)
+    setWizardMinimized(false)
     queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
   }
 
@@ -500,7 +504,28 @@ export function CrossDbSyncPage() {
       </div>
 
       {showEditor && (
-        <SyncWizard pipeline={editingPipeline} onClose={handleClose} />
+        <SyncWizard
+          pipeline={editingPipeline}
+          onClose={handleClose}
+          minimized={wizardMinimized}
+          onMinimize={() => setWizardMinimized(true)}
+          onRestore={() => setWizardMinimized(false)}
+        />
+      )}
+
+      {showEditor && wizardMinimized && (
+        <button
+          onClick={() => setWizardMinimized(false)}
+          className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-card border border-border px-4 py-2.5 shadow-lg hover:bg-muted/50 transition-colors"
+        >
+          <GitBranch className="w-4 h-4 text-primary" />
+          <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+            {editingPipeline ? 'Editar' : 'Nueva'} Sincronización
+          </span>
+          <span className="text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+            Minimizado
+          </span>
+        </button>
       )}
     </div>
   )

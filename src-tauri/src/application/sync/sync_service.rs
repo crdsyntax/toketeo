@@ -23,6 +23,7 @@ impl SyncService {
         controller: &SyncController,
     ) -> AppResult<()> {
         let source_db_type = source.db_type();
+        let target_db_type = target.db_type();
 
         // --- Auto-detect correct source schema ---
         let mut effective_source_schema = pipeline.source_schema.clone();
@@ -151,34 +152,36 @@ impl SyncService {
                     pipeline_clone.source_schema.clone(),
                 ).await;
 
-                let create_sql = match source_ddl {
-                    Ok(ref ddl) if ddl.contains('(') => {
-                        // Valid DDL with column definitions — rewrite target table name
-                        let target_ref = match pipeline_clone.target_schema.as_deref() {
-                            Some(s) => format!("{}.{}", quote_for_target(&source_db_type, s), quote_for_target(&source_db_type, &table_config.target_table)),
-                            None => quote_for_target(&source_db_type, &table_config.target_table),
-                        };
-                        let ddl_body = &ddl[ddl.find('(').unwrap()..];
-                        let sanitized_body = sanitize_ddl_for_target(ddl_body);
-                        Some(format!("CREATE TABLE IF NOT EXISTS {}{}", target_ref, sanitized_body))
-                    }
-                    Ok(ref ddl) => {
-                        // DDL is not a valid CREATE TABLE (e.g. comment when table not found)
-                        tracing::warn!("[sync] DDL for '{}' is not valid, falling back to column metadata: {:?}", table_config.source_table, &ddl[..ddl.len().min(80)]);
-                        None
-                    }
-                    Err(e) => {
-                        tracing::warn!("[sync] Could not read DDL for source table '{}': {}", table_config.source_table, e);
-                        None
+                // MongoDB fetch_ddl returns JSON metadata, not CREATE TABLE — skip DDL path
+                let create_sql = if source_db_type == DbType::Mongodb {
+                    None
+                } else {
+                    match source_ddl {
+                        Ok(ref ddl) if ddl.contains("CREATE") && ddl.contains('(') => {
+                            let target_ref = match pipeline_clone.target_schema.as_deref() {
+                                Some(s) => format!("{}.{}", quote_for_target(&target_db_type, s), quote_for_target(&target_db_type, &table_config.target_table)),
+                                None => quote_for_target(&target_db_type, &table_config.target_table),
+                            };
+                            let ddl_body = &ddl[ddl.find('(').unwrap()..];
+                            let sanitized_body = sanitize_ddl_for_target(ddl_body);
+                            Some(format!("CREATE TABLE IF NOT EXISTS {}{}", target_ref, sanitized_body))
+                        }
+                        Ok(ref ddl) => {
+                            tracing::warn!("[sync] DDL for '{}' is not valid, falling back to column metadata: {:?}", table_config.source_table, &ddl[..ddl.len().min(80)]);
+                            None
+                        }
+                        Err(e) => {
+                            tracing::warn!("[sync] Could not read DDL for source table '{}': {}", table_config.source_table, e);
+                            None
+                        }
                     }
                 };
 
-                // Step 2: If DDL approach failed, try building CREATE TABLE from pg_catalog (PostgreSQL) or column metadata
+                // Step 2: Build CREATE TABLE from column metadata when DDL is unavailable
                 let create_sql = match create_sql {
                     Some(sql) => Some(sql),
                     None => {
                         let col_info = if source_db_type == DbType::Postgres {
-                            // Use pg_catalog directly (more reliable than information_schema)
                             fetch_pg_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
                         } else {
                             fetch_generic_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
@@ -186,29 +189,13 @@ impl SyncService {
 
                         match col_info {
                             Ok(columns) if !columns.is_empty() => {
-                                let mut col_defs = Vec::new();
-                                let mut pk_cols = Vec::new();
-                                for (col_name, col_type, is_nullable, is_pk) in &columns {
-                                    let quoted_type = quote_pg_type(col_type);
-                                    let mut def = format!("    {} {}", quote_for_target(&source_db_type, col_name), quoted_type);
-                                    if !*is_nullable {
-                                        def.push_str(" NOT NULL");
-                                    }
-                                    col_defs.push(def);
-                                    if *is_pk {
-                                        pk_cols.push(quote_for_target(&source_db_type, col_name));
-                                    }
-                                }
-                                if !pk_cols.is_empty() {
-                                    col_defs.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
-                                }
-                                let target_ref = match pipeline_clone.target_schema.as_deref() {
-                                    Some(s) => format!("{}.{}", quote_for_target(&source_db_type, s), quote_for_target(&source_db_type, &table_config.target_table)),
-                                    None => quote_for_target(&source_db_type, &table_config.target_table),
-                                };
-                                let sql = format!("CREATE TABLE IF NOT EXISTS {} (\n{}\n)", target_ref, col_defs.join(",\n"));
-                                tracing::info!("[sync] Built CREATE TABLE from columns for '{}'", table_config.target_table);
-                                Some(sql)
+                                Some(build_create_table_sql(
+                                    &target_db_type,
+                                    &source_db_type,
+                                    pipeline_clone.target_schema.as_deref(),
+                                    &table_config.target_table,
+                                    &columns,
+                                ))
                             }
                             _ => {
                                 tracing::warn!("[sync] Could not read columns for source table '{}', skipping creation", table_config.source_table);
@@ -218,14 +205,17 @@ impl SyncService {
                     }
                 };
 
+                let mut table_created = false;
                 if let Some(ref create_sql) = create_sql {
-                    tracing::debug!("[sync] Creating target table: {}", create_sql);
+                    tracing::info!("[sync] Creating target table SQL: {}", create_sql);
                     match target.execute(create_sql).await {
-                        Ok(_) => tracing::info!("[sync] Created target table '{}'", table_config.target_table),
+                        Ok(_) => {
+                            tracing::info!("[sync] Created target table '{}'", table_config.target_table);
+                            table_created = true;
+                        }
                         Err(e) => {
-                            tracing::error!("[sync] Failed to create target table '{}' from DDL: {} — trying column metadata fallback", table_config.target_table, e);
+                            tracing::error!("[sync] Failed to create target table '{}': {} — trying column metadata fallback", table_config.target_table, e);
 
-                            // Fallback: build CREATE TABLE from column metadata
                             let col_info = if source_db_type == DbType::Postgres {
                                 fetch_pg_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
                             } else {
@@ -234,35 +224,41 @@ impl SyncService {
 
                             if let Ok(columns) = col_info {
                                 if !columns.is_empty() {
-                                    let mut col_defs = Vec::new();
-                                    let mut pk_cols = Vec::new();
-                                    for (col_name, col_type, is_nullable, is_pk) in &columns {
-                                        let quoted_type = quote_pg_type(col_type);
-                                        let mut def = format!("    {} {}", quote_for_target(&source_db_type, col_name), quoted_type);
-                                        if !*is_nullable {
-                                            def.push_str(" NOT NULL");
-                                        }
-                                        col_defs.push(def);
-                                        if *is_pk {
-                                            pk_cols.push(quote_for_target(&source_db_type, col_name));
-                                        }
-                                    }
-                                    if !pk_cols.is_empty() {
-                                        col_defs.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
-                                    }
-                                    let target_ref = match pipeline_clone.target_schema.as_deref() {
-                                        Some(s) => format!("{}.{}", quote_for_target(&source_db_type, s), quote_for_target(&source_db_type, &table_config.target_table)),
-                                        None => quote_for_target(&source_db_type, &table_config.target_table),
-                                    };
-                                    let fallback_sql = format!("CREATE TABLE IF NOT EXISTS {} (\n{}\n)", target_ref, col_defs.join(",\n"));
+                                    let fallback_sql = build_create_table_sql(
+                                        &target_db_type,
+                                        &source_db_type,
+                                        pipeline_clone.target_schema.as_deref(),
+                                        &table_config.target_table,
+                                        &columns,
+                                    );
+                                    tracing::info!("[sync] Fallback CREATE TABLE SQL: {}", fallback_sql);
                                     match target.execute(&fallback_sql).await {
-                                        Ok(_) => tracing::info!("[sync] Created target table '{}' from column metadata", table_config.target_table),
+                                        Ok(_) => {
+                                            tracing::info!("[sync] Created target table '{}' from column metadata", table_config.target_table);
+                                            table_created = true;
+                                        }
                                         Err(e2) => tracing::error!("[sync] Fallback also failed for '{}': {}", table_config.target_table, e2),
                                     }
                                 }
                             }
                         }
                     }
+                }
+
+                if !table_created {
+                    tracing::error!(
+                        "[sync] Target table '{}' could not be created — skipping table sync",
+                        table_config.target_table,
+                    );
+                    pipeline_errors += 1;
+                    if let Some(ref sender) = event_sender {
+                        let _ = sender.send(SyncEvent::RowError {
+                            table: table_config.source_table.clone(),
+                            row_key: None,
+                            error: format!("Target table '{}' could not be created", table_config.target_table),
+                        });
+                    }
+                    continue;
                 }
             }
 
@@ -351,6 +347,105 @@ fn quote_for_target(db_type: &DbType, name: &str) -> String {
         DbType::Sqlite => crate::db::sqlite::quote_sqlite(name),
         _ => name.to_string(),
     }
+}
+
+/// Map BSON / MongoDB element type names (from `format!("{:?}", element_type())`)
+/// to equivalent SQL column types for the target RDBMS.
+fn bson_type_to_sql(bson_type: &str) -> &'static str {
+    let t = bson_type.trim().trim_matches('"');
+    match t {
+        "ObjectId" | "ObjectID" => "VARCHAR(48)",
+        "String" | "Utf8" => "TEXT",
+        "Int32" | "I32" => "INT",
+        "Int64" | "I64" | "Long" => "BIGINT",
+        "Double" | "F64" => "DOUBLE",
+        "Boolean" | "Bool" => "TINYINT(1)",
+        "DateTime" | "Date" | "Timestamp" => "DATETIME",
+        "Binary" | "BinData" => "LONGBLOB",
+        "Array" => "JSON",
+        "EmbeddedDocument" | "Document" | "Object" => "JSON",
+        "Decimal128" | "Decimal" => "DECIMAL(38,18)",
+        "Null" | "Undefined" => "TEXT",
+        "RegularExpression" | "Regex" => "TEXT",
+        "JavaScript" | "JavaScriptWithScope" | "Symbol" | "Code" => "TEXT",
+        "MinKey" | "MaxKey" | "DbPointer" => "TEXT",
+        _ => "TEXT",
+    }
+}
+
+/// Convert a source column type name into a SQL type suitable for the target DB.
+fn map_column_type(source_db_type: &DbType, col_type: &str) -> String {
+    if *source_db_type == DbType::Mongodb {
+        bson_type_to_sql(col_type).to_string()
+    } else {
+        quote_pg_type(col_type)
+    }
+}
+
+/// Build a CREATE TABLE statement from column metadata.
+/// `(name, type, is_nullable, is_pk)`
+fn build_create_table_sql(
+    target_db_type: &DbType,
+    source_db_type: &DbType,
+    target_schema: Option<&str>,
+    target_table: &str,
+    columns: &[(String, String, bool, bool)],
+) -> String {
+    let mut col_defs = Vec::new();
+    let mut pk_cols = Vec::new();
+
+    for (col_name, col_type, is_nullable, is_pk) in columns {
+        let sql_type = map_column_type(source_db_type, col_type);
+        let mut def = format!(
+            "    {} {}",
+            quote_for_target(target_db_type, col_name),
+            sql_type
+        );
+        if !*is_nullable {
+            def.push_str(" NOT NULL");
+        }
+        col_defs.push(def);
+        if *is_pk {
+            pk_cols.push(quote_for_target(target_db_type, col_name));
+        }
+    }
+
+    // MongoDB _id becomes VARCHAR/TEXT Extended JSON — skip PK to avoid MySQL ERROR 1170
+    // (BLOB/TEXT used in key without key length). Also skip PK when the only PK type is TEXT.
+    let can_use_pk = *source_db_type != DbType::Mongodb && !pk_cols.is_empty();
+    if can_use_pk {
+        col_defs.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
+    } else if *source_db_type == DbType::Mongodb && !pk_cols.is_empty() {
+        // Add a unique index-friendly VARCHAR PK for _id when mapped to VARCHAR(48)
+        // Already handled by bson_type_to_sql → VARCHAR(48); add PRIMARY KEY on _id
+        let id_col = columns.iter().find(|c| c.0 == "_id");
+        if let Some((_, ty, _, _)) = id_col {
+            let mapped = map_column_type(source_db_type, ty);
+            if mapped.starts_with("VARCHAR") || mapped.starts_with("CHAR") {
+                col_defs.push(format!(
+                    "    PRIMARY KEY ({})",
+                    quote_for_target(target_db_type, "_id")
+                ));
+            }
+        }
+    }
+
+    let target_ref = match target_schema {
+        Some(s) => format!(
+            "{}.{}",
+            quote_for_target(target_db_type, s),
+            quote_for_target(target_db_type, target_table)
+        ),
+        None => quote_for_target(target_db_type, target_table),
+    };
+
+    let sql = format!(
+        "CREATE TABLE IF NOT EXISTS {} (\n{}\n)",
+        target_ref,
+        col_defs.join(",\n")
+    );
+    tracing::info!("[sync] Built CREATE TABLE from columns for '{}'", target_table);
+    sql
 }
 
 /// Fetch column info using pg_catalog (bypasses information_schema permission issues).

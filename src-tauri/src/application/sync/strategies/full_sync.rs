@@ -152,6 +152,7 @@ impl SyncStrategy for FullSync {
                 &mappings,
             )?;
 
+            let mut abort_table = false;
             let upsert_result = match writer
                 .upsert_rows(
                     &table_config.target_table,
@@ -164,6 +165,7 @@ impl SyncStrategy for FullSync {
             {
                 Ok(r) => r,
                 Err(e) => {
+                    let err_str = e.to_string();
                     tracing::error!(
                         "[full_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
                         table_config.source_table,
@@ -177,9 +179,26 @@ impl SyncStrategy for FullSync {
                             error: format!("Batch {} upsert failed: {}", batch_number, e),
                         });
                     }
+                    // Abort remaining batches when the target table is missing
+                    if err_str.contains("doesn't exist")
+                        || err_str.contains("does not exist")
+                        || err_str.contains("no such table")
+                        || err_str.contains("Invalid object name")
+                    {
+                        tracing::error!(
+                            "[full_sync] Table '{}' does not exist on target — aborting remaining batches",
+                            table_config.source_table,
+                        );
+                        abort_table = true;
+                    }
                     crate::db::UpsertResult::default()
                 }
             };
+
+            if abort_table {
+                error_count += batch_size as u64;
+                break;
+            }
 
             processed_rows += upsert_result.affected;
             let batch_errors = batch_size as u64 - upsert_result.affected - upsert_result.skipped;

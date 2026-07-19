@@ -14,6 +14,32 @@ use mongodb::{
 };
 use std::time::Instant;
 
+/// Stable type name for schema inference (used by cross-DB table creation).
+fn bson_element_type_name(value: &Bson) -> String {
+    match value {
+        Bson::Double(_) => "Double".into(),
+        Bson::String(_) => "String".into(),
+        Bson::Array(_) => "Array".into(),
+        Bson::Document(_) => "Object".into(),
+        Bson::Boolean(_) => "Boolean".into(),
+        Bson::Null => "Null".into(),
+        Bson::RegularExpression(_) => "RegularExpression".into(),
+        Bson::JavaScriptCode(_) | Bson::JavaScriptCodeWithScope(_) => "JavaScript".into(),
+        Bson::Int32(_) => "Int32".into(),
+        Bson::Int64(_) => "Int64".into(),
+        Bson::Timestamp(_) => "Timestamp".into(),
+        Bson::Binary(_) => "Binary".into(),
+        Bson::ObjectId(_) => "ObjectId".into(),
+        Bson::DateTime(_) => "DateTime".into(),
+        Bson::Symbol(_) => "Symbol".into(),
+        Bson::Decimal128(_) => "Decimal128".into(),
+        Bson::Undefined => "Undefined".into(),
+        Bson::MaxKey => "MaxKey".into(),
+        Bson::MinKey => "MinKey".into(),
+        Bson::DbPointer(_) => "DbPointer".into(),
+    }
+}
+
 fn bson_to_json(value: &Bson) -> serde_json::Value {
     match value {
         Bson::Int32(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
@@ -476,7 +502,7 @@ impl DbDriver for MongoDbDriver {
             for (key, value) in doc {
                 field_info
                     .entry(key.clone())
-                    .or_insert_with(|| format!("{:?}", value.element_type()));
+                    .or_insert_with(|| bson_element_type_name(&value));
             }
         }
 

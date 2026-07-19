@@ -1,6 +1,7 @@
 use crate::application::session_service::ConnectionSession;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
+use crate::infrastructure::scheduler::job_engine::JobEngine;
 use crate::storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -46,6 +47,7 @@ pub struct AppState {
     pub session_expires_at: RwLock<Option<std::time::Instant>>,
     pub ui_locked: RwLock<bool>,
     pub sync_controller: SyncController,
+    pub job_engine: RwLock<Option<Arc<JobEngine>>>,
 }
 
 impl AppState {
@@ -57,6 +59,7 @@ impl AppState {
             session_expires_at: RwLock::new(None),
             ui_locked: RwLock::new(true),
             sync_controller: SyncController::new(),
+            job_engine: RwLock::new(None),
         }
     }
 
@@ -104,6 +107,7 @@ impl AppState {
 
     pub async fn set_master_key(&self, key: [u8; 32], timeout_secs: u64) {
         *self.master_key.write().await = Some(key);
+        self.storage.set_master_key(key);
         *self.session_expires_at.write().await =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs));
         *self.ui_locked.write().await = false;
@@ -157,6 +161,17 @@ impl AppState {
         // Drop old driver outside the write lock so the pool is closed gracefully.
         if let Some(d) = old_driver {
             let _ = d.close().await;
+        }
+    }
+
+    /// Mark a session as in-use so cleanup_sessions will not close it mid-operation.
+    pub async fn mark_session_in_use(&self, id: &str, in_use: bool) {
+        let mut conns = self.connections.write().await;
+        if let Some(session) = conns.get_mut(id) {
+            session.in_use = in_use;
+            if in_use {
+                session.touch();
+            }
         }
     }
 

@@ -51,7 +51,7 @@ impl ConnectionService {
         Ok(())
     }
 
-    fn decrypt_connection(
+    pub(crate) fn decrypt_connection(
         config: &mut DbConnectionConfig,
         key: &[u8; 32],
     ) -> AppResult<()> {

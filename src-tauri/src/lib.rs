@@ -63,6 +63,14 @@ pub fn run() {
 
             let mut engine = Arc::new(JobEngine::new(storage_arc.clone()));
             Arc::get_mut(&mut engine).unwrap().set_app_handle(app.handle().clone());
+
+            // Store job engine in AppState
+            {
+                let state_handle = app.state::<AppState>();
+                let mut job_engine_guard = tauri::async_runtime::block_on(state_handle.job_engine.write());
+                *job_engine_guard = Some(engine.clone());
+            }
+
             engine.clone().start();
 
             crate::application::session_service::SessionService::spawn_cleanup_task(
@@ -112,6 +120,7 @@ pub fn run() {
             commands::import_connections_dialog,
             commands::open_file_dialog,
             commands::save_file_dialog,
+            commands::select_folder_dialog,
             commands::check_master_password_exists,
             commands::create_master_password,
             commands::unlock_session,
@@ -152,6 +161,7 @@ pub fn run() {
             commands::delete_scheduled_job,
             commands::get_scheduled_jobs,
             commands::run_job_now,
+            commands::stop_job_now,
             commands::scheduler_get_databases,
             commands::scheduler_get_tables,
             commands::start_sync,

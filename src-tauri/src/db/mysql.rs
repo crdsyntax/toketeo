@@ -33,6 +33,62 @@ pub(crate) fn quote_mysql(id: &str) -> String {
     format!("`{}`", id.replace('`', "``"))
 }
 
+/// Convert a JSON cell value into a MySQL-bindable string.
+/// Handles MongoDB Extended JSON shapes produced by bson_to_json:
+///   {"$oid":"hex"} → hex string
+///   {"$date":{"$numberLong":"ms"}} → ISO-8601 datetime
+/// Arrays/objects → JSON text for JSON/TEXT columns.
+fn json_value_to_mysql_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(i.to_string())
+            } else if let Some(u) = n.as_u64() {
+                Some(u.to_string())
+            } else if let Some(f) = n.as_f64() {
+                Some(f.to_string())
+            } else {
+                Some(n.to_string())
+            }
+        }
+        Value::Bool(b) => Some(if *b { "1".into() } else { "0".into() }),
+        Value::Array(_) | Value::Object(_) => {
+            // Extended JSON ObjectId
+            if let Some(oid) = value.get("$oid").and_then(|v| v.as_str()) {
+                return Some(oid.to_string());
+            }
+            // Extended JSON DateTime: {"$date":{"$numberLong":"..."}} or {"$date":"..."}
+            if let Some(date_val) = value.get("$date") {
+                if let Some(ms_str) = date_val
+                    .get("$numberLong")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| date_val.as_str())
+                {
+                    if let Ok(ms) = ms_str.parse::<i64>() {
+                        if let Some(dt) = chrono::DateTime::from_timestamp_millis(ms) {
+                            return Some(dt.format("%Y-%m-%d %H:%M:%S%.3f").to_string());
+                        }
+                    }
+                    return Some(ms_str.to_string());
+                }
+                if let Some(ms) = date_val
+                    .get("$numberLong")
+                    .and_then(|v| v.as_i64())
+                    .or_else(|| date_val.as_i64())
+                {
+                    if let Some(dt) = chrono::DateTime::from_timestamp_millis(ms) {
+                        return Some(dt.format("%Y-%m-%d %H:%M:%S%.3f").to_string());
+                    }
+                }
+            }
+            // Generic object/array → JSON string
+            Some(value.to_string())
+        }
+    }
+}
+
 /// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
 /// Fail fast if a connection cannot be acquired within 5 seconds.
@@ -788,26 +844,13 @@ impl DataWriter for MySqlDriver {
             table_ref, cols_str, values_str
         );
 
-        // Collect bind values once so we can reuse for fallback
+        // Collect bind values once so we can reuse for fallback.
+        // Flatten Extended JSON from MongoDB (ObjectId/DateTime) into scalar strings.
         let bind_values: Vec<Option<String>> = rows
             .iter()
             .flat_map(|row| {
                 columns.iter().map(move |col| {
-                    match row.get(col) {
-                        Some(Value::Null) | None => None,
-                        Some(Value::String(s)) => Some(s.clone()),
-                        Some(Value::Number(n)) => {
-                            if let Some(i) = n.as_i64() {
-                                Some(i.to_string())
-                            } else if let Some(f) = n.as_f64() {
-                                Some(f.to_string())
-                            } else {
-                                Some(n.to_string())
-                            }
-                        }
-                        Some(Value::Bool(b)) => Some(b.to_string()),
-                        _ => None,
-                    }
+                    row.get(col).map(json_value_to_mysql_string).unwrap_or(None)
                 })
             })
             .collect();

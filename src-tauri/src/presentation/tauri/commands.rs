@@ -433,6 +433,24 @@ pub async fn save_file_dialog(
 }
 
 #[tauri::command]
+pub async fn select_folder_dialog(app_handle: AppHandle) -> AppResult<Option<String>> {
+    let folder_path = app_handle
+        .dialog()
+        .file()
+        .set_title("Select Output Directory")
+        .blocking_pick_folder();
+
+    let path = match folder_path {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    Ok(Some(path.display().to_string()))
+}
+
+#[tauri::command]
 pub async fn export_all_connections_dialog(
     default_file_name: String,
     state: State<'_, AppState>,
@@ -1050,16 +1068,22 @@ pub async fn create_scheduled_job(
     name: String,
     connection_id: String,
     job_type: JobType,
-    cron_expression: String,
+    cron_expression: Option<String>,
     config: serde_json::Value,
     state: State<'_, AppState>,
 ) -> AppResult<ScheduledJob> {
-    let cron_expression = normalize_cron(&cron_expression);
     let now = chrono::Utc::now();
-    let schedule = cron::Schedule::from_str(&cron_expression)
-        .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
 
-    let next_run = schedule.after(&now).next();
+    let (cron_expr_opt, next_run) = match cron_expression.as_deref() {
+        Some(expr) if !expr.trim().is_empty() => {
+            let normalized = normalize_cron(expr);
+            let schedule = cron::Schedule::from_str(&normalized)
+                .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
+            let next = schedule.after(&now).next();
+            (Some(normalized), next)
+        }
+        _ => (None, None),
+    };
 
     let conn_id = Uuid::parse_str(&connection_id)
         .map_err(|e| AppError::Validation(format!("Invalid connection ID: {}", e)))?;
@@ -1091,7 +1115,7 @@ pub async fn create_scheduled_job(
         name,
         connection_id: conn_id,
         job_type,
-        cron_expression,
+        cron_expression: cron_expr_opt,
         config,
         enabled: true,
         last_run: None,
@@ -1119,13 +1143,18 @@ pub async fn update_scheduled_job(
     }
 
     if let Some(cron_expression) = cron_expression {
-        let cron_expression = normalize_cron(&cron_expression);
-        let _ = cron::Schedule::from_str(&cron_expression)
-            .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
-        job.cron_expression = cron_expression;
-        job.next_run = cron::Schedule::from_str(&job.cron_expression)
-            .ok()
-            .and_then(|s| s.after(&chrono::Utc::now()).next());
+        if cron_expression.trim().is_empty() {
+            job.cron_expression = None;
+            job.next_run = None;
+        } else {
+            let normalized = normalize_cron(&cron_expression);
+            let _ = cron::Schedule::from_str(&normalized)
+                .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
+            job.cron_expression = Some(normalized);
+            job.next_run = job.cron_expression.as_deref()
+                .and_then(|s| cron::Schedule::from_str(s).ok())
+                .and_then(|s| s.after(&chrono::Utc::now()).next());
+        }
     }
 
     if let Some(config) = config {
@@ -1154,14 +1183,33 @@ pub async fn get_scheduled_jobs(state: State<'_, AppState>) -> AppResult<Vec<Sch
 pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: AppHandle) -> AppResult<()> {
     let storage = state.storage.clone();
     let app_handle = Some(app_handle);
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let token_clone = cancel_token.clone();
+
+    // Store token in job engine for cancellation
+    {
+        let engine_guard = state.job_engine.read().await;
+        if let Some(ref engine) = *engine_guard {
+            engine.register_token(&id, cancel_token);
+        }
+    }
 
     tokio::spawn(async move {
-        if let Err(e) = job_engine::execute_job_now(&storage, &app_handle, &id).await {
+        if let Err(e) = job_engine::execute_job_now(&storage, &app_handle, &id, Some(token_clone)).await {
             eprintln!("[run_job_now] Error: {}", e);
         }
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_job_now(id: String, state: State<'_, AppState>) -> AppResult<bool> {
+    let engine_guard = state.job_engine.read().await;
+    match *engine_guard {
+        Some(ref engine) => Ok(engine.cancel_job(&id)),
+        None => Err(AppError::Internal("Job engine not available".into())),
+    }
 }
 
 // ── Sync Commands ──
@@ -1311,14 +1359,20 @@ pub async fn start_sync(
 
     let controller = state.sync_controller.clone();
 
+    // Prevent session cleanup from closing pools while sync is running
+    let source_conn_id = pipeline.source_connection_id.clone();
+    let target_conn_id = pipeline.target_connection_id.clone();
+    state.mark_session_in_use(&source_conn_id, true).await;
+    state.mark_session_in_use(&target_conn_id, true).await;
+
     // Keepalive: periodically touch source & target sessions so the cleanup
     // task does not close their pools while the sync is running.
-    let keepalive_source = pipeline.source_connection_id.clone();
-    let keepalive_target = pipeline.target_connection_id.clone();
+    let keepalive_source = source_conn_id.clone();
+    let keepalive_target = target_conn_id.clone();
     let keepalive_handle = app_handle.clone();
     let (keepalive_tx, mut keepalive_rx) = tokio::sync::oneshot::channel::<()>();
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         // skip the first immediate tick
         interval.tick().await;
         loop {
@@ -1332,6 +1386,10 @@ pub async fn start_sync(
             }
         }
     });
+
+    let unmark_source = source_conn_id.clone();
+    let unmark_target = target_conn_id.clone();
+    let unmark_handle = app_handle.clone();
 
     tokio::spawn(async move {
         let mut pipeline = pipeline;
@@ -1423,6 +1481,13 @@ pub async fn start_sync(
 
         // Stop the keepalive task — sessions can now idle normally
         let _ = keepalive_tx.send(());
+
+        // Release in_use flags so cleanup can expire idle sessions again
+        {
+            let st = unmark_handle.state::<AppState>();
+            st.mark_session_in_use(&unmark_source, false).await;
+            st.mark_session_in_use(&unmark_target, false).await;
+        }
 
         controller.remove(&pipeline_id).await;
     });

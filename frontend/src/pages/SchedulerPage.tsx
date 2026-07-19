@@ -6,12 +6,12 @@ import { JobCard } from '@/components/scheduler/JobCard'
 import { JobFormModal } from '@/components/scheduler/JobFormModal'
 import { useSchedulerStore } from '@/store/schedulerStore'
 import { connectionService } from '@/services/connection.service'
-import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload, Connection } from '@/types/database'
+import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload, JobStartedPayload, JobProgressPayload, Connection } from '@/types/database'
 import toast from 'react-hot-toast'
 import { listen } from '@tauri-apps/api/event'
 
 export function SchedulerPage() {
-  const { jobs, loading, error, fetchJobs, createJob, updateJob, deleteJob, runJobNow, setLastCompleted } = useSchedulerStore()
+  const { jobs, loading, error, fetchJobs, createJob, updateJob, deleteJob, runJobNow, stopJobNow, setLastCompleted, setJobStarted, setJobProgress, clearRunningJob, runningJobs } = useSchedulerStore()
   const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -23,9 +23,18 @@ export function SchedulerPage() {
   }, [fetchJobs])
 
   useEffect(() => {
-    const unlisten = listen<JobCompletedPayload>('scheduler:job-completed', (event) => {
+    const unlistenStarted = listen<JobStartedPayload>('scheduler:job-started', (event) => {
+      setJobStarted(event.payload.jobId, event.payload.jobName)
+    })
+
+    const unlistenProgress = listen<JobProgressPayload>('scheduler:job-progress', (event) => {
+      setJobProgress(event.payload)
+    })
+
+    const unlistenCompleted = listen<JobCompletedPayload>('scheduler:job-completed', (event) => {
       const p = event.payload
       setLastCompleted(p)
+      clearRunningJob(p.jobId)
       if (p.status === 'success') {
         toast.success(`Job "${p.jobName}" completed`, { duration: 4000 })
       } else {
@@ -33,8 +42,13 @@ export function SchedulerPage() {
       }
       fetchJobs()
     })
-    return () => { unlisten.then((f) => f()) }
-  }, [fetchJobs, setLastCompleted])
+
+    return () => {
+      unlistenStarted.then((f) => f())
+      unlistenProgress.then((f) => f())
+      unlistenCompleted.then((f) => f())
+    }
+  }, [fetchJobs, setLastCompleted, setJobStarted, setJobProgress, clearRunningJob])
 
   const handleSave = useCallback(async (dto: CreateScheduledJobDto) => {
     setSaving(true)
@@ -82,6 +96,15 @@ export function SchedulerPage() {
       toast.error(String(e))
     }
   }, [runJobNow])
+
+  const handleStopNow = useCallback(async (job: ScheduledJob) => {
+    try {
+      await stopJobNow(job.id)
+      toast.success(`"${job.name}" stop requested`)
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }, [stopJobNow])
 
   return (
     <div className="h-full overflow-auto p-6">
@@ -137,9 +160,11 @@ export function SchedulerPage() {
                   key={job.id}
                   job={job}
                   connections={connections}
+                  runningJob={runningJobs[job.id] ?? null}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   onRunNow={handleRunNow}
+                  onStopNow={handleStopNow}
                 />
               ))}
             </div>

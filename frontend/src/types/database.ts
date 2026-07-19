@@ -238,7 +238,7 @@ export interface ScheduledJob {
   name: string
   connectionId: string
   jobType: JobType
-  cronExpression: string
+  cronExpression: string | null
   config: Record<string, unknown>
   enabled: boolean
   lastRun: string | null
@@ -250,13 +250,13 @@ export interface CreateScheduledJobDto {
   name: string
   connectionId: string
   jobType: JobType
-  cronExpression: string
+  cronExpression: string | null
   config: Record<string, unknown>
 }
 
 export interface UpdateScheduledJobDto {
   name?: string
-  cronExpression?: string
+  cronExpression?: string | null
   config?: Record<string, unknown>
   enabled?: boolean
 }
@@ -265,7 +265,20 @@ export interface JobCompletedPayload {
   jobId: string
   jobName: string
   status: string
-  outputPath: string | null
+  outputDir: string | null
   error: string | null
   rowsAffected: number | null
+}
+
+export interface JobStartedPayload {
+  jobId: string
+  jobName: string
+}
+
+export interface JobProgressPayload {
+  jobId: string
+  jobName: string
+  currentTable: string
+  tableIndex: number
+  totalTables: number
 }

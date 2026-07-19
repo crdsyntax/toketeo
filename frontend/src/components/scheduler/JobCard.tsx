@@ -1,14 +1,17 @@
-import { Play, Pencil, Trash2, CalendarClock, Database, FileJson, FileSpreadsheet, FileDown } from 'lucide-react'
+import { Play, Pencil, Trash2, CalendarClock, Database, FileJson, FileSpreadsheet, FileDown, Loader2, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { JobType } from '@/types/database'
 import type { ScheduledJob, Connection } from '@/types/database'
+import type { RunningJob } from '@/store/schedulerStore'
 
 interface JobCardProps {
   job: ScheduledJob
   connections: Connection[]
+  runningJob: RunningJob | null
   onEdit: (job: ScheduledJob) => void
   onDelete: (job: ScheduledJob) => void
   onRunNow: (job: ScheduledJob) => void
+  onStopNow: (job: ScheduledJob) => void
 }
 
 const jobTypeConfig: Record<JobType, { label: string; icon: typeof CalendarClock; color: string }> = {
@@ -23,33 +26,58 @@ function formatDate(dateStr: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function JobCard({ job, connections, onEdit, onDelete, onRunNow }: JobCardProps) {
+export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunNow, onStopNow }: JobCardProps) {
   const config = jobTypeConfig[job.jobType]
   const Icon = config.icon
   const conn = connections.find((c) => c.id === job.connectionId)
   const connLabel = conn ? `${conn.name} (${conn.type.toUpperCase()})` : job.connectionId.slice(0, 8)
+  const isRunning = runningJob !== null
 
   return (
-    <div className="group relative flex items-start gap-3 p-4 rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors">
-      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', job.enabled ? 'bg-primary/10' : 'bg-muted/40')}>
-        <Icon className={cn('w-4 h-4', job.enabled ? config.color : 'text-muted-foreground/50')} />
+    <div className={cn(
+      "group relative flex items-start gap-3 p-4 rounded-xl border bg-card hover:bg-muted/30 transition-colors",
+      isRunning ? "border-primary/40 bg-primary/5" : "border-border"
+    )}>
+      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', isRunning ? 'bg-primary/20' : job.enabled ? 'bg-primary/10' : 'bg-muted/40')}>
+        {isRunning ? (
+          <Loader2 className={cn('w-4 h-4 text-primary animate-spin')} />
+        ) : (
+          <Icon className={cn('w-4 h-4', job.enabled ? config.color : 'text-muted-foreground/50')} />
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground truncate">{job.name}</span>
-          {!job.enabled && (
+          {isRunning && (
+            <span className="text-[9px] uppercase tracking-widest font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded animate-pulse">
+              Running
+            </span>
+          )}
+          {!job.enabled && !isRunning && (
             <span className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded">Paused</span>
           )}
         </div>
 
-        <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
-          <span className="font-mono">{job.cronExpression}</span>
-          <span className="flex items-center gap-1">
-            <Database className="w-3 h-3" />
-            {connLabel}
-          </span>
-        </div>
+        {isRunning && runningJob.currentTable ? (
+          <div className="flex items-center gap-2 mt-1 text-[10px] text-primary">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span className="truncate">
+              {runningJob.tableIndex > 0 && `${runningJob.tableIndex}/${runningJob.totalTables} — `}
+              Processing <span className="font-semibold">{runningJob.currentTable}</span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
+            <span className={cn('font-mono', !job.cronExpression && 'italic')}>
+              {job.cronExpression || 'Manual'}
+            </span>
+            <span className="flex items-center gap-1">
+              <Database className="w-3 h-3" />
+              {connLabel}
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center gap-4 mt-1.5 text-[10px]">
           <span>
@@ -68,13 +96,23 @@ export function JobCard({ job, connections, onEdit, onDelete, onRunNow }: JobCar
       </div>
 
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button
-          onClick={() => onRunNow(job)}
-          className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-          title="Run now"
-        >
-          <Play className="w-3.5 h-3.5" />
-        </button>
+        {isRunning ? (
+          <button
+            onClick={() => onStopNow(job)}
+            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+            title="Stop"
+          >
+            <Square className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <button
+            onClick={() => onRunNow(job)}
+            className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+            title="Run now"
+          >
+            <Play className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           onClick={() => onEdit(job)}
           className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

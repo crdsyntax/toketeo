@@ -110,6 +110,8 @@ pub struct ConnectionSession {
     pub max_ttl: Option<Duration>,
     pub metadata_cache: MetadataCache,
     pub accumulated_rows_affected: u64,
+    /// When true, cleanup_sessions will not close this session (e.g. during long sync).
+    pub in_use: bool,
 }
 
 impl ConnectionSession {
@@ -132,6 +134,7 @@ impl ConnectionSession {
             max_ttl,
             metadata_cache: MetadataCache::new(metadata_cache_ttl),
             accumulated_rows_affected: 0,
+            in_use: false,
         }
     }
 
@@ -159,7 +162,7 @@ impl SessionService {
         {
             let mut conns = state.connections.write().await;
             to_remove = conns.iter()
-                .filter(|(_, session)| session.is_expired(idle_timeout))
+                .filter(|(_, session)| !session.in_use && session.is_expired(idle_timeout))
                 .map(|(id, _)| id.clone())
                 .collect();
             drivers = to_remove.iter()

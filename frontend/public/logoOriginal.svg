@@ -4,8 +4,13 @@
 <svg version="1.0" xmlns="http://www.w3.org/2000/svg"
  width="1024.000000pt" height="1024.000000pt" viewBox="0 0 1024.000000 1024.000000"
  preserveAspectRatio="xMidYMid meet">
+<defs>
+  <clipPath id="circleClip">
+    <circle cx="512" cy="512" r="512"/>
+  </clipPath>
+</defs>
 
-<g transform="translate(0.000000,1024.000000) scale(0.100000,-0.100000)"
+<g clip-path="url(#circleClip)" transform="translate(0.000000,1024.000000) scale(0.100000,-0.100000)"
 fill="#000000" stroke="none">
 <path d="M8490 9059 c-142 -58 -757 -214 -1178 -299 -307 -63 -445 -119 -651
 -265 -213 -151 -552 -341 -1031 -579 -297 -148 -428 -205 -675 -296 -93 -35
