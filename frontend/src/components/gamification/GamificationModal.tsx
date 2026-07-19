@@ -3,13 +3,14 @@ import { useGamificationStore } from '@/store/gamificationStore';
 import { getXPForNextLevel, getThematicLevelName, MISSIONS, APP_PERKS } from '@/lib/gamification';
 import { 
   X, Trophy, Flame, CheckCircle2, CircleDashed, Lock, Unlock, 
-  Swords, Crosshair, Wand2, Zap, Skull, Hammer, Wrench, Anvil, 
-  Pickaxe, Sparkles, Map, Compass, Castle, ScrollText, BookOpen, 
+  Swords, Crosshair, Wand2, Zap, Skull, Hammer, Wrench, Anvil,
+  Pickaxe, Sparkles, Map, Compass, Castle, ScrollText, BookOpen,
   Backpack, Gem, Sunrise, Hourglass, CalendarClock, Crown,
-  Palette, Bot, LineChart, Clock, Network, GitBranch, Pencil
+  Palette, Bot, LineChart, Clock, Network, GitBranch, Pencil, Gamepad2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WizardPixelArt } from './WizardPixelArt';
+import { DataDefenderGame } from './game/DataDefenderGame';
 import { SOUL_ITEMS } from './assets/objects';
 import { useDraggableList } from '@/hooks/useDraggableList';
 import { characterService } from '@/services/character.service';
@@ -32,6 +33,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
   const { level, xp, streak, progress, completedMissions, unlockedPerks } = useGamificationStore();
   const [activeTab, setActiveTab] = useState<'quests' | 'perks'>('quests');
   const [showSoulSlots, setShowSoulSlots] = useState(false);
+  const [showGame, setShowGame] = useState(false);
   const [showCharacterEditor, setShowCharacterEditor] = useState(false);
   const [characterName, setCharacterName] = useState('Unnamed Hero');
   const [characterLore, setCharacterLore] = useState('');
@@ -190,13 +192,23 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
             </button>
           </div>
 
-          <button
-            onClick={() => setShowSoulSlots((prev) => !prev)}
-            className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-200 transition-all hover:border-amber-400/60 hover:bg-amber-500/20"
-          >
-            <Skull className="h-3.5 w-3.5" />
-            Soul Slots
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowGame(true)}
+              className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary transition-all hover:border-primary/60 hover:bg-primary/20"
+            >
+              <Gamepad2 className="h-3.5 w-3.5" />
+              Play
+            </button>
+
+            <button
+              onClick={() => setShowSoulSlots((prev) => !prev)}
+              className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-200 transition-all hover:border-amber-400/60 hover:bg-amber-500/20"
+            >
+              <Skull className="h-3.5 w-3.5" />
+              Soul Slots
+            </button>
+          </div>
         </div>
 
         {/* Content Area */}
@@ -412,6 +424,10 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
         </div>
 
       </div>
+
+      {showGame && (
+        <DataDefenderGame onClose={() => setShowGame(false)} />
+      )}
 
       {showCharacterEditor && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">

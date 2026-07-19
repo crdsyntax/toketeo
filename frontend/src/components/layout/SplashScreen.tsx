@@ -13,7 +13,7 @@ export function SplashScreen() {
         <div className="splash-logo-glow" />
         <div className="splash-logo-pulse">
           <img
-            src="/logo2.svg"
+              src="/principal.png"
             alt="Toketeo"
             className="splash-logo"
           />

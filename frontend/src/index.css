@@ -248,9 +248,8 @@
 
 /* Logo en sí — adaptamos el SVG para que sea visible en fondo oscuro */
 .splash-logo {
-  width: 220px;
+  width: 420px;
   height: auto;
-  filter: invert(1) brightness(0.9);
   user-select: none;
   -webkit-user-drag: none;
 }

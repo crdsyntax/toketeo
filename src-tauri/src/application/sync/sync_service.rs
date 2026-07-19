@@ -349,53 +349,82 @@ fn quote_for_target(db_type: &DbType, name: &str) -> String {
     }
 }
 
-/// Map BSON / MongoDB element type names (from `format!("{:?}", element_type())`)
-/// to equivalent SQL column types for the target RDBMS.
-fn bson_type_to_sql(bson_type: &str) -> &'static str {
+type ColInfo = (String, String, bool, bool, Option<usize>);
+
+/// Map BSON / MongoDB element type names to equivalent SQL column types for
+/// the target RDBMS. `max_len` is the longest observed string value (in chars)
+/// for `String` fields; used to choose between VARCHAR(n) and TEXT.
+fn bson_type_to_sql(
+    bson_type: &str,
+    max_len: Option<usize>,
+    target_db_type: &DbType,
+) -> String {
     let t = bson_type.trim().trim_matches('"');
+    let pg = matches!(target_db_type, DbType::Postgres);
     match t {
-        "ObjectId" | "ObjectID" => "VARCHAR(48)",
-        "String" | "Utf8" => "TEXT",
-        "Int32" | "I32" => "INT",
-        "Int64" | "I64" | "Long" => "BIGINT",
-        "Double" | "F64" => "DOUBLE",
-        "Boolean" | "Bool" => "TINYINT(1)",
-        "DateTime" | "Date" | "Timestamp" => "DATETIME",
-        "Binary" | "BinData" => "LONGBLOB",
-        "Array" => "JSON",
-        "EmbeddedDocument" | "Document" | "Object" => "JSON",
-        "Decimal128" | "Decimal" => "DECIMAL(38,18)",
-        "Null" | "Undefined" => "TEXT",
-        "RegularExpression" | "Regex" => "TEXT",
-        "JavaScript" | "JavaScriptWithScope" | "Symbol" | "Code" => "TEXT",
-        "MinKey" | "MaxKey" | "DbPointer" => "TEXT",
-        _ => "TEXT",
+        "ObjectId" | "ObjectID" => "VARCHAR(48)".into(),
+        "String" | "Utf8" => {
+            let max = max_len.unwrap_or(0);
+            if max > 0 && max <= 255 {
+                // numeric IDs, short text — VARCHAR sized to observed content
+                format!("VARCHAR({})", max.max(16))
+            } else if max > 255 && max <= 16384 {
+                // still fits in VARCHAR on MySQL/PG
+                format!("VARCHAR({})", max)
+            } else if pg {
+                // PostgreSQL allows VARCHAR without length
+                "VARCHAR".into()
+            } else {
+                "TEXT".into()
+            }
+        }
+        "Int32" | "I32" => if pg { "INTEGER" } else { "INT" }.into(),
+        "Int64" | "I64" | "Long" => "BIGINT".into(),
+        "Double" | "F64" => if pg { "DOUBLE PRECISION" } else { "DOUBLE" }.into(),
+        "Boolean" | "Bool" => if pg { "BOOLEAN" } else { "TINYINT(1)" }.into(),
+        "DateTime" | "Date" | "Timestamp" => if pg { "TIMESTAMP" } else { "DATETIME" }.into(),
+        "Binary" | "BinData" => if pg { "BYTEA" } else { "LONGBLOB" }.into(),
+        // Objects/arrays → JSON on MySQL/PG (PG supports JSONB too; use JSON for compatibility)
+        "Array" | "EmbeddedDocument" | "Document" | "Object" => {
+            if pg { "JSONB" } else { "JSON" }.into()
+        }
+        "Decimal128" | "Decimal" => "DECIMAL(38,18)".into(),
+        "Null" | "Undefined" => if pg { "TEXT" } else { "TEXT" }.into(),
+        "RegularExpression" | "Regex" => "TEXT".into(),
+        "JavaScript" | "JavaScriptWithScope" | "Symbol" | "Code" => "TEXT".into(),
+        "MinKey" | "MaxKey" | "DbPointer" => "TEXT".into(),
+        _ => "TEXT".into(),
     }
 }
 
 /// Convert a source column type name into a SQL type suitable for the target DB.
-fn map_column_type(source_db_type: &DbType, col_type: &str) -> String {
+fn map_column_type(
+    source_db_type: &DbType,
+    col_type: &str,
+    max_len: Option<usize>,
+    target_db_type: &DbType,
+) -> String {
     if *source_db_type == DbType::Mongodb {
-        bson_type_to_sql(col_type).to_string()
+        bson_type_to_sql(col_type, max_len, target_db_type)
     } else {
         quote_pg_type(col_type)
     }
 }
 
 /// Build a CREATE TABLE statement from column metadata.
-/// `(name, type, is_nullable, is_pk)`
+/// `(name, type, is_nullable, is_pk, max_len_hint)`
 fn build_create_table_sql(
     target_db_type: &DbType,
     source_db_type: &DbType,
     target_schema: Option<&str>,
     target_table: &str,
-    columns: &[(String, String, bool, bool)],
+    columns: &[ColInfo],
 ) -> String {
     let mut col_defs = Vec::new();
     let mut pk_cols = Vec::new();
 
-    for (col_name, col_type, is_nullable, is_pk) in columns {
-        let sql_type = map_column_type(source_db_type, col_type);
+    for (col_name, col_type, is_nullable, is_pk, max_len) in columns {
+        let sql_type = map_column_type(source_db_type, col_type, *max_len, target_db_type);
         let mut def = format!(
             "    {} {}",
             quote_for_target(target_db_type, col_name),
@@ -411,16 +440,14 @@ fn build_create_table_sql(
     }
 
     // MongoDB _id becomes VARCHAR/TEXT Extended JSON — skip PK to avoid MySQL ERROR 1170
-    // (BLOB/TEXT used in key without key length). Also skip PK when the only PK type is TEXT.
+    // (BLOB/TEXT used in key without key length). Add PK only if _id maps to VARCHAR.
     let can_use_pk = *source_db_type != DbType::Mongodb && !pk_cols.is_empty();
     if can_use_pk {
         col_defs.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
     } else if *source_db_type == DbType::Mongodb && !pk_cols.is_empty() {
-        // Add a unique index-friendly VARCHAR PK for _id when mapped to VARCHAR(48)
-        // Already handled by bson_type_to_sql → VARCHAR(48); add PRIMARY KEY on _id
         let id_col = columns.iter().find(|c| c.0 == "_id");
-        if let Some((_, ty, _, _)) = id_col {
-            let mapped = map_column_type(source_db_type, ty);
+        if let Some((_, ty, _, _, max_len)) = id_col {
+            let mapped = map_column_type(source_db_type, ty, *max_len, target_db_type);
             if mapped.starts_with("VARCHAR") || mapped.starts_with("CHAR") {
                 col_defs.push(format!(
                     "    PRIMARY KEY ({})",
@@ -454,7 +481,7 @@ async fn fetch_pg_columns(
     source: &dyn DbDriver,
     table: &str,
     schema: Option<&str>,
-) -> AppResult<Vec<(String, String, bool, bool)>> {
+) -> AppResult<Vec<ColInfo>> {
     let schema = schema.unwrap_or("public");
     // Safe escaping for identifiers (not ideal but avoids SQL injection via table/schema names)
     let schema_clean = schema.replace('\'', "''");
@@ -484,7 +511,7 @@ async fn fetch_pg_columns(
         let not_null = row.get("not_null").and_then(|v| v.as_bool()).unwrap_or(false);
         let is_pk = row.get("is_pk").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        columns.push((name, col_type, !not_null, is_pk));
+        columns.push((name, col_type, !not_null, is_pk, None));
     }
 
     Ok(columns)
@@ -495,7 +522,7 @@ async fn fetch_generic_columns(
     source: &dyn DbDriver,
     table: &str,
     schema: Option<&str>,
-) -> AppResult<Vec<(String, String, bool, bool)>> {
+) -> AppResult<Vec<ColInfo>> {
     let cols = source.fetch_columns(table, schema.map(|s| s.to_string())).await?;
     let mut columns = Vec::new();
 
@@ -504,8 +531,9 @@ async fn fetch_generic_columns(
         let col_type = col.get("type").and_then(|v| v.as_str()).unwrap_or("text").to_string();
         let is_nullable = col.get("isNullable").and_then(|v| v.as_bool()).unwrap_or(true);
         let is_pk = col.get("isPrimaryKey").or_else(|| col.get("isPrimary")).and_then(|v| v.as_bool()).unwrap_or(false);
+        let max_len = col.get("maxLength").and_then(|v| v.as_u64()).map(|n| n as usize);
 
-        columns.push((name, col_type, is_nullable, is_pk));
+        columns.push((name, col_type, is_nullable, is_pk, max_len));
     }
 
     Ok(columns)

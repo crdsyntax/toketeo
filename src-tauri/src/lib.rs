@@ -79,6 +79,17 @@ pub fn run() {
                 std::time::Duration::from_secs(1800),
             );
 
+            // Set window icon (rounded principal.png)
+            if let Some(window) = app.get_webview_window("main") {
+                let icon_bytes = include_bytes!("../icons/128x128.png");
+                let img = image::load_from_memory(icon_bytes)
+                    .map_err(|e| format!("Failed to load window icon: {}", e))?;
+                let rgba = img.to_rgba8();
+                let (w, h) = rgba.dimensions();
+                let icon = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
+                window.set_icon(icon).ok();
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

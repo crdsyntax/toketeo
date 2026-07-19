@@ -51,16 +51,15 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
 
         <Link to="/" className="flex items-center gap-3 select-none group">
           <div className="relative">
-            <div className="absolute inset-0 bg-white/10 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <img
-              src="./logoOriginal.svg"
+              src="./principal.png"
               alt="Toketeo"
-              className="relative w-10 h-10 object-contain brightness-0 invert transition-all duration-300 group-hover:scale-105 group-hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]"
+              className="relative w-50 h-50 object-contain"
             />
           </div>
-          <span className="text-sm font-black tracking-[0.2em] text-foreground/80 transition-all duration-300 group-hover:text-foreground group-hover:tracking-[0.3em]">
+   {/*        <span className="text-sm font-black tracking-[0.2em] text-foreground/80 transition-all duration-300 group-hover:text-foreground group-hover:tracking-[0.3em]">
             TOKETEO
-          </span>
+          </span> */}
         </Link>
 
         <nav className="flex items-center ml-4 gap-0.5">

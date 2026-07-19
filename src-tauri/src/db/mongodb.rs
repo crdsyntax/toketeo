@@ -40,6 +40,29 @@ fn bson_element_type_name(value: &Bson) -> String {
     }
 }
 
+/// Length (in chars) of the textual content a value would occupy when stored as
+/// a string in the target RDBMS. Used to size VARCHAR columns when creating
+/// tables from MongoDB schema inference.
+fn bson_string_content_len(value: &Bson) -> usize {
+    match value {
+        Bson::String(s) => s.chars().count(),
+        Bson::ObjectId(oid) => oid.to_hex().len(),
+        Bson::Boolean(_) => 1,
+        Bson::Int32(_) | Bson::Int64(_) => 20, // max i64 length
+        Bson::Double(f) => format!("{}", f).len(),
+        Bson::DateTime(_) => 23, // ISO-8601 with millis
+        Bson::Decimal128(d) => format!("{}", d).len(),
+        Bson::RegularExpression(re) => re.pattern.len() + re.options.len() + 4,
+        Bson::Binary(b) => b.bytes.len() * 2,
+        // For nested objects/arrays, approximate with serialized JSON length.
+        // Cap at a reasonable size to avoid pathological growth.
+        other => {
+            let len = bson_to_json(other).to_string().len();
+            if len > 65535 { 65535 } else { len }
+        }
+    }
+}
+
 fn bson_to_json(value: &Bson) -> serde_json::Value {
     match value {
         Bson::Int32(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
@@ -488,37 +511,52 @@ impl DbDriver for MongoDbDriver {
         let db = self.client.database(&db_name);
         let coll = db.collection::<Document>(collection_name);
 
-        // Sample 5 documents to guess "schema"
+        // Sample up to 200 documents to guess "schema" and infer sizes.
+        const SAMPLE_SIZE: i64 = 200;
         let mut cursor = coll
             .find(doc! {})
-            .limit(5)
+            .limit(SAMPLE_SIZE)
             .await
             .map_err(|e| AppError::Database(format!("Failed to sample collection: {}", e)))?;
 
-        let mut field_info = std::collections::HashMap::new();
+        // Per-field info: BSON type name and longest observed string length.
+        let mut field_info: std::collections::HashMap<String, (String, usize)> =
+            std::collections::HashMap::new();
 
         while let Some(result) = cursor.next().await {
             let doc = result.unwrap_or_default();
             for (key, value) in doc {
+                let type_name = bson_element_type_name(&value);
+                let str_len = bson_string_content_len(&value);
                 field_info
                     .entry(key.clone())
-                    .or_insert_with(|| bson_element_type_name(&value));
+                    .and_modify(|(t, max)| {
+                        if str_len > *max {
+                            *max = str_len;
+                        }
+                        // Prefer a concrete type over a Null placeholder
+                        if *t == "Null" || *t == "Undefined" {
+                            *t = type_name.clone();
+                        }
+                    })
+                    .or_insert((type_name, str_len));
             }
         }
 
         // Always include an `_id` field, as it is standard in MongoDB,
         // even if the collection is empty.
         if !field_info.contains_key("_id") {
-            field_info.insert("_id".to_string(), "ObjectId".to_string());
+            field_info.insert("_id".to_string(), ("ObjectId".to_string(), 24));
         }
 
         let mut cols = Vec::new();
-        for (name, type_name) in field_info {
+        for (name, (type_name, max_len)) in field_info {
             let mut map = serde_json::Map::new();
             map.insert("name".into(), name.clone().into());
             map.insert("type".into(), type_name.into());
             map.insert("isNullable".into(), (name != "_id").into());
             map.insert("isPrimaryKey".into(), (name == "_id").into());
+            map.insert("maxLength".into(), serde_json::Value::Number(serde_json::Number::from(max_len as u64)));
             map.insert("defaultValue".into(), serde_json::Value::Null);
             map.insert("comment".into(), serde_json::Value::Null);
             cols.push(serde_json::Value::Object(map));

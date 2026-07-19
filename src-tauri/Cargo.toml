@@ -52,6 +52,7 @@ totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
 qrcode = { version = "0.14", features = ["svg"] }
 sha2 = "0.10"
 raw-window-handle = "0.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
