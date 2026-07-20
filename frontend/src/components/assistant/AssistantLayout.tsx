@@ -79,9 +79,17 @@ export function AssistantLayout() {
 
       {/* Panel content */}
       <div className="flex-1 overflow-hidden">
-        <FeatureGate perkId={TABS.find((t) => t.id === activeTab)?.perkId ?? ''} showLocked={true}>
-          {PANELS[activeTab]}
-        </FeatureGate>
+        {(() => {
+          const activeTabDef = TABS.find((t) => t.id === activeTab);
+          if (activeTabDef?.perkId) {
+            return (
+              <FeatureGate perkId={activeTabDef.perkId} showLocked={true}>
+                {PANELS[activeTab]}
+              </FeatureGate>
+            );
+          }
+          return PANELS[activeTab];
+        })()}
       </div>
     </div>
   )

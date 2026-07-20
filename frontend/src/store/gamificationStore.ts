@@ -209,6 +209,8 @@ export const useGamificationStore = create<GamificationState>()(
           const calculated = calculateUnlockedPerks(state.level, state.completedMissions);
           if (JSON.stringify(state.unlockedPerks) !== JSON.stringify(calculated)) {
             state.unlockedPerks = calculated;
+            // Persist the corrected perks so future loads are in sync
+            useGamificationStore.setState({ unlockedPerks: calculated });
           }
         };
       },
