@@ -40,7 +40,7 @@ function describeObjectDiff(item: ObjectDiff, sectionLabel: string): string {
       const d = item.details;
       if (!d) return `${item.name} has differences between source and target.`;
       if ('columns' in d) {
-        const td = d as TableDiff;
+        const td = d as unknown as TableDiff;
         const parts: string[] = [];
         const missing = td.columns.filter((c: ColumnDiffDetail) => c.status === 'missing');
         const added = td.columns.filter((c: ColumnDiffDetail) => c.status === 'new');
