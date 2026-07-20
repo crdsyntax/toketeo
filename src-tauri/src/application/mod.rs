@@ -1,5 +1,6 @@
 pub mod audit_service;
 pub mod auth_service;
+pub mod compare;
 pub mod connection_service;
 pub mod keyring_service;
 pub mod totp_service;

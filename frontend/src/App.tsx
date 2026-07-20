@@ -9,6 +9,7 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
 import { SchedulerPage } from '@/pages/SchedulerPage'
 import { CrossDbSyncPage } from '@/pages/CrossDbSyncPage'
+import { ComparePage } from '@/pages/ComparePage'
 import { AssistantPage } from '@/pages/AssistantPage'
 import { ThemeProvider } from '@/components/gamification/ThemeProvider'
 import { AppBootstrap } from '@/components/layout/AppBootstrap'
@@ -29,6 +30,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="scheduler" element={<SchedulerPage />} />
           <Route path="cross-db-sync" element={<CrossDbSyncPage />} />
+          <Route path="compare" element={<ComparePage />} />
           <Route path="assistant" element={<AssistantPage />} />
           <Route path="security" element={<SecuritySettingsPage />} />
         </Route>

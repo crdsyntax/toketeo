@@ -6,12 +6,14 @@ use crate::application::keyring_service;
 use crate::application::totp_service;
 use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::model_generator_service::ModelGeneratorService;
+use crate::application::compare::compare_service::CompareService;
 use crate::application::sync::sync_service::SyncService;
 use crate::application::sync::strategies::SyncEvent;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::database::connection_string_builder::ConnectionStringBuilder;
 use crate::infrastructure::drivers::driver_factory::DriverFactory;
 use crate::infrastructure::scheduler::job_engine;
+use crate::models::compare::{DataReport, SchemaReport, ScriptOptions, SyncScript};
 use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, PipelineStatus};
 use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
 use secrecy::ExposeSecret;
@@ -1832,4 +1834,126 @@ pub async fn save_character(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     state.storage.save_character(&character).await
+}
+
+// ── Schema Compare Commands ──
+
+#[tauri::command]
+pub async fn compare_schemas(
+    source_conn_id: String,
+    target_conn_id: String,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    tables: Option<Vec<String>>,
+    views: Option<Vec<String>>,
+    procedures: Option<Vec<String>>,
+    functions: Option<Vec<String>>,
+    triggers: Option<Vec<String>>,
+    compare_id: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<SchemaReport> {
+    let source = state.get_connection(&source_conn_id).await?;
+    let target = state.get_connection(&target_conn_id).await?;
+
+    let cid = compare_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    state
+        .set_compare_control(&cid, crate::state::SyncControl::Running)
+        .await;
+
+    let result = CompareService::compare_schemas(
+        source,
+        target,
+        source_schema.as_deref(),
+        target_schema.as_deref(),
+        tables.as_deref(),
+        views.as_deref(),
+        procedures.as_deref(),
+        functions.as_deref(),
+        triggers.as_deref(),
+        Some(&cid),
+        Some(&state.compare_controller),
+        Some(&app),
+    )
+    .await;
+
+    state.remove_compare_control(&cid).await;
+    result
+}
+
+#[tauri::command]
+pub async fn compare_data(
+    source_conn_id: String,
+    target_conn_id: String,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    tables: Vec<String>,
+    chunk_size: Option<usize>,
+    compare_id: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<DataReport> {
+    let source = state.get_connection(&source_conn_id).await?;
+    let target = state.get_connection(&target_conn_id).await?;
+
+    let cid = compare_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    state
+        .set_compare_control(&cid, crate::state::SyncControl::Running)
+        .await;
+
+    let result = CompareService::compare_data(
+        source,
+        target,
+        source_schema.as_deref(),
+        target_schema.as_deref(),
+        &tables,
+        chunk_size.unwrap_or(10000),
+        Some(&cid),
+        Some(&state.compare_controller),
+        Some(&app),
+    )
+    .await;
+
+    state.remove_compare_control(&cid).await;
+    result
+}
+
+#[tauri::command]
+pub async fn generate_sync_script(
+    schema_report: SchemaReport,
+    data_report: Option<DataReport>,
+    target_db_type: String,
+    options: ScriptOptions,
+    _state: State<'_, AppState>,
+) -> AppResult<SyncScript> {
+    CompareService::generate_script(
+        &schema_report,
+        data_report.as_ref(),
+        &target_db_type,
+        &options,
+    )
+}
+
+#[tauri::command]
+pub async fn pause_compare(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state
+        .set_compare_control(&id, crate::state::SyncControl::Paused)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn resume_compare(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state
+        .set_compare_control(&id, crate::state::SyncControl::Running)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_compare(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state
+        .set_compare_control(&id, crate::state::SyncControl::Cancelled)
+        .await;
+    Ok(())
 }

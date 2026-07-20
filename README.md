@@ -76,6 +76,7 @@ Level up to unlock features permanently:
 - **Performance Dashboard** — Track query duration, slow queries, and execution trends
 - **Keyboard Shortcuts** — Full shortcut reference (`?` to open)
 - **Cross-platform** — Native installers for Linux (.deb, .AppImage) and Windows (.zip portable)
+- **DB Compare** — Schema and data comparison across connections with sync script generation
 
 ---
 
@@ -87,15 +88,22 @@ The desktop backend runs as a **Tauri** application written in Rust.
 
 ```
 src-tauri/src/
-├── application/explorer_service.rs   # Dump, restore, table sizes, integrity, SQL parsing
-├── infrastructure/scheduler/         # Job engine, executors (backup, report, CSV)
-│   ├── job_engine.rs                 # Polling loop, cron calculation, event emission
-│   └── executors.rs                  # BackupExecutor, ReportExecutor, CsvExportExecutor
-├── presentation/tauri/commands.rs    # Tauri IPC commands (incl. scheduler CRUD)
-├── models/                           # Shared structs (ScheduledJob, DumpSelection, etc.)
-├── storage.rs                        # SQLite persistence (connections, jobs, logs)
-├── lib.rs                            # Plugin registration, invoke_handler
-└── main.rs                           # Entry point
+├── application/
+│   ├── explorer_service.rs       # Dump, restore, table sizes, integrity, SQL parsing
+│   └── compare/                  # DB Compare module
+│       ├── compare_service.rs    # Orchestrator: schema compare, data compare, script gen
+│       ├── schema/               # Schema comparator, hash builder
+│       ├── data/                 # Row comparator, hash generator, diff builder, PK resolver
+│       └── script_generator/     # Sync SQL generators (MySQL, PostgreSQL, SQLite)
+├── infrastructure/scheduler/     # Job engine, executors (backup, report, CSV)
+│   ├── job_engine.rs             # Polling loop, cron calculation, event emission
+│   └── executors.rs              # BackupExecutor, ReportExecutor, CsvExportExecutor
+├── presentation/tauri/commands.rs    # Tauri IPC commands (incl. scheduler + compare)
+├── models/                       # Shared structs (ScheduledJob, DumpSelection, CompareResult, etc.)
+├── db/                           # Database driver trait + implementations per engine
+├── storage.rs                    # SQLite persistence (connections, jobs, logs)
+├── lib.rs                        # Plugin registration, invoke_handler
+└── main.rs                       # Entry point
 ```
 
 The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgres` / `mysql` / `sqlx` for database connectivity. Dump operations generate full DDL + data for tables and DDL-only for views, triggers, procedures, and functions.
@@ -104,13 +112,23 @@ The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgr
 
 ```
 frontend/src/
-├── components/         # UI components
+├── components/
 │   ├── assistant/      # Smart Assistant Hub (panels, wizard, tour, shortcuts)
+│   ├── compare/        # DB Compare module
+│   │   ├── SchemaCompareForm.tsx      # Connection/schema selectors, compare trigger
+│   │   ├── SchemaDiffTree.tsx         # Expandable diff tree with descriptions
+│   │   ├── DataCompareForm.tsx        # Data comparison config + progress
+│   │   ├── DataDiffTable.tsx          # Expandable data diff with row details
+│   │   ├── ScriptPreview.tsx          # Sync script editor (copy, download, toggle statements)
+│   │   ├── SyncProgressModal.tsx      # Pause/resume/cancel sync with real-time progress
+│   │   └── FullscreenModal.tsx        # Fullscreen overlay with minimize-to-pill
 │   ├── connections/    # Connection tree, DumpRestoreModal
 │   ├── gamification/   # LevelBadge, GamificationModal, FeatureGate, ThemeProvider
 │   ├── scheduler/      # JobCard, JobFormModal
 │   └── query/          # SQL editor, results grid
-├── store/              # Zustand stores (app, gamification, assistant, performance, scheduler)
+├── pages/
+│   └── ComparePage.tsx # Full compare page with tabs (Schema, Data, Script)
+├── store/              # Zustand stores (app, gamification, assistant, performance, scheduler, compare)
 ├── hooks/              # Custom hooks (useQueryEditor, etc.)
 ├── services/           # Tauri IPC service wrappers
 ├── lib/                # Gamification core (config, missions, unlocks)
@@ -174,7 +192,10 @@ bun run tauri:build -- --target x86_64-pc-windows-msvc
 toketeo/
 ├── src-tauri/              # Rust/Tauri backend
 │   └── src/
-│       ├── application/    # Business logic (dump, restore, integrity)
+│       ├── application/    # Business logic (dump, restore, compare, integrity)
+│       │   ├── compare/    # Schema + data comparison, diff builder, script generators
+│       │   └── explorer_service.rs
+│       ├── db/             # Database drivers (MySQL, PostgreSQL, SQL Server, MongoDB, SQLite)
 │       ├── infrastructure/ # Scheduler engine, executors
 │       ├── presentation/   # Tauri commands
 │       ├── models/         # Data structures
@@ -183,7 +204,8 @@ toketeo/
 │       └── main.rs         # App entry point
 ├── frontend/               # React + Vite app
 │   └── src/
-│       ├── components/     # React components (incl. scheduler/)
+│       ├── components/     # React components (compare/, scheduler/, assistant/, query/)
+│       ├── pages/          # Route-level pages (ComparePage, AssistantPage, etc.)
 │       ├── store/          # Zustand state stores
 │       ├── hooks/          # Custom React hooks
 │       ├── services/       # Tauri IPC wrappers

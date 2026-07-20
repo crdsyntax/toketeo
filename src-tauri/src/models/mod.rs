@@ -1,3 +1,4 @@
+pub mod compare;
 pub mod sync;
 
 use crate::db::DbType;

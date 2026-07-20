@@ -198,6 +198,12 @@ pub fn run() {
             commands::mongo_restore_database,
             commands::get_character,
             commands::save_character,
+            commands::compare_schemas,
+            commands::compare_data,
+            commands::generate_sync_script,
+            commands::pause_compare,
+            commands::resume_compare,
+            commands::cancel_compare,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -47,6 +47,7 @@ pub struct AppState {
     pub session_expires_at: RwLock<Option<std::time::Instant>>,
     pub ui_locked: RwLock<bool>,
     pub sync_controller: SyncController,
+    pub compare_controller: SyncController,
     pub job_engine: RwLock<Option<Arc<JobEngine>>>,
 }
 
@@ -59,6 +60,7 @@ impl AppState {
             session_expires_at: RwLock::new(None),
             ui_locked: RwLock::new(true),
             sync_controller: SyncController::new(),
+            compare_controller: SyncController::new(),
             job_engine: RwLock::new(None),
         }
     }
@@ -73,6 +75,18 @@ impl AppState {
 
     pub async fn remove_sync_control(&self, pipeline_id: &str) {
         self.sync_controller.remove(pipeline_id).await;
+    }
+
+    pub async fn set_compare_control(&self, compare_id: &str, control: SyncControl) {
+        self.compare_controller.set(compare_id, control).await;
+    }
+
+    pub async fn get_compare_control(&self, compare_id: &str) -> Option<SyncControl> {
+        self.compare_controller.get(compare_id).await
+    }
+
+    pub async fn remove_compare_control(&self, compare_id: &str) {
+        self.compare_controller.remove(compare_id).await;
     }
 
     pub async fn require_unlock(&self) -> crate::error::AppResult<[u8; 32]> {

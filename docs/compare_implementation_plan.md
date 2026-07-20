@@ -1226,30 +1226,30 @@ pub async fn generate_sync_script(
 
 ## Orden de Implementación
 
-| # | Fase | Archivos | Dependencias | Estimación |
-|---|------|----------|--------------|------------|
-| 1 | Tipos | `models/compare.rs` | Ninguna | 0.5 días |
-| 2 | Normalizador SQL | `schema/normalizer.rs` + tests | Ninguna | 0.5 días |
-| 3 | Table Comparator | `schema/table_comparator.rs` + tests | Fase 1 | 1 día |
-| 4 | Index Comparator | `schema/index_comparator.rs` + tests | Fase 1 | 1 día |
-| 5 | FK Comparator | `schema/fk_comparator.rs` + tests | Fase 1 | 1 día |
-| 6 | View Comparator | `schema/view_comparator.rs` + tests | Fase 2 | 0.5 días |
-| 7 | Routine Comparator | `schema/routine_comparator.rs` + tests | Fase 2 | 0.5 días |
-| 8 | Trigger Comparator | `schema/trigger_comparator.rs` + tests | Fase 2 | 0.5 días |
-| 9 | Constraint Comparator | `schema/constraint_comparator.rs` + tests | Fase 1 | 0.5 días |
-| 10 | Compare Service (Schema) | `compare_service.rs` | Fases 3-9 | 1 día |
-| 11 | PK Resolver | `data/pk_resolver.rs` | Fase 1 | 0.5 días |
-| 12 | Hash Generator | `data/hash_generator.rs` | Fase 11 | 1 día |
-| 13 | Chunk Reader | `data/chunk_reader.rs` | Ninguna | 0.5 días |
-| 14 | Row Comparator | `data/row_comparator.rs` | Fase 13 | 0.5 días |
-| 15 | Diff Builder | `data/diff_builder.rs` | Fases 12-14 | 0.5 días |
-| 16 | Compare Service (Data) | `compare_service.rs` | Fases 11-15 | 0.5 días |
-| 17 | Report Generator | `report/generator.rs` | Fase 16 | 0.5 días |
-| 18 | MySQL Script Gen | `script_generator/generators/mysql_generator.rs` | Fase 10 | 1 día |
-| 19 | PostgreSQL Script Gen | `script_generator/generators/postgres_generator.rs` | Fase 10 | 1 día |
-| 20 | SQLite Script Gen | `script_generator/generators/sqlite_generator.rs` | Fase 10 | 1 día |
-| 21 | Tauri Commands | `commands.rs` | Fases 17-20 | 0.5 días |
-| 22 | Integración Frontend | Nuevos componentes React | Fase 21 | 3-5 días |
+| # | Fase | Archivos | Dependencias | Estimación | Estado |
+|---|------|----------|--------------|------------|------------|
+| 1 | Tipos | `models/compare.rs` | Ninguna | 0.5 días | ✅ COMPLETADO |
+| 2 | Normalizador SQL | `schema/normalizer.rs` + tests | Ninguna | 0.5 días | ✅ COMPLETADO |
+| 3 | Table Comparator | `schema/table_comparator.rs` + tests | Fase 1 | 1 día | ✅ COMPLETADO |
+| 4 | Index Comparator | `schema/index_comparator.rs` + tests | Fase 1 | 1 día | ✅ COMPLETADO |
+| 5 | FK Comparator | `schema/fk_comparator.rs` + tests | Fase 1 | 1 día | ✅ COMPLETADO |
+| 6 | View Comparator | `schema/view_comparator.rs` + tests | Fase 2 | 0.5 días | ✅ COMPLETADO |
+| 7 | Routine Comparator | `schema/routine_comparator.rs` + tests | Fase 2 | 0.5 días | ✅ COMPLETADO |
+| 8 | Trigger Comparator | `schema/trigger_comparator.rs` + tests | Fase 2 | 0.5 días | ✅ COMPLETADO |
+| 9 | Constraint Comparator | `schema/constraint_comparator.rs` + tests | Fase 1 | 0.5 días | ✅ COMPLETADO |
+| 10 | Compare Service (Schema) | `compare_service.rs` | Fases 3-9 | 1 día | ⏳ PENDIENTE |
+| 11 | PK Resolver | `data/pk_resolver.rs` | Fase 1 | 0.5 días | ⏳ PENDIENTE |
+| 12 | Hash Generator | `data/hash_generator.rs` | Fase 11 | 1 día | ⏳ PENDIENTE |
+| 13 | Chunk Reader | `data/chunk_reader.rs` | Ninguna | 0.5 días | ⏳ PENDIENTE |
+| 14 | Row Comparator | `data/row_comparator.rs` | Fase 13 | 0.5 días | ⏳ PENDIENTE |
+| 15 | Diff Builder | `data/diff_builder.rs` | Fases 12-14 | 0.5 días | ⏳ PENDIENTE |
+| 16 | Compare Service (Data) | `compare_service.rs` | Fases 11-15 | 0.5 días | ⏳ PENDIENTE |
+| 17 | Report Generator | `report/generator.rs` | Fase 16 | 0.5 días | ⏳ PENDIENTE |
+| 18 | MySQL Script Gen | `script_generator/generators/mysql_generator.rs` | Fase 10 | 1 día | ⏳ PENDIENTE |
+| 19 | PostgreSQL Script Gen | `script_generator/generators/postgres_generator.rs` | Fase 10 | 1 día | ⏳ PENDIENTE |
+| 20 | SQLite Script Gen | `script_generator/generators/sqlite_generator.rs` | Fase 10 | 1 día | ⏳ PENDIENTE |
+| 21 | Tauri Commands | `commands.rs` | Fases 17-20 | 0.5 días | ⏳ PENDIENTE |
+| 22 | Integración Frontend | Nuevos componentes React | Fase 21 | 3-5 días | ⏳ PENDIENTE |
 
 **Total estimado backend: ~14 días**
 **Total estimado frontend: ~5 días**
