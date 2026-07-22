@@ -464,6 +464,32 @@ impl DbDriver for SqlServerDriver {
         self.run_query(&query).await
     }
 
+    async fn fetch_referenced_by_keys(
+        &self,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
+        let query = format!(
+            "SELECT fk.name AS constraintName, \
+             tp.name AS referencingTable, \
+             cp.name AS columnName, \
+             tr.name AS referencedTable, \
+             cr.name AS referencedColumn \
+             FROM sys.foreign_keys fk \
+             JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id \
+             JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id \
+             JOIN sys.columns cr ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id \
+             JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id \
+             JOIN sys.columns cp ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id \
+             WHERE tr.name = '{}' AND SCHEMA_NAME(tr.schema_id) = '{}' \
+             ORDER BY tp.name, fkc.constraint_column_id",
+            Self::escape_sql(table),
+            Self::escape_sql(&schema_name)
+        );
+        self.run_query(&query).await
+    }
+
     async fn fetch_constraints(
         &self,
         table: &str,

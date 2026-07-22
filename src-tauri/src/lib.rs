@@ -108,6 +108,9 @@ pub fn run() {
             commands::get_columns,
             commands::get_indexes,
             commands::get_foreign_keys,
+            commands::clear_metadata_cache,
+            commands::get_referenced_by_keys,
+            commands::generate_safe_delete_sql,
             commands::get_constraints,
             commands::get_ddl,
             commands::update_ddl,
@@ -210,6 +213,14 @@ pub fn run() {
             commands::get_compare_sessions,
             commands::load_compare_session,
             commands::delete_compare_session,
+            commands::save_assistant_messages,
+            commands::load_assistant_messages,
+            commands::clear_assistant_messages,
+            commands::update_assistant_feedback,
+            commands::save_query_history,
+            commands::load_query_history,
+            commands::clear_query_history,
+            commands::search_similar_queries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

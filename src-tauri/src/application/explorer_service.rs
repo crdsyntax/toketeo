@@ -435,6 +435,42 @@ impl ExplorerService {
         Ok(data)
     }
 
+    pub async fn get_referenced_by_keys(
+        state: &AppState,
+        id: &str,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let cache_key = MetadataCacheKey {
+            object: table.to_string(),
+            schema: schema.clone(),
+            filter: None,
+            kind: MetadataKind::ReferencedByKeys,
+        };
+
+        {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(cached) = session.metadata_cache.get(&cache_key) {
+                    return Ok(cached.clone());
+                }
+            }
+        }
+
+        let driver = state.get_connection(id).await?;
+        let data = driver.fetch_referenced_by_keys(table, schema).await?;
+
+        {
+            let mut conns = state.connections.write().await;
+            if let Some(session) = conns.get_mut(id) {
+                session.touch();
+                session.metadata_cache.set(cache_key, data.clone());
+            }
+        }
+
+        Ok(data)
+    }
+
     pub async fn get_constraints(
         state: &AppState,
         id: &str,
@@ -482,6 +518,14 @@ impl ExplorerService {
         if let Some(session) = conns.get_mut(id) {
             session.metadata_cache.invalidate_table(table, schema);
             session.metadata_cache.invalidate_schema_lists(schema);
+        }
+    }
+
+    /// Clear the entire metadata cache for a connection (called on manual refresh).
+    pub async fn clear_metadata_cache(state: &AppState, id: &str) {
+        let mut conns = state.connections.write().await;
+        if let Some(session) = conns.get_mut(id) {
+            session.metadata_cache.clear();
         }
     }
 

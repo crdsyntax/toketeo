@@ -36,6 +36,8 @@ interface ResultsPanelProps {
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
   queryLimit: number;
   setQueryLimit: (limit: number) => void;
+  safeDeleteSuggestion: string | null;
+  setSafeDeleteSuggestion: (suggestion: string | null) => void;
 }
 
 export function ResultsPanel({
@@ -54,6 +56,8 @@ export function ResultsPanel({
   setContextMenuSql,
   queryLimit,
   setQueryLimit,
+  safeDeleteSuggestion,
+  setSafeDeleteSuggestion,
 }: ResultsPanelProps) {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -92,7 +96,7 @@ export function ResultsPanel({
 
       {isResultsPanelVisible && (
         <div className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-0">
-          <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} />
+          <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} safeDeleteSuggestion={safeDeleteSuggestion} setSafeDeleteSuggestion={setSafeDeleteSuggestion} />
 
           {activeTab?.results && sortedRows.length > 0 ? (
             viewMode === 'json' ? (

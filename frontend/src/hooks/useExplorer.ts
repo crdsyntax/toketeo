@@ -296,6 +296,9 @@ export function useExplorer() {
   });
 
   const handleRefetch = useCallback(() => {
+    if (activeConnection) {
+      schemaService.clearMetadataCache(activeConnection.id).catch(() => undefined)
+    }
     if (sidebarTab === SidebarTab.TABLES) refetchTables();
     else if (sidebarTab === SidebarTab.VIEWS) refetchViews();
     else if (sidebarTab === SidebarTab.PROCEDURES) refetchProcedures();
@@ -306,6 +309,7 @@ export function useExplorer() {
       setExecutionStatus(ExecutionStatus.IDLE);
     }
   }, [
+    activeConnection,
     sidebarTab,
     refetchTables,
     refetchViews,

@@ -80,6 +80,8 @@ export default function QueryEditor() {
     updateTabEditorMode,
     queryHistory,
     clearQueryHistory,
+    safeDeleteSuggestion,
+    setSafeDeleteSuggestion,
   } = useQueryEditor()
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
@@ -382,13 +384,15 @@ export default function QueryEditor() {
                 setContextMenuSql={setContextMenuSql}
                 queryLimit={queryLimit}
                 setQueryLimit={setQueryLimit}
+                safeDeleteSuggestion={safeDeleteSuggestion}
+                setSafeDeleteSuggestion={setSafeDeleteSuggestion}
               />
             </div>
           )}
         </div>
 
         {showAssistant && (
-          <div className="w-72 border-l border-border shrink-0 overflow-hidden">
+          <div className="w-80 2xl:w-96 border-l border-border shrink-0 overflow-hidden">
             <AssistantLayout />
           </div>
         )}

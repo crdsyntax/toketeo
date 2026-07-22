@@ -528,6 +528,42 @@ impl DbDriver for MySqlDriver {
         Ok(fks)
     }
 
+    async fn fetch_referenced_by_keys(
+        &self,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT
+                kcu.constraint_name    AS constraintName,
+                kcu.table_name         AS referencingTable,
+                kcu.column_name        AS columnName,
+                kcu.referenced_table_name AS referencedTable,
+                kcu.referenced_column_name AS referencedColumn
+            FROM information_schema.key_column_usage kcu
+            JOIN information_schema.table_constraints tc
+              ON kcu.constraint_name = tc.constraint_name
+             AND kcu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.referenced_table_name = ?
+              AND kcu.referenced_table_schema = IFNULL(?, DATABASE())
+            ORDER BY kcu.table_name, kcu.ordinal_position
+        "#;
+
+        let rows = sqlx::query(query).bind(table).bind(schema).fetch_all(&self.pool).await?;
+
+        let mut fks = Vec::new();
+        for row in rows {
+            let mut map = serde_json::Map::new();
+            map.insert("constraintName".into(), row.get::<String, _>("constraintName").into());
+            map.insert("columnName".into(), row.get::<String, _>("columnName").into());
+            map.insert("referencingTable".into(), row.get::<String, _>("referencingTable").into());
+            map.insert("referencingColumn".into(), row.get::<String, _>("referencedColumn").into());
+            fks.push(serde_json::Value::Object(map));
+        }
+        Ok(fks)
+    }
+
     async fn fetch_constraints(
         &self,
         table: &str,

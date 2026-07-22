@@ -3,7 +3,8 @@ import type {
   TableResponse, 
   ColumnResponse, 
   IndexResponse, 
-  ForeignKeyResponse, 
+  ForeignKeyResponse,
+  ReferencedByKeyResponse,
   ConstraintResponse,
   ParameterResponse,
   QueryResult,
@@ -12,6 +13,18 @@ import type {
   SchemaDiagramData,
   IntegrityResult,
 } from '@/types/database'
+import type { QueryHistoryEntry } from '@/store/useAppStore'
+
+interface AssistantMessagePayload {
+  id: string
+  role: string
+  content: string
+  sql?: string
+  isSafeDelete?: boolean
+  feedback?: string
+  timestamp: number
+  connectionId: string
+}
 
 export const schemaService = {
   getDatabases: async (id: string) => {
@@ -77,6 +90,21 @@ export const schemaService = {
 
   getForeignKeys: async (id: string, table: string, schema?: string) => {
     return await tauriApi.invoke<ForeignKeyResponse[]>('get_foreign_keys', { id, table, schema })
+  },
+
+  clearMetadataCache: async (id: string) => {
+    return await tauriApi.invoke<void>('clear_metadata_cache', { id })
+  },
+
+  getReferencedByKeys: async (id: string, table: string, schema?: string) => {
+    return await tauriApi.invoke<ReferencedByKeyResponse[]>('get_referenced_by_keys', { id, table, schema })
+  },
+
+  generateSafeDeleteSql: async (id: string, table: string, schema?: string) => {
+    return await tauriApi.invoke<string>('generate_safe_delete_sql', {
+      id,
+      input: { table, schema },
+    })
   },
 
   getConstraints: async (id: string, table: string, schema?: string) => {
@@ -236,5 +264,35 @@ executeExplorer: async (payload: {
 
   mongoRestoreDatabase: async (id: string, dbName: string): Promise<string | null> => {
     return await tauriApi.invoke<string | null>('mongo_restore_database', { id, dbName })
+  },
+
+  // ── Assistant / Query History ──
+
+  saveAssistantMessages: async (messages: AssistantMessagePayload[]) => {
+    await tauriApi.invoke<void>('save_assistant_messages', { messages })
+  },
+
+  loadAssistantMessages: async (connectionId: string) => {
+    return await tauriApi.invoke<AssistantMessagePayload[]>('load_assistant_messages', { connectionId })
+  },
+
+  saveQueryHistory: async (entries: QueryHistoryEntry[]) => {
+    await tauriApi.invoke<void>('save_query_history', { entries })
+  },
+
+  loadQueryHistory: async (connectionId: string, limit: number = 500) => {
+    return await tauriApi.invoke<QueryHistoryEntry[]>('load_query_history', { connectionId, limit })
+  },
+
+  clearQueryHistory: async (connectionId: string) => {
+    await tauriApi.invoke<void>('clear_query_history', { connectionId })
+  },
+
+  searchSimilarQueries: async (connectionId: string, search: string, limit: number = 10) => {
+    return await tauriApi.invoke<QueryHistoryEntry[]>('search_similar_queries', { connectionId, search, limit })
+  },
+
+  updateAssistantFeedback: async (messageId: string, feedback: 'positive' | 'negative') => {
+    await tauriApi.invoke<void>('update_assistant_feedback', { messageId, feedback })
   },
 }

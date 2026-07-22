@@ -123,7 +123,7 @@ impl DbDriver for PostgresDriver {
                 rows_affected: 0,
             })
         } else {
-            let result = sqlx::query(query).execute(&self.pool).await?;
+            let result = sqlx::raw_sql(query).execute(&self.pool).await?;
             let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
@@ -203,7 +203,7 @@ impl DbDriver for PostgresDriver {
                 rows_affected: 0,
             })
         } else {
-            let result = conn.execute(sqlx::query(query)).await?;
+            let result = conn.execute(sqlx::raw_sql(query)).await?;
             let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
@@ -494,7 +494,7 @@ impl DbDriver for PostgresDriver {
             "#,
         )
         .bind(table)
-        .bind(schema)
+        .bind(&schema)
         .fetch_all(&self.pool)
         .await?;
 
@@ -516,6 +516,67 @@ impl DbDriver for PostgresDriver {
             map.insert(
                 "referencedColumn".into(),
                 row.get::<String, _>("referenced_column").into(),
+            );
+            fks.push(serde_json::Value::Object(map));
+        }
+        Ok(fks)
+    }
+
+    async fn fetch_referenced_by_keys(
+        &self,
+        table: &str,
+        schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let schema = schema.unwrap_or_else(|| "public".to_string());
+
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                tc.constraint_name AS constraint_name,
+                kcu.column_name    AS column_name,
+                tc.table_name      AS referencing_table,
+                kcu2.column_name   AS referencing_column
+            FROM information_schema.referential_constraints rc
+            JOIN information_schema.table_constraints tc
+              ON rc.constraint_name = tc.constraint_name
+             AND rc.constraint_schema = tc.constraint_schema
+            JOIN information_schema.key_column_usage kcu
+              ON rc.constraint_name = kcu.constraint_name
+             AND rc.constraint_schema = kcu.table_schema
+            JOIN information_schema.table_constraints tc2
+              ON rc.unique_constraint_name = tc2.constraint_name
+             AND rc.unique_constraint_schema = tc2.table_schema
+            JOIN information_schema.key_column_usage kcu2
+              ON tc2.constraint_name = kcu2.constraint_name
+             AND tc2.table_schema = kcu2.table_schema
+            WHERE tc2.table_name = $1
+              AND tc2.table_schema = $2
+            ORDER BY tc.table_name, kcu.ordinal_position
+            "#,
+        )
+        .bind(table)
+        .bind(&schema)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut fks = Vec::new();
+        for row in rows {
+            let mut map = serde_json::Map::new();
+            map.insert(
+                "constraintName".into(),
+                row.get::<String, _>("constraint_name").into(),
+            );
+            map.insert(
+                "columnName".into(),
+                row.get::<String, _>("column_name").into(),
+            );
+            map.insert(
+                "referencingTable".into(),
+                row.get::<String, _>("referencing_table").into(),
+            );
+            map.insert(
+                "referencingColumn".into(),
+                row.get::<String, _>("referencing_column").into(),
             );
             fks.push(serde_json::Value::Object(map));
         }

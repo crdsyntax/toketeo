@@ -90,6 +90,86 @@ impl SqlGeneratorService {
         )
     }
 
+    /// Generate a safe delete SQL script that first deletes from tables with
+    /// foreign keys referencing the target table, then deletes from the target table.
+    /// Wraps everything in a transaction.
+    pub fn generate_safe_delete(
+        db_type: DbType,
+        table: &str,
+        schema: Option<&str>,
+        referenced_by: &[serde_json::Value],
+    ) -> String {
+        let (q_open, q_close) = Self::get_quotes(db_type);
+        let mut parts = Vec::new();
+
+        parts.push("BEGIN;".to_string());
+        parts.push(String::new());
+
+        // Deduplicate referencing tables
+        let mut seen = std::collections::BTreeSet::new();
+        let mut referenced_tables = Vec::new();
+
+        for fk in referenced_by {
+            if let Some(table_name) = fk.get("referencingTable").and_then(|v| v.as_str()) {
+                if seen.insert(table_name.to_string()) {
+                    referenced_tables.push(table_name.to_string());
+                }
+            }
+        }
+
+        if !referenced_tables.is_empty() {
+            parts.push("-- Step 1: Delete dependent tables".to_string());
+            for ref_table in &referenced_tables {
+                let qualified = if let Some(s) = schema {
+                    format!(
+                        "{}{}{}.{}{}{}",
+                        q_open,
+                        Self::escape_identifier(s, q_close),
+                        q_close,
+                        q_open,
+                        Self::escape_identifier(ref_table, q_close),
+                        q_close,
+                    )
+                } else {
+                    format!(
+                        "{}{}{}",
+                        q_open,
+                        Self::escape_identifier(ref_table, q_close),
+                        q_close,
+                    )
+                };
+                parts.push(format!("DELETE FROM {};", qualified));
+            }
+            parts.push(String::new());
+        }
+
+        let target_qualified = if let Some(s) = schema {
+            format!(
+                "{}{}{}.{}{}{}",
+                q_open,
+                Self::escape_identifier(s, q_close),
+                q_close,
+                q_open,
+                Self::escape_identifier(table, q_close),
+                q_close,
+            )
+        } else {
+            format!(
+                "{}{}{}",
+                q_open,
+                Self::escape_identifier(table, q_close),
+                q_close,
+            )
+        };
+
+        parts.push(format!("-- Step 2: Delete target table"));
+        parts.push(format!("DELETE FROM {};", target_qualified));
+        parts.push(String::new());
+        parts.push("COMMIT;".to_string());
+
+        parts.join("\n")
+    }
+
     pub fn generate_cell_update(db_type: DbType, input: &CellUpdateInput) -> AppResult<String> {
         let (q_open, q_close) = Self::get_quotes(db_type);
         let table_name = match input

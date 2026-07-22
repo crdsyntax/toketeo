@@ -121,6 +121,13 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>>;
+    async fn fetch_referenced_by_keys(
+        &self,
+        _table: &str,
+        _schema: Option<String>,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        Ok(vec![])
+    }
     async fn fetch_constraints(
         &self,
         table: &str,

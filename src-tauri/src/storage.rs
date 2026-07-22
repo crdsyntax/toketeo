@@ -263,7 +263,39 @@ impl Storage {
         .execute(&pool)
         .await?;
 
-        // Migrations for encrypted columns
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS assistant_messages (
+                id TEXT PRIMARY KEY,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sql TEXT,
+                is_safe_delete INTEGER,
+                timestamp INTEGER NOT NULL,
+                connection_id TEXT
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS query_history (
+                id TEXT PRIMARY KEY,
+                connection_id TEXT NOT NULL,
+                query TEXT NOT NULL,
+                executed_at INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'success',
+                error TEXT,
+                row_count INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Migrations
+        let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN feedback TEXT")
+            .execute(&pool)
+            .await;
         let _ = sqlx::query("ALTER TABLE connections ADD COLUMN password_enc BLOB")
             .execute(&pool)
             .await;
@@ -1206,6 +1238,179 @@ impl Storage {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    // ── Assistant Messages ──
+
+    pub async fn save_assistant_messages(&self, messages: &[crate::models::AssistantMessage]) -> AppResult<()> {
+        for msg in messages {
+            sqlx::query(
+                "INSERT INTO assistant_messages (id, role, content, sql, is_safe_delete, feedback, timestamp, connection_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                    role = excluded.role,
+                    content = excluded.content,
+                    sql = excluded.sql,
+                    is_safe_delete = excluded.is_safe_delete,
+                    feedback = excluded.feedback,
+                    timestamp = excluded.timestamp,
+                    connection_id = excluded.connection_id"
+            )
+            .bind(&msg.id)
+            .bind(&msg.role)
+            .bind(&msg.content)
+            .bind(&msg.sql)
+            .bind(msg.is_safe_delete.map(|v| if v { 1i64 } else { 0i64 }))
+            .bind(&msg.feedback)
+            .bind(msg.timestamp)
+            .bind(&msg.connection_id)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn load_assistant_messages(&self, connection_id: &str) -> AppResult<Vec<crate::models::AssistantMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, role, content, sql, is_safe_delete, feedback, timestamp, connection_id
+             FROM assistant_messages
+             WHERE connection_id = ?
+             ORDER BY timestamp ASC"
+        )
+        .bind(connection_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut messages = Vec::new();
+        for row in rows {
+            messages.push(crate::models::AssistantMessage {
+                id: row.get("id"),
+                role: row.get("role"),
+                content: row.get("content"),
+                sql: row.get("sql"),
+                is_safe_delete: row.get::<Option<i64>, _>("is_safe_delete").map(|v| v != 0),
+                feedback: row.get("feedback"),
+                timestamp: row.get("timestamp"),
+                connection_id: row.get("connection_id"),
+            });
+        }
+        Ok(messages)
+    }
+
+    pub async fn clear_assistant_messages(&self, connection_id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM assistant_messages WHERE connection_id = ?")
+            .bind(connection_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_assistant_feedback(&self, message_id: &str, feedback: &str) -> AppResult<()> {
+        sqlx::query("UPDATE assistant_messages SET feedback = ? WHERE id = ?")
+            .bind(feedback)
+            .bind(message_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // ── Query History ──
+
+    pub async fn save_query_history(&self, entries: &[crate::models::QueryHistoryEntry]) -> AppResult<()> {
+        for entry in entries {
+            sqlx::query(
+                "INSERT INTO query_history (id, connection_id, query, executed_at, duration_ms, status, error, row_count)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                    connection_id = excluded.connection_id,
+                    query = excluded.query,
+                    executed_at = excluded.executed_at,
+                    duration_ms = excluded.duration_ms,
+                    status = excluded.status,
+                    error = excluded.error,
+                    row_count = excluded.row_count"
+            )
+            .bind(&entry.id)
+            .bind(&entry.connection_id)
+            .bind(&entry.query)
+            .bind(entry.executed_at)
+            .bind(entry.duration_ms.unwrap_or(0))
+            .bind(&entry.status)
+            .bind(&entry.error)
+            .bind(entry.row_count.unwrap_or(0))
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn load_query_history(&self, connection_id: &str, limit: i64) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
+        let rows = sqlx::query(
+            "SELECT id, connection_id, query, executed_at, duration_ms, status, error, row_count
+             FROM query_history
+             WHERE connection_id = ?
+             ORDER BY executed_at DESC
+             LIMIT ?"
+        )
+        .bind(connection_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(crate::models::QueryHistoryEntry {
+                id: row.get("id"),
+                connection_id: row.get("connection_id"),
+                query: row.get("query"),
+                executed_at: row.get("executed_at"),
+                duration_ms: Some(row.get::<i64, _>("duration_ms")),
+                status: row.get("status"),
+                error: row.get("error"),
+                row_count: Some(row.get::<i64, _>("row_count")),
+            });
+        }
+        Ok(entries)
+    }
+
+    pub async fn clear_query_history(&self, connection_id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM query_history WHERE connection_id = ?")
+            .bind(connection_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn search_similar_queries(&self, connection_id: &str, search: &str, limit: i64) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
+        let pattern = format!("%{}%", search);
+        let rows = sqlx::query(
+            "SELECT id, connection_id, query, executed_at, duration_ms, status, error, row_count
+             FROM query_history
+             WHERE connection_id = ?
+               AND query LIKE ?
+             ORDER BY executed_at DESC
+             LIMIT ?"
+        )
+        .bind(connection_id)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(crate::models::QueryHistoryEntry {
+                id: row.get("id"),
+                connection_id: row.get("connection_id"),
+                query: row.get("query"),
+                executed_at: row.get("executed_at"),
+                duration_ms: Some(row.get::<i64, _>("duration_ms")),
+                status: row.get("status"),
+                error: row.get("error"),
+                row_count: Some(row.get::<i64, _>("row_count")),
+            });
+        }
+        Ok(entries)
     }
 }
 

@@ -30,39 +30,43 @@ export function AssistantLayout() {
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant)
 
   return (
-    <div className="h-full flex flex-col bg-card border-l border-border overflow-hidden">
+    <div className="h-full flex flex-col bg-card overflow-hidden">
       {/* Header */}
-      <div className="h-11 border-b border-border flex items-center justify-between px-3 shrink-0">
-        <div className="flex items-center gap-1.5">
-          <Sparkles className="w-4 h-4 text-primary" />
+      <div className="h-11 flex items-center justify-between px-3 shrink-0 bg-gradient-to-r from-primary/5 to-transparent">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+          </div>
           <span className="text-xs font-semibold text-foreground">Assistant</span>
         </div>
         <button
           onClick={() => setShowAssistant(false)}
-          className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          title="Close assistant"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-border shrink-0">
+      <div className="flex border-b border-border shrink-0 px-2 pt-1 gap-0.5">
         {TABS.map((tab) => {
+          const isActive = activeTab === tab.id
           const content = (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors relative',
-                activeTab === tab.id
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground',
+                'flex-1 flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition-all relative rounded-t-lg',
+                isActive
+                  ? 'text-primary bg-primary/[0.04]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/30',
               )}
             >
-              <tab.icon className="w-4 h-4" />
+              <tab.icon className="w-3.5 h-3.5" />
               <span>{tab.label}</span>
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
+              {isActive && (
+                <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-primary rounded-full" />
               )}
             </button>
           )
@@ -80,15 +84,15 @@ export function AssistantLayout() {
       {/* Panel content */}
       <div className="flex-1 overflow-hidden">
         {(() => {
-          const activeTabDef = TABS.find((t) => t.id === activeTab);
+          const activeTabDef = TABS.find((t) => t.id === activeTab)
           if (activeTabDef?.perkId) {
             return (
               <FeatureGate perkId={activeTabDef.perkId} showLocked={true}>
                 {PANELS[activeTab]}
               </FeatureGate>
-            );
+            )
           }
-          return PANELS[activeTab];
+          return PANELS[activeTab]
         })()}
       </div>
     </div>

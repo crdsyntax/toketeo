@@ -144,6 +144,13 @@ export interface ForeignKeyResponse {
   referenced_column_name?: string;
 }
 
+export interface ReferencedByKeyResponse {
+  constraintName: string;
+  columnName: string;
+  referencingTable: string;
+  referencingColumn: string;
+}
+
 export interface ConstraintResponse {
   name: string;
   type: string;

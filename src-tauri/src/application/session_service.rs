@@ -21,6 +21,7 @@ pub enum MetadataKind {
     Columns,
     Indexes,
     ForeignKeys,
+    ReferencedByKeys,
     Constraints,
     Schemas,
     Databases,

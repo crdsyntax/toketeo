@@ -204,6 +204,43 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SafeDeleteInput {
+    pub table: String,
+    pub schema: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantMessage {
+    pub id: String,
+    pub role: String,
+    pub content: String,
+    pub sql: Option<String>,
+    pub is_safe_delete: Option<bool>,
+    pub feedback: Option<String>,
+    pub timestamp: i64,
+    pub connection_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryHistoryEntry {
+    pub id: String,
+    pub query: String,
+    #[serde(rename = "connectionId")]
+    pub connection_id: String,
+    #[serde(rename = "executedAt")]
+    pub executed_at: i64,
+    #[serde(rename = "durationMs")]
+    pub duration_ms: Option<i64>,
+    pub status: String,
+    pub error: Option<String>,
+    #[serde(rename = "rowCount")]
+    pub row_count: Option<i64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum JobType {

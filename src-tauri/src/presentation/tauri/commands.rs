@@ -619,6 +619,42 @@ pub async fn get_foreign_keys(
 }
 
 #[tauri::command]
+pub async fn clear_metadata_cache(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ExplorerService::clear_metadata_cache(&state, &id).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_referenced_by_keys(
+    id: String,
+    table: String,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<serde_json::Value>> {
+    ExplorerService::get_referenced_by_keys(&state, &id, &table, schema).await
+}
+
+#[tauri::command]
+pub async fn generate_safe_delete_sql(
+    id: String,
+    input: crate::models::SafeDeleteInput,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let driver = state.get_connection(&id).await?;
+    let db_type = driver.db_type();
+    let referenced_by = driver.fetch_referenced_by_keys(&input.table, input.schema.clone()).await?;
+    Ok(SqlGeneratorService::generate_safe_delete(
+        db_type,
+        &input.table,
+        input.schema.as_deref(),
+        &referenced_by,
+    ))
+}
+
+#[tauri::command]
 pub async fn get_constraints(
     id: String,
     table: String,
@@ -2101,4 +2137,74 @@ pub async fn delete_compare_session(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     state.storage.delete_compare_session(&id).await
+}
+
+// ── Assistant Message Commands ──
+
+#[tauri::command]
+pub async fn save_assistant_messages(
+    messages: Vec<crate::models::AssistantMessage>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.save_assistant_messages(&messages).await
+}
+
+#[tauri::command]
+pub async fn load_assistant_messages(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::models::AssistantMessage>> {
+    state.storage.load_assistant_messages(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn clear_assistant_messages(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.clear_assistant_messages(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn update_assistant_feedback(
+    message_id: String,
+    feedback: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.update_assistant_feedback(&message_id, &feedback).await
+}
+
+#[tauri::command]
+pub async fn save_query_history(
+    entries: Vec<crate::models::QueryHistoryEntry>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.save_query_history(&entries).await
+}
+
+#[tauri::command]
+pub async fn load_query_history(
+    connection_id: String,
+    limit: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
+    state.storage.load_query_history(&connection_id, limit).await
+}
+
+#[tauri::command]
+pub async fn clear_query_history(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.clear_query_history(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn search_similar_queries(
+    connection_id: String,
+    search: String,
+    limit: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
+    state.storage.search_similar_queries(&connection_id, &search, limit).await
 }

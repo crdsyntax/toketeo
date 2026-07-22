@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { Monaco } from '@monaco-editor/react'
 import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
+import { schemaService } from '@/services/schema.service'
 import { tauriApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
@@ -15,6 +16,23 @@ import { usePerformanceStore } from '@/store/performanceStore'
 import { calculateQueryXp, hashQuery } from '@/lib/gamification'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
+
+const FK_VIOLATION_PATTERNS = [
+  /violates foreign key constraint/i,
+  /foreign key constraint fails/i,
+  /conflicted with the REFERENCE constraint/i,
+  /FOREIGN KEY constraint failed/i,
+  /foreign key constraint/i,
+]
+
+function isFKViolation(message: string): boolean {
+  return FK_VIOLATION_PATTERNS.some(p => p.test(message))
+}
+
+function extractTableFromQuery(query: string): string | null {
+  const match = query.match(/DELETE\s+FROM\s+[`'"']?(\w+)[`'"']?/i)
+  return match ? match[1] : null
+}
 
 const tryParseJson = (v: string): unknown => {
   if (!v.trim()) return undefined;
@@ -157,6 +175,7 @@ export function useQueryEditor() {
   const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
   const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({ isOpen: false, sql: '' })
   const [queryLimit, setQueryLimit] = useState<number>(100)
+  const [safeDeleteSuggestion, setSafeDeleteSuggestion] = useState<string | null>(null)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -233,6 +252,7 @@ export function useQueryEditor() {
 
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
     if (activeTab?.query && activeConnection) {
+      setSafeDeleteSuggestion(null)
       const isMongo = activeConnection.type === 'mongodb';
       if (checkDangerousQuery(activeTab.query, isMongo)) return
 
@@ -270,7 +290,7 @@ export function useQueryEditor() {
         } catch (err: unknown) {
           const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
           if (isConnNotFound) {
-            await connectionService.connect(targetConnection);
+            await connectionService.reconnect(targetConnection.id);
             result = await queryService.execute(targetConnection.id, sql, schema, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
           } else {
             throw err;
@@ -311,6 +331,7 @@ export function useQueryEditor() {
           rowCount: result.rows.length,
         };
         addQueryHistory(histEntry);
+        schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
         usePerformanceStore.getState().addRecord({
           id: histEntry.id,
           connectionId: targetConnection.id,
@@ -336,12 +357,31 @@ export function useQueryEditor() {
           error: message,
         };
         addQueryHistory(histEntry);
+        schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
+
+        // Auto-detect FK violation and generate safe delete suggestion
+        if (isFKViolation(message) && activeConnection) {
+          const table = extractTableFromQuery(activeTab.query)
+          if (table) {
+            try {
+              const safeSql = await schemaService.generateSafeDeleteSql(
+                activeConnection.id,
+                table,
+                activeConnection.database,
+              )
+              setSafeDeleteSuggestion(safeSql)
+            } catch {
+              // silent — suggestion is optional
+            }
+          }
+        }
       }
     }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
     if (!editorRef.current || !activeTab || !activeConnection) return
+    setSafeDeleteSuggestion(null)
 
     const position = editorRef.current.getPosition()
     if (!position) return
@@ -411,7 +451,7 @@ export function useQueryEditor() {
       } catch (err: unknown) {
         const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
         if (isConnNotFound) {
-          await connectionService.connect(targetConnection);
+          await connectionService.reconnect(targetConnection.id);
           result = await queryService.execute(targetConnection.id, sqlSnippet, schema, undefined, page, queryLimit > 0 ? queryLimit : undefined);
         } else {
           throw err;
@@ -448,6 +488,23 @@ export function useQueryEditor() {
         status: ExecutionStatus.ERROR,
         error: message
       })
+
+      // Auto-detect FK violation and generate safe delete suggestion
+      if (isFKViolation(message) && activeConnection) {
+        const table = extractTableFromQuery(sqlSnippet)
+        if (table) {
+          try {
+            const safeSql = await schemaService.generateSafeDeleteSql(
+              activeConnection.id,
+              table,
+              activeConnection.database,
+            )
+            setSafeDeleteSuggestion(safeSql)
+          } catch {
+            // silent — suggestion is optional
+          }
+        }
+      }
     }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
 
@@ -558,14 +615,11 @@ export function useQueryEditor() {
             const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
             if (isConnNotFound) {
                 const targetConnectionId = activeTab.connectionId || activeConnection.id;
-                const targetConnection = activeConnection.id === targetConnectionId
-                  ? activeConnection
-                  : (connections.find(c => c.id === targetConnectionId) || activeConnection);
-                await connectionService.connect(targetConnection);
+                await connectionService.reconnect(targetConnectionId);
                 await tauriApi.invoke('execute_query', {
                     id: activeConnection.id,
                     query: finalSql,
-                    ...(targetConnection.database ? { schema: targetConnection.database } : {})
+                    ...(activeConnection.database ? { schema: activeConnection.database } : {})
                 })
             } else {
                 throw err;
@@ -597,7 +651,7 @@ export function useQueryEditor() {
     }
     
     setEditingCell(null)
-  }, [activeTab, activeConnection, connections, updateTabResults, addXP, trackAction])
+  }, [activeTab, activeConnection, updateTabResults, addXP, trackAction])
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
@@ -888,5 +942,7 @@ export function useQueryEditor() {
     setQueryLimit,
     queryHistory,
     clearQueryHistory,
+    safeDeleteSuggestion,
+    setSafeDeleteSuggestion,
   }
 }
