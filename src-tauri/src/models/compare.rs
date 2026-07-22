@@ -206,6 +206,12 @@ pub struct TableDataDiff {
     pub pk_columns: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub column_diffs: Vec<RowColumnDiff>,
+    /// Full row data for rows that exist only in source (for INSERT statements).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_only_rows: Vec<RowColumnDiff>,
+    /// Full row data for rows that exist only in target (for DELETE statements).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_only_rows: Vec<RowColumnDiff>,
 }
 
 /// Column-level difference on a modified row.

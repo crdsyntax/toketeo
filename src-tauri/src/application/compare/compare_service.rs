@@ -2,7 +2,7 @@ use crate::db::DbDriver;
 use crate::error::{AppError, AppResult};
 use crate::models::compare::{
     CompareStatus, ConstraintDiff, DataReport, FkDiff, IndexDiff, ObjectDiff, SchemaReport,
-    ScriptOptions, SyncScript, TableDataDiff,
+    ScriptOptions, ScriptStatement, SyncScript, TableDataDiff,
 };
 use crate::state::{SyncControl, SyncController};
 use std::collections::{BTreeSet, HashMap};
@@ -18,6 +18,7 @@ use super::schema::{
     compare_table_indexes, compare_tables, compare_triggers, compare_views,
 };
 use super::script_generator::generators::{mysql_generator, postgres_generator, sqlite_generator};
+use super::script_generator::data_sync;
 
 pub struct CompareService;
 
@@ -295,6 +296,8 @@ impl CompareService {
                 rows_only_in_target: 0,
                 pk_columns: vec![],
                 column_diffs: vec![],
+                source_only_rows: vec![],
+                target_only_rows: vec![],
             });
         }
 
@@ -320,6 +323,8 @@ impl CompareService {
                 rows_only_in_target: 0,
                 pk_columns: pk_columns.clone(),
                 column_diffs: vec![],
+                source_only_rows: vec![],
+                target_only_rows: vec![],
             });
         }
 
@@ -337,6 +342,8 @@ impl CompareService {
                     rows_only_in_target: 0,
                     pk_columns,
                     column_diffs: vec![],
+                    source_only_rows: vec![],
+                    target_only_rows: vec![],
                 });
             }
         };
@@ -365,6 +372,8 @@ impl CompareService {
                 rows_only_in_target: 0,
                 pk_columns,
                 column_diffs: vec![],
+                source_only_rows: vec![],
+                target_only_rows: vec![],
             });
         }
 
@@ -380,6 +389,8 @@ impl CompareService {
                 rows_only_in_target: 0,
                 pk_columns,
                 column_diffs: vec![],
+                source_only_rows: vec![],
+                target_only_rows: vec![],
             });
         }
 
@@ -422,10 +433,13 @@ impl CompareService {
         let target_count = target_hashes.len() as u64;
 
         let mut column_diffs = Vec::new();
+        let mut source_only_rows = Vec::new();
+        let mut target_only_rows = Vec::new();
+
         for (pk, src_hash) in &source_hashes {
             Self::check_control(compare_id, controller).await?;
-            if let Some(tgt_hash) = target_hashes.get(pk) {
-                if src_hash != tgt_hash {
+            match target_hashes.get(pk) {
+                Some(tgt_hash) if src_hash != tgt_hash => {
                     let pk_val = serde_json::Value::String(pk.clone());
                     let diffs = compare_row_columns(
                         source,
@@ -441,6 +455,43 @@ impl CompareService {
                     .await?;
                     column_diffs.extend(diffs);
                 }
+                None => {
+                    let pk_val = serde_json::Value::String(pk.clone());
+                    let diffs = compare_row_columns(
+                        source,
+                        target,
+                        table,
+                        table,
+                        source_schema,
+                        target_schema,
+                        &pk_columns,
+                        &pk_val,
+                        &common_columns,
+                    )
+                    .await?;
+                    source_only_rows.extend(diffs);
+                }
+                _ => {}
+            }
+        }
+
+        for pk in target_hashes.keys() {
+            if !source_hashes.contains_key(pk) {
+                Self::check_control(compare_id, controller).await?;
+                let pk_val = serde_json::Value::String(pk.clone());
+                let diffs = compare_row_columns(
+                    source,
+                    target,
+                    table,
+                    table,
+                    source_schema,
+                    target_schema,
+                    &pk_columns,
+                    &pk_val,
+                    &common_columns,
+                )
+                .await?;
+                target_only_rows.extend(diffs);
             }
         }
 
@@ -450,6 +501,8 @@ impl CompareService {
             source_hashes,
             target_hashes,
             column_diffs,
+            source_only_rows,
+            target_only_rows,
             source_count,
             target_count,
         ))
@@ -457,11 +510,11 @@ impl CompareService {
 
     pub fn generate_script(
         schema_report: &SchemaReport,
-        _data_report: Option<&DataReport>,
+        data_report: Option<&DataReport>,
         target_db_type: &str,
         options: &ScriptOptions,
     ) -> AppResult<SyncScript> {
-        let statements = match target_db_type.to_lowercase().as_str() {
+        let mut statements = match target_db_type.to_lowercase().as_str() {
             "mysql" | "mariadb" => mysql_generator::generate(schema_report, options),
             "postgres" | "postgresql" => postgres_generator::generate(schema_report, options),
             "sqlite" => sqlite_generator::generate(schema_report, options),
@@ -472,6 +525,24 @@ impl CompareService {
                 )));
             }
         };
+
+        if let Some(report) = data_report {
+            let data_stmts = data_sync::generate_data_sync(report, target_db_type, options);
+            if !data_stmts.is_empty() {
+                statements.push(ScriptStatement {
+                    id: format!("section_data_0"),
+                    sql: format!("-- ============================================================\n-- DATA SYNCHRONIZATION\n-- ============================================================"),
+                    description: "Data synchronization section".into(),
+                    diff_type: "section".into(),
+                    object_name: String::new(),
+                    object_type: "section".into(),
+                    selected: true,
+                    preserve_data: false,
+                    backup_sql: None,
+                });
+                statements.extend(data_stmts);
+            }
+        }
 
         Ok(SyncScript {
             statements,

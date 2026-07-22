@@ -300,9 +300,14 @@ export function ComparePage() {
   };
 
   const selectAllFiltered = () => {
-    const set = new Set(selectedTables);
-    filteredSourceTables.forEach((t) => set.add(t));
-    setSelectedTables(Array.from(set));
+    const allSelected = filteredSourceTables.length > 0 && filteredSourceTables.every((t) => selectedTables.includes(t));
+    if (allSelected) {
+      setSelectedTables([]);
+    } else {
+      const set = new Set(selectedTables);
+      filteredSourceTables.forEach((t) => set.add(t));
+      setSelectedTables(Array.from(set));
+    }
   };
 
   const deselectAll = () => setSelectedTables([]);

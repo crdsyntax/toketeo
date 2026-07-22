@@ -87,6 +87,8 @@ export interface TableDataDiff {
   rows_only_in_target: number;
   pk_columns: string[];
   column_diffs: RowColumnDiff[];
+  source_only_rows: RowColumnDiff[];
+  target_only_rows: RowColumnDiff[];
 }
 
 export interface DataReport {

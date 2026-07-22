@@ -4,6 +4,15 @@ fn backup_table_name(table: &str) -> String {
     format!("{}_bak", table)
 }
 
+fn source_comment(source_name: &str, table: &str, object_name: &str, kind: Option<&str>) -> String {
+    let obj_kind = kind.unwrap_or("object");
+    if table.is_empty() {
+        format!("-- Source: [{}] {} \"{}\"", source_name, obj_kind, object_name)
+    } else {
+        format!("-- Source: [{}] {} \"{}.{}\"", source_name, obj_kind, table, object_name)
+    }
+}
+
 pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptStatement> {
     let mut stmts = Vec::new();
     let mut stmt_id = 0u32;
@@ -17,9 +26,10 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         match obj.status {
             CompareStatus::Missing => {
                 if options.include_creates {
+                    let comment = source_comment(&report.source_name, "", &obj.name, Some("table"));
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("-- TODO: CREATE TABLE \"{}\" (requires DDL from source)", obj.name),
+                        sql: format!("{}\n-- TODO: CREATE TABLE \"{}\" (requires DDL from source)", comment, obj.name),
                         description: format!("Create table {}", obj.name),
                         diff_type: "create".into(),
                         object_name: obj.name.clone(),
@@ -33,13 +43,14 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
             CompareStatus::New => {
                 if options.drop_target_extras && options.include_drops {
                     let backup_name = backup_table_name(&obj.name);
+                    let comment = source_comment(&report.source_name, "", &obj.name, Some("table"));
                     let (sql, backup_sql) = if options.data_preservation {
                         (
-                            format!("CREATE TABLE \"{}\" AS SELECT * FROM \"{}\";\nDROP TABLE IF EXISTS \"{}\";", backup_name, obj.name, obj.name),
+                            format!("{}\nCREATE TABLE \"{}\" AS SELECT * FROM \"{}\";\nDROP TABLE IF EXISTS \"{}\";", comment, backup_name, obj.name, obj.name),
                             Some(format!("-- Backup of \"{}\" stored as \"{}\"", obj.name, backup_name)),
                         )
                     } else {
-                        (format!("DROP TABLE IF EXISTS \"{}\";", obj.name), None)
+                        (format!("{}\nDROP TABLE IF EXISTS \"{}\";", comment, obj.name), None)
                     };
                     stmts.push(ScriptStatement {
                         id: next_id(),
@@ -56,15 +67,16 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
             }
             CompareStatus::Modified => {
                 if options.include_alters {
+                    let comment = source_comment(&report.source_name, "", &obj.name, Some("table"));
                     let (sql, backup_sql) = if options.data_preservation {
                         (
                             format!(
-                                "BEGIN TRANSACTION;\n\
+                                "{}\nBEGIN TRANSACTION;\n\
                                  CREATE TABLE \"{}_new\" (... -- TODO: updated schema from source ...);\n\
                                  INSERT INTO \"{}_new\" SELECT * FROM \"{}\";\n\
                                  DROP TABLE \"{}\";\n\
                                  ALTER TABLE \"{}_new\" RENAME TO \"{}\";\n\
-                                 COMMIT;",
+                                 COMMIT;", comment,
                                 obj.name, obj.name, obj.name, obj.name, obj.name, obj.name
                             ),
                             Some(format!("-- Transaction-based recreation of \"{}\" preserves all data", obj.name)),
@@ -72,8 +84,8 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                     } else {
                         (
                             format!(
-                                "-- SQLite: recreate table \"{}\" (ALTER TABLE limited)\n\
-                                 -- TODO: Generate full table recreation",
+                                "{}\n-- SQLite: recreate table \"{}\" (ALTER TABLE limited)\n\
+                                 -- TODO: Generate full table recreation", comment,
                                 obj.name
                             ),
                             None,

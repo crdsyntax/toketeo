@@ -95,6 +95,8 @@ impl SshTunnel {
             ));
         }
 
+        sess.set_keepalive(true, 15);
+
         tracing::info!("SSH authentication successful for {}", config.user);
 
         // Start local listener for port forwarding

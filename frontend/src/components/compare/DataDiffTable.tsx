@@ -1,15 +1,7 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronDown, CheckCircle2, AlertTriangle, PlusCircle, XCircle } from 'lucide-react';
+import { ChevronRight, ChevronDown, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { DataReport, TableDataDiff, RowColumnDiff } from '@/types/compare';
-
-function DataStatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case 'equal': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
-    case 'modified': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-    default: return null;
-  }
-}
+import type { DataReport, TableDataDiff } from '@/types/compare';
 
 function TableDiffRow({ table }: { table: TableDataDiff }) {
   const [expanded, setExpanded] = useState(false);
