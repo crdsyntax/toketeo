@@ -1,4 +1,4 @@
-import { Plus, Edit2, Shield, ChevronDown, Database, Upload, Download, Server, Unplug, Wifi, Loader2, AlertTriangle, Trash2, RefreshCw } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Database, Server, Wifi, Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { DatabaseType } from '@/types/database'
@@ -11,6 +11,9 @@ import { DatabaseItem } from './DatabaseItem'
 import { SchemaItem } from './SchemaItem'
 import { DumpRestoreModal } from './DumpRestoreModal'
 import { PromptModal } from './PromptModal'
+import { ConnectionContextMenu } from './ConnectionContextMenu'
+import { SchemaContextMenu } from './SchemaContextMenu'
+import { CreateSchemaModal } from './CreateSchemaModal'
 import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
 import toast from 'react-hot-toast'
 
@@ -104,6 +107,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     requireInput?: boolean
     onConfirm: (value: string) => void
   } | null>(null)
+  const [showCreateSchema, setShowCreateSchema] = useState<{ conn: Connection; schema: string } | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Record<DatabaseType, boolean>>({
     [DatabaseType.POSTGRES]: false,
     [DatabaseType.MARIADB]: false,
@@ -486,229 +490,33 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
           })}
         </div>
         {contextMenu.visible && contextMenu.connId && connectedConnectionIds.includes(contextMenu.connId) && (
-          <div
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
-            onClick={() => setContextMenu({ visible: false, x: 0, y: 0 })}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-              onClick={(e) => { e.stopPropagation(); setContextMenu({ visible: false, x: 0, y: 0 }); if (contextMenu.connId && typeof onDisconnect === 'function') onDisconnect(contextMenu.connId) }}
-            >
-              <Unplug className="w-3.5 h-3.5 text-slate-400" />
-              Disconnect
-            </button>
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-              onClick={async (e) => {
-                e.stopPropagation()
-                setContextMenu({ visible: false, x: 0, y: 0 })
-                if (!contextMenu.connId) return
-                const connId = contextMenu.connId
-                const conn = connections.find((c) => c.id === connId)
-                if (!conn) return
-                try {
-                  await onConnect(conn)
-                  toast.success(`Connection "${conn.name}" refreshed`)
-                } catch (err) {
-                  toast.error(`Refresh failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                }
-              }}
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-              Refresh Connection
-            </button>
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-              onClick={(e) => {
-                e.stopPropagation()
-                setContextMenu({ visible: false, x: 0, y: 0 })
-                if (!contextMenu.connId) return
-                queryClient.invalidateQueries({ queryKey: ['databases', contextMenu.connId] })
-                queryClient.invalidateQueries({ queryKey: ['schemas', contextMenu.connId] })
-                queryClient.invalidateQueries({ queryKey: ['tables', contextMenu.connId] })
-                toast.success('Schemas refreshed')
-              }}
-            >
-              <Database className="w-3.5 h-3.5 text-slate-400" />
-              Refresh Schemas
-            </button>
-            <div className="border-t border-slate-700/40 my-1" />
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-              onClick={(e) => {
-                e.stopPropagation()
-                const connId = contextMenu.connId
-                setContextMenu({ visible: false, x: 0, y: 0 })
-                if (!connId) return
-                setPromptModal({
-                  title: 'Create Database',
-                  message: 'Enter database name:',
-                  confirmLabel: 'Create',
-                  inputPlaceholder: 'database_name',
-                  requireInput: true,
-                  onConfirm: async (name) => {
-                    try {
-                      await schemaService.createDatabase(connId, name)
-                      toast.success(`Database "${name}" created`)
-                      queryClient.invalidateQueries({ queryKey: ['databases', connId] })
-                      queryClient.invalidateQueries({ queryKey: ['schemas', connId] })
-                    } catch (err) {
-                      toast.error(`Failed to create database: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                    }
-                    setPromptModal(null)
-                  },
-                })
-              }}
-            >
-              <Database className="w-3.5 h-3.5 text-slate-400" />
-              Create Database
-            </button>
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-red-400 rounded-md hover:bg-red-500/10 hover:text-red-300 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation()
-                const connId = contextMenu.connId
-                setContextMenu({ visible: false, x: 0, y: 0 })
-                if (!connId) return
-                setPromptModal({
-                  title: 'Delete Database',
-                  message: 'Enter the database name to delete:',
-                  confirmLabel: 'Delete',
-                  destructive: true,
-                  inputPlaceholder: 'database_name',
-                  requireInput: true,
-                  onConfirm: (name) => {
-                    setPromptModal({
-                      title: 'Confirm Delete',
-                      message: `Are you sure you want to permanently delete database "${name}"? This action cannot be undone.`,
-                      confirmLabel: 'Delete',
-                      destructive: true,
-                      requireInput: false,
-                      onConfirm: async () => {
-                        try {
-                          await schemaService.dropDatabase(connId, name)
-                          toast.success(`Database "${name}" deleted`)
-                          queryClient.invalidateQueries({ queryKey: ['databases', connId] })
-                          queryClient.invalidateQueries({ queryKey: ['schemas', connId] })
-                        } catch (err) {
-                          toast.error(`Failed to delete database: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                        }
-                        setPromptModal(null)
-                      },
-                    })
-                  },
-                })
-              }}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete Database
-            </button>
-          </div>
+          <ConnectionContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            connId={contextMenu.connId}
+            connections={connections}
+            onDisconnect={onDisconnect}
+            onConnect={onConnect}
+            onClose={() => setContextMenu({ visible: false, x: 0, y: 0 })}
+            queryClient={queryClient}
+            setPromptModal={setPromptModal}
+          />
         )}
 
         {schemaMenu && (
-          <div
+          <SchemaContextMenu
             ref={schemaMenuRef}
-            style={{ left: schemaMenu.x, top: schemaMenu.y }}
-            className="fixed z-50 min-w-[160px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="relative group">
-              <div className="flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white cursor-pointer transition-colors">
-                <span className="flex items-center gap-2">
-                  <Database className="w-3.5 h-3.5 text-slate-400" />
-                  Tools
-                </span>
-                <ChevronDown className="w-3 h-3 text-slate-500 -rotate-90" />
-              </div>
-              <div className="absolute left-full top-0 ml-1 hidden group-hover:block min-w-[140px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in duration-100">
-                <button
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-                  onClick={() => handleDumpClick(schemaMenu.conn, schemaMenu.schema)}
-                >
-                  <Upload className="w-3.5 h-3.5 text-slate-400" />
-                  Dump
-                </button>
-                <button
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-                  onClick={() => handleRestoreClick(schemaMenu.conn, schemaMenu.schema)}
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-400" />
-                  Restore
-                </button>
-                {schemaMenu.conn.type === 'mongodb' && (
-                  <>
-                    <div className="border-t border-slate-700/40 my-1" />
-                    <button
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-                      onClick={async () => {
-                        setSchemaMenu(null)
-                        try {
-                          const result = await schemaService.mongoBackupDatabase(schemaMenu.conn.id, schemaMenu.schema)
-                          if (result) {
-                            toast.success(`Backup saved to: ${result}`)
-                          }
-                        } catch (err) {
-                          toast.error(`Backup failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                        }
-                      }}
-                    >
-                      <Upload className="w-3.5 h-3.5 text-slate-400" />
-                      Backup MongoDB
-                    </button>
-                    <button
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-                      onClick={async () => {
-                        setSchemaMenu(null)
-                        try {
-                          const result = await schemaService.mongoRestoreDatabase(schemaMenu.conn.id, schemaMenu.schema)
-                          if (result) {
-                            toast.success(result)
-                          }
-                        } catch (err) {
-                          toast.error(`Restore failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                        }
-                      }}
-                    >
-                      <Download className="w-3.5 h-3.5 text-slate-400" />
-                      Restore MongoDB
-                    </button>
-                    <div className="border-t border-slate-700/40 my-1" />
-                    <button
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700/70 hover:text-white transition-colors"
-                      onClick={() => {
-                        const menuSchema = schemaMenu
-                        setSchemaMenu(null)
-                        if (!menuSchema) return
-                        setPromptModal({
-                          title: 'Create Collection',
-                          message: 'Enter collection name:',
-                          confirmLabel: 'Create',
-                          inputPlaceholder: 'collection_name',
-                          requireInput: true,
-                          onConfirm: async (name) => {
-                            try {
-                              await schemaService.createCollection(menuSchema.conn.id, menuSchema.schema, name)
-                              toast.success(`Collection "${name}" created`)
-                              queryClient.invalidateQueries({ queryKey: ['tables', menuSchema.conn.id] })
-                            } catch (err) {
-                              toast.error(`Failed to create collection: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                            }
-                            setPromptModal(null)
-                          },
-                        })
-                      }}
-                    >
-                      <Database className="w-3.5 h-3.5 text-slate-400" />
-                      Create Collection
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+            x={schemaMenu.x}
+            y={schemaMenu.y}
+            conn={schemaMenu.conn}
+            schema={schemaMenu.schema}
+            onClose={() => setSchemaMenu(null)}
+            queryClient={queryClient}
+            setPromptModal={setPromptModal}
+            handleDumpClick={handleDumpClick}
+            handleRestoreClick={handleRestoreClick}
+            onCreateSchemaClick={() => setShowCreateSchema({ conn: schemaMenu.conn, schema: schemaMenu.schema })}
+          />
         )}
 
         {tableSelection && tableSelection.mode === 'dump' && (
@@ -743,6 +551,18 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             requireInput={promptModal.requireInput}
             onConfirm={promptModal.onConfirm}
             onClose={() => setPromptModal(null)}
+          />
+        )}
+
+        {showCreateSchema && (
+          <CreateSchemaModal
+            conn={showCreateSchema.conn}
+            onClose={() => setShowCreateSchema(null)}
+            onCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ['databases', showCreateSchema.conn.id] })
+              queryClient.invalidateQueries({ queryKey: ['schemas', showCreateSchema.conn.id] })
+              setShowCreateSchema(null)
+            }}
           />
         )}
       </div>

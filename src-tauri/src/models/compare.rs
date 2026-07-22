@@ -1,6 +1,39 @@
 use serde::{Deserialize, Serialize};
 
 // ============================================================
+// Compare Session (SQLite persistence)
+// ============================================================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompareSession {
+    pub id: String,
+    pub source_conn_id: String,
+    pub target_conn_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_database: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_database: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_schema: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_schema: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_tables: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema_report: Option<SchemaReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_report: Option<DataReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_script: Option<SyncScript>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script_options: Option<ScriptOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_tab: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ============================================================
 // Schema Compare Types
 // ============================================================
 
@@ -205,6 +238,10 @@ pub struct ScriptStatement {
     pub object_name: String,
     pub object_type: String,
     pub selected: bool,
+    #[serde(default)]
+    pub preserve_data: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backup_sql: Option<String>,
 }
 
 /// Options controlling which diffs are included in the script.
@@ -218,6 +255,16 @@ pub struct ScriptOptions {
     pub include_views: bool,
     pub include_routines: bool,
     pub wrap_in_transaction: bool,
+    #[serde(default = "default_true")]
+    pub data_preservation: bool,
+    /// When false (default): only CREATE source objects in target.
+    /// When true: also DROP objects that exist only in target.
+    #[serde(default)]
+    pub drop_target_extras: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for ScriptOptions {
@@ -231,6 +278,8 @@ impl Default for ScriptOptions {
             include_views: true,
             include_routines: true,
             wrap_in_transaction: true,
+            data_preservation: true,
+            drop_target_extras: false,
         }
     }
 }
@@ -254,6 +303,33 @@ mod tests {
         assert!(opts.include_alters);
         assert!(opts.include_drops);
         assert!(opts.wrap_in_transaction);
+        assert!(opts.data_preservation);
+        assert!(!opts.drop_target_extras);
+    }
+
+    #[test]
+    fn compare_session_roundtrip() {
+        let session = CompareSession {
+            id: "cmp_1".into(),
+            source_conn_id: "s1".into(),
+            target_conn_id: "t1".into(),
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            selected_tables: Some(vec!["users".into()]),
+            schema_report: None,
+            data_report: None,
+            sync_script: None,
+            script_options: None,
+            active_tab: Some("schema".into()),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+        let json = serde_json::to_string(&session).unwrap();
+        let back: CompareSession = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, "cmp_1");
+        assert_eq!(back.selected_tables.unwrap(), vec!["users"]);
     }
 
     #[test]

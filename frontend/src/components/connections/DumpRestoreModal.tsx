@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useDraggablePanel } from '@/hooks/useDraggablePanel'
 import {
   X, Loader2, Upload, Download, CheckSquare, Square,
   Table2, Eye, Bell, Workflow, FunctionSquare,
@@ -57,6 +58,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
   const [completed, setCompleted] = useState(false)
   const [result, setResult] = useState<{ filePath?: string; integrity?: IntegrityResult } | null>(null)
   const [tableSizes, setTableSizes] = useState<Record<string, number>>({})
+  const { pos, handleMouseDown } = useDraggablePanel(320, 80)
 
   useEffect(() => {
     if (mode === 'dump' && objects.tables.length > 0) {
@@ -123,8 +125,8 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
 
   if (isMinimized && (isLoading || completed)) {
     return (
-      <div className="fixed bottom-4 right-4 z-[210]">
-        <div className="bg-background border border-border rounded-lg shadow-2xl p-3 flex items-center gap-3 min-w-[220px]">
+      <div className="fixed z-[210]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+        <div className="bg-background border border-border rounded-lg shadow-2xl p-3 flex items-center gap-3 min-w-[220px]" data-drag-handle>
           {completed ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
           ) : (
@@ -160,15 +162,15 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
   if (result) {
     const integrity = result.integrity
     return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
-        <div className="relative bg-background border border-border rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-border flex justify-between items-center bg-muted/20">
-            <h3 className="font-bold flex items-center gap-2 text-sm">
+      <div className="fixed z-[210] w-[460px]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+        <div className="bg-background border border-border rounded-lg shadow-2xl overflow-hidden">
+          <div className="p-3 border-b border-border flex justify-between items-center bg-muted cursor-grab active:cursor-grabbing" data-drag-handle>
+            <h3 className="font-bold flex items-center gap-2 text-xs">
               {integrity?.passed ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <AlertCircle className="w-4 h-4 text-amber-500" />}
               Dump Complete
             </h3>
             <button onClick={onClose} className="p-1 hover:bg-muted rounded">
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -219,21 +221,21 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
-      <div className="relative bg-background border border-border rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-border flex justify-between items-center bg-muted/20">
-          <h3 className="font-bold flex items-center gap-2 text-sm">
-            {mode === 'dump' ? <Upload className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+     <div className="fixed z-[200] w-[480px]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+       <div className="bg-background border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
+         <div className="p-3 border-b border-border flex justify-between items-center bg-muted cursor-grab active:cursor-grabbing" data-drag-handle>
+          <h3 className="font-bold flex items-center gap-2 text-xs">
+            {mode === 'dump' ? <Upload className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
             {mode === 'dump' ? 'Dump' : 'Restore'} Schema: {schema}
           </h3>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             {isLoading && (
-              <button onClick={handleMinimize} className="p-1 hover:bg-muted rounded" title="Minimize">
-                <Minimize2 className="w-4 h-4" />
+              <button onClick={handleMinimize} className="p-1 hover:bg-background rounded" title="Minimize">
+                <Minimize2 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button onClick={onClose} className="p-1 hover:bg-muted rounded">
-              <X className="w-4 h-4" />
+            <button onClick={onClose} className="p-1 hover:bg-background rounded">
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -261,7 +263,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
           })}
         </div>
 
-        <div className="p-3 border-b border-border flex items-center justify-between bg-muted/10">
+        <div className="p-3 border-b border-border flex items-center justify-between bg-muted">
           <button
             onClick={toggleAll}
             className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -329,7 +331,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
         </div>
 
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="text-sm font-bold text-foreground">

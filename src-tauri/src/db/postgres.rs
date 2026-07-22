@@ -1186,7 +1186,7 @@ impl PostgresDriver {
         let name_quoted = name.replace('"', "\"\"");
 
         Ok(format!(
-            "CREATE TABLE \"{}\".\"{}\" (\n{}\n);",
+            "CREATE TABLE IF NOT EXISTS \"{}\".\"{}\" (\n{}\n);",
             schema_quoted, name_quoted, col_defs.join(",\n")
         ))
     }

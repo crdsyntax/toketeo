@@ -214,6 +214,14 @@ executeExplorer: async (payload: {
     await tauriApi.invoke<void>('drop_database', { id, dbName })
   },
 
+  createSchema: async (id: string, schema: string, owner?: string, comment?: string, privileges?: { grantee: string; privileges: string[] }[]): Promise<void> => {
+    await tauriApi.invoke<void>('create_schema', { id, schema, owner, comment, privileges })
+  },
+
+  dropSchema: async (id: string, schema: string): Promise<void> => {
+    await tauriApi.invoke<void>('drop_schema', { id, schema })
+  },
+
   getPreview: async (id: string, table: string, limit: number = 5): Promise<{ columns: string[]; rows: string[][] }> => {
     return await tauriApi.invoke('get_table_preview', { id, table, limit })
   },

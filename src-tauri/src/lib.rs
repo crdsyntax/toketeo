@@ -193,6 +193,8 @@ pub fn run() {
             commands::get_table_preview,
             commands::create_database,
             commands::drop_database,
+            commands::create_schema,
+            commands::drop_schema,
             commands::create_collection,
             commands::mongo_backup_database,
             commands::mongo_restore_database,
@@ -204,6 +206,10 @@ pub fn run() {
             commands::pause_compare,
             commands::resume_compare,
             commands::cancel_compare,
+            commands::save_compare_session,
+            commands::get_compare_sessions,
+            commands::load_compare_session,
+            commands::delete_compare_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

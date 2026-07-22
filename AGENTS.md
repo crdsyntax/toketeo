@@ -1,35 +1,29 @@
 # AI Instructions
 
 Always load:
-- .agents/core/standards.md
-- .agents/core/pre-commit-assistant.md
+- agents/core/engineering.md
+- agents/core/security.md
 
 Profiles:
 
 Backend:
-- .agents/backend/tech-leader.md
-- .agents/backend/architect.md
-- .agents/backend/engineer.md
+- agents/backend/tech-leader.md
+- agents/backend/architect.md
+- agents/backend/engineer.md
+- agents/backend/database.md
 
 Frontend:
-- .agents/frontend/tech-leader.md
-- .agents/frontend/architect.md
-- .agents/frontend/engineer.md
-- .agents/frontend/frontend.md
-- .agents/frontend/component-architecture.md
-
-Security & Ops:
-- .agents/core/security-devops.md
-- .agents/core/secops.md
+- agents/frontend/tech-leader.md
+- agents/frontend/architect.md
+- agents/frontend/engineer.md
+- agents/frontend/frontend.md
+- agents/frontend/component-architecture.md
 
 QA:
-- .agents/qa/tester.md
-
-Database:
-- .agents/backend/database.md
+- agents/qa/tester.md
 
 Review:
-- .agents/reviews/review.md
+- agents/reviews/review.md
 
 Process:
 1 Analyze

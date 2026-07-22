@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listen } from '@tauri-apps/api/event';
 import {
   GitCompare,
@@ -16,6 +16,10 @@ import {
   CheckSquare,
   Square as SquareIcon,
   Maximize2,
+  Wifi,
+  WifiOff,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { connectionService } from '@/services/connection.service';
@@ -26,6 +30,7 @@ import { SchemaDiffTree } from '@/components/compare/SchemaDiffTree';
 import { DataDiffView } from '@/components/compare/DataDiffTable';
 import { ScriptPreview } from '@/components/compare/ScriptPreview';
 import { FullscreenModal } from '@/components/compare/FullscreenModal';
+import { useAutoReconnect } from '@/hooks/useAutoReconnect';
 import { cn } from '@/lib/utils';
 import { DatabaseType, type Connection } from '@/types/database';
 
@@ -56,40 +61,30 @@ function usesDatabases(type?: string) {
 }
 
 export function ComparePage() {
-  const [sourceConnId, setSourceConnId] = useState('');
-  const [targetConnId, setTargetConnId] = useState('');
-  const [sourceDatabase, setSourceDatabase] = useState('');
-  const [targetDatabase, setTargetDatabase] = useState('');
-  const [sourceSchema, setSourceSchema] = useState('');
-  const [targetSchema, setTargetSchema] = useState('');
-  const [selectedTables, setSelectedTables] = useState<string[]>([]);
-  const [tableFilter, setTableFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<CompareTab>('schema');
-  const [fullscreenTab, setFullscreenTab] = useState<CompareTab | null>(null);
-
   const {
-    schemaReport,
-    dataReport,
-    syncScript,
-    scriptOptions,
-    loading,
-    error,
-    status,
-    progress,
-    compareId,
-    compareSchemas,
-    compareData,
-    generateScript,
-    pause,
-    resume,
-    cancel,
-    setProgress,
-    toggleStatement,
-    toggleAllStatements,
-    setScriptOptions,
+    sourceConnId, targetConnId,
+    sourceDatabase, targetDatabase,
+    sourceSchema, targetSchema,
+    selectedTables, activeTab,
+    schemaReport, dataReport, syncScript, scriptOptions,
+    loading, error, status, progress, compareId,
+    reconnecting, reconnectError,
+    setSourceConnId, setTargetConnId,
+    setSourceDatabase, setTargetDatabase,
+    setSourceSchema, setTargetSchema,
+    setSelectedTables, setActiveTab,
+    compareSchemas, compareData, generateScript,
+    pause, resume, cancel,
+    setProgress, toggleStatement, toggleAllStatements, setScriptOptions, toggleStatementPreserve,
+    loadLatestSession, clear,
   } = useCompareStore();
 
+  const [tableFilter, setTableFilter] = useState('');
+  const [fullscreenTab, setFullscreenTab] = useState<CompareTab | null>(null);
+  const queryClient = useQueryClient();
+
   const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds);
+  const { status: reconnectStatus, reconnect } = useAutoReconnect();
 
   const { data: connections } = useQuery({
     queryKey: ['connections'],
@@ -103,6 +98,19 @@ export function ComparePage() {
 
   const sourceConn = connectedConns.find((c) => c.id === sourceConnId);
   const targetConn = connectedConns.find((c) => c.id === targetConnId);
+
+  useEffect(() => {
+    loadLatestSession();
+  }, [loadLatestSession]);
+
+  useEffect(() => {
+    if (!reconnecting && sourceConnId && !connectedConnectionIds.includes(sourceConnId)) {
+      reconnect(sourceConnId);
+    }
+    if (!reconnecting && targetConnId && !connectedConnectionIds.includes(targetConnId)) {
+      reconnect(targetConnId);
+    }
+  }, [sourceConnId, targetConnId, connectedConnectionIds, reconnect, reconnecting]);
 
   const { data: sourceDatabases, isLoading: loadingSourceDbs } = useQuery({
     queryKey: ['compare-databases', sourceConnId],
@@ -167,10 +175,12 @@ export function ComparePage() {
       : undefined;
 
   const tablesReady =
-    !!sourceConnId &&
-    !!targetConnId &&
-    (usesSchemas(sourceConn?.type) ? !!sourceSchema : true) &&
-    (usesSchemas(targetConn?.type) ? !!targetSchema : true);
+    !!sourceConn &&
+    !!targetConn &&
+    (usesDatabases(sourceConn.type) ? !!sourceDatabase || !!sourceConn.database : true) &&
+    (usesDatabases(targetConn.type) ? !!targetDatabase || !!targetConn.database : true) &&
+    (usesSchemas(sourceConn.type) ? !!sourceSchema : true) &&
+    (usesSchemas(targetConn.type) ? !!targetSchema : true);
 
   const { data: sourceTables = [], isLoading: loadingSourceTables } = useQuery({
     queryKey: ['compare-tables-source', sourceConnId, sourceContext],
@@ -214,23 +224,19 @@ export function ComparePage() {
 
   useEffect(() => {
     if (sourceDatabases?.length && !sourceDatabase) setSourceDatabase(sourceDatabases[0]);
-  }, [sourceDatabases, sourceDatabase]);
+  }, [sourceDatabases, sourceDatabase, setSourceDatabase]);
 
   useEffect(() => {
     if (targetDatabases?.length && !targetDatabase) setTargetDatabase(targetDatabases[0]);
-  }, [targetDatabases, targetDatabase]);
+  }, [targetDatabases, targetDatabase, setTargetDatabase]);
 
   useEffect(() => {
     if (sourceSchemas?.length && !sourceSchema) setSourceSchema(sourceSchemas[0]);
-  }, [sourceSchemas, sourceSchema]);
+  }, [sourceSchemas, sourceSchema, setSourceSchema]);
 
   useEffect(() => {
     if (targetSchemas?.length && !targetSchema) setTargetSchema(targetSchemas[0]);
-  }, [targetSchemas, targetSchema]);
-
-  useEffect(() => {
-    setSelectedTables([]);
-  }, [sourceConnId, targetConnId, sourceSchema, targetSchema, sourceDatabase, targetDatabase]);
+  }, [targetSchemas, targetSchema, setTargetSchema]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -286,25 +292,33 @@ export function ComparePage() {
   };
 
   const toggleTable = (name: string) => {
-    setSelectedTables((prev) =>
-      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]
+    setSelectedTables(
+      selectedTables.includes(name)
+        ? selectedTables.filter((t) => t !== name)
+        : [...selectedTables, name]
     );
   };
 
   const selectAllFiltered = () => {
-    setSelectedTables((prev) => {
-      const set = new Set(prev);
-      filteredSourceTables.forEach((t) => set.add(t));
-      return Array.from(set);
-    });
+    const set = new Set(selectedTables);
+    filteredSourceTables.forEach((t) => set.add(t));
+    setSelectedTables(Array.from(set));
   };
 
   const deselectAll = () => setSelectedTables([]);
 
+  const rescanTables = () => {
+    queryClient.invalidateQueries({ queryKey: ['compare-tables-source'] });
+    queryClient.invalidateQueries({ queryKey: ['compare-tables-target'] });
+  };
+
   const isRunning = status === 'running' || status === 'paused';
   const canStart = !!sourceConnId && !!targetConnId && selectedTables.length > 0 && !isRunning;
 
-  if (connectedConns.length === 0) {
+  const sourceReconnecting = reconnectStatus === 'connecting' && !!sourceConnId && !connectedConnectionIds.includes(sourceConnId);
+  const targetReconnecting = reconnectStatus === 'connecting' && !!targetConnId && !connectedConnectionIds.includes(targetConnId);
+
+  if (connectedConns.length === 0 && !reconnecting) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-6">
         <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center">
@@ -330,10 +344,14 @@ export function ComparePage() {
 
   return (
     <div className="h-full flex flex-col gap-3 overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-3 shrink-0">
         <GitCompare className="w-5 h-5 text-primary" />
         <h1 className="text-lg font-semibold">Database Compare</h1>
+        {reconnecting && (
+          <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Reconectando...
+          </div>
+        )}
         {isRunning && (
           <div className="ml-auto flex items-center gap-2">
             {status === 'running' && (
@@ -362,7 +380,6 @@ export function ComparePage() {
         )}
       </div>
 
-      {/* Progress bar */}
       {isRunning && progress && (
         <div className="shrink-0 border border-border rounded-lg px-4 py-2 bg-muted/20">
           <div className="flex items-center justify-between text-xs mb-1.5">
@@ -395,16 +412,27 @@ export function ComparePage() {
         </div>
       )}
 
-      {/* Connection selectors */}
+      {(sourceReconnecting || targetReconnecting) && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-xs text-blue-700 dark:text-blue-400 shrink-0">
+          <Wifi className="w-4 h-4 animate-pulse" />
+          <span>
+            Reconectando {sourceReconnecting ? 'source' : 'target'}...
+          </span>
+        </div>
+      )}
+
+      {reconnectError && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs text-amber-700 dark:text-amber-400 shrink-0">
+          <WifiOff className="w-4 h-4" />
+          <span>{reconnectError}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 shrink-0">
         <ConnectionSide
           label="Source"
           connId={sourceConnId}
-          onConnChange={(id) => {
-            setSourceConnId(id);
-            setSourceDatabase('');
-            setSourceSchema('');
-          }}
+          onConnChange={setSourceConnId}
           connections={connectedConns}
           conn={sourceConn}
           database={sourceDatabase}
@@ -420,11 +448,7 @@ export function ComparePage() {
         <ConnectionSide
           label="Target"
           connId={targetConnId}
-          onConnChange={(id) => {
-            setTargetConnId(id);
-            setTargetDatabase('');
-            setTargetSchema('');
-          }}
+          onConnChange={setTargetConnId}
           connections={connectedConns}
           conn={targetConn}
           database={targetDatabase}
@@ -439,7 +463,6 @@ export function ComparePage() {
         />
       </div>
 
-      {/* Table selection */}
       {tablesReady && (
         <div className="border border-border rounded-lg shrink-0 max-h-48 flex flex-col overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20">
@@ -471,6 +494,14 @@ export function ComparePage() {
                 className="flex items-center gap-1 px-2 py-1 text-xs hover:bg-muted rounded disabled:opacity-50"
               >
                 <SquareIcon className="w-3.5 h-3.5" /> Ninguna
+              </button>
+              <button
+                onClick={rescanTables}
+                disabled={isRunning || loadingSourceTables || loadingTargetTables}
+                className="flex items-center gap-1 px-2 py-1 text-xs hover:bg-muted rounded disabled:opacity-50"
+                title="Reescanear tablas"
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', (loadingSourceTables || loadingTargetTables) && 'animate-spin')} />
               </button>
             </div>
           </div>
@@ -519,7 +550,6 @@ export function ComparePage() {
         </div>
       )}
 
-      {/* Missing tables warning */}
       {missingOnTarget.length > 0 && (
         <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs text-amber-700 dark:text-amber-400 shrink-0">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -537,7 +567,6 @@ export function ComparePage() {
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex items-center gap-2 shrink-0 flex-wrap">
         <button
           onClick={handleCompareSchema}
@@ -575,6 +604,16 @@ export function ComparePage() {
           )}
           Generate Script
         </button>
+        {(schemaReport || dataReport || syncScript || selectedTables.length > 0) && (
+          <button
+            onClick={clear}
+            disabled={isRunning}
+            className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg hover:bg-muted hover:text-destructive disabled:opacity-50 transition-colors text-sm font-medium"
+            title="Limpiar comparaci&oacute;n actual"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
         {error && (
           <div className="flex items-center gap-1.5 text-xs text-destructive ml-auto max-w-md truncate">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -588,7 +627,6 @@ export function ComparePage() {
         )}
       </div>
 
-      {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-border shrink-0">
         {(['schema', 'data', 'script'] as CompareTab[]).map((tab) => (
           <button
@@ -617,7 +655,6 @@ export function ComparePage() {
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto min-h-0">
         {loading && !progress && (
           <div className="flex items-center justify-center h-32">
@@ -640,8 +677,11 @@ export function ComparePage() {
             onToggleStatement={toggleStatement}
             onToggleAll={toggleAllStatements}
             onOptionsChange={setScriptOptions}
+            onToggleStatementPreserve={toggleStatementPreserve}
             sourceName={schemaReport?.source_name}
             targetName={schemaReport?.target_name}
+            targetDatabase={targetDatabase || targetConn?.database}
+            targetType={targetConn?.type}
           />
         )}
 
@@ -673,7 +713,6 @@ export function ComparePage() {
         )}
       </div>
 
-      {/* Fullscreen modal */}
       <FullscreenModal
         open={fullscreenTab !== null}
         title={fullscreenTab === 'schema' ? 'Schema Diff — Fullscreen' : 'Data Diff — Fullscreen'}

@@ -1,9 +1,10 @@
-import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Clock } from 'lucide-react'
+import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Clock, Minimize2, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment, SshAuthType } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
 import { useState, useEffect } from 'react'
 import { connectionService } from '@/services/connection.service'
+import { useDraggablePanel } from '@/hooks/useDraggablePanel'
 import { UnlockPrompt } from '@/components/security/UnlockPrompt'
 
 interface ConnectionModalProps {
@@ -52,6 +53,8 @@ export function ConnectionModal({
   const [pendingReveal, setPendingReveal] = useState<'password' | 'ssh_password' | 'ssh_passphrase' | null>(null)
   const [showSshPassword, setShowSshPassword] = useState(false)
   const [showSshPassphrase, setShowSshPassphrase] = useState(false)
+  const [isMinimized, setIsMinimized] = useState(false)
+  const { pos, handleMouseDown } = useDraggablePanel(320, 60)
 
   useEffect(() => {
     if (!isOpen) return;
@@ -171,33 +174,72 @@ export function ConnectionModal({
     }))
   }
 
+  if (isMinimized) {
+    return (
+      <div className="fixed z-[210]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+        <div className="bg-muted border border-border rounded-lg shadow-2xl p-3 flex items-center gap-3 min-w-[220px]" data-drag-handle>
+          <Database className="w-4 h-4 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-foreground truncate">
+              {editingConnection ? 'Edit Connection' : 'New Connection'}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate">{form.name || 'Unnamed'}</p>
+          </div>
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="p-1 hover:bg-background rounded shrink-0"
+            title="Expand"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-background rounded shrink-0"
+            title="Close"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-secondary/95 border border-border shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] rounded-none overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed z-50 w-[560px]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+      <div className="bg-muted border border-border shadow-2xl rounded-xl overflow-hidden flex flex-col max-h-[80vh]">
         
         {/* Header */}
-        <div className="p-6 border-b border-border flex items-center justify-between bg-background/50">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <Database className="w-5 h-5 text-primary" />
+        <div className="p-4 border-b border-border flex items-center justify-between bg-background cursor-grab active:cursor-grabbing" data-drag-handle>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Database className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight text-foreground uppercase">
+              <h2 className="text-sm font-bold tracking-tight text-foreground uppercase">
                 {editingConnection ? 'Edit Connection' : 'New Connection'}
               </h2>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Database Configuration</p>
+              <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Database Configuration</p>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="p-1.5 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+              title="Minimize"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Switcher */}
-        <div className="px-6 py-4 bg-muted/30 border-b border-border">
+        <div className="px-4 py-3 bg-background border-b border-border">
           <div className="flex gap-2">
             {[
               { id: 'general', label: 'General', icon: Cpu },
@@ -441,7 +483,7 @@ export function ConnectionModal({
                     MongoDB Advanced
                   </h4>
 
-                  <div className="flex items-center justify-between p-3 bg-background/50 border border-border">
+                  <div className="flex items-center justify-between p-3 bg-background border border-border">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-primary/5 border border-primary/10 flex items-center justify-center text-primary">
                         <Lock className="w-4 h-4" />
@@ -479,7 +521,7 @@ export function ConnectionModal({
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Auth Source</label>
                         <input 
-                          className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                          className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                           value={form.authSource}
                           onChange={(e) => setForm({ ...form, authSource: e.target.value })}
                         />
@@ -487,13 +529,13 @@ export function ConnectionModal({
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Replica Set</label>
                         <input 
-                          className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                          className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                           value={form.replicaSet}
                           onChange={(e) => setForm({ ...form, replicaSet: e.target.value })}
                         />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-background/50 border border-border">
+                    <div className="flex items-center justify-between p-3 bg-background border border-border">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-primary/5 border border-primary/10 flex items-center justify-center text-primary">
                           <Globe className="w-4 h-4" />
@@ -533,7 +575,7 @@ export function ConnectionModal({
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                       value={form.maxPoolSize ?? 5}
                       onChange={(e) => setForm({ ...form, maxPoolSize: parseInt(e.target.value) || 0 })}
                     />
@@ -543,7 +585,7 @@ export function ConnectionModal({
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                       value={form.acquireTimeout ?? 5}
                       onChange={(e) => setForm({ ...form, acquireTimeout: parseInt(e.target.value) || 0 })}
                     />
@@ -562,7 +604,7 @@ export function ConnectionModal({
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                       value={form.idleTimeout ?? 600}
                       onChange={(e) => setForm({ ...form, idleTimeout: parseInt(e.target.value) || 0 })}
                     />
@@ -572,7 +614,7 @@ export function ConnectionModal({
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                       value={form.maxLifetime ?? 28800}
                       onChange={(e) => setForm({ ...form, maxLifetime: parseInt(e.target.value) || 0 })}
                     />
@@ -584,7 +626,7 @@ export function ConnectionModal({
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                       value={form.keepAlive ?? 0}
                       onChange={(e) => setForm({ ...form, keepAlive: parseInt(e.target.value) || 0 })}
                     />
@@ -594,7 +636,7 @@ export function ConnectionModal({
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background/50 border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
                       value={form.metadataCacheTtl ?? 300}
                       onChange={(e) => setForm({ ...form, metadataCacheTtl: parseInt(e.target.value) || 0 })}
                     />
@@ -745,7 +787,7 @@ export function ConnectionModal({
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-muted/30 border-t border-border flex items-center justify-between gap-4">
+        <div className="p-4 bg-background border-t border-border flex items-center justify-between gap-4">
           <button 
             onClick={() => {
               const payload = { ...form };

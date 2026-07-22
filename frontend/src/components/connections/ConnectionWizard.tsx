@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ChevronRight, ChevronLeft, Check, Plug, Loader2, AlertCircle } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Check, Plug, Loader2, AlertCircle, Minimize2, Maximize2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment, type CreateConnectionDto } from '@/types/database'
 import { connectionService } from '@/services/connection.service'
+import { useDraggablePanel } from '@/hooks/useDraggablePanel'
 
 const ENGINES = [
   { id: 'mysql', name: 'MySQL', icon: '🐬', color: 'text-blue-500', dbType: DatabaseType.MARIADB },
@@ -32,6 +33,8 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
   const [testError, setTestError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [isMinimized, setIsMinimized] = useState(false)
+  const { pos, handleMouseDown } = useDraggablePanel(320, 80)
 
   const defaultPorts: Record<string, string> = {
     mysql: '3306',
@@ -101,14 +104,44 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-card border border-border rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Plug className="w-5 h-5 text-primary" />
-            <h2 className="text-base font-bold text-foreground">New Connection</h2>
+  if (isMinimized) {
+    return (
+      <div className="fixed z-[210]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+        <div className="bg-muted border border-border rounded-lg shadow-2xl p-3 flex items-center gap-3 min-w-[200px]" data-drag-handle>
+          <Plug className="w-4 h-4 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-foreground truncate">New Connection</p>
+            <p className="text-[10px] text-muted-foreground truncate">{name || 'Quick Setup'}</p>
           </div>
+          <button onClick={() => setIsMinimized(false)} className="p-1 hover:bg-background rounded shrink-0" title="Expand">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={onClose} className="p-1 hover:bg-background rounded shrink-0" title="Close">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed z-[200] w-[480px]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+      <div className="bg-muted border border-border rounded-xl shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between cursor-grab active:cursor-grabbing" data-drag-handle>
+          <div className="flex items-center gap-2">
+            <Plug className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-bold text-foreground">New Connection</h2>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => setIsMinimized(true)} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-all" title="Minimize">
+              <Minimize2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onClose} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-all">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="p-4">
 
           {/* Step indicator */}
           <div className="flex gap-1 mb-5">

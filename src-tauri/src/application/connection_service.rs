@@ -372,6 +372,16 @@ impl ConnectionService {
         }
         config.database = Some(new_db.to_string());
 
+        // For SSH connections, reuse the existing tunnel's local port
+        if config.ssh_tunnel.is_some() {
+            let conns = state.connections.read().await;
+            if let Some(session) = conns.get(id) {
+                if let Some(ref tunnel) = session.ssh_tunnel {
+                    config.port = tunnel.local_port;
+                }
+            }
+        }
+
         let url = ConnectionStringBuilder::build(&config)?;
         let pool_config: Option<PoolConfig> = (&config).into();
         let driver = DriverFactory::create(config.db_type, &url, false, pool_config).await?;
@@ -379,10 +389,25 @@ impl ConnectionService {
         let max_ttl = config.max_lifetime.map(|s| Duration::from_secs(s as u64));
         let metadata_cache_ttl = Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
 
-        // Replace existing driver in state
-        state
-            .add_connection(id.to_string(), driver, None, false, config.read_only.unwrap_or(false), max_ttl, metadata_cache_ttl)
-            .await;
+        // Swap driver while preserving the existing SSH tunnel (dropping it would kill the tunnel)
+        let old_driver = {
+            let mut conns = state.connections.write().await;
+            if let Some(mut session) = conns.remove(id) {
+                let ssh_tunnel = session.ssh_tunnel.take();
+                conns.insert(
+                    id.to_string(),
+                    crate::application::session_service::ConnectionSession::new(
+                        driver, ssh_tunnel, false, config.read_only.unwrap_or(false), max_ttl, metadata_cache_ttl,
+                    ),
+                );
+                Some(session.driver)
+            } else {
+                None
+            }
+        };
+        if let Some(d) = old_driver {
+            let _ = d.close().await;
+        }
 
         Ok(())
     }

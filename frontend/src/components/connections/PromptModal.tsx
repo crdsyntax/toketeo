@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, Minimize2, Maximize2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useDraggablePanel } from '@/hooks/useDraggablePanel'
 
 interface PromptModalProps {
   title: string
@@ -26,11 +27,15 @@ export function PromptModal({
   onClose,
 }: PromptModalProps) {
   const [value, setValue] = useState('')
+  const [isMinimized, setIsMinimized] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { pos, handleMouseDown } = useDraggablePanel(320, 160)
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    if (!isMinimized) {
+      inputRef.current?.focus()
+    }
+  }, [isMinimized])
 
   const handleConfirm = () => {
     if (requireInput && !value.trim()) return
@@ -42,22 +47,67 @@ export function PromptModal({
     if (e.key === 'Escape') onClose()
   }
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
-      <div className="w-full max-w-sm bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/60">
-          <h2 className="text-sm font-bold text-foreground">{title}</h2>
+  if (isMinimized) {
+    return (
+      <div className="fixed z-[210]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+        <div className="bg-muted border border-border rounded-lg shadow-2xl p-3 flex items-center gap-3 min-w-[200px]" data-drag-handle>
+          {destructive ? (
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-primary shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-foreground truncate">{title}</p>
+          </div>
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="p-1 hover:bg-background rounded shrink-0"
+            title="Expand"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+            className="p-1 hover:bg-background rounded shrink-0"
+            title="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      </div>
+    )
+  }
 
-        <div className="px-5 py-4 space-y-3">
+  return (
+    <div
+      className="fixed z-[100] w-[360px]"
+      style={{ left: pos.x, top: pos.y }}
+      onKeyDown={handleKeyDown}
+      onMouseDown={handleMouseDown}
+    >
+      <div className="bg-muted border border-border rounded-xl shadow-2xl shadow-black/50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border cursor-grab active:cursor-grabbing" data-drag-handle>
+          <h2 className="text-xs font-bold text-foreground">{title}</h2>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-all"
+              title="Minimize"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-all"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-4 py-3 space-y-3">
           {message && (
-            <p className="text-xs text-muted-foreground">{message}</p>
+            <p className="text-[11px] text-muted-foreground">{message}</p>
           )}
           <input
             ref={inputRef}
@@ -66,18 +116,18 @@ export function PromptModal({
             onChange={(e) => setValue(e.target.value)}
             placeholder={inputPlaceholder}
             className={cn(
-              "w-full px-3 py-2 text-sm bg-slate-800 border rounded-lg",
+              "w-full px-3 py-1.5 text-xs bg-background border rounded-lg",
               "text-foreground placeholder-muted-foreground/50",
               "focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50",
-              "border-slate-700/60"
+              "border-border"
             )}
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-700/60">
+        <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-all"
+            className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground rounded-lg hover:bg-background transition-all"
           >
             {cancelLabel}
           </button>
@@ -85,7 +135,7 @@ export function PromptModal({
             onClick={handleConfirm}
             disabled={requireInput && !value.trim()}
             className={cn(
-              "px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all",
+              "px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all",
               destructive
                 ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 : "bg-primary text-primary-foreground hover:bg-primary/90",

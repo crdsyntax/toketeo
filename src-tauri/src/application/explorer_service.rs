@@ -852,37 +852,45 @@ impl ExplorerService {
             let tbl_quoted = format!("{}{}{}", q_open, table.replace(q_close, q_esc), q_close);
             let full_name = format!("{}.{}", schema_quoted, tbl_quoted);
 
-            match driver.fetch_ddl(&table, "table", Some(schema.to_string())).await {
-                Ok(ddl) => output.push_str(&format!("--\n-- DDL for table {}\n--\n\n{}\n\n", full_name, ddl)),
-                Err(e) => output.push_str(&format!("-- Error getting DDL for {}: {}\n\n", full_name, e)),
-            }
+            let ddl_ok = match driver.fetch_ddl(&table, "table", Some(schema.to_string())).await {
+                Ok(ddl) => {
+                    output.push_str(&format!("--\n-- DDL for table {}\n--\n\n{}\n\n", full_name, ddl));
+                    true
+                }
+                Err(e) => {
+                    output.push_str(&format!("-- Error getting DDL for {}: {} — skipping data\n\n", full_name, e));
+                    false
+                }
+            };
 
-            let query = format!("SELECT * FROM {}", full_name);
-            match driver.execute(&query).await {
-                Ok(result) => if !result.rows.is_empty() {
-                    let columns: Vec<String> = result.columns.iter().map(|c| {
-                        format!("{}{}{}", q_open, c.replace(q_close, q_esc), q_close)
-                    }).collect();
-                    let col_list = columns.join(", ");
-                    output.push_str(&format!("--\n-- Data for table {}\n--\n\n", full_name));
-                    for row in &result.rows {
-                        if let Some(obj) = row.as_object() {
-                            let values: Vec<String> = result.columns.iter().map(|col| {
-                                let v = obj.get(col).unwrap_or(&serde_json::Value::Null);
-                                match v {
-                                    serde_json::Value::Null => "NULL".to_string(),
-                                    serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-                                    serde_json::Value::Number(n) => n.to_string(),
-                                    serde_json::Value::Bool(b) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
-                                    other => format!("'{}'", other.to_string().replace('\'', "''")),
-                                }
-                            }).collect();
-                            output.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_name, col_list, values.join(", ")));
+            if ddl_ok {
+                let query = format!("SELECT * FROM {}", full_name);
+                match driver.execute(&query).await {
+                    Ok(result) => if !result.rows.is_empty() {
+                        let columns: Vec<String> = result.columns.iter().map(|c| {
+                            format!("{}{}{}", q_open, c.replace(q_close, q_esc), q_close)
+                        }).collect();
+                        let col_list = columns.join(", ");
+                        output.push_str(&format!("--\n-- Data for table {}\n--\n\n", full_name));
+                        for row in &result.rows {
+                            if let Some(obj) = row.as_object() {
+                                let values: Vec<String> = result.columns.iter().map(|col| {
+                                    let v = obj.get(col).unwrap_or(&serde_json::Value::Null);
+                                    match v {
+                                        serde_json::Value::Null => "NULL".to_string(),
+                                        serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+                                        serde_json::Value::Number(n) => n.to_string(),
+                                        serde_json::Value::Bool(b) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
+                                        other => format!("'{}'", other.to_string().replace('\'', "''")),
+                                    }
+                                }).collect();
+                                output.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_name, col_list, values.join(", ")));
+                            }
                         }
-                    }
-                    output.push('\n');
-                },
-                Err(e) => output.push_str(&format!("-- Error getting data for {}: {}\n\n", full_name, e)),
+                        output.push('\n');
+                    },
+                    Err(e) => output.push_str(&format!("-- Error getting data for {}: {}\n\n", full_name, e)),
+                }
             }
         }
 
@@ -1138,9 +1146,10 @@ impl ExplorerService {
     }
 
     /// Restore only the selected tables from a dump file.
-    /// Re-reads the file, splits by semicolons, and executes statements
-    /// that reference any of the selected table names.
-    /// Uses execute_with_schema for PostgreSQL to ensure search_path is set on each connection.
+    /// Splits the file into top-level SQL statements with dollar-quote awareness
+    /// (handles PostgreSQL $function$ / $body$ blocks), then executes only
+    /// statements that reference any of the selected table names.
+    /// Uses execute_with_schema for PostgreSQL to ensure search_path is set.
     pub async fn restore_database_selected(
         state: &AppState,
         id: &str,
@@ -1156,49 +1165,16 @@ impl ExplorerService {
         let driver = state.get_connection(id).await?;
         let is_postgres = matches!(driver.db_type(), crate::db::DbType::Postgres);
 
-        let mut current_query = String::new();
+        let statements = split_sql_statements(&content);
         let mut errors = Vec::new();
 
-        for line in content.lines() {
-            let trimmed = line.trim();
+        for stmt in &statements {
+            let trimmed = stmt.trim();
             if trimmed.is_empty() || trimmed.starts_with("--") || trimmed.starts_with("/*") {
-                current_query.clear();
                 continue;
             }
 
-            current_query.push_str(line);
-            current_query.push('\n');
-
-            if trimmed.ends_with(';') || trimmed.ends_with('\\') {
-                let upper_stmt = current_query.to_uppercase();
-                let should_execute = tables.is_empty()
-                    || tables.iter().any(|t| {
-                        let tu = t.to_uppercase();
-                        upper_stmt.contains(&format!(" {}", tu))
-                            || upper_stmt.contains(&format!(" \"{}\" ", tu))
-                            || upper_stmt.contains(&format!("`{}`", tu))
-                            || upper_stmt.contains(&format!(" {}(", tu))
-                            || upper_stmt.contains(&format!(" {}\n", tu))
-                            || upper_stmt.contains(&format!(" {};", tu))
-                            || upper_stmt.contains(&format!(" {},", tu))
-                    });
-
-                if should_execute {
-                    let exec_result = if is_postgres {
-                        driver.execute_with_schema(&current_query, schema).await
-                    } else {
-                        driver.execute(&current_query).await
-                    };
-                    if let Err(e) = exec_result {
-                        errors.push(format!("Error in statement near '{}': {}", &trimmed[..trimmed.len().min(80)], e));
-                    }
-                }
-                current_query.clear();
-            }
-        }
-
-        if !current_query.trim().is_empty() {
-            let upper_stmt = current_query.to_uppercase();
+            let upper_stmt = trimmed.to_uppercase();
             let should_execute = tables.is_empty()
                 || tables.iter().any(|t| {
                     let tu = t.to_uppercase();
@@ -1209,15 +1185,40 @@ impl ExplorerService {
                         || upper_stmt.contains(&format!(" {}\n", tu))
                         || upper_stmt.contains(&format!(" {};", tu))
                         || upper_stmt.contains(&format!(" {},", tu))
+                        // Schema-qualified: "schema"."table"
+                        || upper_stmt.contains(&format!(".\\\"{}\\\"", tu))
+                        // At start: TABLE ... or TABLE(...)
+                        || upper_stmt.starts_with(&format!("{} ", tu))
+                        || upper_stmt.starts_with(&format!("{}(", tu))
                 });
+
             if should_execute {
+                // Before CREATE TABLE for a selected table, drop the table first
+                // so INSERT data does not fail on duplicate keys.
+                if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
+                    if let Some(table_name) = extract_table_name_from_create(trimmed) {
+                        if tables.is_empty() || tables.iter().any(|t| t.eq_ignore_ascii_case(&table_name)) {
+                            let drop_sql = format!(
+                                "DROP TABLE IF EXISTS \"{}\".\"{}\" CASCADE",
+                                schema.replace('"', "\"\""),
+                                table_name.replace('"', "\"\"")
+                            );
+                            let _ = driver.execute_with_schema(&drop_sql, schema).await;
+                        }
+                    }
+                }
+
                 let exec_result = if is_postgres {
-                    driver.execute_with_schema(&current_query, schema).await
+                    driver.execute_with_schema(trimmed, schema).await
                 } else {
-                    driver.execute(&current_query).await
+                    driver.execute(trimmed).await
                 };
                 if let Err(e) = exec_result {
-                    errors.push(format!("Error in trailing statement: {}", e));
+                    errors.push(format!(
+                        "Error in statement near '{}': {}",
+                        &trimmed[..trimmed.len().min(80)],
+                        e
+                    ));
                 }
             }
         }
@@ -1232,4 +1233,160 @@ impl ExplorerService {
 
         Ok(())
     }
+}
+
+/// Splits SQL text into top-level statements by `;` while respecting:
+/// - PostgreSQL dollar-quoting ($tag$...$tag$)
+/// - Single-quoted string literals (''...'')
+/// - Single-line (--) and block (/* */) comments
+fn split_sql_statements(content: &str) -> Vec<String> {
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let chars: Vec<char> = content.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    // State tracking
+    let mut in_single_quote = false;
+    let mut in_dollar_tag: Option<String> = None;
+    let mut in_block_comment = false;
+
+    while i < len {
+        // Block comment: /* ... */
+        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment
+            && i + 1 < len && chars[i] == '/' && chars[i + 1] == '*'
+        {
+            in_block_comment = true;
+            i += 2;
+            continue;
+        }
+        if in_block_comment {
+            if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
+                in_block_comment = false;
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Single-line comment: -- ...
+        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment
+            && i + 1 < len && chars[i] == '-' && chars[i + 1] == '-'
+        {
+            // Skip to end of line
+            while i < len && chars[i] != '\n' {
+                i += 1;
+            }
+            if i < len { i += 1; } // skip the newline
+            continue;
+        }
+
+        // Dollar quote start: $tag$
+        if !in_single_quote && !in_block_comment && in_dollar_tag.is_none() && chars[i] == '$' {
+            if let Some(end) = find_dollar_tag_end(&chars, i, len) {
+                let tag: String = chars[i + 1..end].iter().collect();
+                in_dollar_tag = Some(tag);
+                current.push('$');
+                for &c in chars[i + 1..=end].iter() {
+                    current.push(c);
+                }
+                i = end + 2;
+                continue;
+            }
+        }
+        // Dollar quote end: $tag$
+        if !in_single_quote && !in_block_comment {
+            if let Some(ref tag) = in_dollar_tag {
+                if chars[i] == '$' {
+                    if let Some(end) = find_dollar_tag_end(&chars, i, len) {
+                        let end_tag: String = chars[i + 1..end].iter().collect();
+                        if &end_tag == tag {
+                            current.push('$');
+                            for &c in chars[i + 1..=end].iter() {
+                                current.push(c);
+                            }
+                            in_dollar_tag = None;
+                            i = end + 2;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Single quote toggle (skip doubled quotes inside strings)
+        if in_dollar_tag.is_none() && chars[i] == '\'' {
+            in_single_quote = !in_single_quote;
+            current.push(chars[i]);
+            i += 1;
+            // Handle doubled quotes inside string: ''
+            if in_single_quote && i < len && chars[i] == '\'' {
+                current.push(chars[i]);
+                i += 1;
+            }
+            continue;
+        }
+
+        // Statement separator at top level
+        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment && chars[i] == ';' {
+            let stmt = current.trim().to_string();
+            if !stmt.is_empty() {
+                statements.push(stmt);
+            }
+            current.clear();
+            i += 1;
+            continue;
+        }
+
+        current.push(chars[i]);
+        i += 1;
+    }
+
+    // Final trailing statement
+    let remaining = current.trim().to_string();
+    if !remaining.is_empty() {
+        statements.push(remaining);
+    }
+
+    statements
+}
+
+/// Find the closing `$` of a dollar tag starting at position `start` (where chars[start] == '$').
+/// Returns the index of the closing `$` if found, or None.
+fn find_dollar_tag_end(chars: &[char], start: usize, len: usize) -> Option<usize> {
+    let mut j = start + 1;
+    while j < len && chars[j] != '$' {
+        j += 1;
+    }
+    if j < len && j > start { Some(j - 1) } else { None }
+}
+
+/// Extracts the unquoted table name from a CREATE TABLE statement.
+/// Handles: `CREATE TABLE "schema"."table"`, `CREATE TABLE "table"`,
+/// `CREATE TABLE IF NOT EXISTS "schema"."table"`, and unquoted variants.
+fn extract_table_name_from_create(stmt: &str) -> Option<String> {
+    let upper = stmt.to_uppercase();
+    let after = if upper.starts_with("CREATE TABLE IF NOT EXISTS") {
+        stmt[25..].trim()
+    } else if upper.starts_with("CREATE TABLE") {
+        stmt[12..].trim()
+    } else {
+        return None;
+    };
+
+    let name_part = if after.starts_with('"') {
+        let after_first = after.splitn(2, '.').nth(1).unwrap_or(after);
+        after_first.trim().trim_start_matches('"')
+    } else {
+        after.splitn(2, '.').nth(1).unwrap_or(after)
+    };
+
+    let name = name_part
+        .trim_start()
+        .trim_end_matches('"')
+        .split(|c: char| c == ' ' || c == '(' || c == '\n' || c == '\r')
+        .next()?;
+
+    if name.is_empty() { None } else { Some(name.to_string()) }
 }

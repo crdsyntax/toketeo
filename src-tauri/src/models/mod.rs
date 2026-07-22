@@ -258,6 +258,12 @@ pub struct DumpSelection {
     pub functions: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct CreateSchemaPrivilege {
+    pub grantee: String,
+    pub privileges: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Character {
     pub id: String,

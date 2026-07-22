@@ -1,5 +1,9 @@
 use crate::models::compare::{CompareStatus, SchemaReport, ScriptOptions, ScriptStatement};
 
+fn backup_table_name(table: &str) -> String {
+    format!("{}_bak", table)
+}
+
 pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptStatement> {
     let mut stmts = Vec::new();
     let mut stmt_id = 0u32;
@@ -11,7 +15,7 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
 
     for obj in &report.tables {
         match obj.status {
-            CompareStatus::New => {
+            CompareStatus::Missing => {
                 if options.include_creates {
                     stmts.push(ScriptStatement {
                         id: next_id(),
@@ -21,32 +25,70 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         object_name: obj.name.clone(),
                         object_type: "table".into(),
                         selected: true,
+                        preserve_data: false,
+                        backup_sql: None,
                     });
                 }
             }
-            CompareStatus::Missing => {
-                if options.include_drops {
+            CompareStatus::New => {
+                if options.drop_target_extras && options.include_drops {
+                    let backup_name = backup_table_name(&obj.name);
+                    let (sql, backup_sql) = if options.data_preservation {
+                        (
+                            format!("CREATE TABLE \"{}\" AS SELECT * FROM \"{}\";\nDROP TABLE IF EXISTS \"{}\";", backup_name, obj.name, obj.name),
+                            Some(format!("-- Backup of \"{}\" stored as \"{}\"", obj.name, backup_name)),
+                        )
+                    } else {
+                        (format!("DROP TABLE IF EXISTS \"{}\";", obj.name), None)
+                    };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("DROP TABLE IF EXISTS \"{}\";", obj.name),
-                        description: format!("Drop table {}", obj.name),
+                        sql,
+                        description: format!("Drop table {}{}", obj.name, if options.data_preservation { " (with backup)" } else { "" }),
                         diff_type: "drop".into(),
                         object_name: obj.name.clone(),
                         object_type: "table".into(),
                         selected: true,
+                        preserve_data: options.data_preservation,
+                        backup_sql,
                     });
                 }
             }
             CompareStatus::Modified => {
                 if options.include_alters {
+                    let (sql, backup_sql) = if options.data_preservation {
+                        (
+                            format!(
+                                "BEGIN TRANSACTION;\n\
+                                 CREATE TABLE \"{}_new\" (... -- TODO: updated schema from source ...);\n\
+                                 INSERT INTO \"{}_new\" SELECT * FROM \"{}\";\n\
+                                 DROP TABLE \"{}\";\n\
+                                 ALTER TABLE \"{}_new\" RENAME TO \"{}\";\n\
+                                 COMMIT;",
+                                obj.name, obj.name, obj.name, obj.name, obj.name, obj.name
+                            ),
+                            Some(format!("-- Transaction-based recreation of \"{}\" preserves all data", obj.name)),
+                        )
+                    } else {
+                        (
+                            format!(
+                                "-- SQLite: recreate table \"{}\" (ALTER TABLE limited)\n\
+                                 -- TODO: Generate full table recreation",
+                                obj.name
+                            ),
+                            None,
+                        )
+                    };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("-- SQLite: recreate table \"{}\" (ALTER TABLE limited)\n-- TODO: Generate full table recreation", obj.name),
-                        description: format!("Recreate table {} for SQLite", obj.name),
+                        sql,
+                        description: format!("Recreate table {} for SQLite{}", obj.name, if options.data_preservation { " (transaction-safe)" } else { "" }),
                         diff_type: "recreate_table".into(),
                         object_name: obj.name.clone(),
                         object_type: "table".into(),
                         selected: true,
+                        preserve_data: options.data_preservation,
+                        backup_sql,
                     });
                 }
             }
@@ -62,9 +104,8 @@ mod tests {
     use super::*;
     use crate::models::compare::*;
 
-    #[test]
-    fn sqlite_modified_recreate() {
-        let mut report = SchemaReport {
+    fn empty_report() -> SchemaReport {
+        SchemaReport {
             source_name: "s".into(),
             target_name: "t".into(),
             compared_at: "now".into(),
@@ -78,14 +119,76 @@ mod tests {
             constraints: vec![],
             warnings: vec![],
             errors: vec![],
-        };
+        }
+    }
+
+    #[test]
+    fn sqlite_modified_recreate() {
+        let mut report = empty_report();
         report.tables.push(ObjectDiff {
             name: "users".into(),
             status: CompareStatus::Modified,
             details: None,
         });
-        let opts = ScriptOptions::default();
+        let opts = ScriptOptions { data_preservation: false, ..Default::default() };
         let stmts = generate(&report, &opts);
         assert!(stmts.iter().any(|s| s.sql.contains("recreate")));
+        assert!(!stmts.iter().any(|s| s.preserve_data));
+    }
+
+    #[test]
+    fn sqlite_modified_with_preservation_uses_transaction() {
+        let mut report = empty_report();
+        report.tables.push(ObjectDiff {
+            name: "orders".into(),
+            status: CompareStatus::Modified,
+            details: None,
+        });
+        let opts = ScriptOptions { data_preservation: true, ..Default::default() };
+        let stmts = generate(&report, &opts);
+        assert!(stmts.iter().any(|s| s.preserve_data));
+        assert!(stmts.iter().any(|s| s.sql.contains("BEGIN TRANSACTION")));
+        assert!(stmts.iter().any(|s| s.sql.contains("COMMIT")));
+        assert!(stmts.iter().any(|s| s.sql.contains("INSERT INTO")));
+    }
+
+    #[test]
+    fn sqlite_new_table_no_drop_by_default() {
+        let mut report = empty_report();
+        report.tables.push(ObjectDiff {
+            name: "extra".into(),
+            status: CompareStatus::New,
+            details: None,
+        });
+        let opts = ScriptOptions::default();
+        let stmts = generate(&report, &opts);
+        assert!(!stmts.iter().any(|s| s.sql.contains("DROP TABLE")));
+    }
+
+    #[test]
+    fn sqlite_new_table_drops_with_flag() {
+        let mut report = empty_report();
+        report.tables.push(ObjectDiff {
+            name: "extra".into(),
+            status: CompareStatus::New,
+            details: None,
+        });
+        let opts = ScriptOptions { drop_target_extras: true, data_preservation: true, ..Default::default() };
+        let stmts = generate(&report, &opts);
+        assert!(stmts.iter().any(|s| s.preserve_data));
+        assert!(stmts.iter().any(|s| s.sql.contains("AS SELECT * FROM")));
+    }
+
+    #[test]
+    fn sqlite_missing_table_creates() {
+        let mut report = empty_report();
+        report.tables.push(ObjectDiff {
+            name: "logs".into(),
+            status: CompareStatus::Missing,
+            details: None,
+        });
+        let opts = ScriptOptions::default();
+        let stmts = generate(&report, &opts);
+        assert!(stmts.iter().any(|s| s.sql.contains("CREATE TABLE") || s.sql.contains("TODO: CREATE TABLE")));
     }
 }

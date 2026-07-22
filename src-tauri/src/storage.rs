@@ -1,5 +1,6 @@
 use crate::db::DbType;
 use crate::error::AppResult;
+use crate::models::compare::CompareSession;
 use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, SyncMode, PipelineStatus, SyncTableConfig};
 use crate::models::{DbConnectionConfig, SshConfig, ScheduledJob, JobType, JobExecutionLog};
 use chrono::{DateTime, Utc};
@@ -235,6 +236,28 @@ impl Storage {
             "CREATE TABLE IF NOT EXISTS app_secrets (
                 key TEXT PRIMARY KEY,
                 value BLOB NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS compare_sessions (
+                id TEXT PRIMARY KEY,
+                source_conn_id TEXT NOT NULL,
+                target_conn_id TEXT NOT NULL,
+                source_database TEXT,
+                target_database TEXT,
+                source_schema TEXT,
+                target_schema TEXT,
+                selected_tables TEXT,
+                schema_report TEXT,
+                data_report TEXT,
+                sync_script TEXT,
+                script_options TEXT,
+                active_tab TEXT DEFAULT 'schema',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )",
         )
         .execute(&pool)
@@ -1095,6 +1118,95 @@ impl Storage {
 
         Ok(())
     }
+
+    pub async fn save_compare_session(&self, session: &CompareSession) -> AppResult<CompareSession> {
+        let selected_tables_json = session.selected_tables.as_ref()
+            .map(|t| serde_json::to_string(t).unwrap_or_default());
+        let schema_report_json = session.schema_report.as_ref()
+            .map(|r| serde_json::to_string(r).unwrap_or_default());
+        let data_report_json = session.data_report.as_ref()
+            .map(|r| serde_json::to_string(r).unwrap_or_default());
+        let sync_script_json = session.sync_script.as_ref()
+            .map(|s| serde_json::to_string(s).unwrap_or_default());
+        let script_options_json = session.script_options.as_ref()
+            .map(|o| serde_json::to_string(o).unwrap_or_default());
+
+        sqlx::query(
+            "INSERT INTO compare_sessions (id, source_conn_id, target_conn_id, source_database, target_database, source_schema, target_schema, selected_tables, schema_report, data_report, sync_script, script_options, active_tab, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                source_conn_id = excluded.source_conn_id,
+                target_conn_id = excluded.target_conn_id,
+                source_database = excluded.source_database,
+                target_database = excluded.target_database,
+                source_schema = excluded.source_schema,
+                target_schema = excluded.target_schema,
+                selected_tables = excluded.selected_tables,
+                schema_report = excluded.schema_report,
+                data_report = excluded.data_report,
+                sync_script = excluded.sync_script,
+                script_options = excluded.script_options,
+                active_tab = excluded.active_tab,
+                updated_at = excluded.updated_at"
+        )
+        .bind(&session.id)
+        .bind(&session.source_conn_id)
+        .bind(&session.target_conn_id)
+        .bind(&session.source_database)
+        .bind(&session.target_database)
+        .bind(&session.source_schema)
+        .bind(&session.target_schema)
+        .bind(&selected_tables_json)
+        .bind(&schema_report_json)
+        .bind(&data_report_json)
+        .bind(&sync_script_json)
+        .bind(&script_options_json)
+        .bind(&session.active_tab)
+        .bind(&session.created_at)
+        .bind(&session.updated_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(session.clone())
+    }
+
+    pub async fn get_compare_session(&self, id: &str) -> AppResult<CompareSession> {
+        let row = sqlx::query("SELECT * FROM compare_sessions WHERE id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        row_to_compare_session(row)
+    }
+
+    pub async fn list_compare_sessions(&self) -> AppResult<Vec<CompareSession>> {
+        let rows = sqlx::query("SELECT * FROM compare_sessions ORDER BY updated_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            if let Ok(s) = row_to_compare_session(row) {
+                sessions.push(s);
+            }
+        }
+        Ok(sessions)
+    }
+
+    pub async fn delete_compare_session(&self, id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM compare_sessions WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_all_compare_sessions(&self) -> AppResult<()> {
+        sqlx::query("DELETE FROM compare_sessions")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline> {
@@ -1145,6 +1257,37 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
         batch_size: row.get::<i64, _>("batch_size") as usize,
         created_at: Some(row.get("created_at")),
         updated_at: Some(row.get("updated_at")),
+    })
+}
+
+fn row_to_compare_session(row: sqlx::sqlite::SqliteRow) -> AppResult<CompareSession> {
+    let selected_tables: Option<Vec<String>> = row.get::<Option<String>, _>("selected_tables")
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let schema_report = row.get::<Option<String>, _>("schema_report")
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let data_report = row.get::<Option<String>, _>("data_report")
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let sync_script = row.get::<Option<String>, _>("sync_script")
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let script_options = row.get::<Option<String>, _>("script_options")
+        .and_then(|s| serde_json::from_str(&s).ok());
+
+    Ok(CompareSession {
+        id: row.get("id"),
+        source_conn_id: row.get("source_conn_id"),
+        target_conn_id: row.get("target_conn_id"),
+        source_database: row.get("source_database"),
+        target_database: row.get("target_database"),
+        source_schema: row.get("source_schema"),
+        target_schema: row.get("target_schema"),
+        selected_tables,
+        schema_report,
+        data_report,
+        sync_script,
+        script_options,
+        active_tab: row.get("active_tab"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
     })
 }
 

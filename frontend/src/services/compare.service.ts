@@ -1,5 +1,5 @@
 import { tauriApi } from '@/lib/api';
-import type { SchemaReport, DataReport, SyncScript, ScriptOptions } from '@/types/compare';
+import type { SchemaReport, DataReport, SyncScript, ScriptOptions, CompareSession } from '@/types/compare';
 
 export const compareService = {
   compareSchemas: async (params: {
@@ -72,5 +72,21 @@ export const compareService = {
 
   cancel: async (id: string): Promise<void> => {
     await tauriApi.invoke<void>('cancel_compare', { id });
+  },
+
+  saveSession: async (session: CompareSession): Promise<CompareSession> => {
+    return await tauriApi.invoke<CompareSession>('save_compare_session', { session });
+  },
+
+  getSessions: async (): Promise<CompareSession[]> => {
+    return await tauriApi.invoke<CompareSession[]>('get_compare_sessions');
+  },
+
+  loadSession: async (id: string): Promise<CompareSession> => {
+    return await tauriApi.invoke<CompareSession>('load_compare_session', { id });
+  },
+
+  deleteSession: async (id: string): Promise<void> => {
+    await tauriApi.invoke<void>('delete_compare_session', { id });
   },
 };

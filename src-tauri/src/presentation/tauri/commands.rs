@@ -1663,6 +1663,118 @@ pub async fn drop_database(
 }
 
 #[tauri::command]
+pub async fn create_schema(
+    id: String,
+    schema: String,
+    owner: Option<String>,
+    comment: Option<String>,
+    privileges: Option<Vec<crate::models::CreateSchemaPrivilege>>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = get_or_connect_driver(&state, &id).await?;
+    let db_type = driver.db_type();
+
+    match db_type {
+        crate::db::DbType::Postgres => {
+            let quoted = quote_identifier(&db_type, &schema);
+            let create_sql = if let Some(ref owner) = owner {
+                let owner_quoted = quote_identifier(&db_type, owner);
+                format!("CREATE SCHEMA IF NOT EXISTS {} AUTHORIZATION {}", quoted, owner_quoted)
+            } else {
+                format!("CREATE SCHEMA IF NOT EXISTS {}", quoted)
+            };
+            driver.execute(&create_sql).await?;
+
+            if let Some(ref com) = comment {
+                let escaped = com.replace('\'', "''");
+                driver
+                    .execute(&format!("COMMENT ON SCHEMA {} IS '{}'", quoted, escaped))
+                    .await?;
+            }
+
+            if let Some(ref privs) = privileges {
+                for p in privs {
+                    let grantee_quoted = quote_identifier(&db_type, &p.grantee);
+                    if p.privileges.is_empty() {
+                        continue;
+                    }
+                    let priv_list = p.privileges.join(", ");
+                    driver
+                        .execute(&format!(
+                            "GRANT {} ON SCHEMA {} TO {}",
+                            priv_list, quoted, grantee_quoted
+                        ))
+                        .await?;
+                }
+            }
+        }
+        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+            let quoted = quote_identifier(&db_type, &schema);
+            driver
+                .execute(&format!("CREATE DATABASE IF NOT EXISTS {}", quoted))
+                .await?;
+        }
+        crate::db::DbType::Sqlserver => {
+            driver
+                .execute(&format!("CREATE SCHEMA [{}]", schema.replace(']', "]]")))
+                .await?;
+        }
+        crate::db::DbType::Sqlite => {
+            return Err(AppError::Validation(
+                "Creating schemas is not supported for SQLite".into(),
+            ));
+        }
+        _ => {
+            driver
+                .execute(&format!("CREATE DATABASE `{}`", schema.replace('`', "``")))
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn drop_schema(
+    id: String,
+    schema: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let driver = get_or_connect_driver(&state, &id).await?;
+    let db_type = driver.db_type();
+
+    match db_type {
+        crate::db::DbType::Postgres => {
+            let quoted = quote_identifier(&db_type, &schema);
+            driver
+                .execute(&format!("DROP SCHEMA IF EXISTS {} CASCADE", quoted))
+                .await?;
+        }
+        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+            let quoted = quote_identifier(&db_type, &schema);
+            driver
+                .execute(&format!("DROP DATABASE IF EXISTS {}", quoted))
+                .await?;
+        }
+        crate::db::DbType::Sqlserver => {
+            driver
+                .execute(&format!("DROP DATABASE IF EXISTS [{}]", schema.replace(']', "]]")))
+                .await?;
+        }
+        crate::db::DbType::Sqlite => {
+            return Err(AppError::Validation(
+                "Dropping schemas is not supported for SQLite".into(),
+            ));
+        }
+        _ => {
+            driver
+                .execute(&format!("DROP DATABASE `{}`", schema.replace('`', "``")))
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn create_collection(
     id: String,
     db_name: String,
@@ -1956,4 +2068,37 @@ pub async fn cancel_compare(id: String, state: State<'_, AppState>) -> AppResult
         .set_compare_control(&id, crate::state::SyncControl::Cancelled)
         .await;
     Ok(())
+}
+
+// ── Compare Session Persistence Commands ──
+
+#[tauri::command]
+pub async fn save_compare_session(
+    session: crate::models::compare::CompareSession,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::compare::CompareSession> {
+    state.storage.save_compare_session(&session).await
+}
+
+#[tauri::command]
+pub async fn get_compare_sessions(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::models::compare::CompareSession>> {
+    state.storage.list_compare_sessions().await
+}
+
+#[tauri::command]
+pub async fn load_compare_session(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::compare::CompareSession> {
+    state.storage.get_compare_session(&id).await
+}
+
+#[tauri::command]
+pub async fn delete_compare_session(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.delete_compare_session(&id).await
 }

@@ -260,15 +260,18 @@ export function useQueryEditor() {
         const targetConnection = activeConnection.id === targetConnectionId
           ? activeConnection
           : (connections.find(c => c.id === targetConnectionId) || activeConnection);
+        // Use the connection's database/schema, falling back to the active connection's
+        // selected schema (important for PostgreSQL where the schema is set in the sidebar).
+        const schema = targetConnection.database || activeConnection.database;
         
         let result;
         try {
-          result = await queryService.execute(targetConnection.id, sql, targetConnection.database, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
+          result = await queryService.execute(targetConnection.id, sql, schema, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
         } catch (err: unknown) {
           const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
           if (isConnNotFound) {
             await connectionService.connect(targetConnection);
-            result = await queryService.execute(targetConnection.id, sql, targetConnection.database, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
+            result = await queryService.execute(targetConnection.id, sql, schema, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
           } else {
             throw err;
           }
@@ -282,6 +285,7 @@ export function useQueryEditor() {
           results: result,
           error: null
         });
+        toast.success(`Query returned successfully in ${durationMs} ms`);
 
         // Handle MongoDB use <db> — update connection's active database
         if (isMongo) {
@@ -392,21 +396,23 @@ export function useQueryEditor() {
     if (!isMongo && !sqlSnippet.endsWith(';')) sqlSnippet += ';'
 
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
+    const startTime = Date.now();
     
     try {
       const targetConnectionId = activeTab.connectionId || activeConnection.id;
       const targetConnection = activeConnection.id === targetConnectionId
         ? activeConnection
         : (connections.find(c => c.id === targetConnectionId) || activeConnection);
+      const schema = targetConnection.database || activeConnection.database;
       
       let result;
       try {
-        result = await queryService.execute(targetConnection.id, sqlSnippet, targetConnection.database, undefined, page, queryLimit > 0 ? queryLimit : undefined);
+        result = await queryService.execute(targetConnection.id, sqlSnippet, schema, undefined, page, queryLimit > 0 ? queryLimit : undefined);
       } catch (err: unknown) {
         const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
         if (isConnNotFound) {
           await connectionService.connect(targetConnection);
-          result = await queryService.execute(targetConnection.id, sqlSnippet, targetConnection.database, undefined, page, queryLimit > 0 ? queryLimit : undefined);
+          result = await queryService.execute(targetConnection.id, sqlSnippet, schema, undefined, page, queryLimit > 0 ? queryLimit : undefined);
         } else {
           throw err;
         }
@@ -419,6 +425,8 @@ export function useQueryEditor() {
         results: result,
         error: null
       })
+      const durationMs = Date.now() - startTime;
+      toast.success(`Query returned successfully in ${durationMs} ms`);
 
       // Handle MongoDB use <db> — update connection's active database
       if (isMongo) {

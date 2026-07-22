@@ -101,6 +101,8 @@ export interface ScriptStatement {
   object_name: string;
   object_type: string;
   selected: boolean;
+  preserve_data: boolean;
+  backup_sql?: string;
 }
 
 export interface SyncScript {
@@ -117,6 +119,8 @@ export interface ScriptOptions {
   include_views: boolean;
   include_routines: boolean;
   wrap_in_transaction: boolean;
+  data_preservation: boolean;
+  drop_target_extras: boolean;
 }
 
 export interface CompareSection {
@@ -126,4 +130,22 @@ export interface CompareSection {
   diffs: (ObjectDiff | IndexDiff | FkDiff | ConstraintDiff)[];
   getStatus: (item: unknown) => CompareStatus;
   getName: (item: unknown) => string;
+}
+
+export interface CompareSession {
+  id: string;
+  source_conn_id: string;
+  target_conn_id: string;
+  source_database?: string;
+  target_database?: string;
+  source_schema?: string;
+  target_schema?: string;
+  selected_tables?: string[];
+  schema_report?: SchemaReport;
+  data_report?: DataReport;
+  sync_script?: SyncScript;
+  script_options?: ScriptOptions;
+  active_tab?: string;
+  created_at: string;
+  updated_at: string;
 }
