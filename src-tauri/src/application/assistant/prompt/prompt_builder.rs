@@ -147,6 +147,7 @@ impl PromptBuilder {
         let mut messages = vec![ChatMessage {
             role: "system".to_string(),
             content: system_prompt,
+            ..Default::default()
         }];
 
         let mut history_tokens = 0;
@@ -158,6 +159,7 @@ impl PromptBuilder {
         messages.push(ChatMessage {
             role: "user".to_string(),
             content: question.to_string(),
+            ..Default::default()
         });
 
         let total_tokens = system_tokens + history_tokens + Self::estimate_tokens(question);

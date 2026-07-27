@@ -222,6 +222,9 @@ pub struct AssistantMessage {
     pub sql: Option<String>,
     pub is_safe_delete: Option<bool>,
     pub feedback: Option<String>,
+    pub accepted_sql: Option<String>,
+    pub rejection_reason: Option<String>,
+    pub tool_used: Option<String>,
     pub timestamp: i64,
     pub connection_id: Option<String>,
 }

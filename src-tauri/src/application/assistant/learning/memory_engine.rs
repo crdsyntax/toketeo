@@ -14,6 +14,7 @@ impl MemoryEngine {
             .map(|m| ChatMessage {
                 role: m.role.clone(),
                 content: m.content.clone(),
+                ..Default::default()
             })
             .collect();
 

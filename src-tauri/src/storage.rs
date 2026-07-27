@@ -368,6 +368,31 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        // Assistant migrations
+        let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN accepted_sql TEXT")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN rejection_reason TEXT")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN tool_used TEXT")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE assistant_knowledge ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+            .execute(&pool)
+            .await;
+
+        // Phase 7: encrypt API keys at rest in `assistant_providers`.
+        // `api_key` keeps its nullable-TEXT for back-compat (legacy plaintext
+        // values are migrated on first save); new writes populate the two
+        // ciphertext columns and NULL-out `api_key`.
+        let _ = sqlx::query("ALTER TABLE assistant_providers ADD COLUMN api_key_enc TEXT")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE assistant_providers ADD COLUMN api_key_nonce TEXT")
+            .execute(&pool)
+            .await;
+
         Ok(Self { pool, master_key: RwLock::new(None) })
     }
 
@@ -1376,14 +1401,17 @@ impl Storage {
     pub async fn save_assistant_messages(&self, messages: &[crate::models::AssistantMessage]) -> AppResult<()> {
         for msg in messages {
             sqlx::query(
-                "INSERT INTO assistant_messages (id, role, content, sql, is_safe_delete, feedback, timestamp, connection_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO assistant_messages (id, role, content, sql, is_safe_delete, feedback, accepted_sql, rejection_reason, tool_used, timestamp, connection_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(id) DO UPDATE SET
                     role = excluded.role,
                     content = excluded.content,
                     sql = excluded.sql,
                     is_safe_delete = excluded.is_safe_delete,
                     feedback = excluded.feedback,
+                    accepted_sql = excluded.accepted_sql,
+                    rejection_reason = excluded.rejection_reason,
+                    tool_used = excluded.tool_used,
                     timestamp = excluded.timestamp,
                     connection_id = excluded.connection_id"
             )
@@ -1393,6 +1421,9 @@ impl Storage {
             .bind(&msg.sql)
             .bind(msg.is_safe_delete.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&msg.feedback)
+            .bind(&msg.accepted_sql)
+            .bind(&msg.rejection_reason)
+            .bind(&msg.tool_used)
             .bind(msg.timestamp)
             .bind(&msg.connection_id)
             .execute(&self.pool)
@@ -1403,7 +1434,7 @@ impl Storage {
 
     pub async fn load_assistant_messages(&self, connection_id: &str) -> AppResult<Vec<crate::models::AssistantMessage>> {
         let rows = sqlx::query(
-            "SELECT id, role, content, sql, is_safe_delete, feedback, timestamp, connection_id
+            "SELECT id, role, content, sql, is_safe_delete, feedback, accepted_sql, rejection_reason, tool_used, timestamp, connection_id
              FROM assistant_messages
              WHERE connection_id = ?
              ORDER BY timestamp ASC"
@@ -1421,6 +1452,9 @@ impl Storage {
                 sql: row.get("sql"),
                 is_safe_delete: row.get::<Option<i64>, _>("is_safe_delete").map(|v| v != 0),
                 feedback: row.get("feedback"),
+                accepted_sql: row.get("accepted_sql"),
+                rejection_reason: row.get("rejection_reason"),
+                tool_used: row.get("tool_used"),
                 timestamp: row.get("timestamp"),
                 connection_id: row.get("connection_id"),
             });
@@ -1547,14 +1581,37 @@ impl Storage {
     pub async fn save_provider_config(&self, config: &crate::models::assistant::ProviderConfig) -> AppResult<String> {
         let now = chrono::Utc::now().timestamp();
         let id = config.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        // Encrypt the API key at rest if the session is unlocked (master key
+        // available). If the session is locked, fall back to plaintext storage
+        // rather than dropping the key. Ollama (key-less) writes NULL here.
+        let (api_key_plain, api_key_enc, api_key_nonce) = match (&config.api_key, self.get_master_key()) {
+            (Some(key), Some(k)) if !key.is_empty() => {
+                let (enc, nonce) =
+                    crate::infrastructure::crypto::encrypt(key, &k)
+                        .map_err(crate::error::AppError::Internal)?;
+                use base64::Engine;
+                (
+                    None as Option<String>,
+                    Some(base64::engine::general_purpose::STANDARD.encode(&enc)),
+                    Some(base64::engine::general_purpose::STANDARD.encode(&nonce)),
+                )
+            }
+            (Some(key), _) => (Some(key.clone()), None, None),
+            (None, _) => (None, None, None),
+        };
+
         sqlx::query(
-            "INSERT OR REPLACE INTO assistant_providers (id, provider_id, model, api_key, base_url, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT OR REPLACE INTO assistant_providers
+             (id, provider_id, model, api_key, api_key_enc, api_key_nonce, base_url, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&config.provider_id)
         .bind(&config.model)
-        .bind(&config.api_key)
+        .bind(&api_key_plain)
+        .bind(&api_key_enc)
+        .bind(&api_key_nonce)
         .bind(&config.base_url)
         .bind(now)
         .bind(now)
@@ -1565,17 +1622,21 @@ impl Storage {
 
     pub async fn load_provider_configs(&self) -> AppResult<Vec<crate::models::assistant::ProviderConfig>> {
         let rows = sqlx::query(
-            "SELECT id, provider_id, model, api_key, base_url FROM assistant_providers ORDER BY updated_at DESC"
+            "SELECT id, provider_id, model, api_key, api_key_enc, api_key_nonce, base_url
+             FROM assistant_providers ORDER BY updated_at DESC"
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|row| crate::models::assistant::ProviderConfig {
-            id: Some(row.get("id")),
-            provider_id: row.get("provider_id"),
-            model: row.get("model"),
-            api_key: row.get("api_key"),
-            base_url: row.get("base_url"),
+        Ok(rows.iter().map(|row| {
+            let api_key = self.decrypt_provider_key(row, "api_key", "api_key_enc", "api_key_nonce");
+            crate::models::assistant::ProviderConfig {
+                id: Some(row.get("id")),
+                provider_id: row.get("provider_id"),
+                model: row.get("model"),
+                api_key,
+                base_url: row.get("base_url"),
+            }
         }).collect())
     }
 
@@ -1589,19 +1650,60 @@ impl Storage {
 
     pub async fn get_provider_config_by_id(&self, id: &str) -> AppResult<Option<crate::models::assistant::ProviderConfig>> {
         let row = sqlx::query(
-            "SELECT id, provider_id, model, api_key, base_url FROM assistant_providers WHERE id = ?"
+            "SELECT id, provider_id, model, api_key, api_key_enc, api_key_nonce, base_url
+             FROM assistant_providers WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| crate::models::assistant::ProviderConfig {
-            id: Some(r.get("id")),
-            provider_id: r.get("provider_id"),
-            model: r.get("model"),
-            api_key: r.get("api_key"),
-            base_url: r.get("base_url"),
+        Ok(row.map(|r| {
+            let api_key = self.decrypt_provider_key(&r, "api_key", "api_key_enc", "api_key_nonce");
+            crate::models::assistant::ProviderConfig {
+                id: Some(r.get("id")),
+                provider_id: r.get("provider_id"),
+                model: r.get("model"),
+                api_key,
+                base_url: r.get("base_url"),
+            }
         }))
+    }
+
+    /// Decrypt a provider's API key from a SQL row, consulting the encrypted
+    /// columns first and falling back to legacy plaintext.
+    fn decrypt_provider_key(
+        &self,
+        row: &sqlx::sqlite::SqliteRow,
+        plain_col: &str,
+        enc_col: &str,
+        nonce_col: &str,
+    ) -> Option<String> {
+        let enc: Option<String> = row.try_get(enc_col).ok().flatten();
+        let nonce: Option<String> = row.try_get(nonce_col).ok().flatten();
+        if let (Some(enc_str), Some(nonce_str)) = (enc, nonce) {
+            if let Some(key) = self.get_master_key() {
+                use base64::Engine;
+                let enc_bytes = base64::engine::general_purpose::STANDARD
+                    .decode(enc_str.as_bytes())
+                    .ok()?;
+                let nonce_bytes = base64::engine::general_purpose::STANDARD
+                    .decode(nonce_str.as_bytes())
+                    .ok()?;
+                let mut nonce_arr = [0u8; 12];
+                if nonce_bytes.len() != 12 {
+                    return row.get::<Option<String>, _>(plain_col);
+                }
+                nonce_arr.copy_from_slice(&nonce_bytes);
+                if let Ok(plain) = crate::infrastructure::crypto::decrypt(&enc_bytes, &nonce_arr, &key) {
+                    return Some(plain);
+                }
+                // Decryption failed (e.g. wrong master password); fall through
+                // to plaintext fallback below.
+            }
+            // Session locked → no API key in memory.
+            return None;
+        }
+        row.get::<Option<String>, _>(plain_col)
     }
 
     // ── Assistant Knowledge ──
@@ -1614,10 +1716,10 @@ impl Storage {
     ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
         let pattern = format!("%{}%", query);
         let rows = sqlx::query(
-            "SELECT id, question, sql_text, engine, rating, used_count
+            "SELECT id, question, sql_text, engine, rating, used_count, favorite
              FROM assistant_knowledge
              WHERE engine = ? AND (question LIKE ? OR sql_text LIKE ?)
-             ORDER BY used_count DESC, created_at DESC
+             ORDER BY favorite DESC, used_count DESC, created_at DESC
              LIMIT ?"
         )
         .bind(engine)
@@ -1634,7 +1736,83 @@ impl Storage {
             engine: row.get("engine"),
             rating: row.get("rating"),
             used_count: row.get("used_count"),
+            favorite: row.get::<Option<i64>, _>("favorite").map(|v| v != 0).unwrap_or(false),
         }).collect())
+    }
+
+    pub async fn list_knowledge_all(
+        &self,
+        engine: &str,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
+        let rows = sqlx::query(
+            "SELECT id, question, sql_text, engine, rating, used_count, favorite
+             FROM assistant_knowledge
+             WHERE engine = ?
+             ORDER BY favorite DESC, used_count DESC, created_at DESC
+             LIMIT ?"
+        )
+        .bind(engine)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| crate::models::assistant::KnowledgeCase {
+            id: row.get("id"),
+            question: row.get("question"),
+            sql_text: row.get("sql_text"),
+            engine: row.get("engine"),
+            rating: row.get("rating"),
+            used_count: row.get("used_count"),
+            favorite: row.get::<Option<i64>, _>("favorite").map(|v| v != 0).unwrap_or(false),
+        }).collect())
+    }
+
+    pub async fn list_knowledge_global(
+        &self,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
+        let rows = sqlx::query(
+            "SELECT id, question, sql_text, engine, rating, used_count, favorite
+             FROM assistant_knowledge
+             ORDER BY favorite DESC, used_count DESC, created_at DESC
+             LIMIT ?"
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| crate::models::assistant::KnowledgeCase {
+            id: row.get("id"),
+            question: row.get("question"),
+            sql_text: row.get("sql_text"),
+            engine: row.get("engine"),
+            rating: row.get("rating"),
+            used_count: row.get("used_count"),
+            favorite: row.get::<Option<i64>, _>("favorite").map(|v| v != 0).unwrap_or(false),
+        }).collect())
+    }
+
+    pub async fn toggle_knowledge_favorite(&self, id: &str) -> AppResult<bool> {
+        let current: Option<i64> = sqlx::query_scalar(
+            "SELECT favorite FROM assistant_knowledge WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let new_val = match current {
+            Some(v) if v != 0 => 0i64,
+            _ => 1i64,
+        };
+
+        sqlx::query("UPDATE assistant_knowledge SET favorite = ? WHERE id = ?")
+            .bind(new_val)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(new_val != 0)
     }
 
     pub async fn save_knowledge_case(
@@ -1642,9 +1820,10 @@ impl Storage {
         case: &crate::models::assistant::KnowledgeCase,
     ) -> AppResult<()> {
         let now = chrono::Utc::now().timestamp();
+        let fav_int = if case.favorite { 1i64 } else { 0i64 };
         sqlx::query(
-            "INSERT OR REPLACE INTO assistant_knowledge (id, question, sql_text, engine, rating, used_count, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT OR REPLACE INTO assistant_knowledge (id, question, sql_text, engine, rating, used_count, favorite, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&case.id)
         .bind(&case.question)
@@ -1652,6 +1831,7 @@ impl Storage {
         .bind(&case.engine)
         .bind(&case.rating)
         .bind(case.used_count)
+        .bind(fav_int)
         .bind(now)
         .execute(&self.pool)
         .await?;

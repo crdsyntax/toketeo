@@ -29,6 +29,12 @@ export const assistantService = {
   searchKnowledge: (query: string, engine: string, limit?: number) =>
     tauriApi.invoke<KnowledgeCase[]>('assistant_search_knowledge', { query, engine, limit }),
 
+  listKnowledge: (engine: string, limit?: number) =>
+    tauriApi.invoke<KnowledgeCase[]>('assistant_list_knowledge', { engine, limit }),
+
+  toggleKnowledgeFavorite: (id: string) =>
+    tauriApi.invoke<boolean>('assistant_toggle_knowledge_favorite', { id }),
+
   recordCase: (question: string, sqlText: string, engine: string, rating: string) =>
     tauriApi.invoke<string>('assistant_record_case', { question, sqlText, engine, rating }),
 

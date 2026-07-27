@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { TableResponse, ColumnResponse } from '@/types/database'
 
-export type AssistantTab = 'queries' | 'performance' | 'structures' | 'usage' | 'connect'
+export type AssistantTab = 'queries' | 'library' | 'performance' | 'structures' | 'usage' | 'connect'
 
 export interface AssistantMessage {
   id: string

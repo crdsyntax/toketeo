@@ -49,6 +49,7 @@ export interface KnowledgeCase {
   engine: string
   rating: string
   usedCount: number
+  favorite: boolean
 }
 
 export interface ToolResult {

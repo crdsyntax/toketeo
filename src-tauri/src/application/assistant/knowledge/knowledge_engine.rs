@@ -32,13 +32,33 @@ impl KnowledgeEngine {
             engine: engine.to_string(),
             rating: rating.to_string(),
             used_count: 0,
+            favorite: false,
         };
         storage.save_knowledge_case(&case).await?;
         Ok(id)
     }
 
     /// Find similar existing cases based on keyword overlap.
-    pub fn find_similar<'a>(query: &str, cases: &'a [KnowledgeCase], threshold: f64) -> Vec<&'a KnowledgeCase> {
+    /// Returns references ranked by descending score (filtered to ≥ threshold).
+    pub fn find_similar<'a>(
+        query: &str,
+        cases: &'a [KnowledgeCase],
+        threshold: f64,
+    ) -> Vec<&'a KnowledgeCase> {
+        Self::find_similar_scored(query, cases, threshold)
+            .into_iter()
+            .map(|(c, _)| c)
+            .collect()
+    }
+
+    /// Same as [find_similar] but keeps the similarity score for each match.
+    /// Used by `assistant_chat` for short-circuiting high-confidence hits and
+    /// for ranking candidates injected into the system prompt.
+    pub fn find_similar_scored<'a>(
+        query: &str,
+        cases: &'a [KnowledgeCase],
+        threshold: f64,
+    ) -> Vec<(&'a KnowledgeCase, f64)> {
         let query_lower = query.to_lowercase();
         let query_words: Vec<&str> = query_lower.split_whitespace().collect();
 
@@ -64,7 +84,6 @@ impl KnowledgeEngine {
         scored
             .into_iter()
             .filter(|(_, score)| *score >= threshold)
-            .map(|(case, _)| case)
             .collect()
     }
 }

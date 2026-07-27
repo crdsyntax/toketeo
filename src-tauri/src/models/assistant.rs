@@ -76,11 +76,18 @@ pub struct AiRequest {
     pub max_tokens: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    /// Tool calls issued by the assistant in this message (only set when
+    /// `role == "assistant"` after a model round returning `tool_calls`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+    /// Tool-call id this message is a result of (only set when `role == "tool"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -114,6 +121,19 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
+}
+
+impl ToolCall {
+    /// Serialise `arguments` to a JSON string for providers (e.g. OpenAI's
+    /// Chat Completions API) that expect `function.arguments` as a string
+    /// rather than an embedded JSON object.
+    pub fn arguments_to_string(&self) -> String {
+        match self.arguments {
+            serde_json::Value::Null => String::from("null"),
+            serde_json::Value::String(ref s) => s.clone(),
+            _ => self.arguments.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -173,6 +193,7 @@ pub struct KnowledgeCase {
     pub engine: String,
     pub rating: String,
     pub used_count: i64,
+    pub favorite: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

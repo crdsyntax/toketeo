@@ -233,6 +233,16 @@ pub fn run() {
             commands::load_query_history,
             commands::clear_query_history,
             commands::search_similar_queries,
+            commands::assistant_search_knowledge,
+            commands::assistant_list_knowledge,
+            commands::assistant_toggle_knowledge_favorite,
+            commands::assistant_record_case,
+            commands::assistant_record_feedback,
+            commands::assistant_get_preferences,
+            commands::assistant_set_preference,
+            commands::assistant_list_tools,
+            commands::assistant_execute_tool,
+            commands::assistant_get_recommendations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

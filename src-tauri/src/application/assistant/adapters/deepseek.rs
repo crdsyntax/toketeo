@@ -6,28 +6,28 @@ use crate::models::assistant::{AiRequest, AiResponse, ModelInfo};
 use super::openai_format;
 use super::AiAdapter;
 
-pub struct OpenAiAdapter {
+pub struct DeepSeekAdapter {
     api_key: String,
     base_url: String,
     model: String,
     client: reqwest::Client,
 }
 
-impl OpenAiAdapter {
+impl DeepSeekAdapter {
     pub fn new(api_key: String, model: Option<String>, base_url: Option<String>) -> Self {
         Self {
             api_key,
-            base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
-            model: model.unwrap_or_else(|| "gpt-4o".to_string()),
+            base_url: base_url.unwrap_or_else(|| "https://api.deepseek.com/v1".to_string()),
+            model: model.unwrap_or_else(|| "deepseek-chat".to_string()),
             client: reqwest::Client::new(),
         }
     }
 }
 
 #[async_trait]
-impl AiAdapter for OpenAiAdapter {
+impl AiAdapter for DeepSeekAdapter {
     fn id(&self) -> &str {
-        "openai"
+        "deepseek"
     }
 
     async fn complete(&self, req: AiRequest) -> AppResult<AiResponse> {
@@ -49,20 +49,20 @@ impl AiAdapter for OpenAiAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AppError::Internal(format!("OpenAI request failed: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("DeepSeek request failed: {e}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(AppError::Internal(format!(
-                "OpenAI returned {status}: {text}"
+                "DeepSeek returned {status}: {text}"
             )));
         }
 
         let data: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| AppError::Internal(format!("OpenAI parse failed: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("DeepSeek parse failed: {e}")))?;
 
         openai_format::parse_response(&data, &self.model)
     }
@@ -74,36 +74,35 @@ impl AiAdapter for OpenAiAdapter {
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
             .await
-            .map_err(|e| AppError::Internal(format!("OpenAI models request failed: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("DeepSeek models request failed: {e}")))?;
 
         if !resp.status().is_success() {
-            return Err(AppError::Internal("Failed to list OpenAI models".to_string()));
+            return Err(AppError::Internal(
+                "Failed to list DeepSeek models".to_string(),
+            ));
         }
 
         let data: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| AppError::Internal(format!("OpenAI parse failed: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("DeepSeek parse failed: {e}")))?;
 
-        let models = data["data"]
+        Ok(data["data"]
             .as_array()
             .map(|arr| {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m["id"].as_str()?.to_string();
-                        let supports_tools = !id.starts_with("o1") && !id.starts_with("gpt-3.5");
                         Some(ModelInfo {
                             id: id.clone(),
                             name: id,
-                            provider: "openai".to_string(),
-                            supports_tools,
+                            provider: "deepseek".to_string(),
+                            supports_tools: true,
                         })
                     })
                     .collect()
             })
-            .unwrap_or_default();
-
-        Ok(models)
+            .unwrap_or_default())
     }
 
     fn supports_tools(&self) -> bool {

@@ -1,4 +1,4 @@
-import { MessageSquare, Gauge, Database, Zap, Plug, Sparkles, X } from 'lucide-react'
+import { MessageSquare, Gauge, Database, Zap, Plug, Sparkles, X, BookOpen } from 'lucide-react'
 import { useAssistantStore, type AssistantTab } from '@/store/assistantStore'
 import { cn } from '@/lib/utils'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
@@ -7,9 +7,11 @@ import { PerformancePanel } from './panels/PerformancePanel'
 import { StructuresPanel } from './panels/StructuresPanel'
 import { UsagePanel } from './panels/UsagePanel'
 import { ConnectHelpPanel } from './panels/ConnectHelpPanel'
+import { LibraryPanel } from './panels/LibraryPanel'
 
 const TABS: { id: AssistantTab; label: string; icon: React.ElementType; perkId: string | null }[] = [
   { id: 'queries', label: 'Queries', icon: MessageSquare, perkId: 'ai_assistant' },
+  { id: 'library', label: 'Library', icon: BookOpen, perkId: 'ai_assistant' },
   { id: 'performance', label: 'Performance', icon: Gauge, perkId: 'data_visualizer' },
   { id: 'structures', label: 'Structures', icon: Database, perkId: 'data_visualizer' },
   { id: 'usage', label: 'Usage', icon: Zap, perkId: null },
@@ -18,6 +20,7 @@ const TABS: { id: AssistantTab; label: string; icon: React.ElementType; perkId: 
 
 const PANELS: Record<AssistantTab, React.ReactNode> = {
   queries: <QueriesPanel />,
+  library: <LibraryPanel />,
   performance: <PerformancePanel />,
   structures: <StructuresPanel />,
   usage: <UsagePanel />,

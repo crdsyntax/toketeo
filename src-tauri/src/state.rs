@@ -78,6 +78,9 @@ impl AppState {
         use crate::application::assistant::tools::compare_tool::CompareSchemaTool;
         use crate::application::assistant::tools::data_compare_tool::CompareDataTool;
         use crate::application::assistant::tools::codegen_tool::CodegenTool;
+        use crate::application::assistant::tools::backup_tool::BackupTool;
+        use crate::application::assistant::tools::export_tool::ExportTool;
+        use crate::application::assistant::tools::auto_schema_tool::AutoSchemaTool;
 
         let mut engine = ToolEngine::new();
         engine.register(Box::new(SchemaTool));
@@ -86,6 +89,9 @@ impl AppState {
         engine.register(Box::new(CompareSchemaTool));
         engine.register(Box::new(CompareDataTool));
         engine.register(Box::new(CodegenTool));
+        engine.register(Box::new(BackupTool));
+        engine.register(Box::new(ExportTool));
+        engine.register(Box::new(AutoSchemaTool));
         engine
     }
 

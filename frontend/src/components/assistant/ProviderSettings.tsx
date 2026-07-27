@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react'
-import { Sparkles, Trash2, Check, X, Loader2, Network, Key, Cpu } from 'lucide-react'
+import { Sparkles, Trash2, Check, X, Loader2, Network, Key, Cpu, Globe, Bot, BookOpen, Zap } from 'lucide-react'
 import { assistantService } from '@/services/assistant.service'
 import type { ProviderInfo, ProviderConfig } from '@/types/assistant'
 import { cn } from '@/lib/utils'
 
 const PROVIDER_ICONS: Record<string, React.ElementType> = {
   openai: Sparkles,
+  claude: BookOpen,
+  gemini: Globe,
+  deepseek: Bot,
   ollama: Cpu,
+  opencode: Zap,
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
   openai: 'text-green-500 bg-green-500/10 border-green-500/20',
-  ollama: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+  claude: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
+  gemini: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+  deepseek: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
+  ollama: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/20',
+  opencode: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20',
 }
 
 export function ProviderSettings() {
@@ -245,6 +253,157 @@ export function ProviderSettings() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {form.providerId === 'claude' && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">API Key</label>
+                <input
+                  type="password"
+                  value={form.apiKey}
+                  onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
+                  placeholder="sk-ant-..."
+                  className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Model</label>
+                  <input
+                    type="text"
+                    value={form.model}
+                    onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                    placeholder="claude-sonnet-4-20250514"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Base URL</label>
+                  <input
+                    type="text"
+                    value={form.baseUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
+                    placeholder="https://api.anthropic.com"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {form.providerId === 'gemini' && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">API Key</label>
+                <input
+                  type="password"
+                  value={form.apiKey}
+                  onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
+                  placeholder="AIza..."
+                  className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Model</label>
+                  <input
+                    type="text"
+                    value={form.model}
+                    onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                    placeholder="gemini-2.5-pro"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Base URL</label>
+                  <input
+                    type="text"
+                    value={form.baseUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
+                    placeholder="https://generativelanguage.googleapis.com"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {form.providerId === 'deepseek' && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">API Key</label>
+                <input
+                  type="password"
+                  value={form.apiKey}
+                  onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
+                  placeholder="sk-..."
+                  className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Model</label>
+                  <input
+                    type="text"
+                    value={form.model}
+                    onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                    placeholder="deepseek-chat"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Base URL</label>
+                  <input
+                    type="text"
+                    value={form.baseUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
+                    placeholder="https://api.deepseek.com/v1"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {form.providerId === 'opencode' && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">API Key</label>
+                <input
+                  type="password"
+                  value={form.apiKey}
+                  onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
+                  placeholder="Your OpenCode API key"
+                  className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Model</label>
+                  <input
+                    type="text"
+                    value={form.model}
+                    onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                    placeholder="opencode/gpt-5.5"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Base URL</label>
+                  <input
+                    type="text"
+                    value={form.baseUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
+                    placeholder="https://opencode.ai/zen/v1"
+                    className="w-full text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-1"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground/50">
+                Uses your OpenCode subscription. Model prefix <code className="text-[10px] text-foreground/70">opencode/</code> is recommended (e.g. <code className="text-[10px] text-foreground/70">opencode/gpt-5.5</code>).
+              </p>
             </div>
           )}
 
