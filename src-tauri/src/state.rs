@@ -1,3 +1,5 @@
+use crate::application::assistant::context::schema_engine::SchemaEngine;
+use crate::application::assistant::tools::tool_engine::ToolEngine;
 use crate::application::session_service::ConnectionSession;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
@@ -49,6 +51,8 @@ pub struct AppState {
     pub sync_controller: SyncController,
     pub compare_controller: SyncController,
     pub job_engine: RwLock<Option<Arc<JobEngine>>>,
+    pub schema_engine: SchemaEngine,
+    pub tool_engine: ToolEngine,
 }
 
 impl AppState {
@@ -62,7 +66,27 @@ impl AppState {
             sync_controller: SyncController::new(),
             compare_controller: SyncController::new(),
             job_engine: RwLock::new(None),
+            schema_engine: SchemaEngine::new(300),
+            tool_engine: Self::init_tools(),
         }
+    }
+
+    fn init_tools() -> ToolEngine {
+        use crate::application::assistant::tools::schema_tool::SchemaTool;
+        use crate::application::assistant::tools::index_tool::IndexTool;
+        use crate::application::assistant::tools::explain_tool::ExplainTool;
+        use crate::application::assistant::tools::compare_tool::CompareSchemaTool;
+        use crate::application::assistant::tools::data_compare_tool::CompareDataTool;
+        use crate::application::assistant::tools::codegen_tool::CodegenTool;
+
+        let mut engine = ToolEngine::new();
+        engine.register(Box::new(SchemaTool));
+        engine.register(Box::new(IndexTool));
+        engine.register(Box::new(ExplainTool));
+        engine.register(Box::new(CompareSchemaTool));
+        engine.register(Box::new(CompareDataTool));
+        engine.register(Box::new(CodegenTool));
+        engine
     }
 
     pub async fn set_sync_control(&self, pipeline_id: &str, control: SyncControl) {

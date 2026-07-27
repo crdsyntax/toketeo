@@ -9,7 +9,7 @@ use crate::storage::Storage;
 use regex::Regex;
 use std::sync::Arc;
 
-const DEFAULT_BATCH_SIZE: usize = 200;
+const DEFAULT_BATCH_SIZE: usize = 1000;
 
 pub struct SyncService;
 
@@ -113,7 +113,18 @@ impl SyncService {
             effective_batch_size,
         );
 
+        // Pre-check controller before starting
+        if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
+            tracing::info!("[sync] Pipeline '{}' cancelled before starting", pipeline_clone.name);
+            controller.remove(&pipeline_id).await;
+            if let Some(ref sender) = event_sender {
+                let _ = sender.send(SyncEvent::Error { message: "Pipeline cancelled".to_string() });
+            }
+            return Ok(());
+        }
+
         for (idx, table_config) in pipeline_clone.tables.iter().enumerate() {
+            // Check for cancellation before each table
             if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
                 tracing::info!("[sync] Pipeline cancelled before table {}", table_config.source_table);
                 break;

@@ -10,6 +10,18 @@ use crate::state::{SyncController, SyncControl};
 use crate::storage::Storage;
 use uuid::Uuid;
 
+/// Configuración de batch adaptivo (mismos valores que full_sync).
+const ADAPTIVE_BATCH_INITIAL: usize = 1_000;
+const ADAPTIVE_BATCH_MEDIUM: usize = 5_000;
+const ADAPTIVE_BATCH_MAX: usize = 50_000;
+
+const SCALE_UP_THRESHOLD_MS: u64 = 1_000;
+const SCALE_UP_AGGRESSIVE_MS: u64 = 500;
+const SCALE_DOWN_THRESHOLD_MS: u64 = 5_000;
+
+/// MySQL prepared statement placeholder limit (65,535).
+const MYSQL_PLACEHOLDER_LIMIT: usize = 65_535;
+
 /// Estrategia de sincronización incremental.
 pub struct IncrementalSync;
 
@@ -40,6 +52,17 @@ impl SyncStrategy for IncrementalSync {
             table_config.column_mappings.len(),
             pipeline.batch_size,
         );
+
+        // Adaptive batch sizing
+        let mut current_batch_size = pipeline.batch_size;
+        let mut consecutive_fast_batches: u32 = 0;
+        let mut consecutive_slow_batches: u32 = 0;
+
+        // Calculate max safe batch size based on column count
+        // Use 50% of MySQL placeholder limit to avoid connection drops from large packets
+        let num_columns = table_config.column_mappings.len().max(1);
+        let max_safe_batch = (MYSQL_PLACEHOLDER_LIMIT / num_columns) / 2;
+        let adaptive_max = ADAPTIVE_BATCH_MAX.min(max_safe_batch);
 
         let mut mappings = table_config.column_mappings.clone();
         let mut columns: Vec<String> = mappings
@@ -141,7 +164,7 @@ impl SyncStrategy for IncrementalSync {
                     &columns,
                     &pk,
                     last_key,
-                    pipeline.batch_size,
+                    current_batch_size,
                     batch_number,
                 )
                 .await?;
@@ -205,6 +228,69 @@ impl SyncStrategy for IncrementalSync {
             let batch_errors = batch_size as u64 - upsert_result.affected - upsert_result.skipped;
             error_count += batch_errors;
             let duration = batch_start.elapsed().as_millis() as u64;
+
+            // Adaptive batch sizing logic
+            if batch_errors == 0 {
+                if duration < SCALE_UP_AGGRESSIVE_MS && current_batch_size < adaptive_max {
+                    consecutive_fast_batches += 1;
+                    consecutive_slow_batches = 0;
+                    let multiplier = if consecutive_fast_batches == 1 && current_batch_size < ADAPTIVE_BATCH_INITIAL { 4 } else { 2 };
+                    if consecutive_fast_batches >= 1 {
+                        let new_size = (current_batch_size * multiplier).min(adaptive_max);
+                        if new_size > current_batch_size {
+                            tracing::info!(
+                                "[incremental_sync] Table '{}': batch {} fast ({}ms), scaling batch {} → {}",
+                                table_config.source_table,
+                                batch_number,
+                                duration,
+                                current_batch_size,
+                                new_size,
+                            );
+                            current_batch_size = new_size;
+                        }
+                        consecutive_fast_batches = 0;
+                    }
+                } else if duration < SCALE_UP_THRESHOLD_MS && current_batch_size < adaptive_max {
+                    consecutive_fast_batches += 1;
+                    consecutive_slow_batches = 0;
+                    if consecutive_fast_batches >= 2 {
+                        let new_size = (current_batch_size + ADAPTIVE_BATCH_MEDIUM).min(adaptive_max);
+                        if new_size > current_batch_size {
+                            tracing::info!(
+                                "[incremental_sync] Table '{}': batch {} moderate ({}ms), scaling batch {} → {}",
+                                table_config.source_table,
+                                batch_number,
+                                duration,
+                                current_batch_size,
+                                new_size,
+                            );
+                            current_batch_size = new_size;
+                        }
+                        consecutive_fast_batches = 0;
+                    }
+                } else if duration > SCALE_DOWN_THRESHOLD_MS && current_batch_size > ADAPTIVE_BATCH_INITIAL {
+                    consecutive_slow_batches += 1;
+                    consecutive_fast_batches = 0;
+                    if consecutive_slow_batches >= 2 {
+                        let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
+                        if new_size < current_batch_size {
+                            tracing::info!(
+                                "[incremental_sync] Table '{}': batch {} slow ({}ms), reducing batch {} → {}",
+                                table_config.source_table,
+                                batch_number,
+                                duration,
+                                current_batch_size,
+                                new_size,
+                            );
+                            current_batch_size = new_size;
+                        }
+                        consecutive_slow_batches = 0;
+                    }
+                } else {
+                    consecutive_fast_batches = 0;
+                    consecutive_slow_batches = 0;
+                }
+            }
 
             let batch_id = Uuid::new_v4().to_string();
             let sync_batch = SyncBatch {

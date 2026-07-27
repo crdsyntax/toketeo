@@ -6,6 +6,7 @@ import {
   CalendarClock, Sparkles, Flame, Shield, Star
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Environment } from '@/types/database'
 import { useAppStore } from '@/store/useAppStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
@@ -50,7 +51,7 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
   const { activeConnection, isSidebarOpen, toggleSidebar } = useAppStore()
   const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
   const { level, streak } = useGamificationStore()
-  const isProduction = activeConnection?.environment?.toLowerCase() === 'production'
+  const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION
 
   return (
     <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">

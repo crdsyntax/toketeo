@@ -409,10 +409,10 @@ export function useExplorer() {
       try {
         let lang = 'mysql';
         switch (activeConnection?.type) {
-          case 'postgres':
+          case DatabaseType.POSTGRES:
             lang = 'postgresql';
             break;
-          case 'sqlserver':
+          case DatabaseType.SQLSERVER:
             lang = 'tsql';
             break;
           default:

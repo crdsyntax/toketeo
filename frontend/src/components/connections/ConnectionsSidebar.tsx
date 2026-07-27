@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useDiagramStore } from '@/diagram/store'
 import { DatabaseItem } from './DatabaseItem'
 import { SchemaItem } from './SchemaItem'
 import { DumpRestoreModal } from './DumpRestoreModal'
@@ -33,14 +34,14 @@ function TypeBadge({ type }: { type: string }) {
       'px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border',
       config.bgClass, config.textClass, config.borderClass
     )}>
-      {type === 'postgres' ? 'PG' :
-       type === 'mysql' ? 'MY' :
-       type === 'mariadb' ? 'MA' :
-       type === 'mongodb' ? 'MO' :
-       type === 'mssql' ? 'MS' :
-       type === 'redis' ? 'RE' :
-       type === 'sqlite' ? 'SL' :
-       type?.slice(0, 2).toUpperCase()}
+{type === DatabaseType.POSTGRES ? 'PG' :
+       type === DatabaseType.MYSQL ? 'MY' :
+       type === DatabaseType.MARIADB ? 'MA' :
+       type === DatabaseType.MONGODB ? 'MO' :
+       type === DatabaseType.SQLSERVER ? 'MS' :
+       type === DatabaseType.REDIS ? 'RE' :
+       type === DatabaseType.SQLITE ? 'SL' :
+        type?.slice(0, 2).toUpperCase()}
     </span>
   )
 }
@@ -232,6 +233,16 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
       setActiveConnection(conn)
       if (location.pathname === '/query') {
         addTab(conn.id, schema)
+      } else if (location.pathname === '/diagram') {
+        setActiveConnectionDatabase(schema)
+        // Update active diagram to use the newly selected connection/schema
+        const { activeDiagramId, setDiagramConnection } = useDiagramStore.getState()
+        if (activeDiagramId) {
+          setDiagramConnection(activeDiagramId, conn.id, schema)
+        }
+        queryClient.invalidateQueries({ queryKey: ['schemas', conn.id] })
+        queryClient.invalidateQueries({ queryKey: ['tables', conn.id] })
+        queryClient.invalidateQueries({ queryKey: ['diagram', conn.id] })
       } else {
         // Optimistic update: update frontend state immediately so the UI
         // reflects the selected schema without waiting for the backend.
@@ -473,7 +484,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                         {expandedConnId === conn.id && (
                           <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
                             <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
-                              {conn.type === 'postgres' || conn.type === 'redis' ? (
+                              {conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.REDIS ? (
                                 <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                               ) : (
                                 <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />

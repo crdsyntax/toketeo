@@ -10,6 +10,20 @@ use crate::state::{SyncController, SyncControl};
 use crate::storage::Storage;
 use uuid::Uuid;
 
+/// Configuración de batch adaptivo.
+const ADAPTIVE_BATCH_INITIAL: usize = 1_000;
+const ADAPTIVE_BATCH_MEDIUM: usize = 5_000;
+const ADAPTIVE_BATCH_MAX: usize = 50_000;
+
+/// Tiempos objetivo en milisegundos para decidir escalado.
+const SCALE_UP_THRESHOLD_MS: u64 = 1_000;  // Si batch < 1s, escalar
+const SCALE_UP_AGGRESSIVE_MS: u64 = 500;   // Si batch < 0.5s, escalar más
+const SCALE_DOWN_THRESHOLD_MS: u64 = 5_000; // Si batch > 5s, reducir
+
+/// MySQL prepared statement placeholder limit (65,535).
+/// Each row uses num_columns placeholders, so max batch = 65535 / num_columns.
+const MYSQL_PLACEHOLDER_LIMIT: usize = 65_535;
+
 /// Estrategia de sincronización completa.
 pub struct FullSync;
 
@@ -39,6 +53,26 @@ impl SyncStrategy for FullSync {
             pk,
             table_config.column_mappings.len(),
             pipeline.batch_size,
+        );
+
+        // Adaptive batch sizing: start with configured size, scale up/down based on performance
+        let mut current_batch_size = pipeline.batch_size;
+        let mut consecutive_fast_batches: u32 = 0;
+        let mut consecutive_slow_batches: u32 = 0;
+
+        // Calculate max safe batch size based on column count
+        // Use 50% of MySQL placeholder limit to avoid connection drops from large packets
+        let num_columns = table_config.column_mappings.len().max(1);
+        let max_safe_batch = (MYSQL_PLACEHOLDER_LIMIT / num_columns) / 2;
+        let adaptive_max = ADAPTIVE_BATCH_MAX.min(max_safe_batch);
+
+        tracing::info!(
+            "[full_sync] Table '{}': batch config: start={}, adaptive_max={}, max_safe_batch={}, columns={}",
+            table_config.source_table,
+            current_batch_size,
+            adaptive_max,
+            max_safe_batch,
+            num_columns,
         );
 
         let mut mappings = table_config.column_mappings.clone();
@@ -121,7 +155,7 @@ impl SyncStrategy for FullSync {
                     &columns,
                     &pk,
                     last_key,
-                    pipeline.batch_size,
+                    current_batch_size,
                     batch_number,
                 )
                 .await?;
@@ -147,6 +181,7 @@ impl SyncStrategy for FullSync {
             }
 
             let batch_size = output.rows.len();
+            let raw_rows = output.rows.clone();
             let transformed = transformers::transform_rows(
                 output.rows,
                 &mappings,
@@ -166,32 +201,118 @@ impl SyncStrategy for FullSync {
                 Ok(r) => r,
                 Err(e) => {
                     let err_str = e.to_string();
-                    tracing::error!(
-                        "[full_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
-                        table_config.source_table,
-                        batch_number,
-                        e,
-                    );
-                    if let Some(ref sender) = event_sender {
-                        let _ = sender.send(SyncEvent::RowError {
-                            table: table_config.source_table.clone(),
-                            row_key: None,
-                            error: format!("Batch {} upsert failed: {}", batch_number, e),
-                        });
-                    }
-                    // Abort remaining batches when the target table is missing
-                    if err_str.contains("doesn't exist")
-                        || err_str.contains("does not exist")
-                        || err_str.contains("no such table")
-                        || err_str.contains("Invalid object name")
-                    {
-                        tracing::error!(
-                            "[full_sync] Table '{}' does not exist on target — aborting remaining batches",
+                    let column_name = extract_unknown_column(&err_str);
+
+                    // Retry without the missing column when the target lacks it
+                    if let Some(ref col) = column_name {
+                        tracing::warn!(
+                            "[full_sync] Table '{}': column '{}' missing on target — removing from sync, retrying batch",
                             table_config.source_table,
+                            col,
                         );
-                        abort_table = true;
+                        let new_dest: Vec<String> = dest_columns.iter()
+                            .filter(|c| c != &col)
+                            .cloned()
+                            .collect();
+                        let new_columns: Vec<String> = columns.iter()
+                            .zip(dest_columns.iter())
+                            .filter(|(_, d)| d != &col)
+                            .map(|(s, _)| s.clone())
+                            .collect();
+                        let new_mappings: Vec<ColumnMapping> = mappings.iter()
+                            .filter(|m| m.destination_column != *col)
+                            .cloned()
+                            .collect();
+
+                        let new_transformed = transformers::transform_rows(
+                            raw_rows,
+                            &new_mappings,
+                        )?;
+
+                        match writer
+                            .upsert_rows(
+                                &table_config.target_table,
+                                target_schema,
+                                &new_dest,
+                                table_config.primary_key.as_deref().unwrap_or(&[]),
+                                &new_transformed,
+                            )
+                            .await
+                        {
+                            Ok(r) => {
+                                // Update mappings for subsequent batches
+                                mappings.clone_from(&new_mappings);
+                                columns.clone_from(&new_columns);
+                                dest_columns.clone_from(&new_dest);
+                                r
+                            }
+                            Err(_) => {
+                                tracing::error!(
+                                    "[full_sync] Table '{}': retry without '{}' also failed — skipping batch",
+                                    table_config.source_table,
+                                    col,
+                                );
+                                if let Some(ref sender) = event_sender {
+                                    let _ = sender.send(SyncEvent::RowError {
+                                        table: table_config.source_table.clone(),
+                                        row_key: None,
+                                        error: format!("Batch {} upsert failed: {}", batch_number, err_str),
+                                    });
+                                }
+                                crate::db::UpsertResult::default()
+                            }
+                        }
+                    } else {
+                        tracing::error!(
+                            "[full_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
+                            table_config.source_table,
+                            batch_number,
+                            e,
+                        );
+                        if let Some(ref sender) = event_sender {
+                            let _ = sender.send(SyncEvent::RowError {
+                                table: table_config.source_table.clone(),
+                                row_key: None,
+                                error: format!("Batch {} upsert failed: {}", batch_number, e),
+                            });
+                        }
+
+                        // Detect connection errors and scale down batch size
+                        let err_str_lower = err_str.to_lowercase();
+                        if err_str_lower.contains("connection")
+                            || err_str_lower.contains("aborted")
+                            || err_str_lower.contains("10053")
+                            || err_str_lower.contains("broken pipe")
+                            || err_str_lower.contains("too many placeholders")
+                        {
+                            if current_batch_size > ADAPTIVE_BATCH_INITIAL {
+                                let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
+                                tracing::warn!(
+                                    "[full_sync] Table '{}': connection/placeholder error, reducing batch {} → {}",
+                                    table_config.source_table,
+                                    current_batch_size,
+                                    new_size,
+                                );
+                                current_batch_size = new_size;
+                                consecutive_fast_batches = 0;
+                                consecutive_slow_batches = 0;
+                            }
+                        }
+
+                        // Abort remaining batches when the target table is missing
+                        if err_str.contains("doesn't exist")
+                            || err_str.contains("does not exist")
+                            || err_str.contains("no such table")
+                            || err_str.contains("Invalid object name")
+                        {
+                            tracing::error!(
+                                "[full_sync] Table '{}' does not exist on target — aborting remaining batches",
+                                table_config.source_table,
+                            );
+                            abort_table = true;
+                        }
+                        crate::db::UpsertResult::default()
                     }
-                    crate::db::UpsertResult::default()
                 }
             };
 
@@ -201,12 +322,78 @@ impl SyncStrategy for FullSync {
             }
 
             processed_rows += upsert_result.affected;
-            let batch_errors = batch_size as u64 - upsert_result.affected - upsert_result.skipped;
+            let batch_errors = (batch_size as u64)
+                .saturating_sub(upsert_result.affected)
+                .saturating_sub(upsert_result.skipped);
             error_count += batch_errors;
             let duration = batch_start.elapsed().as_millis() as u64;
 
+            // Adaptive batch sizing logic
+            if batch_errors == 0 {
+                if duration < SCALE_UP_AGGRESSIVE_MS && current_batch_size < adaptive_max {
+                    consecutive_fast_batches += 1;
+                    consecutive_slow_batches = 0;
+                    // Ramp up aggressively: 1 fast batch → 4x, 2+ → 2x
+                    let multiplier = if consecutive_fast_batches == 1 && current_batch_size < ADAPTIVE_BATCH_INITIAL { 4 } else { 2 };
+                    if consecutive_fast_batches >= 1 {
+                        let new_size = (current_batch_size * multiplier).min(adaptive_max);
+                        if new_size > current_batch_size {
+                            tracing::info!(
+                                "[full_sync] Table '{}': batch {} fast ({}ms), scaling batch {} → {}",
+                                table_config.source_table,
+                                batch_number,
+                                duration,
+                                current_batch_size,
+                                new_size,
+                            );
+                            current_batch_size = new_size;
+                        }
+                        consecutive_fast_batches = 0;
+                    }
+                } else if duration < SCALE_UP_THRESHOLD_MS && current_batch_size < adaptive_max {
+                    consecutive_fast_batches += 1;
+                    consecutive_slow_batches = 0;
+                    if consecutive_fast_batches >= 2 {
+                        let new_size = (current_batch_size + ADAPTIVE_BATCH_MEDIUM).min(adaptive_max);
+                        if new_size > current_batch_size {
+                            tracing::info!(
+                                "[full_sync] Table '{}': batch {} moderate ({}ms), scaling batch {} → {}",
+                                table_config.source_table,
+                                batch_number,
+                                duration,
+                                current_batch_size,
+                                new_size,
+                            );
+                            current_batch_size = new_size;
+                        }
+                        consecutive_fast_batches = 0;
+                    }
+                } else if duration > SCALE_DOWN_THRESHOLD_MS && current_batch_size > ADAPTIVE_BATCH_INITIAL {
+                    consecutive_slow_batches += 1;
+                    consecutive_fast_batches = 0;
+                    if consecutive_slow_batches >= 2 {
+                        let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
+                        if new_size < current_batch_size {
+                            tracing::info!(
+                                "[full_sync] Table '{}': batch {} slow ({}ms), reducing batch {} → {}",
+                                table_config.source_table,
+                                batch_number,
+                                duration,
+                                current_batch_size,
+                                new_size,
+                            );
+                            current_batch_size = new_size;
+                        }
+                        consecutive_slow_batches = 0;
+                    }
+                } else {
+                    consecutive_fast_batches = 0;
+                    consecutive_slow_batches = 0;
+                }
+            }
+
             tracing::debug!(
-                "[full_sync] Table '{}' batch {}: extracted={}, loaded={}, skipped={}, errors={}, duration={}ms",
+                "[full_sync] Table '{}' batch {}: extracted={}, loaded={}, skipped={}, errors={}, duration={}ms, batch_size={}",
                 table_config.source_table,
                 batch_number,
                 batch_size,
@@ -214,6 +401,7 @@ impl SyncStrategy for FullSync {
                 upsert_result.skipped,
                 batch_errors,
                 duration,
+                current_batch_size,
             );
 
             let batch_id = Uuid::new_v4().to_string();
@@ -301,6 +489,33 @@ impl SyncStrategy for FullSync {
             error_count,
         })
     }
+}
+
+/// Extract the unknown column name from MySQL/MariaDB error messages.
+/// Handles format: `Unknown column 'agencia_id' in 'INSERT INTO'`
+fn extract_unknown_column(err: &str) -> Option<String> {
+    // MySQL / MariaDB: Unknown column 'xxx' in '...'
+    if let Some(start) = err.find("Unknown column '") {
+        let rest = &err[start + 16..];
+        if let Some(end) = rest.find('\'') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    // PostgreSQL: column "xxx" does not exist
+    if let Some(start) = err.find("column \"") {
+        let rest = &err[start + 8..];
+        if let Some(end) = rest.find('"') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    // SQL Server: Invalid column name 'xxx'
+    if let Some(start) = err.find("Invalid column name '") {
+        let rest = &err[start + 21..];
+        if let Some(end) = rest.find('\'') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -587,13 +802,13 @@ mod tests {
             panic!("First event should be Progress with 0 processed rows");
         }
 
-        // Should have batch completed events (200 rows / 50 batch_size = 4 batches)
-        assert_eq!(batch_events.len(), 4, "Should have 4 batch completed events");
+        // With adaptive batching, batch count may vary — just verify at least 1 batch completed
+        assert!(!batch_events.is_empty(), "Should have at least 1 batch completed event");
 
-        // Each batch should report rows_loaded = 50
+        // Each batch should report rows_loaded > 0
         for batch_event in &batch_events {
             if let SyncEvent::BatchCompleted { rows_loaded, .. } = batch_event {
-                assert_eq!(*rows_loaded, BATCH_SIZE as u64, "Each batch should load {} rows", BATCH_SIZE);
+                assert!(*rows_loaded > 0, "Each batch should load at least 1 row");
             }
         }
 

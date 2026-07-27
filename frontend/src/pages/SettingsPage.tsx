@@ -1,6 +1,7 @@
 import { Palette, Sun, Moon, Type, Minus, Plus, Monitor, Table2, ToggleLeft, ToggleRight, Ruler } from 'lucide-react'
 import { useAppStore, DEFAULT_EDITOR_FONT } from '@/store/useAppStore'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
+import { ProviderSettings } from '@/components/assistant/ProviderSettings'
 import { useState, useCallback } from 'react'
 
 const FONT_OPTIONS = [
@@ -400,6 +401,12 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
+
+        <FeatureGate perkId="ai_assistant">
+          <section className="space-y-4">
+            <ProviderSettings />
+          </section>
+        </FeatureGate>
 
         <FeatureGate perkId="theme_customizer">
           <section className="space-y-4">

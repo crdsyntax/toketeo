@@ -1,3 +1,4 @@
+pub mod assistant;
 pub mod audit_service;
 pub mod auth_service;
 pub mod compare;

@@ -9,6 +9,7 @@ import {
 } from '@xyflow/react'
 import { useAppStore } from '@/store/useAppStore'
 import { schemaService } from '@/services/schema.service'
+import { connectionService } from '@/services/connection.service'
 import { invoke } from '@tauri-apps/api/core'
 import {
   Plus, X, Table2, Loader2, GitBranch,
@@ -76,22 +77,43 @@ function EditorInner() {
   const renameDiagram = useDiagramStore((s) => s.renameDiagram)
   const setActiveDiagram = useDiagramStore((s) => s.setActiveDiagram)
   const importFromJson = useDiagramStore((s) => s.importFromJson)
+  const setDiagramSchema = useDiagramStore((s) => s.setDiagramSchema)
 
   const diagram = diagrams.find((d) => d.id === activeDiagramId)
-  const isSchemaMode = !!diagram?.sourceConnectionId && diagram.nodes.length === 0
+  const hasConnection = !!diagram?.sourceConnectionId
+  const isPostgres = activeConnection?.type === 'postgres'
 
+  const [showTableSelector, setShowTableSelector] = useState(!diagram || (hasConnection && diagram.nodes.length === 0))
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set())
   const [tableFormOpen, setTableFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
 
-  const currentSchema = activeConnection?.database
+  // Fetch available schemas for PostgreSQL connections
+  const { data: availableSchemas = [] } = useQuery({
+    queryKey: ['schemas', diagram?.sourceConnectionId],
+    queryFn: () => schemaService.getSchemas(diagram!.sourceConnectionId!),
+    enabled: isPostgres && hasConnection,
+    staleTime: 5 * 60 * 1000,
+  })
 
-  // Fetch all tables for schema mode
+  // Auto-detect schema for PostgreSQL diagrams that don't have one yet
+  useEffect(() => {
+    if (!diagram || !isPostgres || !availableSchemas.length) return
+    if (!diagram.sourceSchema && availableSchemas.length > 0) {
+      const defaultSchema = availableSchemas.includes('public') ? 'public' : availableSchemas[0]
+      setDiagramSchema(diagram.id, defaultSchema)
+      setSelectedTables(new Set())
+    }
+  }, [diagram, isPostgres, availableSchemas, setDiagramSchema])
+
+  const currentSchema = diagram?.sourceSchema || activeConnection?.database
+
+  // Fetch all tables for the connection schema
   const { data: allTables = [], isLoading: isLoadingTables } = useQuery({
     queryKey: ['tables', diagram?.sourceConnectionId, currentSchema],
     queryFn: () => schemaService.getTables(diagram!.sourceConnectionId!, currentSchema),
-    enabled: isSchemaMode && !!diagram?.sourceConnectionId,
+    enabled: showTableSelector && hasConnection,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -100,7 +122,7 @@ function EditorInner() {
     [allTables],
   )
 
-  // Fetch diagram data for schema mode
+  // Fetch diagram data for selected tables
   const { data: diagramData, isLoading: isLoadingDiagram } = useQuery({
     queryKey: ['diagram', diagram?.sourceConnectionId, currentSchema, [...selectedTables].sort()],
     queryFn: () =>
@@ -116,15 +138,15 @@ function EditorInner() {
   // Initialize nodes/edges from diagram store or from schema data
   const initialNodes: Node[] = useMemo(() => {
     if (diagram && diagram.nodes.length > 0) return diagram.nodes
-    if (diagramData && isSchemaMode) return buildNodesFromSchema(diagramData)
+    if (diagramData && showTableSelector) return buildNodesFromSchema(diagramData)
     return []
-  }, [diagram, diagramData, isSchemaMode])
+  }, [diagram, diagramData, showTableSelector])
 
   const initialEdges: Edge[] = useMemo(() => {
     if (diagram && diagram.edges.length > 0) return diagram.edges
-    if (diagramData && isSchemaMode) return buildEdgesFromSchema(diagramData)
+    if (diagramData && showTableSelector) return buildEdgesFromSchema(diagramData)
     return []
-  }, [diagram, diagramData, isSchemaMode])
+  }, [diagram, diagramData, showTableSelector])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -273,8 +295,6 @@ function EditorInner() {
 
   if (!diagram) return null
 
-  const isSchemaEmpty = isSchemaMode || (diagram.sourceConnectionId && diagram.nodes.length === 0)
-
   return (
     <div className="flex flex-col h-full">
       <DiagramToolbar
@@ -287,11 +307,14 @@ function EditorInner() {
         onImport={handleImport}
         onBack={handleBack}
         isSaving={isSaving}
+        hasConnection={hasConnection}
+        showSchemaSidebar={showTableSelector}
+        onToggleSchemaSidebar={() => setShowTableSelector((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Table selector panel for schema mode */}
-        {isSchemaEmpty && diagram.sourceConnectionId && (
+        {showTableSelector && hasConnection && (
           <div className="w-72 shrink-0 border-r border-border bg-card flex flex-col overflow-hidden">
             <div className="p-4 border-b border-border space-y-3">
               <div className="flex items-center justify-between">
@@ -309,9 +332,27 @@ function EditorInner() {
                 </div>
               </div>
               {currentSchema && (
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">
-                  Schema: {currentSchema}
-                </div>
+                isPostgres && availableSchemas.length > 0 ? (
+                  <select
+                    className="w-full text-[10px] uppercase tracking-wider text-muted-foreground bg-transparent border border-border rounded px-2 py-1 focus:border-primary focus:outline-none"
+                    value={currentSchema}
+                    onChange={(e) => {
+                      const newSchema = e.target.value
+                      if (diagram) {
+                        setDiagramSchema(diagram.id, newSchema)
+                        setSelectedTables(new Set())
+                      }
+                    }}
+                  >
+                    {availableSchemas.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">
+                    Schema: {currentSchema}
+                  </div>
+                )
               )}
             </div>
 
@@ -371,7 +412,7 @@ function EditorInner() {
 
         {/* Canvas */}
         <div className="flex-1 relative">
-          {isSchemaEmpty && diagram.sourceConnectionId ? (
+          {showTableSelector && hasConnection ? (
             selectedTables.size === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-12">
                 <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mb-4">
@@ -426,11 +467,24 @@ function EditorInner() {
 function DiagramPageInner() {
   const activeConnection = useAppStore((s) => s.activeConnection)
   const activeDiagramId = useDiagramStore((s) => s.activeDiagramId)
+  const loaded = useDiagramStore((s) => s.loaded)
+  const loadDiagrams = useDiagramStore((s) => s.loadDiagrams)
   const createDiagram = useDiagramStore((s) => s.createDiagram)
   const setActiveDiagram = useDiagramStore((s) => s.setActiveDiagram)
   const importFromJson = useDiagramStore((s) => s.importFromJson)
 
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const [editorKey, setEditorKey] = useState(0)
+
+  // Load diagrams from backend on first mount
+  useEffect(() => {
+    if (!loaded) loadDiagrams()
+  }, [loaded, loadDiagrams])
 
   const handleOpen = useCallback((id: string) => {
     setActiveDiagram(id)
@@ -443,9 +497,21 @@ function DiagramPageInner() {
     setEditorKey((k) => k + 1)
   }, [createDiagram, setActiveDiagram])
 
-  const handleNewFromSchema = useCallback(() => {
+  const handleNewFromSchema = useCallback(async () => {
     if (!activeConnection) return
-    const id = createDiagram(`${activeConnection.name} Schema`, activeConnection.id)
+    // For PostgreSQL, fetch available schemas and default to "public" or first available
+    let schema: string | undefined
+    if (activeConnection.type === 'postgres') {
+      try {
+        const schemas = await schemaService.getSchemas(activeConnection.id)
+        schema = schemas.includes('public') ? 'public' : schemas[0]
+      } catch {
+        schema = 'public'
+      }
+    } else {
+      schema = activeConnection.database
+    }
+    const id = createDiagram(`${activeConnection.name} Schema`, activeConnection.id, schema)
     setActiveDiagram(id)
     setEditorKey((k) => k + 1)
   }, [activeConnection, createDiagram, setActiveDiagram])
@@ -489,6 +555,8 @@ function DiagramPageInner() {
         onNewFromSchema={handleNewFromSchema}
         onImport={handleImport}
         isConnected={!!activeConnection}
+        activeConnection={activeConnection}
+        connections={connections}
       />
     )
   }

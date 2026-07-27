@@ -1275,6 +1275,31 @@ pub async fn delete_sync_pipeline(id: String, state: State<'_, AppState>) -> App
     state.storage.delete_sync_pipeline(&id).await
 }
 
+// ── Diagram CRUD ──
+
+#[tauri::command]
+pub async fn save_diagram(
+    diagram: crate::models::diagram::Diagram,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::diagram::Diagram> {
+    state.storage.save_diagram(&diagram).await
+}
+
+#[tauri::command]
+pub async fn get_diagram(id: String, state: State<'_, AppState>) -> AppResult<crate::models::diagram::Diagram> {
+    state.storage.get_diagram(&id).await
+}
+
+#[tauri::command]
+pub async fn list_diagrams(state: State<'_, AppState>) -> AppResult<Vec<crate::models::diagram::Diagram>> {
+    state.storage.list_diagrams().await
+}
+
+#[tauri::command]
+pub async fn delete_diagram(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.storage.delete_diagram(&id).await
+}
+
 #[tauri::command]
 pub async fn validate_sync_pipeline(
     id: String,

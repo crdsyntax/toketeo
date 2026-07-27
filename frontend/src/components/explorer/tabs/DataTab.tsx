@@ -20,12 +20,11 @@ import {
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type {
   QueryResult,
-  ExecutionStatus,
   DatabaseObject,
   DbRow,
   DbValue,
 } from '@/types/database';
-import { Environment } from '@/types/database';
+import { ExecutionStatus, Environment, DatabaseType } from '@/types/database';
 import { ModelExportModal } from '../ModelExportModal';
 import { ContextMenu } from '@/components/ui/ContextMenu';
 import { invoke } from '@tauri-apps/api/core';
@@ -127,7 +126,7 @@ export function DataTab({
 
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const activeConnection = useAppStore((state) => state.activeConnection);
-  const isMongo = activeConnection?.type === 'mongodb';
+  const isMongo = activeConnection?.type === DatabaseType.MONGODB;
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
@@ -389,7 +388,7 @@ export function DataTab({
 
   if (
     (selectedItem.type === 'view' || selectedItem.type === 'procedure') &&
-    executionStatus === 'idle'
+    executionStatus === ExecutionStatus.IDLE
   ) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
@@ -552,7 +551,7 @@ export function DataTab({
           <p className="text-[11px] font-bold uppercase tracking-wider flex-1">Production — inline edits require explicit Commit to persist</p>
         </div>
       )}
-      {executionStatus === 'error' && (
+      {executionStatus === ExecutionStatus.ERROR && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
           <p className="text-xs font-mono">{executionError}</p>
@@ -721,7 +720,7 @@ export function DataTab({
             </table>
           </div>
         ) : (
-          executionStatus === 'success' && (
+          executionStatus === ExecutionStatus.SUCCESS && (
             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic">
               Query executed successfully but returned no data.
             </div>

@@ -37,15 +37,15 @@ import { DatabaseType, type Connection } from '@/types/database';
 type CompareTab = 'schema' | 'data' | 'script';
 
 function isPostgres(type?: string) {
-  return type === DatabaseType.POSTGRES || type === 'postgres';
+  return type === DatabaseType.POSTGRES || type === DatabaseType.POSTGRES;
 }
 
 function usesSchemas(type?: string) {
   return (
     type === DatabaseType.POSTGRES ||
     type === DatabaseType.SQLSERVER ||
-    type === 'postgres' ||
-    type === 'sqlserver'
+    type === DatabaseType.POSTGRES ||
+    type === DatabaseType.SQLSERVER
   );
 }
 
@@ -54,9 +54,9 @@ function usesDatabases(type?: string) {
     type === DatabaseType.MYSQL ||
     type === DatabaseType.MARIADB ||
     type === DatabaseType.MONGODB ||
-    type === 'mysql' ||
-    type === 'mariadb' ||
-    type === 'mongodb'
+    type === DatabaseType.MYSQL ||
+    type === DatabaseType.MARIADB ||
+    type === DatabaseType.MONGODB
   );
 }
 

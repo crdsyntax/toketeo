@@ -5,6 +5,7 @@ import type { QueryTab, EditorMode } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useRef, useEffect, useCallback } from 'react';
 import { isMongoShellSyntax } from '@/lib/mongoShellParser';
+import { DatabaseType } from '@/types/database';
 import {
   MONGO_SHELL_LANGUAGE_ID,
   registerMongoShellLanguage,
@@ -34,7 +35,7 @@ export function SqlEditorPanel({
   updateTabViewState,
   updateTabEditorMode,
 }: SqlEditorPanelProps) {
-  const isMongo = connectionType === 'mongodb';
+  const isMongo = connectionType === DatabaseType.MONGODB;
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const prevTabIdRef = useRef<string>(activeTab.id);

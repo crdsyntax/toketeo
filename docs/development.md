@@ -166,6 +166,8 @@ When you change behavior or module boundaries, update the matching docs:
 | `docs/database-drivers.md` | `DbDriver` contract and engines |
 | `docs/agent-context/*` | Agent orientation (architecture, stack, entrypoints) |
 | `docs/compare_implementation_plan.md` | Historical plan; mark completed sections if still used |
+| `docs/implementation_plan.md` | Cross-DB Sync refactor plan (non-technical UX) |
+| `docs/assistant_implementation_plan.md` | Intelligent Assistant plan (AI adapter, learning, knowledge, tools) |
 
 Do not leave NestJS/Electron references in active docs.
 

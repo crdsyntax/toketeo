@@ -16,7 +16,7 @@ import { useAssistantStore } from '@/store/assistantStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef, useState } from 'react';
-import { ExecutionStatus } from '@/types/database';
+import { ExecutionStatus, DatabaseType } from '@/types/database';
 import { useQuery } from '@tanstack/react-query';
 import { connectionService } from '@/services/connection.service';
 import { cn } from '@/lib/utils';
@@ -107,7 +107,7 @@ export default function QueryEditor() {
   }, [showAssistant, setShowAssistant])
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
-  const isMongo = activeConnection?.type === 'mongodb'
+  const isMongo = activeConnection?.type === DatabaseType.MONGODB
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 

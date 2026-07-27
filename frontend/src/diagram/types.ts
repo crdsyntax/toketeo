@@ -8,6 +8,7 @@ export interface Diagram {
   createdAt: string
   updatedAt: string
   sourceConnectionId: string | null
+  sourceSchema?: string
   nodes: Node[]
   edges: Edge[]
   viewport?: { x: number; y: number; zoom: number }
@@ -17,6 +18,7 @@ export interface DiagramFileFormat {
   version: 1
   name: string
   sourceConnectionId: string | null
+  sourceSchema?: string
   createdAt: string
   updatedAt: string
   nodes: Node[]

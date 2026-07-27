@@ -4,6 +4,7 @@ import { useAssistantStore, type AssistantMessage } from '@/store/assistantStore
 import { useGamificationStore } from '@/store/gamificationStore'
 import { useAppStore } from '@/store/useAppStore'
 import { schemaService } from '@/services/schema.service'
+import { assistantService } from '@/services/assistant.service'
 import { tauriApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { ColumnResponse } from '@/types/database'
@@ -14,108 +15,6 @@ const EXAMPLES = [
   'List all tables with their row counts',
   'Find duplicate email addresses',
 ]
-
-const SYSTEM_RESPONSES: Record<string, string> = {
-  'show top 5 customers by revenue': 'SELECT c.name, SUM(o.total) as revenue\nFROM customers c\nJOIN orders o ON c.id = o.customer_id\nGROUP BY c.id, c.name\nORDER BY revenue DESC\nLIMIT 5;',
-  'which products are out of stock': 'SELECT name, stock_quantity\nFROM products\nWHERE stock_quantity = 0 OR stock_quantity IS NULL\nORDER BY name;',
-  'list all tables with their row counts': "SELECT table_name AS table_name, (SELECT reltuples::bigint FROM pg_class WHERE oid = (quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass) AS row_count\nFROM information_schema.tables\nWHERE table_schema NOT IN ('pg_catalog', 'information_schema')\nORDER BY table_name;",
-  'find duplicate email addresses': 'SELECT email, COUNT(*) as occurrences\nFROM users\nGROUP BY email\nHAVING COUNT(*) > 1\nORDER BY occurrences DESC;',
-}
-
-const SPANISH_STOP_WORDS = new Set([
-  'en', 'la', 'tabla', 'como', 'de', 'del', 'el', 'un', 'una', 'los', 'las',
-  'con', 'por', 'para', 'que', 'es', 'se', 'no', 'su', 'lo', 'le', 'y', 'a',
-  'e', 'o', 'pero', 'mas', 'table',
-])
-
-function pluralize(word: string): string {
-  if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
-      word.endsWith('ch') || word.endsWith('sh')) return word + 'es'
-  if (word.endsWith('y') && !'aeiou'.includes(word[word.length - 2])) {
-    return word.slice(0, -1) + 'ies'
-  }
-  return word + 's'
-}
-
-function generateUpdateSql(prompt: string): string | null {
-  const tableMatch = prompt.match(/(?:en\s+(?:la\s+)?tabla\s+|table\s+)\s*[`'"']?(\w+)[`'"']?/i)
-  if (!tableMatch) return null
-  const table = pluralize(tableMatch[1])
-  const assignments: string[] = []
-  const conditions: string[] = []
-
-  const marcarMatch = prompt.match(/marcar\s+como\s+(\w+)/i)
-  if (marcarMatch) {
-    const val = marcarMatch[1].toLowerCase()
-    if (val === 'verified') {
-      assignments.push(`status = 'status_verified'`)
-      conditions.push(`status != 'status_verified'`)
-    } else {
-      assignments.push(`${val} = true`)
-      conditions.push(`${val} != true`)
-    }
-  }
-
-  const fieldRegex = /(\w+)\s*[:=]\s*(\w+|'[^']*'|"[^"]*")/g
-  let fieldMatch
-  while ((fieldMatch = fieldRegex.exec(prompt)) !== null) {
-    const field = fieldMatch[1].toLowerCase()
-    if (SPANISH_STOP_WORDS.has(field)) continue
-    let value = fieldMatch[2]
-    if (value.toLowerCase() === 'true') value = 'true'
-    else if (value.toLowerCase() === 'false') value = 'false'
-    else if (value.toLowerCase() === 'null') value = 'NULL'
-    else if (value.toLowerCase() === 'undefined') value = 'NULL'
-    else if (!value.startsWith("'") && !value.startsWith('"') && isNaN(Number(value))) {
-      value = `'${value.replace(/'/g, "''")}'`
-    }
-    assignments.push(`${field} = ${value}`)
-    conditions.push(`${field} != ${value}`)
-  }
-  if (assignments.length === 0) return null
-  return `UPDATE ${table}\nSET ${assignments.join(',\n    ')}\nWHERE ${conditions.join('\n   OR ')};`
-}
-
-const CONDITION_MAP: Record<string, string> = {
-  activo: 'active = true', activos: 'active = true', activa: 'active = true',
-  publicado: 'published = true', publicados: 'published = true', publicada: 'published = true',
-  pendiente: "status = 'pending'", pendientes: "status = 'pending'",
-  verificado: "status = 'verified'", verificados: "status = 'verified'",
-  eliminado: 'deleted_at IS NULL', eliminados: 'deleted_at IS NULL',
-  inactivo: 'active = false', inactivos: 'active = false',
-}
-
-function generateAddUpdateSql(prompt: string): string | null {
-  const addMatch = prompt.match(/(?:agregar|sumar|incrementar|aumentar|add|increment)\s+(\w+)\s+(?:a\s+)?(?:los|las|la|el|al)?\s*(?:tabla\s+)?(\w+)/i)
-  if (!addMatch) return null
-  const field = addMatch[1].toLowerCase()
-  const table = pluralize(addMatch[2])
-  const afterTable = prompt.slice(prompt.toLowerCase().indexOf(addMatch[2].toLowerCase()) + addMatch[2].length)
-  const conditions: string[] = []
-  for (const [word, sql] of Object.entries(CONDITION_MAP)) {
-    if (afterTable.toLowerCase().includes(word) || prompt.toLowerCase().includes(word)) {
-      if (!conditions.includes(sql)) conditions.push(sql)
-    }
-  }
-  const whereClause = conditions.length > 0 ? `\nWHERE ${conditions.join('\n   AND ')}` : ''
-  return `UPDATE ${table}\nSET ${field} = ${field} + ?${whereClause};`
-}
-
-function generateRemoveUpdateSql(prompt: string): string | null {
-  const removeMatch = prompt.match(/(?:remover|quitar|restar|decrementar|remove|subtract)\s+(\w+)\s+(?:de\s+)?(?:los|las|la|el|al)?\s*(?:tabla\s+)?(\w+)/i)
-  if (!removeMatch) return null
-  const field = removeMatch[1].toLowerCase()
-  const table = pluralize(removeMatch[2])
-  const afterTable = prompt.slice(prompt.toLowerCase().indexOf(removeMatch[2].toLowerCase()) + removeMatch[2].length)
-  const conditions: string[] = []
-  for (const [word, sql] of Object.entries(CONDITION_MAP)) {
-    if (afterTable.toLowerCase().includes(word) || prompt.toLowerCase().includes(word)) {
-      if (!conditions.includes(sql)) conditions.push(sql)
-    }
-  }
-  const whereClause = conditions.length > 0 ? `\nWHERE ${conditions.join('\n   AND ')}` : ''
-  return `UPDATE ${table}\nSET ${field} = ${field} - ?${whereClause};`
-}
 
 export function QueriesPanel() {
   const [input, setInput] = useState('')
@@ -177,29 +76,15 @@ export function QueriesPanel() {
       return
     }
 
-    const updateSql = generateUpdateSql(text)
-    if (updateSql) {
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: updateSql, sql: updateSql, timestamp: (nowRef.current = nowRef.current + 1) })
-      return
+    try {
+      const response = await tauriApi.invoke<{ answer: string }>('assistant_chat', {
+        connectionId: activeConnection?.id,
+        question: text,
+      })
+      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: response.answer, timestamp: (nowRef.current = nowRef.current + 1) })
+    } catch (err) {
+      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: err instanceof Error ? err.message : 'Failed to get response', timestamp: (nowRef.current = nowRef.current + 1) })
     }
-
-    const addSql = generateAddUpdateSql(text)
-    if (addSql) {
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: addSql, sql: addSql, timestamp: (nowRef.current = nowRef.current + 1) })
-      return
-    }
-
-    const removeSql = generateRemoveUpdateSql(text)
-    if (removeSql) {
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: removeSql, sql: removeSql, timestamp: (nowRef.current = nowRef.current + 1) })
-      return
-    }
-
-    const key = text.toLowerCase().trim()
-    const sql = SYSTEM_RESPONSES[key] || generateFallbackSql(text, schemaCache.tables, schemaCache.columns)
-    setTimeout(() => {
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: sql, sql, timestamp: (nowRef.current = nowRef.current + 1) })
-    }, 600)
   }
 
   const handleCopy = async (text: string, id: string) => {
@@ -217,6 +102,14 @@ export function QueriesPanel() {
   const handleFeedback = (messageId: string, feedback: 'positive' | 'negative') => {
     updateMessageFeedback(messageId, feedback)
     schemaService.updateAssistantFeedback(messageId, feedback).catch(() => undefined)
+    if (activeConnection) {
+      assistantService.recordFeedback(
+        messageId,
+        activeConnection.id,
+        feedback,
+        'openai',
+      ).catch(() => undefined)
+    }
   }
 
   useEffect(() => {
@@ -451,19 +344,4 @@ export function QueriesPanel() {
   )
 }
 
-function generateFallbackSql(prompt: string, realTables: { name: string }[], columns: Record<string, ColumnResponse[]>): string {
-  const lower = prompt.toLowerCase()
-  const actionWords = ['actualizar', 'cambiar', 'modificar', 'agregar', 'remover', 'quitar', 'update', 'set', 'insert', 'delete']
-  if (actionWords.some(w => lower.includes(w))) {
-    return `-- I couldn't determine the exact table and fields for: "${prompt}"\n-- Please provide more details (table name and field assignments).\n-- Example: "set status = 'active' in products"`
-  }
-  const matched = realTables.find((t) => lower.includes(t.name.toLowerCase())) || realTables[0]
-  if (matched) {
-    const cols = columns[matched.name]
-    const colStr = cols && cols.length > 0 ? cols.map(c => c.name).join(', ') : '*'
-    return `-- Based on table "${matched.name}"\nSELECT ${colStr}\nFROM ${matched.name}\nWHERE condition\nLIMIT 100;`
-  }
-  const hardcoded = ['users', 'orders', 'products', 'customers', 'transactions']
-  const table = hardcoded.find((t) => lower.includes(t)) || 'table_name'
-  return `-- Generated suggestion for: "${prompt}"\n-- Toketeo AI is still learning. Here's a template:\n\nSELECT *\nFROM ${table}\nWHERE condition\nLIMIT 100;`
-}
+

@@ -1,6 +1,6 @@
 import { useState, useRef, forwardRef, type Ref } from 'react'
 import { Database, Upload, Download, ChevronDown, Trash2 } from 'lucide-react'
-import type { Connection } from '@/types/database'
+import { DatabaseType, type Connection } from '@/types/database'
 import type { QueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import toast from 'react-hot-toast'
@@ -84,7 +84,7 @@ export const SchemaContextMenu = forwardRef<HTMLDivElement, SchemaContextMenuPro
               <Download className="w-3.5 h-3.5 text-muted-foreground" />
               Restore
             </button>
-            {conn.type === 'postgres' && (
+            {conn.type === DatabaseType.POSTGRES && (
               <>
                 <div className="border-t border-border my-1" />
                 <button
@@ -127,7 +127,7 @@ export const SchemaContextMenu = forwardRef<HTMLDivElement, SchemaContextMenuPro
               <Trash2 className="w-3.5 h-3.5" />
               Drop Schema
             </button>
-            {conn.type === 'mongodb' && (
+            {conn.type === DatabaseType.MONGODB && (
             <>
               <div className="border-t border-border my-1" />
               <button

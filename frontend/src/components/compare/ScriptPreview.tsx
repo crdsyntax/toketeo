@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Copy, Check, Download, Eye, EyeOff, ChevronDown, ChevronRight, Shield, ShieldOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DatabaseType } from '@/types/database';
 import type { SyncScript, ScriptOptions } from '@/types/compare';
 
 interface ScriptPreviewProps {
@@ -50,7 +51,7 @@ export function ScriptPreview({
     lines.push('');
     const dbName = targetDatabase || targetName;
     if (dbName) {
-      if (targetType === 'postgres' || targetType === 'postgresql' || targetType === 'sqlserver') {
+      if (targetType === DatabaseType.POSTGRES || targetType === 'postgresql' || targetType === DatabaseType.SQLSERVER) {
         lines.push(`USE "${dbName}";`);
       } else {
         lines.push(`USE \`${dbName}\`;`);

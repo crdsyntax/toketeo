@@ -1,7 +1,7 @@
 import { X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
-import type { Connection } from '@/types/database';
+import { ExecutionStatus, type Connection } from '@/types/database';
 
 interface EditorTabsProps {
   tabs: QueryTab[];
@@ -47,7 +47,7 @@ export function EditorTabs({
               </span>
             )}
           </div>
-          {tab.status === 'executing' && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
+          {tab.status === ExecutionStatus.EXECUTING && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
           <button 
             onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} 
             className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted-foreground/20 rounded transition-opacity"

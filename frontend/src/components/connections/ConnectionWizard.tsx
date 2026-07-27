@@ -52,7 +52,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
       environment: Environment.DEVELOPMENT,
       host,
       port: parseInt(port || defaultPorts[engine!], 10),
-      user: engine === 'redis' ? '' : user,
+      user: engine === DatabaseType.REDIS ? '' : user,
       password,
       database,
       authEnabled: true,
@@ -206,7 +206,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
                   <input value={port} onChange={(e) => setPort(e.target.value)}
                     className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
-                {engine === 'redis' ? (
+                {engine === DatabaseType.REDIS ? (
                   <div>
                     <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Database (0-15)</label>
                     <input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="0"
@@ -219,16 +219,16 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
                       className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   </div>
                 )}
-                {engine !== 'redis' && (
+                {engine !== DatabaseType.REDIS && (
                   <div>
                     <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Username</label>
                     <input value={user} onChange={(e) => setUser(e.target.value)}
                       className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   </div>
                 )}
-                <div className={engine === 'redis' ? 'col-span-2' : ''}>
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Password {engine === 'redis' ? '(optional)' : ''}</label>
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={engine === 'redis' ? '(none)' : ''}
+                <div className={engine === DatabaseType.REDIS ? 'col-span-2' : ''}>
+                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Password {engine === DatabaseType.REDIS ? '(optional)' : ''}</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={engine === DatabaseType.REDIS ? '(none)' : ''}
                     className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
               </div>

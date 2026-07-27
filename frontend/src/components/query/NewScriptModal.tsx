@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Database, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { schemaService } from '@/services/schema.service';
-import type { Connection } from '@/types/database';
+import { DatabaseType, type Connection } from '@/types/database';
 
 interface NewScriptModalProps {
   isOpen: boolean;
@@ -34,7 +34,7 @@ export function NewScriptModal({ isOpen, onClose, connections, onCreate }: NewSc
     const conn = connections.find(c => c.id === selectedConnId);
     if (!conn) { setLoading(false); return; }
 
-    const fetchDbs = conn.type === 'postgres'
+    const fetchDbs = conn.type === DatabaseType.POSTGRES
       ? schemaService.getDatabases(selectedConnId)
       : schemaService.getSchemas(selectedConnId);
 
@@ -48,7 +48,7 @@ export function NewScriptModal({ isOpen, onClose, connections, onCreate }: NewSc
   }, [selectedConnId, connections]);
 
   const selectedConn = connections.find(c => c.id === selectedConnId);
-  const dbLabel = selectedConn?.type === 'postgres' ? 'Database' : 'Schema';
+  const dbLabel = selectedConn?.type === DatabaseType.POSTGRES ? 'Database' : 'Schema';
 
   const handleCreate = () => {
     if (selectedConnId && selectedDb) {

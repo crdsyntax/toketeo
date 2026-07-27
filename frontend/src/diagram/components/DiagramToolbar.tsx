@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { ArrowLeft, Save, Download, Upload, Plus, Table2, Eye } from 'lucide-react'
+import { ArrowLeft, Save, Download, Upload, Plus, Table2, Eye, Columns, PanelLeftClose, PanelLeft } from 'lucide-react'
 
 interface DiagramToolbarProps {
   diagramName: string
@@ -11,6 +11,9 @@ interface DiagramToolbarProps {
   onImport: () => void
   onBack: () => void
   isSaving?: boolean
+  hasConnection?: boolean
+  showSchemaSidebar?: boolean
+  onToggleSchemaSidebar?: () => void
 }
 
 export function DiagramToolbar({
@@ -23,6 +26,9 @@ export function DiagramToolbar({
   onImport,
   onBack,
   isSaving,
+  hasConnection,
+  showSchemaSidebar,
+  onToggleSchemaSidebar,
 }: DiagramToolbarProps) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(diagramName)
@@ -105,6 +111,16 @@ export function DiagramToolbar({
           <Eye className="w-3.5 h-3.5" />
           View
         </button>
+        {hasConnection && (
+          <button
+            onClick={onToggleSchemaSidebar}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 rounded-md transition-colors"
+            title={showSchemaSidebar ? 'Hide table selector' : 'Show table selector'}
+          >
+            {showSchemaSidebar ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
+            {showSchemaSidebar ? 'Hide Tables' : 'Tables'}
+          </button>
+        )}
       </div>
 
       <div className="h-4 w-px bg-border mx-1" />

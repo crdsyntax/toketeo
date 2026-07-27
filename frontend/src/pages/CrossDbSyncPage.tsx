@@ -109,11 +109,17 @@ export function CrossDbSyncPage() {
     setWizardMinimized(false)
   }
 
-  const handleClose = () => {
+  const handleClose = async () => {
     setShowEditor(false)
     setEditingPipeline(null)
     setWizardMinimized(false)
-    queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+    await queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
+    // Refresh selectedPipeline with fresh data from cache after save
+    if (selectedPipeline) {
+      const fresh = queryClient.getQueryData<SyncPipeline[]>(['sync-pipelines'])
+      const updated = fresh?.find((p) => p.id === selectedPipeline.id)
+      if (updated) setSelectedPipeline(updated)
+    }
   }
 
   const handleStart = async (p: SyncPipeline) => {

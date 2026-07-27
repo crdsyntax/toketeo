@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import { toast } from 'react-hot-toast'
 import type { DbValue, DbRow } from '@/types/database'
-import { ExecutionStatus, Environment } from '@/types/database'
+import { ExecutionStatus, Environment, DatabaseType } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { usePerformanceStore } from '@/store/performanceStore'
@@ -222,7 +222,7 @@ export function useQueryEditor() {
 
   const checkDangerousQuery = useCallback((sql: string, isMongo: boolean): boolean => {
     if (isMongo) {
-      const isProduction = activeConnection?.environment === Environment.PRODUCTION;
+      const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION;
       if (!isProduction) return false;
 
       // MongoDB destructive operations regex
@@ -241,19 +241,30 @@ export function useQueryEditor() {
     const hasUpdate = upperSql.includes('UPDATE')
     const hasDelete = upperSql.includes('DELETE')
     const hasWhere = upperSql.includes('WHERE')
+    const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION;
 
+    // In production, ANY UPDATE/DELETE requires confirmation
+    if (isProduction && (hasUpdate || hasDelete)) {
+      return !window.confirm(
+        'Warning: This query modifies data on a PRODUCTION database.\n' +
+        'Are you sure you want to proceed?'
+      )
+    }
+
+    // For any environment, UPDATE/DELETE without WHERE clause requires confirmation
     if ((hasUpdate || hasDelete) && !hasWhere) {
       return !window.confirm('Warning: This query contains an UPDATE or DELETE statement without a WHERE clause. Are you sure you want to proceed?')
     }
+
     return false
-  }, [activeConnection?.environment])
+  }, [activeConnection])
 
   const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
     if (activeTab?.query && activeConnection) {
       setSafeDeleteSuggestion(null)
-      const isMongo = activeConnection.type === 'mongodb';
+      const isMongo = activeConnection.type === DatabaseType.MONGODB;
       if (checkDangerousQuery(activeTab.query, isMongo)) return
 
       const effectiveLimit = limit ?? queryLimit;

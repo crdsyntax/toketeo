@@ -5,7 +5,7 @@ use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, Sync
 use crate::models::{DbConnectionConfig, SshConfig, ScheduledJob, JobType, JobExecutionLog};
 use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;
-use sqlx::{Row, sqlite::SqlitePool};
+use sqlx::{Row, sqlite::{SqlitePool, SqlitePoolOptions}};
 use std::path::PathBuf;
 use std::sync::RwLock;
 use uuid::Uuid;
@@ -21,7 +21,10 @@ pub struct Storage {
 impl Storage {
     pub async fn new(db_path: PathBuf) -> AppResult<Self> {
         let url = format!("sqlite:{}", db_path.to_string_lossy());
-        let pool = SqlitePool::connect(&url).await?;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect(&url)
+            .await?;
 
         // WAL mode for concurrent reads + busy timeout to retry on contention
         sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
@@ -278,6 +281,44 @@ impl Storage {
         .await?;
 
         sqlx::query(
+            "CREATE TABLE IF NOT EXISTS assistant_providers (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                model TEXT,
+                api_key TEXT,
+                base_url TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS assistant_knowledge (
+                id TEXT PRIMARY KEY,
+                question TEXT NOT NULL,
+                sql_text TEXT NOT NULL,
+                engine TEXT NOT NULL,
+                rating TEXT NOT NULL,
+                used_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS assistant_preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
             "CREATE TABLE IF NOT EXISTS query_history (
                 id TEXT PRIMARY KEY,
                 connection_id TEXT NOT NULL,
@@ -287,6 +328,20 @@ impl Storage {
                 status TEXT NOT NULL DEFAULT 'success',
                 error TEXT,
                 row_count INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS diagrams (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                source_connection_id TEXT,
+                source_schema TEXT,
+                config TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )",
         )
         .execute(&pool)
@@ -810,6 +865,82 @@ impl Storage {
             });
         }
         Ok(logs)
+    }
+
+    // ── Diagrams ──
+
+    pub async fn save_diagram(&self, diagram: &crate::models::diagram::Diagram) -> AppResult<crate::models::diagram::Diagram> {
+        let config = serde_json::to_string(&serde_json::json!({
+            "nodes": diagram.nodes,
+            "edges": diagram.edges,
+            "viewport": diagram.viewport,
+        })).unwrap_or_default();
+        let now = chrono::Utc::now().to_rfc3339();
+        let diagram_id = diagram.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let created_at = diagram.created_at.clone().unwrap_or_else(|| now.clone());
+        let updated_at = diagram.updated_at.clone().unwrap_or(now);
+
+        sqlx::query(
+            "INSERT INTO diagrams (id, name, source_connection_id, source_schema, config, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                source_connection_id = excluded.source_connection_id,
+                source_schema = excluded.source_schema,
+                config = excluded.config,
+                updated_at = excluded.updated_at"
+        )
+        .bind(&diagram_id)
+        .bind(&diagram.name)
+        .bind(&diagram.source_connection_id)
+        .bind(&diagram.source_schema)
+        .bind(&config)
+        .bind(&created_at)
+        .bind(&updated_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(crate::models::diagram::Diagram {
+            id: Some(diagram_id),
+            name: diagram.name.clone(),
+            source_connection_id: diagram.source_connection_id.clone(),
+            source_schema: diagram.source_schema.clone(),
+            nodes: diagram.nodes.clone(),
+            edges: diagram.edges.clone(),
+            viewport: diagram.viewport.clone(),
+            created_at: Some(created_at),
+            updated_at: Some(updated_at),
+        })
+    }
+
+    pub async fn get_diagram(&self, id: &str) -> AppResult<crate::models::diagram::Diagram> {
+        let row = sqlx::query("SELECT * FROM diagrams WHERE id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+        row_to_diagram(row)
+    }
+
+    pub async fn list_diagrams(&self) -> AppResult<Vec<crate::models::diagram::Diagram>> {
+        let rows = sqlx::query("SELECT * FROM diagrams ORDER BY updated_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut diagrams = Vec::new();
+        for row in rows {
+            if let Ok(d) = row_to_diagram(row) {
+                diagrams.push(d);
+            }
+        }
+        Ok(diagrams)
+    }
+
+    pub async fn delete_diagram(&self, id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM diagrams WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     // ── Sync Pipelines ──
@@ -1412,6 +1543,191 @@ impl Storage {
         }
         Ok(entries)
     }
+
+    pub async fn save_provider_config(&self, config: &crate::models::assistant::ProviderConfig) -> AppResult<String> {
+        let now = chrono::Utc::now().timestamp();
+        let id = config.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        sqlx::query(
+            "INSERT OR REPLACE INTO assistant_providers (id, provider_id, model, api_key, base_url, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&id)
+        .bind(&config.provider_id)
+        .bind(&config.model)
+        .bind(&config.api_key)
+        .bind(&config.base_url)
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn load_provider_configs(&self) -> AppResult<Vec<crate::models::assistant::ProviderConfig>> {
+        let rows = sqlx::query(
+            "SELECT id, provider_id, model, api_key, base_url FROM assistant_providers ORDER BY updated_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| crate::models::assistant::ProviderConfig {
+            id: Some(row.get("id")),
+            provider_id: row.get("provider_id"),
+            model: row.get("model"),
+            api_key: row.get("api_key"),
+            base_url: row.get("base_url"),
+        }).collect())
+    }
+
+    pub async fn delete_provider_config(&self, id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM assistant_providers WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_provider_config_by_id(&self, id: &str) -> AppResult<Option<crate::models::assistant::ProviderConfig>> {
+        let row = sqlx::query(
+            "SELECT id, provider_id, model, api_key, base_url FROM assistant_providers WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| crate::models::assistant::ProviderConfig {
+            id: Some(r.get("id")),
+            provider_id: r.get("provider_id"),
+            model: r.get("model"),
+            api_key: r.get("api_key"),
+            base_url: r.get("base_url"),
+        }))
+    }
+
+    // ── Assistant Knowledge ──
+
+    pub async fn search_knowledge(
+        &self,
+        query: &str,
+        engine: &str,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
+        let pattern = format!("%{}%", query);
+        let rows = sqlx::query(
+            "SELECT id, question, sql_text, engine, rating, used_count
+             FROM assistant_knowledge
+             WHERE engine = ? AND (question LIKE ? OR sql_text LIKE ?)
+             ORDER BY used_count DESC, created_at DESC
+             LIMIT ?"
+        )
+        .bind(engine)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| crate::models::assistant::KnowledgeCase {
+            id: row.get("id"),
+            question: row.get("question"),
+            sql_text: row.get("sql_text"),
+            engine: row.get("engine"),
+            rating: row.get("rating"),
+            used_count: row.get("used_count"),
+        }).collect())
+    }
+
+    pub async fn save_knowledge_case(
+        &self,
+        case: &crate::models::assistant::KnowledgeCase,
+    ) -> AppResult<()> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            "INSERT OR REPLACE INTO assistant_knowledge (id, question, sql_text, engine, rating, used_count, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&case.id)
+        .bind(&case.question)
+        .bind(&case.sql_text)
+        .bind(&case.engine)
+        .bind(&case.rating)
+        .bind(case.used_count)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn increment_knowledge_used(&self, id: &str) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE assistant_knowledge SET used_count = used_count + 1 WHERE id = ?"
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_knowledge_case(&self, id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM assistant_knowledge WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // ── Assistant Preferences ──
+
+    pub async fn get_preferences(&self) -> AppResult<Vec<crate::models::assistant::Preference>> {
+        let rows = sqlx::query(
+            "SELECT key, value FROM assistant_preferences ORDER BY key"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| crate::models::assistant::Preference {
+            key: row.get("key"),
+            value: row.get("value"),
+        }).collect())
+    }
+
+    pub async fn set_preference(&self, key: &str, value: &str) -> AppResult<()> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            "INSERT OR REPLACE INTO assistant_preferences (key, value, updated_at) VALUES (?, ?, ?)"
+        )
+        .bind(key)
+        .bind(value)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_preference(&self, key: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM assistant_preferences WHERE key = ?")
+            .bind(key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+}
+
+fn row_to_diagram(row: sqlx::sqlite::SqliteRow) -> AppResult<crate::models::diagram::Diagram> {
+    let config_str: String = row.get("config");
+    let config: serde_json::Value = serde_json::from_str(&config_str).unwrap_or_default();
+
+    Ok(crate::models::diagram::Diagram {
+        id: Some(row.get("id")),
+        name: row.get("name"),
+        source_connection_id: row.get("source_connection_id"),
+        source_schema: row.get("source_schema"),
+        nodes: config.get("nodes").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        edges: config.get("edges").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        viewport: config.get("viewport").cloned(),
+        created_at: Some(row.get("created_at")),
+        updated_at: Some(row.get("updated_at")),
+    })
 }
 
 fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline> {

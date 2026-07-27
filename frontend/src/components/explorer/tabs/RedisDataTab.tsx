@@ -15,12 +15,11 @@ import {
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type {
   QueryResult,
-  ExecutionStatus,
   DatabaseObject,
   DbRow,
   DbValue,
 } from '@/types/database';
-import { Environment } from '@/types/database';
+import { ExecutionStatus, Environment } from '@/types/database';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
@@ -127,7 +126,7 @@ export function RedisDataTab({
   // Handle view/procedure initial state
   if (
     (selectedItem.type === 'view' || selectedItem.type === 'procedure') &&
-    executionStatus === 'idle'
+    executionStatus === ExecutionStatus.IDLE
   ) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
@@ -192,7 +191,7 @@ export function RedisDataTab({
       )}
 
       {/* Error */}
-      {executionStatus === 'error' && (
+      {executionStatus === ExecutionStatus.ERROR && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
           <p className="text-xs font-mono">{executionError}</p>
@@ -301,7 +300,7 @@ export function RedisDataTab({
             </table>
           </div>
         ) : (
-          executionStatus === 'success' && (
+          executionStatus === ExecutionStatus.SUCCESS && (
             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic">
               Command executed successfully but returned no data.
             </div>

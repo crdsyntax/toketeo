@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Clock, Search, Trash2, CheckCircle2, XCircle, ChevronRight, Copy, X } from 'lucide-react';
 import type { QueryHistoryEntry } from '@/store/useAppStore';
+import { ExecutionStatus } from '@/types/database';
 
 interface QueryHistoryPanelProps {
   connectionId: string | undefined;
@@ -122,7 +123,7 @@ export function QueryHistoryPanel({
                   >
                     {/* Status icon */}
                     <div className="shrink-0 mt-0.5">
-                      {entry.status === 'success' ? (
+                      {entry.status === ExecutionStatus.SUCCESS ? (
                         <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                       ) : (
                         <XCircle className="w-3 h-3 text-destructive" />
@@ -137,10 +138,10 @@ export function QueryHistoryPanel({
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-[10px] text-muted-foreground">{formatDate(entry.executedAt)}</span>
                         <span className="text-[10px] text-muted-foreground">{formatDuration(entry.durationMs)}</span>
-                        {entry.rowCount !== undefined && entry.status === 'success' && (
+                        {entry.rowCount !== undefined && entry.status === ExecutionStatus.SUCCESS && (
                           <span className="text-[10px] text-muted-foreground">{entry.rowCount} rows</span>
                         )}
-                        {entry.status === 'error' && (
+                        {entry.status === ExecutionStatus.ERROR && (
                           <span className="text-[10px] text-destructive truncate max-w-[200px]">{entry.error}</span>
                         )}
                       </div>
