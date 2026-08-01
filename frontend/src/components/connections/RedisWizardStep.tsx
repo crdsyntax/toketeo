@@ -30,7 +30,7 @@ export function RedisWizardStep({ onConfigChange, config }: RedisWizardStepProps
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
-          <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Host</label>
+          <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Host</label>
           <input
             value={config.host}
             onChange={(e) => handleChange('host', e.target.value)}
@@ -38,7 +38,7 @@ export function RedisWizardStep({ onConfigChange, config }: RedisWizardStepProps
           />
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Port</label>
+          <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Port</label>
           <input
             value={config.port}
             onChange={(e) => handleChange('port', e.target.value)}
@@ -46,7 +46,7 @@ export function RedisWizardStep({ onConfigChange, config }: RedisWizardStepProps
           />
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Database (0-15)</label>
+          <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Database (0-15)</label>
           <input
             value={config.database}
             onChange={(e) => handleChange('database', e.target.value)}
@@ -55,7 +55,7 @@ export function RedisWizardStep({ onConfigChange, config }: RedisWizardStepProps
           />
         </div>
         <div className="col-span-2">
-          <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Password (optional)</label>
+          <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Password (optional)</label>
           <input
             type="password"
             value={config.password}

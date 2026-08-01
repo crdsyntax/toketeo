@@ -204,13 +204,13 @@ export default function Connections() {
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-border pb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight uppercase">Connections</h1>
-          <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">Manage database access configurations</p>
+          <p className="text-[var(--ch-text-10)] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">Manage database access configurations</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleImport}
             disabled={isImporting}
-            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
           >
             <UploadCloud className="w-4 h-4" />
             Import JSON
@@ -218,21 +218,21 @@ export default function Connections() {
           <button
             onClick={handleExportAll}
             disabled={isExporting}
-            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             Export All
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
           >
             <Plus className="w-4 h-4" />
             New Connection
           </button>
           <button
             onClick={() => setShowWizard(true)}
-            className="flex items-center gap-2 bg-muted text-foreground px-3 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all rounded-md"
+            className="flex items-center gap-2 bg-muted text-foreground px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all rounded-md"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Wizard
@@ -250,7 +250,7 @@ export default function Connections() {
         <button
           onClick={() => setActiveEngineFilter('all')}
           className={cn(
-            'flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
+            'flex items-center gap-2 px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
             activeEngineFilter === 'all'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
@@ -258,7 +258,7 @@ export default function Connections() {
         >
           All
           {connections && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/50">
+            <span className="text-[var(--ch-text-9)] px-1.5 py-0.5 rounded bg-muted/50">
               {connections.length}
             </span>
           )}
@@ -273,7 +273,7 @@ export default function Connections() {
               key={engineType}
               onClick={() => setActiveEngineFilter(engineType)}
               className={cn(
-                'flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
+                'flex items-center gap-2 px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
                 activeEngineFilter === engineType
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
@@ -281,7 +281,7 @@ export default function Connections() {
             >
               <EngineIcon className={cn('w-3 h-3', activeEngineFilter === engineType ? config.textClass : '')} />
               {config.label}
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/50">
+              <span className="text-[var(--ch-text-9)] px-1.5 py-0.5 rounded bg-muted/50">
                 {count}
               </span>
             </button>

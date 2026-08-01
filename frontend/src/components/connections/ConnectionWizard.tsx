@@ -111,7 +111,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
           <Plug className="w-4 h-4 text-primary shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-foreground truncate">New Connection</p>
-            <p className="text-[10px] text-muted-foreground truncate">{name || 'Quick Setup'}</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground truncate">{name || 'Quick Setup'}</p>
           </div>
           <button onClick={() => setIsMinimized(false)} className="p-1 hover:bg-background rounded shrink-0" title="Expand">
             <Maximize2 className="w-3.5 h-3.5" />
@@ -176,7 +176,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
                     <span className="text-xl">{e.icon}</span>
                     <div>
                       <p className="text-xs font-semibold text-foreground">{e.name}</p>
-                      <p className="text-[10px] text-muted-foreground">Port {defaultPorts[e.id]}</p>
+                      <p className="text-[var(--ch-text-10)] text-muted-foreground">Port {defaultPorts[e.id]}</p>
                     </div>
                     {engine === e.id && <Check className="w-4 h-4 text-primary ml-auto" />}
                   </button>
@@ -191,43 +191,43 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
               <p className="text-xs text-muted-foreground mb-2">Enter your connection details:</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Connection Name</label>
+                  <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Connection Name</label>
                   <input value={name} onChange={(e) => setName(e.target.value)}
                     placeholder={`${ENGINE_MAP[engine!]?.name || 'Database'} - ${host}`}
                     className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Host</label>
+                  <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Host</label>
                   <input value={host} onChange={(e) => setHost(e.target.value)}
                     className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Port</label>
+                  <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Port</label>
                   <input value={port} onChange={(e) => setPort(e.target.value)}
                     className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
                 {engine === DatabaseType.REDIS ? (
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Database (0-15)</label>
+                    <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Database (0-15)</label>
                     <input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="0"
                       className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   </div>
                 ) : (
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Database</label>
+                    <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Database</label>
                     <input value={database} onChange={(e) => setDatabase(e.target.value)}
                       className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   </div>
                 )}
                 {engine !== DatabaseType.REDIS && (
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Username</label>
+                    <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Username</label>
                     <input value={user} onChange={(e) => setUser(e.target.value)}
                       className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   </div>
                 )}
                 <div className={engine === DatabaseType.REDIS ? 'col-span-2' : ''}>
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Password {engine === DatabaseType.REDIS ? '(optional)' : ''}</label>
+                  <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Password {engine === DatabaseType.REDIS ? '(optional)' : ''}</label>
                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={engine === DatabaseType.REDIS ? '(none)' : ''}
                     className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>

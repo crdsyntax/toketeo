@@ -119,8 +119,9 @@ pub async fn fetch_trigger_infos(
     driver: &dyn DbDriver,
     names: &[String],
     schema: Option<&str>,
-) -> AppResult<BTreeMap<String, (String, String, String)>> {
+) -> AppResult<(BTreeMap<String, (String, String, String)>, BTreeMap<String, String>)> {
     let mut map = BTreeMap::new();
+    let mut ddls = BTreeMap::new();
     for name in names {
         match driver
             .fetch_ddl(name, "TRIGGER", schema.map(str::to_string))
@@ -129,16 +130,18 @@ pub async fn fetch_trigger_infos(
             Ok(ddl) => {
                 let info = parse_trigger_ddl(&ddl);
                 map.insert(name.to_lowercase(), info);
+                ddls.insert(name.clone(), ddl);
             }
             Err(_) => {
                 map.insert(
                     name.to_lowercase(),
                     (String::new(), String::new(), String::new()),
                 );
+                ddls.insert(name.clone(), String::new());
             }
         }
     }
-    Ok(map)
+    Ok((map, ddls))
 }
 
 pub async fn compare_triggers(
@@ -168,15 +171,28 @@ pub async fn compare_triggers(
         .collect();
     let names_vec: Vec<String> = all_names.into_iter().collect();
 
-    let src_infos = fetch_trigger_infos(source, &names_vec, source_schema).await?;
-    let tgt_infos = fetch_trigger_infos(target, &names_vec, target_schema).await?;
+    let (src_infos, src_ddls) = fetch_trigger_infos(source, &names_vec, source_schema).await?;
+    let (tgt_infos, _tgt_ddls) = fetch_trigger_infos(target, &names_vec, target_schema).await?;
 
-    Ok(compare_trigger_names(
+    let mut results = compare_trigger_names(
         &src_triggers,
         &tgt_triggers,
         &src_infos,
         &tgt_infos,
-    ))
+    );
+
+    // Attach DDL to results
+    for r in &mut results {
+        if (r.status == CompareStatus::Missing || r.status == CompareStatus::Modified) && r.details.is_none() {
+            if let Some(ddl) = src_ddls.get(&r.name) {
+                if !ddl.is_empty() {
+                    r.details = Some(serde_json::json!({ "source_definition": ddl }));
+                }
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 #[cfg(test)]

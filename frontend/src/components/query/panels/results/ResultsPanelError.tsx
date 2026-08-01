@@ -43,12 +43,12 @@ export function ResultsPanelError({ activeTab, updateTabResults, safeDeleteSugge
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
           <div className="flex-1 space-y-1.5">
             <p className="text-xs font-semibold leading-none">Safe Delete Available</p>
-            <p className="text-[11px] opacity-80">
+            <p className="text-[var(--ch-text-11)] opacity-80">
               The delete failed due to a foreign key constraint. A safe delete script has been generated that deletes dependent tables first.
             </p>
             <button
               onClick={handleOpenInEditor}
-              className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 transition-colors"
+              className="flex items-center gap-1.5 text-[var(--ch-text-11)] font-medium px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 transition-colors"
             >
               <FileCode className="w-3 h-3" />
               Replace query with safe delete

@@ -2,13 +2,14 @@ import type * as monaco from 'monaco-editor'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { Monaco } from '@monaco-editor/react'
 import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
+import { useAssistantStore } from '@/store/assistantStore'
 import { queryService } from '@/services/query.service'
 import { schemaService } from '@/services/schema.service'
 import { tauriApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import { toast } from 'react-hot-toast'
-import type { DbValue, DbRow } from '@/types/database'
+import type { DbValue, DbRow, Connection } from '@/types/database'
 import { ExecutionStatus, Environment, DatabaseType } from '@/types/database'
 import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
@@ -171,6 +172,7 @@ export function useQueryEditor() {
   const [prevRect, setPrevRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
   const [isInteracting, setIsInteracting] = useState(false)
+  const lastExecutedSqlRef = useRef('')
   const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
   const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
   const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({ isOpen: false, sql: '' })
@@ -220,9 +222,9 @@ export function useQueryEditor() {
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 
-  const checkDangerousQuery = useCallback((sql: string, isMongo: boolean): boolean => {
+  const checkDangerousQuery = useCallback((sql: string, isMongo: boolean, connection?: Connection | null): boolean => {
     if (isMongo) {
-      const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION;
+      const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
       if (!isProduction) return false;
 
       // MongoDB destructive operations regex
@@ -241,7 +243,7 @@ export function useQueryEditor() {
     const hasUpdate = upperSql.includes('UPDATE')
     const hasDelete = upperSql.includes('DELETE')
     const hasWhere = upperSql.includes('WHERE')
-    const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION;
+    const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
 
     // In production, ANY UPDATE/DELETE requires confirmation
     if (isProduction && (hasUpdate || hasDelete)) {
@@ -257,43 +259,62 @@ export function useQueryEditor() {
     }
 
     return false
-  }, [activeConnection])
+  }, [])
 
   const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
-    if (activeTab?.query && activeConnection) {
+    if (!activeTab?.query) return
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) {
       setSafeDeleteSuggestion(null)
-      const isMongo = activeConnection.type === DatabaseType.MONGODB;
-      if (checkDangerousQuery(activeTab.query, isMongo)) return
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'No connection selected. Select a connection in the toolbar to execute this query.',
+      })
+      return
+    }
+    setSafeDeleteSuggestion(null)
+    const isMongo = targetConnection.type === DatabaseType.MONGODB;
+    if (checkDangerousQuery(activeTab.query, isMongo, targetConnection)) return
 
       const effectiveLimit = limit ?? queryLimit;
       let sql = activeTab.query.trim();
 
       if (isMongo) {
         sql = buildMongoJsonQuery(sql, activeTab.mongoFilter, activeTab.editorMode);
-      } else if (/^\s*SELECT\b/i.test(sql) && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
-        const offset = (page - 1) * effectiveLimit;
-        const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
-        if (sql.endsWith(';')) {
-          sql = sql.slice(0, -1).trim() + limitStr + ';';
-        } else {
-          sql += limitStr;
+      } else {
+        const isSelect = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CALL)\b/i.test(sql);
+        if (page > 1 && !isSelect) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Pagination is only supported for SELECT queries.',
+          });
+          return;
+        }
+        if (isSelect && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
+          const offset = (page - 1) * effectiveLimit;
+          const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
+          if (sql.endsWith(';')) {
+            sql = sql.slice(0, -1).trim() + limitStr + ';';
+          } else {
+            sql += limitStr;
+          }
         }
       }
       if (!isMongo) sql = sql.endsWith(';') ? sql : `${sql};`;
+      lastExecutedSqlRef.current = sql;
 
       updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
 
       const startTime = Date.now();
       try {
-        const targetConnectionId = activeTab.connectionId || activeConnection.id;
-        const targetConnection = activeConnection.id === targetConnectionId
-          ? activeConnection
-          : (connections.find(c => c.id === targetConnectionId) || activeConnection);
         // Use the connection's database/schema, falling back to the active connection's
         // selected schema (important for PostgreSQL where the schema is set in the sidebar).
-        const schema = targetConnection.database || activeConnection.database;
+        const schema = targetConnection.database || activeConnection?.database;
         
         let result;
         try {
@@ -361,7 +382,7 @@ export function useQueryEditor() {
         const histEntry: QueryHistoryEntry = {
           id: Math.random().toString(36).substring(2),
           query: activeTab.query.trim(),
-          connectionId: activeTab.connectionId || activeConnection.id,
+          connectionId: targetConnection.id,
           executedAt: Date.now(),
           durationMs,
           status: 'error',
@@ -371,14 +392,14 @@ export function useQueryEditor() {
         schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
 
         // Auto-detect FK violation and generate safe delete suggestion
-        if (isFKViolation(message) && activeConnection) {
+        if (isFKViolation(message) && targetConnection) {
           const table = extractTableFromQuery(activeTab.query)
           if (table) {
             try {
               const safeSql = await schemaService.generateSafeDeleteSql(
-                activeConnection.id,
+                targetConnection.id,
                 table,
-                activeConnection.database,
+                targetConnection.database,
               )
               setSafeDeleteSuggestion(safeSql)
             } catch {
@@ -387,11 +408,10 @@ export function useQueryEditor() {
           }
         }
       }
-    }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
-    if (!editorRef.current || !activeTab || !activeConnection) return
+    if (!editorRef.current || !activeTab) return
     setSafeDeleteSuggestion(null)
 
     const position = editorRef.current.getPosition()
@@ -429,32 +449,51 @@ export function useQueryEditor() {
 
     if (!sqlSnippet) return
 
-    const isMongo = activeConnection?.type === 'mongodb';
-    if (checkDangerousQuery(sqlSnippet, isMongo)) return
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'No connection selected. Select a connection in the toolbar to execute this query.',
+      })
+      return
+    }
+
+    const isMongo = targetConnection.type === 'mongodb';
+    if (checkDangerousQuery(sqlSnippet, isMongo, targetConnection)) return
 
     sqlSnippet = sqlSnippet.trim();
     if (isMongo) {
       sqlSnippet = buildMongoJsonQuery(sqlSnippet, activeTab.mongoFilter, activeTab.editorMode);
-    } else if (/^\s*SELECT\b/i.test(sqlSnippet) && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
-      const offset = (page - 1) * queryLimit;
-      const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
-      if (sqlSnippet.endsWith(';')) {
-        sqlSnippet = sqlSnippet.slice(0, -1).trim() + limitStr + ';';
-      } else {
-        sqlSnippet += limitStr;
+    } else {
+      const isSelect = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CALL)\b/i.test(sqlSnippet);
+      if (page > 1 && !isSelect) {
+        updateTabResults(activeTab.id, {
+          status: ExecutionStatus.ERROR,
+          error: 'Pagination is only supported for SELECT queries.',
+        });
+        return;
+      }
+      if (isSelect && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
+        const offset = (page - 1) * queryLimit;
+        const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
+        if (sqlSnippet.endsWith(';')) {
+          sqlSnippet = sqlSnippet.slice(0, -1).trim() + limitStr + ';';
+        } else {
+          sqlSnippet += limitStr;
+        }
       }
     }
     if (!isMongo && !sqlSnippet.endsWith(';')) sqlSnippet += ';'
+    lastExecutedSqlRef.current = sqlSnippet;
 
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     const startTime = Date.now();
     
     try {
-      const targetConnectionId = activeTab.connectionId || activeConnection.id;
-      const targetConnection = activeConnection.id === targetConnectionId
-        ? activeConnection
-        : (connections.find(c => c.id === targetConnectionId) || activeConnection);
-      const schema = targetConnection.database || activeConnection.database;
+      const schema = targetConnection.database || activeConnection?.database;
       
       let result;
       try {
@@ -501,14 +540,14 @@ export function useQueryEditor() {
       })
 
       // Auto-detect FK violation and generate safe delete suggestion
-      if (isFKViolation(message) && activeConnection) {
+      if (isFKViolation(message) && targetConnection) {
         const table = extractTableFromQuery(sqlSnippet)
         if (table) {
           try {
             const safeSql = await schemaService.generateSafeDeleteSql(
-              activeConnection.id,
+              targetConnection.id,
               table,
-              activeConnection.database,
+              targetConnection.database,
             )
             setSafeDeleteSuggestion(safeSql)
           } catch {
@@ -529,20 +568,28 @@ export function useQueryEditor() {
   }, [handleExecuteCurrent, handleExecuteAll])
 
   const handleCancel = useCallback(() => {
-    if (activeTabId && activeConnection) {
+    if (activeTabId) {
+      const tab = tabs.find(t => t.id === activeTabId);
+      const connId = tab?.connectionId || activeConnection?.id;
+      if (!connId) return;
       updateTabResults(activeTabId, { 
         status: ExecutionStatus.ERROR, 
         error: 'Query cancelled by user',
         results: null 
       })
-      queryService.cancel(activeConnection.id)
+      queryService.cancel(connId)
     }
-  }, [activeTabId, activeConnection, updateTabResults])
+  }, [activeTabId, tabs, activeConnection, updateTabResults])
 
   const updateCell = useCallback(async (rowIndex: number, column: string, newValue: DbValue, isUndoRedo: boolean = false) => {
-    if (!activeTab?.results || !activeConnection) return
+    if (!activeTab?.results) return
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return
 
-    if (activeConnection.environment === Environment.PRODUCTION && !isUndoRedo) {
+    if (targetConnection.environment === Environment.PRODUCTION && !isUndoRedo) {
       toast(
         'Editing production data — changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
         { icon: '⚠️', duration: 5000 },
@@ -566,7 +613,7 @@ export function useQueryEditor() {
       return
     }
 
-    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+    const tableNameMatch = (lastExecutedSqlRef.current || activeTab.query).match(TABLE_NAME_REGEX)
     let tableName = tableNameMatch ? tableNameMatch[1] : null
 
     if (!tableName) {
@@ -616,22 +663,23 @@ export function useQueryEditor() {
     })
 
     try {
-        try {
+        const schema = targetConnection.database || activeConnection?.database;
+
+        const runUpdate = async () => {
             await tauriApi.invoke('execute_query', {
-                id: activeConnection.id,
+                id: targetConnection.id,
                 query: finalSql,
-                ...(activeConnection.database ? { schema: activeConnection.database } : {})
-            })
+                ...(schema ? { schema } : {})
+            });
+        };
+
+        try {
+            await runUpdate();
         } catch (err: unknown) {
             const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
             if (isConnNotFound) {
-                const targetConnectionId = activeTab.connectionId || activeConnection.id;
-                await connectionService.reconnect(targetConnectionId);
-                await tauriApi.invoke('execute_query', {
-                    id: activeConnection.id,
-                    query: finalSql,
-                    ...(activeConnection.database ? { schema: activeConnection.database } : {})
-                })
+                await connectionService.reconnect(targetConnection.id);
+                await runUpdate();
             } else {
                 throw err;
             }
@@ -662,7 +710,7 @@ export function useQueryEditor() {
     }
     
     setEditingCell(null)
-  }, [activeTab, activeConnection, updateTabResults, addXP, trackAction])
+  }, [activeTab, activeConnection, connections, updateTabResults, addXP, trackAction])
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
@@ -718,7 +766,13 @@ export function useQueryEditor() {
   }, [undo, redo]);
 
   const handleGenerateSql = useCallback(async (action: string) => {
-    if (!contextMenuSql || !activeConnection || !activeTab?.results) return;
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return;
 
     const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
     let tableName = tableNameMatch ? tableNameMatch[1] : null
@@ -751,7 +805,7 @@ export function useQueryEditor() {
         setSqlModal({ isOpen: true, sql: jsonStr });
       } else {
         const sql = await tauriApi.invoke<string>('generate_sql', {
-          id: activeConnection.id,
+          id: targetConnection.id,
           action,
           context: {
             table: tableName,
@@ -766,15 +820,92 @@ export function useQueryEditor() {
     } finally {
       setContextMenuSql(null);
     }
-  }, [contextMenuSql, activeConnection, activeTab, updateTabResults]);
+  }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults]);
 
   const handleEditorWillMount = useCallback((monacoInstance: Monaco) => {
     const languages = monacoInstance.languages as typeof monacoInstance.languages & { sqlProviderRegistered?: boolean };
     if (languages.sqlProviderRegistered) return;
     languages.sqlProviderRegistered = true;
 
+    const schemaCache = new Map<string, { tables: string[]; columns: Record<string, { name: string; type: string; isNullable: boolean; isPrimaryKey: boolean }[]> }>();
+
+    const SQL_KEYWORDS: { label: string; insertText: string; doc: string; kind: number }[] = [
+      { label: 'SELECT', insertText: 'SELECT ', doc: 'Retrieve rows from a table', kind: 13 },
+      { label: 'FROM', insertText: 'FROM ', doc: 'Specify the source table', kind: 13 },
+      { label: 'WHERE', insertText: 'WHERE ', doc: 'Filter results', kind: 13 },
+      { label: 'AND', insertText: 'AND ', doc: 'Combine conditions', kind: 13 },
+      { label: 'OR', insertText: 'OR ', doc: 'Alternative condition', kind: 13 },
+      { label: 'IN', insertText: 'IN ', doc: 'Check value membership', kind: 13 },
+      { label: 'NOT', insertText: 'NOT ', doc: 'Negate a condition', kind: 13 },
+      { label: 'NULL', insertText: 'NULL', doc: 'Represents no value', kind: 13 },
+      { label: 'IS', insertText: 'IS ', doc: 'Compare with NULL or TRUE/FALSE', kind: 13 },
+      { label: 'BETWEEN', insertText: 'BETWEEN ', doc: 'Range check', kind: 13 },
+      { label: 'LIKE', insertText: 'LIKE ', doc: 'Pattern matching', kind: 13 },
+      { label: 'ORDER BY', insertText: 'ORDER BY ', doc: 'Sort results', kind: 13 },
+      { label: 'GROUP BY', insertText: 'GROUP BY ', doc: 'Group rows for aggregation', kind: 13 },
+      { label: 'HAVING', insertText: 'HAVING ', doc: 'Filter groups', kind: 13 },
+      { label: 'LIMIT', insertText: 'LIMIT ', doc: 'Limit number of rows', kind: 13 },
+      { label: 'OFFSET', insertText: 'OFFSET ', doc: 'Skip rows', kind: 13 },
+      { label: 'JOIN', insertText: 'JOIN ', doc: 'Join tables', kind: 13 },
+      { label: 'INNER JOIN', insertText: 'INNER JOIN ', doc: 'Inner join', kind: 13 },
+      { label: 'LEFT JOIN', insertText: 'LEFT JOIN ', doc: 'Left outer join', kind: 13 },
+      { label: 'RIGHT JOIN', insertText: 'RIGHT JOIN ', doc: 'Right outer join', kind: 13 },
+      { label: 'CROSS JOIN', insertText: 'CROSS JOIN ', doc: 'Cross join', kind: 13 },
+      { label: 'ON', insertText: 'ON ', doc: 'Join condition', kind: 13 },
+      { label: 'AS', insertText: 'AS ', doc: 'Alias', kind: 13 },
+      { label: 'DISTINCT', insertText: 'DISTINCT ', doc: 'Remove duplicates', kind: 13 },
+      { label: 'UNION', insertText: 'UNION ', doc: 'Combine result sets', kind: 13 },
+      { label: 'ALL', insertText: 'ALL ', doc: 'Include duplicates', kind: 13 },
+      { label: 'CASE', insertText: 'CASE WHEN ${1:condition} THEN ${2:result} END', doc: 'Conditional expression', kind: 17 },
+      { label: 'INSERT INTO', insertText: 'INSERT INTO ${1:table} (${2:columns}) VALUES (${3:values});', doc: 'Insert rows', kind: 17 },
+      { label: 'UPDATE', insertText: 'UPDATE ${1:table} SET ${2:column} = ${3:value} WHERE ${4:condition};', doc: 'Update rows', kind: 17 },
+      { label: 'DELETE FROM', insertText: 'DELETE FROM ${1:table} WHERE ${2:condition};', doc: 'Delete rows', kind: 17 },
+      { label: 'CREATE TABLE', insertText: 'CREATE TABLE ${1:name} (\n  ${2:column} ${3:type}\n);', doc: 'Create a new table', kind: 17 },
+      { label: 'ALTER TABLE', insertText: 'ALTER TABLE ${1:table} ', doc: 'Modify a table', kind: 17 },
+      { label: 'DROP TABLE', insertText: 'DROP TABLE IF EXISTS ${1:table};', doc: 'Drop a table', kind: 17 },
+      { label: 'CREATE INDEX', insertText: 'CREATE INDEX ${1:idx_name} ON ${2:table} (${3:column});', doc: 'Create an index', kind: 17 },
+      { label: 'CREATE VIEW', insertText: 'CREATE VIEW ${1:view_name} AS ${2:SELECT ...};', doc: 'Create a view', kind: 17 },
+      { label: 'CREATE PROCEDURE', insertText: 'CREATE PROCEDURE ${1:name}()\nBEGIN\n  ${2:body}\nEND;', doc: 'Create a stored procedure', kind: 17 },
+      { label: 'CREATE FUNCTION', insertText: 'CREATE FUNCTION ${1:name}() RETURNS ${2:type}\nBEGIN\n  ${3:body}\nEND;', doc: 'Create a function', kind: 17 },
+      { label: 'CREATE TRIGGER', insertText: 'CREATE TRIGGER ${1:name} ${2:BEFORE|AFTER} ${3:INSERT|UPDATE|DELETE} ON ${4:table}\nFOR EACH ROW\nBEGIN\n  ${5:body}\nEND;', doc: 'Create a trigger', kind: 17 },
+      { label: 'EXISTS', insertText: 'EXISTS ', doc: 'Check existence in subquery', kind: 13 },
+      { label: 'ANY', insertText: 'ANY ', doc: 'Compare with any subquery value', kind: 13 },
+      { label: 'SOME', insertText: 'SOME ', doc: 'Synonym for ANY', kind: 13 },
+      { label: 'WITH', insertText: 'WITH ', doc: 'Common Table Expression', kind: 13 },
+      { label: 'RECURSIVE', insertText: 'RECURSIVE ', doc: 'Recursive CTE', kind: 13 },
+      { label: 'EXPLAIN', insertText: 'EXPLAIN ', doc: 'Show query execution plan', kind: 13 },
+      { label: 'DESCRIBE', insertText: 'DESCRIBE ', doc: 'Show table structure', kind: 13 },
+    ];
+
+    const SQL_FUNCTIONS: { label: string; insertText: string; doc: string }[] = [
+      { label: 'COUNT', insertText: 'COUNT(${1:*})', doc: 'Count rows' },
+      { label: 'SUM', insertText: 'SUM(${1:column})', doc: 'Sum values' },
+      { label: 'AVG', insertText: 'AVG(${1:column})', doc: 'Average value' },
+      { label: 'MIN', insertText: 'MIN(${1:column})', doc: 'Minimum value' },
+      { label: 'MAX', insertText: 'MAX(${1:column})', doc: 'Maximum value' },
+      { label: 'COALESCE', insertText: 'COALESCE(${1:column}, ${2:default})', doc: 'First non-null value' },
+      { label: 'IFNULL', insertText: 'IFNULL(${1:column}, ${2:default})', doc: 'Replace null with default' },
+      { label: 'NULLIF', insertText: 'NULLIF(${1:a}, ${2:b})', doc: 'Null if equal' },
+      { label: 'CAST', insertText: 'CAST(${1:value} AS ${2:type})', doc: 'Convert data type' },
+      { label: 'CONVERT', insertText: 'CONVERT(${1:value}, ${2:type})', doc: 'Convert data type' },
+      { label: 'CONCAT', insertText: 'CONCAT(${1:a}, ${2:b})', doc: 'Concatenate strings' },
+      { label: 'SUBSTRING', insertText: 'SUBSTRING(${1:str}, ${2:pos}, ${3:len})', doc: 'Extract substring' },
+      { label: 'LENGTH', insertText: 'LENGTH(${1:str})', doc: 'String length' },
+      { label: 'TRIM', insertText: 'TRIM(${1:str})', doc: 'Remove whitespace' },
+      { label: 'UPPER', insertText: 'UPPER(${1:str})', doc: 'Uppercase' },
+      { label: 'LOWER', insertText: 'LOWER(${1:str})', doc: 'Lowercase' },
+      { label: 'NOW', insertText: 'NOW()', doc: 'Current timestamp' },
+      { label: 'CURDATE', insertText: 'CURDATE()', doc: 'Current date' },
+      { label: 'DATE_FORMAT', insertText: 'DATE_FORMAT(${1:date}, \'${2:%Y-%m-%d}\')', doc: 'Format date' },
+      { label: 'DATEDIFF', insertText: 'DATEDIFF(${1:a}, ${2:b})', doc: 'Date difference' },
+      { label: 'EXTRACT', insertText: 'EXTRACT(${1:YEAR} FROM ${2:date})', doc: 'Extract date part' },
+      { label: 'ROUND', insertText: 'ROUND(${1:num}, ${2:decimals})', doc: 'Round number' },
+      { label: 'ABS', insertText: 'ABS(${1:num})', doc: 'Absolute value' },
+    ];
+
     monacoInstance.languages.registerCompletionItemProvider('sql', {
-      provideCompletionItems: (model: monaco.editor.ITextModel, position: monaco.Position) => {
+      triggerCharacters: ['.', ' ', '('],
+      provideCompletionItems: async (model: monaco.editor.ITextModel, position: monaco.Position) => {
         const word = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,
@@ -782,40 +913,117 @@ export function useQueryEditor() {
           startColumn: word.startColumn,
           endColumn: word.endColumn,
         };
-        const suggestions: monaco.languages.CompletionItem[] = [
-          {
-            label: 'SELECT',
-            kind: 17, // CompletionItemKind.Snippet
-            insertText: 'SELECT * FROM ${1:table_name} WHERE ${2:condition};',
-            insertTextRules: 4, // CompletionItemInsertTextRule.InsertAsSnippet
-            documentation: 'Basic SELECT statement',
-            range: range,
-          },
-          {
-            label: 'INSERT',
-            kind: 17,
-            insertText: 'INSERT INTO ${1:table_name} (${2:columns}) VALUES (${3:values});',
+
+        const lineContent = model.getLineContent(position.lineNumber);
+        const textBeforeCursor = lineContent.slice(0, position.column - 1);
+        const afterDot = textBeforeCursor.match(/(\w+)\.\s*$/);
+
+        const suggestions: monaco.languages.CompletionItem[] = [];
+
+        // Try assistant store cache first (fast, synchronous)
+        const cached = useAssistantStore.getState().schemaCache;
+        let tables = cached.tables.map(t => t.name);
+        let columns = cached.columns as Record<string, { name: string; type: string; isNullable: boolean; isPrimaryKey: boolean }[]>;
+
+        // If no cache, try async fetch
+        if (tables.length === 0) {
+          const appState = useAppStore.getState();
+          const activeTab = appState.tabs.find(t => t.id === appState.activeTabId);
+          const connId = activeTab?.connectionId;
+          if (connId) {
+            const db = appState.activeConnection?.database;
+            if (schemaCache.has(connId)) {
+              const cached = schemaCache.get(connId)!;
+              tables = cached.tables;
+              columns = cached.columns;
+            } else {
+              try {
+                const tbls = await schemaService.getTables(connId, db);
+                tables = tbls.map(t => t.name);
+                const cols: typeof columns = {};
+                await Promise.all(tables.map(async (n) => {
+                  try {
+                    cols[n] = (await schemaService.getColumns(connId, n, db)).map(c => ({
+                      name: c.name, type: c.type, isNullable: c.isNullable, isPrimaryKey: c.isPrimaryKey,
+                    }));
+                  } catch { /* skip */ }
+                }));
+                columns = cols;
+                schemaCache.set(connId, { tables, columns });
+              } catch {
+                console.warn('[autocomplete] schema fetch failed');
+              }
+            }
+          }
+        }
+
+        // After dot: only show columns for that table
+        if (afterDot) {
+          const colList = columns[afterDot[1]] || [];
+          for (const col of colList) {
+            suggestions.push({
+              label: { label: col.name, description: col.type },
+              kind: 4,
+              insertText: col.name,
+              detail: col.type,
+              documentation: `${col.name} (${col.type})${col.isPrimaryKey ? ' PK' : ''}${col.isNullable ? '' : ' NOT NULL'}`,
+              range,
+            });
+          }
+          return { suggestions };
+        }
+
+        // Tables
+        for (const tbl of tables) {
+          const colList = columns[tbl] || [];
+          suggestions.push({
+            label: { label: tbl, description: `${colList.length} cols` },
+            kind: 5,
+            insertText: tbl,
+            detail: 'TABLE',
+            documentation: `Table: ${tbl}${colList.length > 0 ? ` (${colList.length} columns)` : ''}`,
+            range,
+          });
+        }
+
+        // Columns
+        for (const cols of Object.values(columns)) {
+          for (const col of cols) {
+            suggestions.push({
+              label: { label: col.name, description: col.type },
+              kind: 4,
+              insertText: col.name,
+              detail: col.type,
+              documentation: `Column: ${col.name} (${col.type})${col.isPrimaryKey ? ' PK' : ''}`,
+              range,
+            });
+          }
+        }
+
+        // Keywords
+        for (const kw of SQL_KEYWORDS) {
+          suggestions.push({
+            label: kw.label,
+            kind: kw.kind,
+            insertText: kw.insertText,
+            insertTextRules: kw.kind === 17 ? 4 : undefined,
+            documentation: kw.doc,
+            range,
+          });
+        }
+
+        // Functions
+        for (const fn of SQL_FUNCTIONS) {
+          suggestions.push({
+            label: { label: fn.label, description: 'function' },
+            kind: 2,
+            insertText: fn.insertText,
             insertTextRules: 4,
-            documentation: 'Basic INSERT statement',
-            range: range,
-          },
-          {
-            label: 'UPDATE',
-            kind: 17,
-            insertText: 'UPDATE ${1:table_name} SET ${2:column} = ${3:value} WHERE ${4:condition};',
-            insertTextRules: 4,
-            documentation: 'Basic UPDATE statement',
-            range: range,
-          },
-          {
-            label: 'DELETE',
-            kind: 17,
-            insertText: 'DELETE FROM ${1:table_name} WHERE ${2:condition};',
-            insertTextRules: 4,
-            documentation: 'Basic DELETE statement',
-            range: range,
-          },
-        ];
+            documentation: fn.doc,
+            range,
+          });
+        }
+
         return { suggestions };
       },
     });

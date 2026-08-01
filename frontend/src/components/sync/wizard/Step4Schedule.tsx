@@ -15,7 +15,7 @@ export function Step4Schedule({
 }: Step4ScheduleProps) {
   return (
     <div className="space-y-6">
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-[var(--ch-text-10)] text-muted-foreground">
         Define cuándo se ejecutará esta sincronización. Puedes ejecutarla una vez ahora o programarla para que se repita automáticamente.
       </p>
 
@@ -34,7 +34,7 @@ export function Step4Schedule({
           </div>
           <div>
             <p className="text-xs font-bold">Ejecutar una vez ahora</p>
-            <p className="text-[10px] text-muted-foreground">La sincronización se ejecutará inmediatamente después de crearla.</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground">La sincronización se ejecutará inmediatamente después de crearla.</p>
           </div>
         </label>
 
@@ -52,7 +52,7 @@ export function Step4Schedule({
           </div>
           <div>
             <p className="text-xs font-bold">Repetir automáticamente</p>
-            <p className="text-[10px] text-muted-foreground">Ejecutar cada: 1h · 6h · 12h · 24h · semanal</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground">Ejecutar cada: 1h · 6h · 12h · 24h · semanal</p>
           </div>
         </label>
 
@@ -61,7 +61,7 @@ export function Step4Schedule({
             {['1h', '6h', '12h', '24h', 'semanal'].map((opt) => (
               <button
                 key={opt}
-                className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider border border-border bg-background hover:border-primary transition-all"
+                className="px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wider border border-border bg-background hover:border-primary transition-all"
               >
                 {opt}
               </button>
@@ -83,7 +83,7 @@ export function Step4Schedule({
           </div>
           <div>
             <p className="text-xs font-bold">Programación personalizada (CRON)</p>
-            <p className="text-[10px] text-muted-foreground">Para usuarios avanzados — define una expresión cron.</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground">Para usuarios avanzados — define una expresión cron.</p>
           </div>
         </label>
 
@@ -99,7 +99,7 @@ export function Step4Schedule({
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-[var(--ch-text-10)] text-muted-foreground">
         <Clock className="w-3 h-3" />
         Esta opción se puede configurar más adelante desde los ajustes de la sincronización.
       </div>

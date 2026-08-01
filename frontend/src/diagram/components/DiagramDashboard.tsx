@@ -132,7 +132,7 @@ export function DiagramDashboard({ onOpen, onNewBlank, onNewFromSchema, onImport
                           <div>
                             <h4 className="font-semibold text-sm leading-tight">{diagram.name}</h4>
                             {diagram.sourceSchema && (
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="text-[var(--ch-text-10)] text-muted-foreground">
                                 Schema: {diagram.sourceSchema}
                               </span>
                             )}
@@ -140,12 +140,12 @@ export function DiagramDashboard({ onOpen, onNewBlank, onNewFromSchema, onImport
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-3 text-[var(--ch-text-10)] text-muted-foreground">
                         <span>{diagram.nodes.length} node{diagram.nodes.length !== 1 ? 's' : ''}</span>
                         <span>{diagram.edges.length} edge{diagram.edges.length !== 1 ? 's' : ''}</span>
                       </div>
 
-                      <div className="text-[10px] text-muted-foreground mt-1">
+                      <div className="text-[var(--ch-text-10)] text-muted-foreground mt-1">
                         {new Date(diagram.updatedAt).toLocaleDateString()}
                       </div>
 

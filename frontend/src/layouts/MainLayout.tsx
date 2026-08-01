@@ -187,8 +187,10 @@ export default function MainLayout() {
             onDisconnect={handleDisconnect}
           />
         )}
-        <main className="flex-1 overflow-auto p-2">
-          <Outlet />
+        <main className="flex-1 overflow-auto p-3">
+          <div className="h-full rounded-lg bg-surface border border-border shadow-sm">
+            <Outlet />
+          </div>
         </main>
       </div>
 

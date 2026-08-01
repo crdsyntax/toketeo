@@ -57,9 +57,9 @@ export function ResultsPanelTable({
   return (
     <div ref={parentRef} className="flex-1 overflow-auto relative h-full" onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}>
       <table className="w-max min-w-full border-collapse table-fixed" style={{ fontFamily: editorFontFamily, fontSize: resultsFontSize }}>
-        <thead className="sticky top-0 z-20 bg-muted shadow-[0_1px_0_0_hsl(var(--border))]">
+        <thead className="sticky top-0 z-20 bg-muted shadow-[0_1px_0_0_hsl(var(--border))]" style={{ fontFamily: editorFontFamily }}>
           <tr>
-            <th className="p-2.5 font-semibold text-muted-foreground text-xs border-r border-border/60 w-12 min-w-[3rem] max-w-[3rem] text-center shrink-0 bg-muted select-none">
+            <th className="p-2.5 font-bold text-muted-foreground border-r border-border/60 w-12 min-w-[3rem] max-w-[3rem] text-center shrink-0 bg-muted select-none">
               #
             </th>
             {activeTab.results!.columns.map((col: string) => {
@@ -68,7 +68,7 @@ export function ResultsPanelTable({
                 <th
                   key={col}
                   onClick={() => requestSort(col)}
-                  className="p-2.5 font-semibold text-muted-foreground text-xs border-r border-border/60 w-[250px] max-w-[250px] bg-muted cursor-pointer hover:bg-muted-foreground/10 hover:text-foreground transition-colors select-none"
+                  className="p-2.5 font-bold text-muted-foreground border-r border-border/60 w-[250px] max-w-[250px] bg-muted cursor-pointer hover:bg-muted-foreground/10 hover:text-foreground transition-colors select-none"
                 >
                   <div className="flex items-center justify-between group">
                     <span className="truncate">{col}</span>
@@ -162,7 +162,7 @@ export function ResultsPanelTable({
                         />
                       ) : (
                         isNull ? (
-                          <span className="inline-block bg-muted/60 border border-border/80 rounded-[4px] px-1.5 py-0.5 text-[10px] text-muted-foreground/70 italic select-none">
+                          <span className="inline-block bg-muted/60 border border-border/80 rounded-[4px] px-1.5 py-0.5 text-[var(--ch-text-10)] text-muted-foreground/70 italic select-none">
                             NULL
                           </span>
                         ) : (formatCellValue(row[col]))

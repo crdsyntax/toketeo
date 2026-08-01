@@ -200,7 +200,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore
               <span className="text-xs font-bold tracking-tight text-foreground uppercase">
                 {pipeline ? 'Editar' : 'Nueva'} Sincronización
               </span>
-              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest ml-3">
+              <span className="text-[var(--ch-text-9)] text-muted-foreground font-bold uppercase tracking-widest ml-3">
                 Paso {currentStep.number}/4 — {currentStep.label}
               </span>
             </div>
@@ -236,7 +236,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore
             <div
               key={s.key}
               className={cn(
-                'flex-1 py-1.5 text-center text-[9px] font-bold uppercase tracking-wider',
+                'flex-1 py-1.5 text-center text-[var(--ch-text-9)] font-bold uppercase tracking-wider',
                 i <= stepIndex ? 'bg-primary/10 text-primary' : 'text-muted-foreground/50',
                 i < stepIndex ? 'border-b-2 border-primary' : 'border-b-2 border-transparent',
               )}
@@ -250,7 +250,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 scrollbar-thin bg-background">
           {error && (
             <div className="p-3 border border-destructive/20 bg-destructive/5">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-destructive">{error}</p>
+              <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider text-destructive">{error}</p>
             </div>
           )}
 
@@ -309,21 +309,21 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore
             {!isFirst && (
               <button
                 onClick={goBack}
-                className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
               >
                 ← Anterior
               </button>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={onClose} className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
               Cancelar
             </button>
             {isLast ? (
               <button
                 onClick={handleSave}
                 disabled={saving || !canGoNext()}
-                className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
               >
                 {saving ? 'Guardando...' : 'Crear Sincronización'}
               </button>
@@ -331,7 +331,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore
               <button
                 onClick={goNext}
                 disabled={!canGoNext()}
-                className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
               >
                 Siguiente →
               </button>

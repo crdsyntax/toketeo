@@ -35,6 +35,10 @@ impl AssistantTool for ExportTool {
                 "limit": {
                     "type": "integer",
                     "description": "Max rows to export (default: 100)"
+                },
+                "connection_id": {
+                    "type": "string",
+                    "description": "Connection ID to export from (defaults to the chat's active connection)"
                 }
             },
             "required": ["table"]

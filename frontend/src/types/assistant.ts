@@ -18,6 +18,10 @@ export interface ModelInfo {
   name: string
   provider: string
   supportsTools: boolean
+  /** True when the model is served by a free/no-cost tier. */
+  isFree?: boolean
+  /** Category provided by the backend to group models (e.g. "go", "zen", "free"). */
+  tier?: string
 }
 
 export interface TestResult {

@@ -74,7 +74,7 @@ export function NewScriptModal({ isOpen, onClose, connections, onCreate }: NewSc
 
         <div className="p-4 space-y-4">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
               Connection
             </label>
             <select
@@ -91,7 +91,7 @@ export function NewScriptModal({ isOpen, onClose, connections, onCreate }: NewSc
 
           {selectedConnId && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">
                 {dbLabel}
               </label>
               <select
@@ -108,7 +108,7 @@ export function NewScriptModal({ isOpen, onClose, connections, onCreate }: NewSc
                 ))}
               </select>
               {loading && (
-                <p className="text-[10px] text-muted-foreground mt-1">Loading {dbLabel.toLowerCase()}s...</p>
+                <p className="text-[var(--ch-text-10)] text-muted-foreground mt-1">Loading {dbLabel.toLowerCase()}s...</p>
               )}
             </div>
           )}

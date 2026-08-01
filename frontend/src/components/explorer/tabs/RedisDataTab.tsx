@@ -61,7 +61,7 @@ export function RedisDataTab({
   const copiedTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const activeConnection = useAppStore((state) => state.activeConnection);
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
-  const resultsFontSize = useAppStore((s) => s.resultsFontSize);
+  const resultsFontSize = useAppStore((s) => s.uiFontSize);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const resizing = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
   const prevColumns = useRef<string[]>([]);
@@ -158,7 +158,7 @@ export function RedisDataTab({
         <div className="flex items-center gap-2 w-full">
           <div className="flex items-center gap-1.5 shrink-0">
             <Terminal className="w-3.5 h-3.5 text-amber-500" />
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Redis</span>
+            <span className="text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-wider">Redis</span>
           </div>
           <input
             className="flex-1 bg-background border border-border px-3 py-1 rounded text-xs font-mono outline-none focus:ring-1 focus:ring-primary"
@@ -186,7 +186,7 @@ export function RedisDataTab({
       {activeConnection?.environment === Environment.PRODUCTION && (
         <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-red-500 flex items-center gap-2 shrink-0">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          <p className="text-[11px] font-bold uppercase tracking-wider flex-1">Production — commands execute on live server</p>
+          <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider flex-1">Production — commands execute on live server</p>
         </div>
       )}
 
@@ -271,7 +271,7 @@ export function RedisDataTab({
                           <div className="flex items-center gap-1">
                             <span className="truncate flex-1 min-w-0">
                               {value === null ? (
-                                <span className="text-muted-foreground italic text-[10px]">NULL</span>
+                                <span className="text-muted-foreground italic text-[var(--ch-text-10)]">NULL</span>
                               ) : (
                                 formatCellValue(value)
                               )}
@@ -327,14 +327,14 @@ export function RedisDataTab({
           </div>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest opacity-70">
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-black uppercase tracking-widest opacity-70">
                 Rows:
               </span>
               <div className="relative flex items-center group/select">
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="appearance-none text-[10px] bg-muted/30 border border-border/50 rounded-md pl-3 pr-8 py-1.5 outline-none font-black text-foreground transition-all hover:border-primary/40 hover:bg-muted/60 cursor-pointer shadow-inner"
+                  className="appearance-none text-[var(--ch-text-10)] bg-muted/30 border border-border/50 rounded-md pl-3 pr-8 py-1.5 outline-none font-black text-foreground transition-all hover:border-primary/40 hover:bg-muted/60 cursor-pointer shadow-inner"
                 >
                   <option value={100}>100</option>
                   <option value={200}>200</option>
@@ -357,7 +357,7 @@ export function RedisDataTab({
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
               <div className="flex items-center justify-center min-w-[40px]">
-                <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                <span className="text-[var(--ch-text-10)] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                   PAGE {page + 1}
                 </span>
               </div>

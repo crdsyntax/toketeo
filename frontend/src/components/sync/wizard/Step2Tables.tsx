@@ -161,14 +161,14 @@ export function Step2Tables({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
           Tablas a sincronizar
         </span>
         <div className="flex items-center gap-3">
           <button
             onClick={addAllTables}
             disabled={!sourceId || !sourceSchema || loadingAllTables}
-            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loadingAllTables ? (
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -179,7 +179,7 @@ export function Step2Tables({
           </button>
           <button
             onClick={addTable}
-            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
           >
             <Database className="w-3 h-3" /> Agregar Tabla
           </button>
@@ -227,7 +227,7 @@ export function Step2Tables({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Tabla Origen</label>
+                  <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Tabla Origen</label>
                   <input
                     className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                     value={table.source_table}
@@ -236,7 +236,7 @@ export function Step2Tables({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Tabla Destino</label>
+                  <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Tabla Destino</label>
                   <input
                     className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                     value={table.target_table}
@@ -266,7 +266,7 @@ export function Step2Tables({
                           loadPreview(i)
                         }
                       }}
-                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-primary hover:text-primary/80"
+                      className="flex items-center gap-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-primary hover:text-primary/80"
                     >
                       {showPreview[i] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       {showPreview[i] ? 'Ocultar preview' : 'Ver preview'}
@@ -276,7 +276,7 @@ export function Step2Tables({
 
                   {showPreview[i] && previewData[i] && (
                     <div className="mt-2 border border-border bg-background overflow-x-auto">
-                      <table className="w-full text-[10px] font-mono">
+                      <table className="w-full text-[var(--ch-text-10)] font-mono">
                         <thead>
                           <tr className="border-b border-border bg-muted/50">
                             {sourceColumns[i].slice(0, 5).map((col) => (
@@ -303,7 +303,7 @@ export function Step2Tables({
               <div className="border border-dashed border-border/50">
                 <button
                   onClick={() => setAdvancedOpen((prev) => ({ ...prev, [i]: !prev[i] }))}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center gap-2 w-full px-3 py-2 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {advancedOpen[i] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                   <Columns className="w-3 h-3" />
@@ -312,7 +312,7 @@ export function Step2Tables({
                 {advancedOpen[i] && (
                   <div className="px-3 pb-3 space-y-4">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Filtro (cláusula SQL WHERE)</label>
+                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Filtro (cláusula SQL WHERE)</label>
                       <input
                         className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                         value={table.filters ?? ''}
@@ -321,7 +321,7 @@ export function Step2Tables({
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Llave(s) primaria(s)</label>
+                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Llave(s) primaria(s)</label>
                       {loadingTargetColumns[i] ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Loader2 className="w-3 h-3 animate-spin" /> Cargando columnas destino...

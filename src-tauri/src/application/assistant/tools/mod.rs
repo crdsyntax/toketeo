@@ -8,6 +8,7 @@ pub mod codegen_tool;
 pub mod backup_tool;
 pub mod export_tool;
 pub mod auto_schema_tool;
+pub mod sync_tool;
 pub mod recommendation_engine;
 
 pub use tool_engine::{AssistantTool, SafetyClassifier, ToolEngine};

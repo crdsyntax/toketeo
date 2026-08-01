@@ -129,6 +129,8 @@ impl AiAdapter for OllamaAdapter {
                             name: name,
                             provider: "ollama".to_string(),
                             supports_tools: false,
+                            is_free: false,
+                            tier: String::new(),
                         })
                     })
                     .collect()

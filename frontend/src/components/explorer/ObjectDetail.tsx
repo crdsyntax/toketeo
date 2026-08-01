@@ -22,6 +22,11 @@ import { DdlTab } from './tabs/DdlTab';
 import { ModelExportModal } from './ModelExportModal';
 import type { ExplorerTabState } from '@/store/useAppStore';
 import { useState } from 'react';
+import { useAppStore } from '@/store/useAppStore';
+import { schemaService } from '@/services/schema.service';
+import { AddColumnModal } from './AddColumnModal';
+import { AddIndexModal } from './AddIndexModal';
+import { AddForeignKeyModal } from './AddForeignKeyModal';
 
 interface ObjectDetailProps {
   explorerTabs: Record<string, ExplorerTabState>;
@@ -117,8 +122,24 @@ export function ObjectDetail(props: ObjectDetailProps) {
   } = props;
   
   const [modelModalOpen, setModelModalOpen] = useState(false);
-  
+  const [addColumnOpen, setAddColumnOpen] = useState(false);
+  const [addIndexOpen, setAddIndexOpen] = useState(false);
+  const [addFKOpen, setAddFKOpen] = useState(false);
+  const activeConnection = useAppStore((s) => s.activeConnection);
+
   const handleAddObject = (type: string) => {
+    if (type === 'column') {
+      setAddColumnOpen(true);
+      return;
+    }
+    if (type === 'index') {
+      setAddIndexOpen(true);
+      return;
+    }
+    if (type === 'foreign key') {
+      setAddFKOpen(true);
+      return;
+    }
     setActiveTab(ExplorerTab.DDL);
     setEditableDdl(
       `-- Add new ${type} to ${selectedItem?.name}\nALTER TABLE \`${selectedItem?.name}\` ADD ...`,
@@ -449,6 +470,50 @@ export function ObjectDetail(props: ObjectDetailProps) {
           onClose={() => setModelModalOpen(false)} 
           tableName={selectedItem.name} 
           schema={currentSchema}
+        />
+      )}
+
+      {addColumnOpen && activeConnection && selectedItem && (
+        <AddColumnModal
+          open={addColumnOpen}
+          onClose={() => setAddColumnOpen(false)}
+          tableName={selectedItem.name}
+          schema={currentSchema}
+          connectionId={activeConnection.id}
+          onCreated={() => {
+            setAddColumnOpen(false)
+            schemaService.clearMetadataCache(activeConnection.id).catch(() => {})
+          }}
+        />
+      )}
+
+      {addIndexOpen && activeConnection && selectedItem && (
+        <AddIndexModal
+          open={addIndexOpen}
+          onClose={() => setAddIndexOpen(false)}
+          tableName={selectedItem.name}
+          schema={currentSchema}
+          connectionId={activeConnection.id}
+          availableColumns={columns?.map(c => c.name) || []}
+          onCreated={() => {
+            setAddIndexOpen(false)
+            schemaService.clearMetadataCache(activeConnection.id).catch(() => {})
+          }}
+        />
+      )}
+
+      {addFKOpen && activeConnection && selectedItem && (
+        <AddForeignKeyModal
+          open={addFKOpen}
+          onClose={() => setAddFKOpen(false)}
+          tableName={selectedItem.name}
+          schema={currentSchema}
+          connectionId={activeConnection.id}
+          availableColumns={columns?.map(c => c.name) || []}
+          onCreated={() => {
+            setAddFKOpen(false)
+            schemaService.clearMetadataCache(activeConnection.id).catch(() => {})
+          }}
         />
       )}
     </>

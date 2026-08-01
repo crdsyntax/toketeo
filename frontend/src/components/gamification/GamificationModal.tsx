@@ -9,6 +9,7 @@ import {
   Palette, Bot, LineChart, Clock, Network, GitBranch, Pencil, Gamepad2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/Badge';
 import { WizardPixelArt } from './WizardPixelArt';
 import { DataDefenderGame } from './game/DataDefenderGame';
 import { SOUL_ITEMS } from './assets/objects';
@@ -94,7 +95,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
       <div className="bg-card w-[600px] max-w-[90vw] max-h-[85vh] rounded-xl border border-border shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header */}
-        <div className="relative p-6 bg-gradient-to-br from-primary/10 via-background to-background border-b border-border">
+        <div className="relative p-6 bg-gradient-to-br from-accent/10 via-background to-background border-b border-border">
           <button 
             onClick={onClose}
             className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
@@ -117,21 +118,29 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
             {/* Level Avatar */}
             <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
               <svg className="absolute inset-0 w-full h-full -rotate-90">
+                <defs>
+                  <linearGradient id="modal-ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="var(--accent)" />
+                    <stop offset="100%" stopColor="var(--accent-hover)" />
+                  </linearGradient>
+                </defs>
                 <circle cx="48" cy="48" r="44" className="stroke-muted/30 fill-none" strokeWidth="6" />
                 <circle
                   cx="48"
                   cy="48"
                   r="44"
-                  className="stroke-primary fill-none transition-all duration-1000 ease-out"
+                  fill="none"
                   strokeWidth="6"
+                  stroke="url(#modal-ring-grad)"
                   strokeDasharray={2 * Math.PI * 44}
                   strokeDashoffset={2 * Math.PI * 44 * (1 - progressPercentage / 100)}
                   strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out"
                 />
               </svg>
               <div className="text-center">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest block mb-0.5">Level</span>
-                <span className="text-3xl font-black text-primary leading-none block">{level}</span>
+                <span className="text-3xl font-black text-accent leading-none block">{level}</span>
               </div>
             </div>
 
@@ -143,10 +152,10 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                 <p className="text-sm font-semibold text-foreground/90 truncate">{characterName}</p>
               )}
               {characterLore && (
-                <p className="text-[11px] text-muted-foreground/70 line-clamp-2">{characterLore}</p>
+                <p className="text-[var(--ch-text-11)] text-muted-foreground/70 line-clamp-2">{characterLore}</p>
               )}
               
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 mt-2">
+              <div className="flex items-center gap-2 text-[var(--ch-text-11)] text-muted-foreground/60 mt-2">
                 <span>{progressPercentage.toFixed(0)}% to Level {level + 1}</span>
                 <span className="text-muted-foreground/30">·</span>
                 <span>{xpInLevel} / {xpNeeded} XP</span>
@@ -173,7 +182,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
               onClick={() => setActiveTab('quests')}
               className={cn(
                 "px-4 py-3 text-sm font-bold border-b-2 transition-colors",
-                activeTab === 'quests' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                activeTab === 'quests' ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
               Available Quests
@@ -182,20 +191,20 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
               onClick={() => setActiveTab('perks')}
               className={cn(
                 "px-4 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2",
-                activeTab === 'perks' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                activeTab === 'perks' ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
               Unlockable Perks
-              <span className="bg-primary/10 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
+              <Badge variant="default" size="sm">
                 {unlockedPerks?.length || 0}/{APP_PERKS.length}
-              </span>
+              </Badge>
             </button>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowGame(true)}
-              className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary transition-all hover:border-primary/60 hover:bg-primary/20"
+              className="flex items-center gap-2 rounded-full border border-accent/30 bg-accent-muted px-3 py-1.5 text-[var(--ch-text-11)] font-semibold uppercase tracking-[0.24em] text-accent transition-all hover:border-accent/60 hover:bg-accent/20"
             >
               <Gamepad2 className="h-3.5 w-3.5" />
               Play
@@ -203,7 +212,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
 
             <button
               onClick={() => setShowSoulSlots((prev) => !prev)}
-              className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-200 transition-all hover:border-amber-400/60 hover:bg-amber-500/20"
+              className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[var(--ch-text-11)] font-semibold uppercase tracking-[0.24em] text-amber-200 transition-all hover:border-amber-400/60 hover:bg-amber-500/20"
             >
               <Skull className="h-3.5 w-3.5" />
               Soul Slots
@@ -217,10 +226,10 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
             <div className="mb-4 rounded-2xl border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(255,193,7,0.16),_transparent_65%)] p-4 shadow-[0_0_24px_rgba(0,0,0,0.35)]">
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.34em] text-amber-300/80">Dark Soul Cache</p>
+                  <p className="text-[var(--ch-text-10)] font-semibold uppercase tracking-[0.34em] text-amber-300/80">Dark Soul Cache</p>
                   <h3 className="text-sm font-bold text-amber-100">Five sacred slots</h3>
                 </div>
-                <div className="rounded-full border border-amber-500/20 bg-black/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.28em] text-amber-200">
+                <div className="rounded-full border border-amber-500/20 bg-black/30 px-2.5 py-1 text-[var(--ch-text-10)] font-semibold uppercase tracking-[0.28em] text-amber-200">
                   Ascended
                 </div>
               </div>
@@ -258,10 +267,10 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                           ))}
                         </div>
                       </div>
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.28em] text-amber-200/90">
+                      <span className="text-[var(--ch-text-10)] font-semibold uppercase tracking-[0.28em] text-amber-200/90">
                         {asset.name.split(' ')[0]}
                       </span>
-                      <span className="text-[9px] text-muted-foreground/70">{index === 2 ? 'Active' : 'Locked'}</span>
+                      <span className="text-[var(--ch-text-9)] text-muted-foreground/70">{index === 2 ? 'Active' : 'Locked'}</span>
                     </div>
                   </div>
                 ))}
@@ -282,20 +291,20 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                   className={cn(
                     "flex items-center gap-4 p-4 rounded-xl border transition-all",
                     isCompleted 
-                      ? "bg-primary/5 border-primary/20 opacity-70" 
-                      : "bg-card border-border hover:border-primary/50 shadow-sm"
+                      ? "bg-accent-muted/50 border-accent/20 opacity-70" 
+                      : "bg-card border-border hover:border-accent/50 shadow-sm"
                   )}
                 >
                   <div className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
-                    isCompleted ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                    isCompleted ? "bg-accent-muted text-accent" : "bg-muted text-muted-foreground"
                   )}>
                     <Icon className="w-5 h-5" />
                   </div>
                   
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <h4 className={cn("font-bold truncate", isCompleted && "text-primary")}>
+                      <h4 className={cn("font-bold truncate", isCompleted && "text-accent")}>
                         {mission.title}
                       </h4>
                       <span className="text-xs font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-md shrink-0">
@@ -310,11 +319,11 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div 
-                          className={cn("h-full transition-all duration-500", isCompleted ? "bg-primary" : "bg-blue-500")}
+                          className={cn("h-full transition-all duration-500", isCompleted ? "bg-accent" : "bg-accent")}
                           style={{ width: `${(currentProgress / mission.targetCount) * 100}%` }}
                         />
                       </div>
-                      <span className="text-[10px] font-bold text-muted-foreground w-8 text-right shrink-0">
+                      <span className="text-[var(--ch-text-10)] font-bold text-muted-foreground w-8 text-right shrink-0">
                         {currentProgress}/{mission.targetCount}
                       </span>
                     </div>
@@ -322,7 +331,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
 
                   <div className="shrink-0 pl-2">
                     {isCompleted ? (
-                      <CheckCircle2 className="w-6 h-6 text-primary" />
+                      <CheckCircle2 className="w-6 h-6 text-accent" />
                     ) : (
                       <CircleDashed className="w-6 h-6 text-muted-foreground/30" />
                     )}
@@ -344,14 +353,14 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                     className={cn(
                       "p-4 rounded-xl border transition-all",
                       isUnlocked 
-                        ? "bg-card border-primary/30 shadow-sm" 
+                        ? "bg-card border-accent/30 shadow-sm" 
                         : "bg-muted/50 border-border/50 opacity-60"
                     )}
                   >
                     <div className="flex items-center gap-4">
                       <div className={cn(
                         "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
-                        isUnlocked ? "bg-primary/10 text-primary" : "bg-muted-foreground/10 text-muted-foreground"
+                        isUnlocked ? "bg-accent-muted text-accent" : "bg-muted-foreground/10 text-muted-foreground"
                       )}>
                         <Icon className="w-6 h-6" />
                       </div>
@@ -368,7 +377,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                             </span>
                           )}
                           {isUnlocked && (
-                            <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
+                            <span className="text-xs font-bold text-accent bg-accent-muted px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
                               <Unlock className="w-3 h-3" />
                               Unlocked
                             </span>
@@ -383,7 +392,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                     {/* Required quests */}
                     {!isUnlocked && perk.requiredQuests.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                        <p className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground/40">
                           Required Quests
                         </p>
                         {perk.requiredQuests.map(qId => {
@@ -392,13 +401,13 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                           return (
                             <div key={qId} className="flex items-center gap-2">
                               {done ? (
-                                <CheckCircle2 className="w-3 h-3 text-primary" />
+                                <CheckCircle2 className="w-3 h-3 text-accent" />
                               ) : (
                                 <CircleDashed className="w-3 h-3 text-muted-foreground/30" />
                               )}
                               <span className={cn(
-                                "text-[10px]",
-                                done ? "text-primary/80" : "text-muted-foreground/50"
+                                "text-[var(--ch-text-10)]",
+                                done ? "text-accent/80" : "text-muted-foreground/50"
                               )}>
                                 {mission?.title ?? qId}
                               </span>
@@ -410,8 +419,8 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
 
                     {isUnlocked && (
                       <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-primary" />
-                        <span className="text-[10px] text-primary/80 font-medium">
+                        <CheckCircle2 className="w-3 h-3 text-accent" />
+                        <span className="text-[var(--ch-text-10)] text-accent/80 font-medium">
                           All requirements met
                         </span>
                       </div>
@@ -444,33 +453,33 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
 
             <div className="space-y-4">
               <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1.5 block">
+                <label className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1.5 block">
                   Name
                 </label>
                 <input
                   value={characterName === 'Unnamed Hero' ? '' : characterName}
                   onChange={(e) => setCharacterName(e.target.value || 'Unnamed Hero')}
-                  className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground/40"
+                  className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 transition-colors placeholder:text-muted-foreground/40"
                   placeholder="Your character's name..."
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1.5 block">
+                <label className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1.5 block">
                   Lore
                 </label>
                 <textarea
                   value={characterLore}
                   onChange={(e) => setCharacterLore(e.target.value)}
                   rows={4}
-                  className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50 transition-colors resize-none placeholder:text-muted-foreground/40"
+                  className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-accent/50 transition-colors resize-none placeholder:text-muted-foreground/40"
                   placeholder="Write a brief lore for your character..."
                 />
               </div>
 
               <button
                 onClick={() => setShowCharacterEditor(false)}
-                className="w-full rounded-lg bg-primary py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-white hover:bg-accent-hover transition-colors"
               >
                 Save
               </button>

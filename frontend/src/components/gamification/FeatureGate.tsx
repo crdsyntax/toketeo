@@ -31,19 +31,19 @@ export function FeatureGate({ perkId, children, fallback, showLocked = true }: F
     <div className="relative group">
       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-[1px] rounded-lg">
         <div className="flex flex-col items-center gap-2 p-4 text-center">
-          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-            <Lock className="w-5 h-5 text-muted-foreground" />
+          <div className="w-10 h-10 rounded-full bg-accent-muted flex items-center justify-center">
+            <Lock className="w-5 h-5 text-accent" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-muted-foreground">{perk?.title ?? 'Feature Locked'}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+            <p className="text-sm font-semibold text-foreground">{perk?.title ?? 'Feature Locked'}</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground/60 mt-0.5">
               Level {perk?.requiredLevel ?? '?'} required
             </p>
             {missingQuests.length > 0 && (
               <div className="mt-2 space-y-0.5">
                 {missingQuests.map(m => (
-                  <p key={m!.id} className="text-[9px] text-muted-foreground/40 flex items-center gap-1 justify-center">
-                    <Trophy className="w-2.5 h-2.5" />
+                  <p key={m!.id} className="text-[var(--ch-text-9)] text-muted-foreground/40 flex items-center gap-1 justify-center">
+                    <Trophy className="w-2.5 h-2.5 text-accent" />
                     Complete "{m!.title}"
                   </p>
                 ))}

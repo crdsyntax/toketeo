@@ -200,7 +200,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
               <h2 className="text-lg font-bold tracking-tight text-foreground uppercase">
                 {isEditing ? 'Edit Pipeline' : 'New Pipeline'}
               </h2>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Cross-DB Sync Configuration</p>
+              <p className="text-[var(--ch-text-10)] text-muted-foreground font-bold uppercase tracking-widest">Cross-DB Sync Configuration</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all">
@@ -211,13 +211,13 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8 scrollbar-thin">
           {error && (
             <div className="p-3 border border-destructive/20 bg-destructive/5 flex items-center gap-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-destructive">{error}</p>
+              <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider text-destructive">{error}</p>
             </div>
           )}
 
           {validation && !validation.is_valid && (
             <div className="p-3 border border-orange-500/20 bg-orange-500/5 space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-500">Validation Issues</p>
+              <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-orange-500">Validation Issues</p>
               {validation.warnings.map((w, i) => (
                 <p key={i} className="text-xs text-orange-400/80">{w}</p>
               ))}
@@ -229,14 +229,14 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
 
           {validation?.is_valid && (
             <div className="p-3 border border-emerald-500/20 bg-emerald-500/5">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-500">Validation Passed</p>
+              <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider text-emerald-500">Validation Passed</p>
             </div>
           )}
 
           {/* Name */}
           <div className="space-y-2">
             <Tooltip content="A descriptive name to identify this pipeline">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Pipeline Name</label>
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Pipeline Name</label>
             </Tooltip>
             <input
               className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
@@ -262,7 +262,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
               {sourceId && (
                 <div className="space-y-1">
                   <Tooltip content="Select the schema to sync from">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Schema</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Source Schema</label>
                   </Tooltip>
                   {loadingSourceSchemas ? (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -297,7 +297,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
               {targetId && (
                 <div className="space-y-1">
                   <Tooltip content="Select the schema to sync to">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Schema</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Target Schema</label>
                   </Tooltip>
                   {loadingTargetSchemas ? (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -323,7 +323,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           {/* Sync Mode */}
           <div className="space-y-2">
             <Tooltip content="Full: copies all data each run. Incremental: only copies new/changed data since the last sync">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
             </Tooltip>
             <select
               className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
@@ -339,20 +339,20 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Tooltip content="Define the tables to synchronize and their column mappings">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tables</span>
+                <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Tables</span>
               </Tooltip>
               <div className="flex items-center gap-3">
                 <button
                   onClick={addAllTables}
                   disabled={!sourceId || !sourceSchema}
-                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ListChecks className="w-3 h-3" />
                   Copy all tables
                 </button>
                 <button
                   onClick={addTable}
-                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+                  className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
                 >
                   <Database className="w-3 h-3" /> Add Table
                 </button>
@@ -371,7 +371,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Tooltip content="Source table name (e.g. users)">
-                      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Source Table</label>
+                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Source Table</label>
                     </Tooltip>
                     <input
                       className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
@@ -382,7 +382,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                   </div>
                   <div className="space-y-1">
                     <Tooltip content="Target table name (e.g. users)">
-                      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Table</label>
+                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Target Table</label>
                     </Tooltip>
                     <input
                       className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
@@ -409,7 +409,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                 <div className="border border-dashed border-border/50">
                   <button
                     onClick={() => setAdvancedOpen((prev) => ({ ...prev, [i]: !prev[i] }))}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex items-center gap-2 w-full px-3 py-2 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {advancedOpen[i] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                     <Columns className="w-3 h-3" />
@@ -419,7 +419,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                     <div className="px-3 pb-3 space-y-4">
                       <div className="space-y-1">
                         <Tooltip content="Optional SQL WHERE clause to filter rows during extraction">
-                          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Filter (SQL WHERE clause)</label>
+                          <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Filter (SQL WHERE clause)</label>
                         </Tooltip>
                         <input
                           className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
@@ -430,7 +430,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                       </div>
                       <div className="space-y-1">
                         <Tooltip content="Primary key columns for incremental sync (auto-detected if left empty)">
-                          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Primary Key(s)</label>
+                          <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Primary Key(s)</label>
                         </Tooltip>
                         <input
                           className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
@@ -464,7 +464,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             <button
               onClick={handleValidate}
               disabled={validating}
-              className="flex items-center gap-2 bg-muted text-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all disabled:opacity-50"
+              className="flex items-center gap-2 bg-muted text-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all disabled:opacity-50"
             >
               {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FlaskConical className="w-3 h-3" />}
               Validate
@@ -472,14 +472,14 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           </Tooltip>
 
           <div className="flex items-center gap-4">
-            <button onClick={onClose} className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={onClose} className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
               Cancel
             </button>
             <Tooltip content={isEditing ? 'Save changes to this pipeline' : 'Save the pipeline and start using it'}>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 {isEditing ? 'Update Pipeline' : 'Create Pipeline'}
@@ -504,7 +504,7 @@ function ConnectionSelector({ label, tooltip, value, onChange, connections }: Co
   return (
     <div className="space-y-2">
       <Tooltip content={tooltip ?? ''}>
-        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</label>
+        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">{label}</label>
       </Tooltip>
       <select
         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table2 } from 'lucide-react';
+import { Table2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
@@ -69,8 +69,8 @@ export function ResultsPanel({
   return (
     <div
       className={cn(
-        "border border-border/80 rounded-xl bg-card flex flex-col transition-all duration-300 shadow-sm",
-        isResultsPanelVisible ? "flex-1 min-h-[150px] overflow-hidden" : "h-11 shrink-0 overflow-visible"
+        "border border-border bg-card flex flex-col transition-all duration-200",
+        isResultsPanelVisible ? "flex-1 min-h-[100px] overflow-hidden" : "h-9 shrink-0 overflow-visible"
       )}
       onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}
     >
@@ -99,36 +99,44 @@ export function ResultsPanel({
           <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} safeDeleteSuggestion={safeDeleteSuggestion} setSafeDeleteSuggestion={setSafeDeleteSuggestion} />
 
           {activeTab?.results && sortedRows.length > 0 ? (
-            viewMode === 'json' ? (
-              <div className="flex-1 overflow-auto relative h-full">
-                <ResultsPanelJsonView sortedRows={sortedRows} />
-              </div>
-            ) : viewMode === 'visualize' ? (
-              <VisualizePanel sortedRows={sortedRows} />
-            ) : (
-              <ResultsPanelTable
-                activeTab={activeTab}
-                sortedRows={sortedRows}
-                sortConfig={sortConfig}
-                requestSort={requestSort}
-                editingCell={editingCell}
-                setEditingCell={setEditingCell}
-                handleSave={handleSave}
-                setContextMenuSql={setContextMenuSql}
-                selectedRowIndex={selectedRowIndex}
-                setSelectedRowIndex={setSelectedRowIndex}
-                setShowExportMenu={setShowExportMenu}
-                setShowLimitMenu={setShowLimitMenu}
-              />
-            )
-          ) : activeTab?.status !== ExecutionStatus.EXECUTING && (
+            <>
+              {viewMode === 'json' ? (
+                <div className="flex-1 overflow-auto relative h-full">
+                  <ResultsPanelJsonView sortedRows={sortedRows} />
+                </div>
+              ) : viewMode === 'visualize' ? (
+                <VisualizePanel sortedRows={sortedRows} />
+              ) : (
+                <ResultsPanelTable
+                  activeTab={activeTab}
+                  sortedRows={sortedRows}
+                  sortConfig={sortConfig}
+                  requestSort={requestSort}
+                  editingCell={editingCell}
+                  setEditingCell={setEditingCell}
+                  handleSave={handleSave}
+                  setContextMenuSql={setContextMenuSql}
+                  selectedRowIndex={selectedRowIndex}
+                  setSelectedRowIndex={setSelectedRowIndex}
+                  setShowExportMenu={setShowExportMenu}
+                  setShowLimitMenu={setShowLimitMenu}
+                />
+              )}
+              {activeTab?.status === ExecutionStatus.EXECUTING && (
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/90 border border-border shadow-sm backdrop-blur animate-in fade-in zoom-in-95 duration-150">
+                  <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground font-medium">Running...</span>
+                </div>
+              )}
+            </>
+          ) : activeTab?.status === ExecutionStatus.EXECUTING ? (
+            <ResultsPanelSkeleton activeTab={activeTab} />
+          ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-2 select-none animate-in fade-in duration-200">
               <Table2 className="w-8 h-8 opacity-20" />
               <span className="text-xs italic">No data rows returned or empty dataset</span>
             </div>
           )}
-
-          <ResultsPanelSkeleton activeTab={activeTab} />
         </div>
       )}
     </div>

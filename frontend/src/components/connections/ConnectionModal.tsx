@@ -1,4 +1,4 @@
-import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Clock, Minimize2, Maximize2 } from 'lucide-react'
+import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Clock, Minimize2, Maximize2, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment, SshAuthType } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
@@ -183,7 +183,7 @@ export function ConnectionModal({
             <p className="text-xs font-bold text-foreground truncate">
               {editingConnection ? 'Edit Connection' : 'New Connection'}
             </p>
-            <p className="text-[10px] text-muted-foreground truncate">{form.name || 'Unnamed'}</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground truncate">{form.name || 'Unnamed'}</p>
           </div>
           <button
             onClick={() => setIsMinimized(false)}
@@ -218,7 +218,7 @@ export function ConnectionModal({
               <h2 className="text-sm font-bold tracking-tight text-foreground uppercase">
                 {editingConnection ? 'Edit Connection' : 'New Connection'}
               </h2>
-              <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Database Configuration</p>
+              <p className="text-[var(--ch-text-9)] text-muted-foreground font-bold uppercase tracking-widest">Database Configuration</p>
             </div>
           </div>
           <div className="flex items-center gap-0.5">
@@ -252,7 +252,7 @@ export function ConnectionModal({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'general' | 'ssh' | 'pool')}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all",
+                  "flex items-center gap-2 px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border transition-all",
                   activeTab === tab.id 
                     ? "bg-primary text-primary-foreground border-primary" 
                     : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
@@ -276,7 +276,7 @@ export function ConnectionModal({
             <div className="space-y-6 animate-in slide-in-from-left-2 duration-300">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Display Name</label>
+                  <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Display Name</label>
                   <input 
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all placeholder:text-muted-foreground/30"
                     value={form.name}
@@ -285,7 +285,7 @@ export function ConnectionModal({
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Environment</label>
+                  <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Environment</label>
                   <select
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all cursor-pointer appearance-none"
                     value={form.environment}
@@ -315,7 +315,7 @@ export function ConnectionModal({
               </div>
 
               <div className="space-y-3">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Database Engine</label>
+                <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Database Engine</label>
                 <div className="grid grid-cols-5 gap-2">
                   {[
                     { id: DatabaseType.MARIADB, label: 'MySQL' },
@@ -335,7 +335,7 @@ export function ConnectionModal({
                         setForm({ ...form, type: engine.id as DatabaseType, port: defaultPort })
                       }}
                       className={cn(
-                        "py-2 border text-[9px] font-bold uppercase tracking-widest transition-all",
+                        "py-2 border text-[var(--ch-text-9)] font-bold uppercase tracking-widest transition-all",
                         form.type === engine.id 
                           ? "bg-primary/10 border-primary text-primary" 
                           : "bg-background border-border text-muted-foreground hover:border-primary/50"
@@ -349,7 +349,7 @@ export function ConnectionModal({
 
               <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-3 space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Host / URI</label>
+                  <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Host / URI</label>
                   <div className="relative">
                     <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                     <input 
@@ -361,7 +361,7 @@ export function ConnectionModal({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Port</label>
+                  <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Port</label>
                   <input 
                     type="number"
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
@@ -374,7 +374,7 @@ export function ConnectionModal({
               <div className="grid grid-cols-2 gap-4">
                 {form.type !== DatabaseType.REDIS && (
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Username</label>
+                  <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Username</label>
                   <input 
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                     value={form.user}
@@ -384,7 +384,7 @@ export function ConnectionModal({
                 </div>
                 )}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Password {form.type === DatabaseType.REDIS ? '(optional)' : ''}</label>
+                  <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Password {form.type === DatabaseType.REDIS ? '(optional)' : ''}</label>
                   <div className="relative">
                     <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                     <input 
@@ -419,7 +419,7 @@ export function ConnectionModal({
                     </button>
                   </div>
                   {editingConnection && (
-                    <label className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                    <label className="inline-flex items-center gap-2 text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-border bg-background text-primary focus:ring-primary"
@@ -438,7 +438,7 @@ export function ConnectionModal({
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{form.type === DatabaseType.REDIS ? 'Database (0-15)' : 'Default Schema'}</label>
+                <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">{form.type === DatabaseType.REDIS ? 'Database (0-15)' : 'Default Schema'}</label>
                 <div className="relative">
                   <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                   <input 
@@ -458,7 +458,7 @@ export function ConnectionModal({
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-foreground uppercase tracking-widest">SSL / TLS</h4>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Encrypt database connection</p>
+                    <p className="text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tight">Encrypt database connection</p>
                   </div>
                 </div>
                 <button 
@@ -478,7 +478,7 @@ export function ConnectionModal({
 
               {form.type === DatabaseType.MONGODB && (
                 <div className="p-4 border border-primary/20 bg-primary/5 space-y-4 animate-in fade-in duration-300">
-                  <h4 className="text-[9px] font-bold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
+                  <h4 className="text-[var(--ch-text-9)] font-bold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
                     <Database className="w-3 h-3" />
                     MongoDB Advanced
                   </h4>
@@ -489,8 +489,8 @@ export function ConnectionModal({
                         <Lock className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Authentication Required</h4>
-                        <p className="text-[9px] text-muted-foreground uppercase tracking-tight">Requires username &amp; password</p>
+                        <h4 className="text-[var(--ch-text-10)] font-bold text-foreground uppercase tracking-widest">Authentication Required</h4>
+                        <p className="text-[var(--ch-text-9)] text-muted-foreground uppercase tracking-tight">Requires username &amp; password</p>
                       </div>
                     </div>
                     <button 
@@ -510,7 +510,7 @@ export function ConnectionModal({
                   {!form.authEnabled && (
                     <div className="flex items-center gap-2 p-3 bg-amber-500/5 border border-amber-500/20 text-amber-500 animate-in fade-in duration-200">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <p className="text-[10px] font-bold uppercase tracking-wider">
+                      <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider">
                         Username and password will not be stored for this connection
                       </p>
                     </div>
@@ -519,17 +519,17 @@ export function ConnectionModal({
                   <div className={cn("space-y-4", !form.authEnabled && "opacity-40 pointer-events-none")}>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Auth Source</label>
+                        <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Auth Source</label>
                         <input 
-                          className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                          className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                           value={form.authSource}
                           onChange={(e) => setForm({ ...form, authSource: e.target.value })}
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Replica Set</label>
+                        <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Replica Set</label>
                         <input 
-                          className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                          className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                           value={form.replicaSet}
                           onChange={(e) => setForm({ ...form, replicaSet: e.target.value })}
                         />
@@ -541,8 +541,8 @@ export function ConnectionModal({
                           <Globe className="w-4 h-4" />
                         </div>
                         <div>
-                          <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Direct Connection</h4>
-                          <p className="text-[9px] text-muted-foreground uppercase tracking-tight">Force single node connection</p>
+                          <h4 className="text-[var(--ch-text-10)] font-bold text-foreground uppercase tracking-widest">Direct Connection</h4>
+                          <p className="text-[var(--ch-text-9)] text-muted-foreground uppercase tracking-tight">Force single node connection</p>
                         </div>
                       </div>
                       <button 
@@ -565,27 +565,27 @@ export function ConnectionModal({
           ) : activeTab === 'pool' ? (
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
               <div className="p-4 border border-primary/20 bg-primary/5 space-y-6">
-                <h4 className="text-[9px] font-bold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
+                <h4 className="text-[var(--ch-text-9)] font-bold uppercase tracking-[0.3em] text-primary flex items-center gap-2">
                   <Server className="w-3 h-3" />
                   Connection Pool
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Max Pool Size</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Max Pool Size</label>
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                       value={form.maxPoolSize ?? 5}
                       onChange={(e) => setForm({ ...form, maxPoolSize: parseInt(e.target.value) || 0 })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Acquire Timeout (s)</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Acquire Timeout (s)</label>
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                       value={form.acquireTimeout ?? 5}
                       onChange={(e) => setForm({ ...form, acquireTimeout: parseInt(e.target.value) || 0 })}
                     />
@@ -594,27 +594,27 @@ export function ConnectionModal({
               </div>
 
               <div className="p-4 border border-border bg-muted/20 space-y-6">
-                <h4 className="text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground flex items-center gap-2">
+                <h4 className="text-[var(--ch-text-9)] font-bold uppercase tracking-[0.3em] text-muted-foreground flex items-center gap-2">
                   <Clock className="w-3 h-3" />
                   Timeouts &amp; TTL
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Idle Timeout (s)</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Idle Timeout (s)</label>
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                       value={form.idleTimeout ?? 600}
                       onChange={(e) => setForm({ ...form, idleTimeout: parseInt(e.target.value) || 0 })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Max Lifetime (s)</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Max Lifetime (s)</label>
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                       value={form.maxLifetime ?? 28800}
                       onChange={(e) => setForm({ ...form, maxLifetime: parseInt(e.target.value) || 0 })}
                     />
@@ -622,21 +622,21 @@ export function ConnectionModal({
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Keep Alive (s)</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Keep Alive (s)</label>
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                       value={form.keepAlive ?? 0}
                       onChange={(e) => setForm({ ...form, keepAlive: parseInt(e.target.value) || 0 })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">Metadata Cache TTL (s)</label>
+                    <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Metadata Cache TTL (s)</label>
                     <input
                       type="number"
                       min="0"
-                      className="w-full bg-background border border-border px-3 py-2 text-[11px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                       value={form.metadataCacheTtl ?? 300}
                       onChange={(e) => setForm({ ...form, metadataCacheTtl: parseInt(e.target.value) || 0 })}
                     />
@@ -653,7 +653,7 @@ export function ConnectionModal({
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-foreground uppercase tracking-widest">Enable SSH Tunnel</h4>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Secure bastion host access</p>
+                    <p className="text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tight">Secure bastion host access</p>
                   </div>
                 </div>
                 <button 
@@ -674,7 +674,7 @@ export function ConnectionModal({
                 <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
                   <div className="grid grid-cols-4 gap-4">
                     <div className="col-span-3 space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Host</label>
+                      <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Host</label>
                       <input 
                         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                         value={form.ssh.host}
@@ -683,7 +683,7 @@ export function ConnectionModal({
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Port</label>
+                      <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Port</label>
                       <input 
                         type="number"
                         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
@@ -694,7 +694,7 @@ export function ConnectionModal({
                   </div>
 
                   <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Authentication Method</label>
+                    <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Authentication Method</label>
                     <div className="flex gap-2">
                       {[
                         { id: SshAuthType.PASSWORD, label: 'Password', icon: Lock },
@@ -704,7 +704,7 @@ export function ConnectionModal({
                           key={auth.id}
                           onClick={() => updateSsh({ authType: auth.id })}
                           className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2 border text-[9px] font-bold uppercase tracking-widest transition-all",
+                            "flex-1 flex items-center justify-center gap-2 py-2 border text-[var(--ch-text-9)] font-bold uppercase tracking-widest transition-all",
                             form.ssh?.authType === auth.id 
                               ? "bg-primary/10 border-primary text-primary" 
                               : "bg-background border-border text-muted-foreground hover:border-primary/50"
@@ -719,7 +719,7 @@ export function ConnectionModal({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH User</label>
+                      <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH User</label>
                       <input 
                         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                         value={form.ssh.user}
@@ -728,7 +728,7 @@ export function ConnectionModal({
                     </div>
                     {form.ssh.authType === SshAuthType.PASSWORD ? (
                       <div className="space-y-2 animate-in fade-in duration-300">
-                        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Password</label>
+                        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Password</label>
                         <div className="relative">
                           <input 
                             type={showSshPassword ? 'text' : 'password'}
@@ -748,7 +748,7 @@ export function ConnectionModal({
                       </div>
                     ) : (
                       <div className="space-y-2 animate-in fade-in duration-300">
-                        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Passphrase (Optional)</label>
+                        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Passphrase (Optional)</label>
                         <div className="relative">
                           <input 
                             type={showSshPassphrase ? 'text' : 'password'}
@@ -771,13 +771,50 @@ export function ConnectionModal({
 
                   {form.ssh.authType === SshAuthType.KEY && (
                     <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Private Key</label>
-                      <textarea 
-                        className="w-full bg-background border border-border px-4 py-3 text-[11px] font-mono h-32 focus:border-primary focus:outline-none resize-none leading-relaxed"
-                        value={form.ssh.privateKey || ''}
-                        onChange={(e) => updateSsh({ privateKey: e.target.value })}
-                        placeholder="-----BEGIN RSA PRIVATE KEY-----"
-                      />
+                      <div className="flex items-center gap-1">
+                        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Private Key</label>
+                        <div className="flex items-center gap-0.5 ml-2 bg-muted/30 p-0.5 rounded border border-border/40">
+                          <button
+                            type="button"
+                            onClick={() => updateSsh({ keyPath: undefined })}
+                            className={cn(
+                              'px-2 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors',
+                              !form.ssh.keyPath ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            Paste
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSsh({ privateKey: undefined })}
+                            className={cn(
+                              'px-2 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors',
+                              form.ssh.keyPath ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            File Path
+                          </button>
+                        </div>
+                      </div>
+                      {!form.ssh.keyPath ? (
+                        <textarea
+                          className="w-full bg-background border border-border px-4 py-3 text-[var(--ch-text-11)] font-mono h-32 focus:border-primary focus:outline-none resize-none leading-relaxed"
+                          value={form.ssh.privateKey || ''}
+                          onChange={(e) => updateSsh({ privateKey: e.target.value })}
+                          placeholder="-----BEGIN RSA PRIVATE KEY-----"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2 bg-background border border-border px-4 py-2.5">
+                          <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <input
+                            type="text"
+                            className="flex-1 bg-transparent text-xs font-mono text-foreground focus:outline-none placeholder:text-muted-foreground"
+                            value={form.ssh.keyPath}
+                            onChange={(e) => updateSsh({ keyPath: e.target.value })}
+                            placeholder="C:\Users\you\.ssh\id_rsa"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -799,7 +836,7 @@ export function ConnectionModal({
               onTest(payload);
             }}
             disabled={isTesting}
-            className="flex items-center gap-2 px-4 py-2 text-[10px] font-bold text-muted-foreground hover:text-primary transition-all uppercase tracking-widest disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-[var(--ch-text-10)] font-bold text-muted-foreground hover:text-primary transition-all uppercase tracking-widest disabled:opacity-50"
           >
             {isTesting ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
@@ -812,7 +849,7 @@ export function ConnectionModal({
           <div className="flex items-center gap-4">
             <button 
               onClick={onClose} 
-              className="px-4 py-2 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-widest"
+              className="px-4 py-2 text-[var(--ch-text-10)] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-widest"
             >
               Cancel
             </button>
@@ -833,7 +870,7 @@ export function ConnectionModal({
                 onSave(payload);
               }}
               disabled={isSaving}
-              className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
             >
               {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {editingConnection ? 'Save Changes' : 'Create Connection'}
@@ -849,7 +886,7 @@ export function ConnectionModal({
               : "bg-destructive/5 border-destructive/20 text-destructive"
           )}>
             {testMessage.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-            <p className="text-[11px] font-bold uppercase tracking-wider">{testMessage.text}</p>
+            <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider">{testMessage.text}</p>
           </div>
         )}
       </div>

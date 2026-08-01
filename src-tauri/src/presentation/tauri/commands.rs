@@ -212,6 +212,32 @@ pub async fn is_session_unlocked(state: State<'_, AppState>) -> AppResult<bool> 
 }
 
 #[tauri::command]
+pub async fn generate_recovery_code(state: State<'_, AppState>) -> AppResult<String> {
+    auth_service::generate_recovery_code(&state, &state.storage).await
+}
+
+#[tauri::command]
+pub async fn is_recovery_code_set(state: State<'_, AppState>) -> AppResult<bool> {
+    auth_service::is_recovery_code_set(&state.storage).await
+}
+
+#[tauri::command]
+pub async fn recover_master_password(
+    recovery_code: String,
+    new_password: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let key = auth_service::recover_master_password(
+        &recovery_code,
+        &new_password,
+        &state.storage,
+    )
+    .await?;
+    state.set_master_key(key, 3600).await;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn is_windows_hello_available() -> AppResult<bool> {
     Ok(keyring_service::is_available().await)
 }
@@ -1345,31 +1371,7 @@ pub async fn validate_sync_config(
 
 /// Get a driver from the runtime HashMap; if not found or the connection is dead, reconnect.
 async fn get_or_connect_driver(state: &AppState, conn_id: &str) -> AppResult<Arc<dyn crate::db::DbDriver>> {
-    if let Ok(driver) = state.get_connection(conn_id).await {
-        // Quick health check — lightweight query to verify the connection is alive
-        let healthy = match driver.db_type() {
-            // SQL databases all support SELECT 1
-            crate::db::DbType::Postgres
-            | crate::db::DbType::Mysql
-            | crate::db::DbType::Mariadb
-            | crate::db::DbType::Sqlite
-            | crate::db::DbType::Sqlserver => driver.execute("SELECT 1").await.is_ok(),
-            // MongoDB doesn't support SQL — use fetch_databases instead
-            crate::db::DbType::Mongodb => driver.fetch_databases().await.is_ok(),
-            crate::db::DbType::Redis => driver.execute("PING").await.is_ok(),
-        };
-        if healthy {
-            return Ok(driver);
-        }
-        // Connection is stale — fall through to reconnect
-        tracing::warn!("Connection {conn_id} is stale, reconnecting...");
-    }
-
-    let config = state.storage.get_connection(conn_id).await?;
-    // Drop the stale entry before reconnecting
-    let _ = state.remove_connection(conn_id).await;
-    ConnectionService::connect(state, config).await?;
-    state.get_connection(conn_id).await
+    state.get_or_connect_driver(conn_id).await
 }
 
 #[tauri::command]

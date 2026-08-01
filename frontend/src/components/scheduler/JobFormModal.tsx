@@ -151,7 +151,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
         <div className="px-5 space-y-4 pb-5">
           {/* Name */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Name</label>
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -162,7 +162,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
 
           {/* Connection */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
               <Database className="w-3 h-3" /> Connection
             </label>
             <div className="relative mt-1">
@@ -186,7 +186,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
 
           {/* Job Type */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Job Type</label>
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Job Type</label>
             <div className="grid grid-cols-3 gap-2 mt-1">
               {JOB_TYPES.map((jt) => {
                 const Icon = jt.icon
@@ -203,7 +203,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
                     )}
                   >
                     <Icon className="w-4 h-4" />
-                    <span className="text-[9px] font-semibold leading-tight">{jt.label}</span>
+                    <span className="text-[var(--ch-text-9)] font-semibold leading-tight">{jt.label}</span>
                   </button>
                 )
               })}
@@ -213,7 +213,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           {/* Database (Backup, Report, CSV) */}
           {connectionId && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
                 Database
               </label>
               {loadingDbs ? (
@@ -242,13 +242,13 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           {selectedDatabase && (
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
                   {selectedConn?.type === DatabaseType.MONGODB ? 'Collections' : 'Tables'}
                 </label>
                 {tables.length > 0 && (
                   <button
                     onClick={toggleAll}
-                    className="text-[9px] font-semibold uppercase tracking-wider text-primary hover:underline"
+                    className="text-[var(--ch-text-9)] font-semibold uppercase tracking-wider text-primary hover:underline"
                   >
                     {selectedTables.size === tables.length ? 'Deselect All' : 'Select All'}
                   </button>
@@ -286,7 +286,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           {/* Cron Schedule */}
           <div>
             <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" /> Schedule
               </label>
               <button
@@ -296,7 +296,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
                   setManualOnly(next)
                   if (next) setCronExpression('')
                 }}
-                className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-[var(--ch-text-9)] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
               >
                 {manualOnly ? (
                   <><ToggleLeft className="w-4 h-4" /> Manual only</>
@@ -319,7 +319,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
                       key={p.value}
                       onClick={() => setCronExpression(p.value)}
                       className={cn(
-                        'px-2 py-0.5 text-[9px] font-medium rounded-md border transition-colors',
+                        'px-2 py-0.5 text-[var(--ch-text-9)] font-medium rounded-md border transition-colors',
                         cronExpression === p.value
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border text-muted-foreground hover:bg-muted/40',
@@ -332,7 +332,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
               </>
             )}
             {manualOnly && (
-              <p className="text-[10px] text-muted-foreground mt-1.5">
+              <p className="text-[var(--ch-text-10)] text-muted-foreground mt-1.5">
                 This job will only run when you click "Run Now"
               </p>
             )}
@@ -341,7 +341,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           {/* Query (for Report / CSV when no tables selected) */}
           {!isBackup && selectedTables.size === 0 && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SQL Query</label>
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">SQL Query</label>
               <textarea
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -354,7 +354,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
 
           {/* Output Directory */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Output Directory</label>
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Output Directory</label>
             <div className="flex gap-1.5 mt-1">
               <input
                 value={outputDir}
@@ -385,7 +385,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
         <div className="flex items-center justify-end gap-2 px-5 pb-5">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
+            className="px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
           >
             Cancel
           </button>
@@ -393,7 +393,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             onClick={handleSave}
             disabled={!canSave || saving}
             className={cn(
-              'px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all',
+              'px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest rounded-lg transition-all',
               canSave && !saving
                 ? 'bg-primary text-primary-foreground hover:brightness-110'
                 : 'bg-muted text-muted-foreground cursor-not-allowed',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -17,9 +17,9 @@ import {
   Square as SquareIcon,
   Maximize2,
   Wifi,
-  WifiOff,
   Trash2,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { connectionService } from '@/services/connection.service';
@@ -30,7 +30,7 @@ import { SchemaDiffTree } from '@/components/compare/SchemaDiffTree';
 import { DataDiffView } from '@/components/compare/DataDiffTable';
 import { ScriptPreview } from '@/components/compare/ScriptPreview';
 import { FullscreenModal } from '@/components/compare/FullscreenModal';
-import { useAutoReconnect } from '@/hooks/useAutoReconnect';
+import { SchemaDiffWizard } from '@/components/compare/SchemaDiffWizard';
 import { cn } from '@/lib/utils';
 import { DatabaseType, type Connection } from '@/types/database';
 
@@ -68,7 +68,6 @@ export function ComparePage() {
     selectedTables, activeTab,
     schemaReport, dataReport, syncScript, scriptOptions,
     loading, error, status, progress, compareId,
-    reconnecting, reconnectError,
     setSourceConnId, setTargetConnId,
     setSourceDatabase, setTargetDatabase,
     setSourceSchema, setTargetSchema,
@@ -81,51 +80,52 @@ export function ComparePage() {
 
   const [tableFilter, setTableFilter] = useState('');
   const [fullscreenTab, setFullscreenTab] = useState<CompareTab | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds);
-  const { status: reconnectStatus, reconnect } = useAutoReconnect();
 
   const { data: connections } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   });
 
-  const connectedConns = useMemo(
-    () => (connections ?? []).filter((c: Connection) => connectedConnectionIds.includes(c.id)),
-    [connections, connectedConnectionIds]
-  );
+  const sourceConn = (connections ?? []).find((c: Connection) => c.id === sourceConnId);
+  const targetConn = (connections ?? []).find((c: Connection) => c.id === targetConnId);
 
-  const sourceConn = connectedConns.find((c) => c.id === sourceConnId);
-  const targetConn = connectedConns.find((c) => c.id === targetConnId);
+  useEffect(() => { loadLatestSession(); }, [loadLatestSession]);
 
-  useEffect(() => {
-    loadLatestSession();
-  }, [loadLatestSession]);
-
-  useEffect(() => {
-    if (!reconnecting && sourceConnId && !connectedConnectionIds.includes(sourceConnId)) {
-      reconnect(sourceConnId);
+  const autoConnect = useCallback(async (connId: string) => {
+    if (!connId || connectedConnectionIds.includes(connId)) return;
+    const conn = (connections ?? []).find((c: Connection) => c.id === connId);
+    if (!conn) return;
+    try {
+      await connectionService.connect(conn);
+      const { setConnectedConnection } = useAppStore.getState();
+      setConnectedConnection(connId);
+    } catch (e) {
+      console.error(`[compare] auto-connect failed:`, e);
     }
-    if (!reconnecting && targetConnId && !connectedConnectionIds.includes(targetConnId)) {
-      reconnect(targetConnId);
-    }
-  }, [sourceConnId, targetConnId, connectedConnectionIds, reconnect, reconnecting]);
+  }, [connections, connectedConnectionIds]);
+
+  useEffect(() => { if (sourceConnId) autoConnect(sourceConnId); }, [sourceConnId, autoConnect]);
+  useEffect(() => { if (targetConnId) autoConnect(targetConnId); }, [targetConnId, autoConnect]);
 
   const { data: sourceDatabases, isLoading: loadingSourceDbs } = useQuery({
     queryKey: ['compare-databases', sourceConnId],
     queryFn: () => schemaService.getDatabases(sourceConnId),
-    enabled: !!sourceConnId && (usesDatabases(sourceConn?.type) || isPostgres(sourceConn?.type)),
+    enabled: !!sourceConnId && connectedConnectionIds.includes(sourceConnId) && (usesDatabases(sourceConn?.type) || isPostgres(sourceConn?.type)),
   });
 
   const { data: targetDatabases, isLoading: loadingTargetDbs } = useQuery({
     queryKey: ['compare-databases', targetConnId],
     queryFn: () => schemaService.getDatabases(targetConnId),
-    enabled: !!targetConnId && (usesDatabases(targetConn?.type) || isPostgres(targetConn?.type)),
+    enabled: !!targetConnId && connectedConnectionIds.includes(targetConnId) && (usesDatabases(targetConn?.type) || isPostgres(targetConn?.type)),
   });
 
   const sourceSchemasEnabled =
     !!sourceConnId &&
+    connectedConnectionIds.includes(sourceConnId) &&
     (usesSchemas(sourceConn?.type)
       ? isPostgres(sourceConn?.type)
         ? !!sourceDatabase
@@ -134,6 +134,7 @@ export function ComparePage() {
 
   const targetSchemasEnabled =
     !!targetConnId &&
+    connectedConnectionIds.includes(targetConnId) &&
     (usesSchemas(targetConn?.type)
       ? isPostgres(targetConn?.type)
         ? !!targetDatabase
@@ -177,6 +178,8 @@ export function ComparePage() {
   const tablesReady =
     !!sourceConn &&
     !!targetConn &&
+    connectedConnectionIds.includes(sourceConnId) &&
+    connectedConnectionIds.includes(targetConnId) &&
     (usesDatabases(sourceConn.type) ? !!sourceDatabase || !!sourceConn.database : true) &&
     (usesDatabases(targetConn.type) ? !!targetDatabase || !!targetConn.database : true) &&
     (usesSchemas(sourceConn.type) ? !!sourceSchema : true) &&
@@ -319,11 +322,10 @@ export function ComparePage() {
 
   const isRunning = status === 'running' || status === 'paused';
   const canStart = !!sourceConnId && !!targetConnId && selectedTables.length > 0 && !isRunning;
+  const sourceConnecting = !!sourceConnId && !connectedConnectionIds.includes(sourceConnId);
+  const targetConnecting = !!targetConnId && !connectedConnectionIds.includes(targetConnId);
 
-  const sourceReconnecting = reconnectStatus === 'connecting' && !!sourceConnId && !connectedConnectionIds.includes(sourceConnId);
-  const targetReconnecting = reconnectStatus === 'connecting' && !!targetConnId && !connectedConnectionIds.includes(targetConnId);
-
-  if (connectedConns.length === 0 && !reconnecting) {
+  if (!connections || connections.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-6">
         <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center">
@@ -352,9 +354,9 @@ export function ComparePage() {
       <div className="flex items-center gap-3 shrink-0">
         <GitCompare className="w-5 h-5 text-primary" />
         <h1 className="text-lg font-semibold">Database Compare</h1>
-        {reconnecting && (
+        {(sourceConnecting || targetConnecting) && (
           <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Reconectando...
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Connecting...
           </div>
         )}
         {isRunning && (
@@ -417,28 +419,21 @@ export function ComparePage() {
         </div>
       )}
 
-      {(sourceReconnecting || targetReconnecting) && (
+      {sourceConnecting || targetConnecting ? (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-xs text-blue-700 dark:text-blue-400 shrink-0">
           <Wifi className="w-4 h-4 animate-pulse" />
           <span>
-            Reconectando {sourceReconnecting ? 'source' : 'target'}...
+            Connecting {sourceConnecting ? 'source' : 'target'}...
           </span>
         </div>
-      )}
-
-      {reconnectError && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs text-amber-700 dark:text-amber-400 shrink-0">
-          <WifiOff className="w-4 h-4" />
-          <span>{reconnectError}</span>
-        </div>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4 shrink-0">
         <ConnectionSide
           label="Source"
           connId={sourceConnId}
           onConnChange={setSourceConnId}
-          connections={connectedConns}
+          connections={connections ?? []}
           conn={sourceConn}
           database={sourceDatabase}
           onDatabaseChange={setSourceDatabase}
@@ -454,7 +449,7 @@ export function ComparePage() {
           label="Target"
           connId={targetConnId}
           onConnChange={setTargetConnId}
-          connections={connectedConns}
+          connections={connections ?? []}
           conn={targetConn}
           database={targetDatabase}
           onDatabaseChange={setTargetDatabase}
@@ -543,7 +538,7 @@ export function ComparePage() {
                       {name}
                     </span>
                     {missing && (
-                      <span className="ml-auto text-[10px] text-amber-600 shrink-0" title="No existe en target">
+                      <span className="ml-auto text-[var(--ch-text-10)] text-amber-600 shrink-0" title="No existe en target">
                         !
                       </span>
                     )}
@@ -573,6 +568,14 @@ export function ComparePage() {
       )}
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <button
+          onClick={() => setWizardOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-500 hover:to-purple-500 transition-all text-sm font-medium shadow-sm"
+          title="Schema Diff Wizard — find missing objects and generate migration SQL"
+        >
+          <Sparkles className="w-4 h-4" />
+          Diff Wizard
+        </button>
         <button
           onClick={handleCompareSchema}
           disabled={!canStart}
@@ -727,6 +730,8 @@ export function ComparePage() {
         {fullscreenTab === 'schema' && schemaReport && <SchemaDiffTree report={schemaReport} />}
         {fullscreenTab === 'data' && dataReport && <DataDiffView report={dataReport} />}
       </FullscreenModal>
+
+      <SchemaDiffWizard open={wizardOpen} onClose={() => setWizardOpen(false)} connections={connections ?? []} />
     </div>
   );
 }
@@ -797,7 +802,7 @@ function ConnectionSide({
 
       {showDb && (
         <div className="space-y-1">
-          <span className="text-[10px] text-muted-foreground uppercase">
+          <span className="text-[var(--ch-text-10)] text-muted-foreground uppercase">
             {isPostgres(conn?.type) ? 'Database' : 'Database / Schema'}
           </span>
           {loadingDbs ? (
@@ -824,7 +829,7 @@ function ConnectionSide({
 
       {showSchema && (
         <div className="space-y-1">
-          <span className="text-[10px] text-muted-foreground uppercase">Schema</span>
+          <span className="text-[var(--ch-text-10)] text-muted-foreground uppercase">Schema</span>
           {loadingSchemas ? (
             <div className="h-9 flex items-center px-3 text-xs text-muted-foreground">
               <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> Cargando schemas...

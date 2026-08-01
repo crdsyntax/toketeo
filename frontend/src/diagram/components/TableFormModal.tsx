@@ -136,7 +136,7 @@ export function TableFormModal({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
               Table Name
             </label>
             <input
@@ -149,12 +149,12 @@ export function TableFormModal({
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground">
                 Columns
               </label>
               <button
                 onClick={addColumn}
-                className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold text-primary hover:text-primary/80 transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 Add Column
@@ -180,7 +180,7 @@ export function TableFormModal({
                     ))}
                   </select>
                   <label className={cn(
-                    "flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium cursor-pointer transition-colors",
+                    "flex items-center gap-1 px-1.5 py-1 rounded text-[var(--ch-text-10)] font-medium cursor-pointer transition-colors",
                     col.isPrimaryKey ? "bg-amber-500/10 text-amber-500" : "text-muted-foreground hover:text-foreground",
                   )}>
                     <input
@@ -192,7 +192,7 @@ export function TableFormModal({
                     PK
                   </label>
                   <label className={cn(
-                    "flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium cursor-pointer transition-colors",
+                    "flex items-center gap-1 px-1.5 py-1 rounded text-[var(--ch-text-10)] font-medium cursor-pointer transition-colors",
                     col.isNullable ? "bg-muted text-muted-foreground" : "text-muted-foreground/50",
                   )}>
                     <input
@@ -216,12 +216,12 @@ export function TableFormModal({
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground">
                 Foreign Keys
               </label>
               <button
                 onClick={addForeignKey}
-                className="flex items-center gap-1 text-[10px] font-bold text-sky-500 hover:text-sky-500/80 transition-colors"
+                className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold text-sky-500 hover:text-sky-500/80 transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 Add FK
@@ -236,14 +236,14 @@ export function TableFormModal({
                     placeholder="column"
                     className="w-24 bg-background border border-border rounded px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/30 outline-none focus:ring-1 focus:ring-primary/50"
                   />
-                  <span className="text-[10px] text-muted-foreground">→</span>
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground">→</span>
                   <input
                     value={fk.referencedTable}
                     onChange={(e) => updateForeignKey(fk.id, { referencedTable: e.target.value })}
                     placeholder="ref_table"
                     className="w-24 bg-background border border-border rounded px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/30 outline-none focus:ring-1 focus:ring-primary/50"
                   />
-                  <span className="text-[10px] text-muted-foreground">.</span>
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground">.</span>
                   <input
                     value={fk.referencedColumn}
                     onChange={(e) => updateForeignKey(fk.id, { referencedColumn: e.target.value })}
@@ -259,7 +259,7 @@ export function TableFormModal({
                 </div>
               ))}
               {foreignKeys.length === 0 && (
-                <div className="text-[10px] text-muted-foreground/50 italic py-1">No foreign keys defined.</div>
+                <div className="text-[var(--ch-text-10)] text-muted-foreground/50 italic py-1">No foreign keys defined.</div>
               )}
             </div>
           </div>

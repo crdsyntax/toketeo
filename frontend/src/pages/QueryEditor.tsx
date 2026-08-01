@@ -1,4 +1,4 @@
-import { AlertCircle, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -9,7 +9,6 @@ import { ResultsModal } from '@/components/query/ResultsModal';
 import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
 import { AssistantLayout } from '@/components/assistant/AssistantLayout';
-import { ContextualTip } from '@/components/ui/ContextualTip';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
 import { NewScriptModal } from '@/components/query/NewScriptModal';
 import { useAssistantStore } from '@/store/assistantStore';
@@ -91,6 +90,7 @@ export default function QueryEditor() {
   const showAssistant = useAssistantStore((s) => s.showAssistant);
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
+  const targetConnection = (connections.find(c => c.id === currentConnectionId) || activeConnection || null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -107,7 +107,7 @@ export default function QueryEditor() {
   }, [showAssistant, setShowAssistant])
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
-  const isMongo = activeConnection?.type === DatabaseType.MONGODB
+  const isMongo = targetConnection?.type === DatabaseType.MONGODB
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
@@ -166,22 +166,8 @@ export default function QueryEditor() {
     openTab(fileName, content)
   };
 
-  if (!activeConnection) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-          <AlertCircle className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold">No Connection Active</h2>
-          <p className="text-muted-foreground">Select a connection first to execute queries.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-0 relative overflow-hidden" onClick={() => setContextMenuSql(null)}>
+    <div className="flex flex-col h-full gap-0 relative overflow-hidden" onClick={() => setContextMenuSql(null)}>
       <SqlGeneratorModal
         isOpen={sqlModal.isOpen}
         onClose={() => setSqlModal({ isOpen: false, sql: '' })}
@@ -190,22 +176,22 @@ export default function QueryEditor() {
 
       {contextMenuSql && (
         <div
-          className="fixed z-[200] min-w-[160px] bg-slate-800 border border-slate-700/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
+          className="fixed z-[200] min-w-[160px] bg-card border border-border/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
           style={{ top: contextMenuSql.y, left: contextMenuSql.x }}
         >
-          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider select-none">
+          <div className="px-2 py-1 text-[var(--ch-text-10)] font-semibold text-muted-foreground uppercase tracking-wider select-none">
             {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
           </div>
-          <hr className="border-slate-700/50 my-1" />
+          <hr className="border-border/50 my-1" />
           <div className="space-y-0.5">
             {SQL_ACTIONS.map((action) => (
               <button
                 key={action}
                 onClick={() => handleGenerateSql(action.toLowerCase())}
-                className="w-full text-left px-2.5 py-1.5 text-xs text-slate-200 rounded-md hover:bg-slate-700 hover:text-white transition-colors duration-150 flex items-center justify-between font-medium"
+                className="w-full text-left px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent-muted hover:text-accent transition-colors duration-150 flex items-center justify-between font-medium"
               >
                 <span>Generate {action}</span>
-                <span className="text-[10px] text-slate-500 font-mono">
+                <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono">
                   ⌘{action[0]}
                 </span>
               </button>
@@ -227,6 +213,7 @@ export default function QueryEditor() {
         currentConnectionId={activeTab?.connectionId || activeConnection?.id}
         onConnectionChange={(id) => {
           updateTabConnection(activeTab.id, id)
+          if (!id) return
           const conn = connections.find(c => c.id === id)
           if (conn) setActiveConnection(conn)
         }}
@@ -244,18 +231,6 @@ export default function QueryEditor() {
           addTab(connectionId, database)
         }}
       />
-
-      {/* Contextual tips */}
-      {activeConnection && activeTab && (
-        <div className="px-4 pt-2">
-          {activeTab.query.includes('SELECT *') && (
-            <ContextualTip
-              id="select-star"
-              message="Tip: Selecting specific columns instead of * improves performance and clarity."
-            />
-          )}
-        </div>
-      )}
 
       {/* History panel floating dropdown */}
       {showHistory && (
@@ -308,14 +283,14 @@ export default function QueryEditor() {
       <button
         onClick={() => setShowAssistant(!showAssistant)}
         className={cn(
-          "absolute bottom-4 right-4 z-50 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all",
+          "fixed bottom-4 right-4 z-50 w-9 h-9 rounded-lg flex items-center justify-center shadow-lg transition-all",
           showAssistant
-            ? "bg-primary text-primary-foreground"
-            : "bg-card text-muted-foreground hover:text-foreground border border-border"
+            ? "bg-primary text-primary-foreground shadow-primary/25"
+            : "bg-background/80 backdrop-blur text-muted-foreground hover:text-foreground border border-border"
         )}
-        title="Assistant"
+        title="Toggle Assistant (⌘I)"
       >
-        <Sparkles className="w-5 h-5" />
+        <Sparkles className="w-4 h-4" />
       </button>
 
       <EditorTabs 
@@ -340,8 +315,6 @@ export default function QueryEditor() {
                 />
               )}
               {(() => {
-                const targetConnectionId = activeTab?.connectionId || activeConnection.id;
-                const targetConnection = connections.find(c => c.id === targetConnectionId) || activeConnection;
                 return (
                   <SqlEditorPanel 
                     activeTab={activeTab}
@@ -349,8 +322,8 @@ export default function QueryEditor() {
                     updateTabQuery={updateTabQuery}
                     handleEditorWillMount={handleEditorWillMount}
                     handleEditorDidMount={handleEditorDidMount}
-                    connectionName={targetConnection.name}
-                    connectionType={targetConnection.type}
+                    connectionName={targetConnection?.name}
+                    connectionType={targetConnection?.type}
                     updateTabViewState={updateTabViewState}
                     updateTabEditorMode={updateTabEditorMode}
                   />
@@ -361,9 +334,11 @@ export default function QueryEditor() {
 
           {panels.editor && panels.results && (
             <div 
-              className="h-1 w-full cursor-row-resize bg-border hover:bg-primary transition-colors shrink-0 z-50"
+              className="h-1 w-full cursor-row-resize bg-border/60 hover:bg-primary/70 active:bg-primary transition-colors shrink-0 z-50 relative"
               onMouseDown={() => { splitterRef.current.isDragging = true }}
-            />
+            >
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-0.5 rounded-full bg-muted-foreground/20 group-hover:bg-muted-foreground/40" />
+            </div>
           )}
 
           {panels.results && (

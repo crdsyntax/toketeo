@@ -105,7 +105,7 @@ export function Step1Connections({
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
           Nombre de la sincronización
         </label>
         <input
@@ -119,7 +119,7 @@ export function Step1Connections({
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
               Conexión Origen
             </label>
             <button
@@ -128,7 +128,7 @@ export function Step1Connections({
                 if (isSourcePostgres && sourceId) queryClient.invalidateQueries({ queryKey: ['databases', sourceId] })
                 if (sourceId) queryClient.invalidateQueries({ queryKey: ['schemas', sourceId] })
               }}
-              className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+              className="flex items-center gap-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
               title="Recargar"
             >
               <RefreshCw className="w-3 h-3" />
@@ -153,7 +153,7 @@ export function Step1Connections({
           </select>
           {isSourcePostgres && sourceId && (
             <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
               {loadingSourceDatabases ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Cargando bases de datos...
@@ -177,7 +177,7 @@ export function Step1Connections({
           )}
           {sourceId && (isSourcePostgres ? !!sourceDatabase : true) && (
             <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Schema Origen</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Schema Origen</label>
               {loadingSourceSchemas ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Cargando schemas...
@@ -187,7 +187,7 @@ export function Step1Connections({
                   <select disabled className="w-full bg-background border border-border px-3 py-2 text-xs font-mono opacity-50">
                     <option>No se pudieron cargar schemas</option>
                   </select>
-                  <p className="text-[9px] text-amber-500">
+                  <p className="text-[var(--ch-text-9)] text-amber-500">
                     Activa la conexión desde el sidebar y haz clic en "Recargar"
                   </p>
                 </div>
@@ -209,7 +209,7 @@ export function Step1Connections({
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+            <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
               Conexión Destino
             </label>
             <button
@@ -218,7 +218,7 @@ export function Step1Connections({
                 if (isTargetPostgres && targetId) queryClient.invalidateQueries({ queryKey: ['databases', targetId] })
                 if (targetId) queryClient.invalidateQueries({ queryKey: ['schemas', targetId] })
               }}
-              className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+              className="flex items-center gap-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
               title="Recargar"
             >
               <RefreshCw className="w-3 h-3" />
@@ -243,7 +243,7 @@ export function Step1Connections({
           </select>
           {isTargetPostgres && targetId && (
             <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
               {loadingTargetDatabases ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Cargando bases de datos...
@@ -267,7 +267,7 @@ export function Step1Connections({
           )}
           {targetId && (isTargetPostgres ? !!targetDatabase : true) && (
             <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Schema Destino</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Schema Destino</label>
               {loadingTargetSchemas ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Cargando schemas...
@@ -277,7 +277,7 @@ export function Step1Connections({
                   <select disabled className="w-full bg-background border border-border px-3 py-2 text-xs font-mono opacity-50">
                     <option>No se pudieron cargar schemas</option>
                   </select>
-                  <p className="text-[9px] text-amber-500">
+                  <p className="text-[var(--ch-text-9)] text-amber-500">
                     Activa la conexión desde el sidebar y haz clic en "Recargar"
                   </p>
                 </div>
@@ -300,7 +300,7 @@ export function Step1Connections({
 
       <div className="space-y-2">
         <Tooltip content="Full: copia todos los datos. Incremental: solo datos nuevos desde la última sincronización">
-          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
             Modo de sincronización
           </label>
         </Tooltip>
@@ -312,7 +312,7 @@ export function Step1Connections({
           <option value={SyncMode.Full}>Completa — copia todos los datos</option>
           <option value={SyncMode.Incremental}>Incremental — solo cambios desde la última ejecución</option>
         </select>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[var(--ch-text-10)] text-muted-foreground">
           {mode === SyncMode.Incremental
             ? 'Requiere una columna primary key para detectar cambios.'
             : 'Sobrescribe todos los datos en el destino en cada ejecución.'}

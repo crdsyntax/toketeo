@@ -31,6 +31,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { formatCellValue } from '@/lib/formatCellValue';
+import { Button } from '@/components/ui/Button';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -130,7 +131,7 @@ export function DataTab({
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
-  const resultsFontSize = useAppStore((s) => s.resultsFontSize);
+  const resultsFontSize = useAppStore((s) => s.uiFontSize);
 
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
@@ -406,13 +407,10 @@ export function DataTab({
             : 'Executing a procedure will run its code on the server.'}{' '}
           Click the button to proceed via WebSocket.
         </p>
-        <button
-          onClick={() => handleExecute()}
-          className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-bold hover:bg-primary/90 transition-colors flex items-center gap-2"
-        >
+        <Button onClick={() => handleExecute()}>
           <Play className="w-4 h-4 fill-current" />
           {selectedItem.type === 'view' ? 'Execute View' : 'Run Procedure'}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -503,7 +501,7 @@ export function DataTab({
         {isMongo && showAdvancedMongo && (
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs w-full max-w-xl bg-background/50 p-2 rounded border border-border/50">
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Project</span>
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-semibold uppercase">Project</span>
               <input
                 className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
                 placeholder='{ "name": 1 }'
@@ -513,7 +511,7 @@ export function DataTab({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Sort</span>
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-semibold uppercase">Sort</span>
               <input
                 className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
                 placeholder='{ "age": -1 }'
@@ -523,7 +521,7 @@ export function DataTab({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Collation</span>
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-semibold uppercase">Collation</span>
               <input
                 className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
                 placeholder='{ "locale": "en" }'
@@ -533,7 +531,7 @@ export function DataTab({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground font-semibold uppercase">Hint</span>
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-semibold uppercase">Hint</span>
               <input
                 className="bg-background border border-border px-2 py-1 rounded outline-none focus:ring-1 focus:ring-primary"
                 placeholder='{ "name_1": 1 } or "name_1"'
@@ -548,7 +546,7 @@ export function DataTab({
       {activeConnection?.environment === Environment.PRODUCTION && (
         <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-red-500 flex items-center gap-2 shrink-0">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          <p className="text-[11px] font-bold uppercase tracking-wider flex-1">Production — inline edits require explicit Commit to persist</p>
+          <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider flex-1">Production — inline edits require explicit Commit to persist</p>
         </div>
       )}
       {executionStatus === ExecutionStatus.ERROR && (
@@ -679,7 +677,7 @@ export function DataTab({
                             <div className="flex items-center gap-1">
                               <span className="truncate flex-1 min-w-0">
                                 {value === null ? (
-                                  <span className="text-muted-foreground italic text-[10px]">NULL</span>
+                                  <span className="text-muted-foreground italic text-[var(--ch-text-10)]">NULL</span>
                                 ) : (
                                   formatCellValue(value)
                                 )}
@@ -746,14 +744,14 @@ export function DataTab({
             </div>
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest opacity-70">
+                <span className="text-[var(--ch-text-10)] text-muted-foreground font-black uppercase tracking-widest opacity-70">
                   Rows:
                 </span>
                 <div className="relative flex items-center group/select">
                   <select
                     value={pageSize}
                     onChange={(e) => setPageSize(Number(e.target.value))}
-                    className="appearance-none text-[10px] bg-muted/30 border border-border/50 rounded-md pl-3 pr-8 py-1.5 outline-none font-black text-foreground transition-all hover:border-primary/40 hover:bg-muted/60 cursor-pointer shadow-inner"
+                    className="appearance-none text-[var(--ch-text-10)] bg-muted/30 border border-border/50 rounded-md pl-3 pr-8 py-1.5 outline-none font-black text-foreground transition-all hover:border-primary/40 hover:bg-muted/60 cursor-pointer shadow-inner"
                   >
                     <option value={10}>10</option>
                     <option value={50}>50</option>
@@ -778,7 +776,7 @@ export function DataTab({
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
                 <div className="flex items-center justify-center min-w-[40px]">
-                  <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                  <span className="text-[var(--ch-text-10)] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                     PAGE {page + 1}
                   </span>
                 </div>

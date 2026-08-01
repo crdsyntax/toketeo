@@ -158,6 +158,8 @@ impl AiAdapter for GeminiAdapter {
                                 name: short,
                                 provider: "gemini".to_string(),
                                 supports_tools: false,
+                                is_free: false,
+                                tier: String::new(),
                             })
                         } else {
                             None

@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react'
-import { Download } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Download, HelpCircle } from 'lucide-react'
 import { useVisualizerStore } from '@/store/visualizerStore'
 import { CHART_TYPES } from '@/lib/chart-types'
 import { detectColumns, suggestChart, type ColumnProfile } from '@/lib/column-detection'
@@ -8,6 +8,7 @@ import { ChartTypeSelector } from './visualize/ChartTypeSelector'
 import { ColumnPicker } from './visualize/ColumnPicker'
 import { ChartControls } from './visualize/ChartControls'
 import { ChartEmptyState } from './visualize/ChartEmptyState'
+import { ChartTour } from './visualize/ChartTour'
 import type { DbRow } from '@/types/database'
 
 interface VisualizePanelProps {
@@ -15,6 +16,7 @@ interface VisualizePanelProps {
 }
 
 export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
+  const [tourOpen, setTourOpen] = useState(false)
   const configs = useVisualizerStore((s) => s.configs)
   const setConfig = useVisualizerStore((s) => s.setConfig)
 
@@ -68,34 +70,47 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border/40 bg-muted/20">
+      {/* Chart type selector + export */}
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border bg-background/80 backdrop-blur shrink-0">
         <ChartTypeSelector
           types={CHART_TYPES}
           active={config.chartType}
           suggested={suggestion.chartType}
           onChange={(type) => setConfig(tabId, { chartType: type })}
         />
-        <button
-          onClick={() => {
-            const canvas = document.querySelector(
-              '#visualize-chart-container canvas',
-            ) as HTMLCanvasElement | null
-            if (canvas) {
-              const link = document.createElement('a')
-              link.download = 'chart.png'
-              link.href = canvas.toDataURL('image/png')
-              link.click()
-            }
-          }}
-          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
-          title="Export as PNG"
-        >
-          <Download className="w-3.5 h-3.5" />
-          PNG
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setTourOpen(true)}
+            className="flex items-center gap-1 text-[var(--ch-text-10)] text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+            title="How charts work"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => {
+              const canvas = document.querySelector(
+                '#visualize-chart-container canvas',
+              ) as HTMLCanvasElement | null
+              if (canvas) {
+                const link = document.createElement('a')
+                link.download = 'chart.png'
+                link.href = canvas.toDataURL('image/png')
+                link.click()
+              }
+            }}
+            className="flex items-center gap-1 text-[var(--ch-text-10)] text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+            title="Export as PNG"
+          >
+            <Download className="w-3.5 h-3.5" />
+            PNG
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/40 bg-muted/10">
+      <ChartTour open={tourOpen} onClose={() => setTourOpen(false)} />
+
+      {/* Column picker */}
+      <div className="px-3 py-1.5 border-b border-border/60 bg-muted/10 shrink-0">
         <ColumnPicker
           profiles={profiles}
           xColumn={config.xColumn}
@@ -107,20 +122,24 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
         />
       </div>
 
-      <div className="flex items-center px-3 py-1 border-b border-border/20 bg-muted/5">
+      {/* Chart controls */}
+      <div className="flex items-center px-3 py-1 border-b border-border/40 bg-muted/5 shrink-0">
         <ChartControls
           config={config}
           onChange={(partial) => setConfig(tabId, partial)}
         />
       </div>
 
-      <div id="visualize-chart-container" className="flex-1 min-h-0 p-2">
-        <ChartRenderer
-          rows={sortedRows}
-          columns={columns}
-          config={config}
-          theme="dark"
-        />
+      {/* Chart canvas */}
+      <div id="visualize-chart-container" className="flex-1 min-h-0 p-3 bg-muted/5">
+        <div className="w-full h-full rounded-lg border border-border/40 bg-card shadow-sm">
+          <ChartRenderer
+            rows={sortedRows}
+            columns={columns}
+            config={config}
+            theme="dark"
+          />
+        </div>
       </div>
     </div>
   )

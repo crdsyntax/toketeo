@@ -100,7 +100,7 @@ export default function Explorer() {
                 <p className="text-xs text-muted-foreground">Provide the required parameters to execute <b>{selectedItem?.name}</b>.</p>
                 {parameters?.map(p => (
                   <div key={p.name} className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex justify-between">
+                    <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground flex justify-between">
                       {p.name} <span className="text-primary/70">{p.type} ({p.mode})</span>
                     </label>
                     <input 

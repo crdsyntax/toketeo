@@ -150,7 +150,7 @@ export function ScriptPreview({
                   <Shield className={cn('w-3.5 h-3.5', options.data_preservation ? 'text-emerald-500' : 'text-muted-foreground')} />
                 )}
                 {key === 'drop_target_extras' && (
-                  <span className="text-[10px] text-muted-foreground">(source→target)</span>
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground">(source→target)</span>
                 )}
               </label>
             ))}
@@ -255,7 +255,7 @@ export function ScriptPreview({
               </div>
               {stmt.preserve_data && expandedBackups.has(stmt.id) && stmt.backup_sql && (
                 <div className="mt-2 ml-7 pl-3 border-l-2 border-emerald-500/30">
-                  <p className="text-[10px] text-emerald-600 font-medium mb-1">Backup SQL:</p>
+                  <p className="text-[var(--ch-text-10)] text-emerald-600 font-medium mb-1">Backup SQL:</p>
                   <pre className="text-xs font-mono text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap break-all">
                     {stmt.backup_sql}
                   </pre>

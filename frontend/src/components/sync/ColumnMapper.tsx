@@ -28,10 +28,10 @@ export function ColumnMapper({ sourceColumns, targetColumns, mappings, onChange 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Column Mappings</span>
+        <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Column Mappings</span>
         <button
           onClick={addMapping}
-          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+          className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
         >
           <Plus className="w-3 h-3" /> Add Mapping
         </button>

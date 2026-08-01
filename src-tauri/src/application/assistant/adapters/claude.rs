@@ -115,12 +115,16 @@ impl AiAdapter for ClaudeAdapter {
                 name: "Claude Sonnet 4".to_string(),
                 provider: "claude".to_string(),
                 supports_tools: true,
+                is_free: false,
+                tier: String::new(),
             },
             ModelInfo {
                 id: "claude-3-5-haiku-20241022".to_string(),
                 name: "Claude 3.5 Haiku".to_string(),
                 provider: "claude".to_string(),
                 supports_tools: true,
+                is_free: false,
+                tier: String::new(),
             },
         ])
     }

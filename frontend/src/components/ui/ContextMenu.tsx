@@ -66,14 +66,14 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
     <div
       ref={menuRef}
       role="menu"
-      className="fixed z-[300] min-w-[180px] max-w-[260px] bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100 select-none"
+      className="fixed z-[300] min-w-[180px] max-w-[260px] bg-surface-elevated border border-border/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100 select-none"
       style={{ top: adjustedY, left: adjustedX }}
     >
       {groups.map((group, gi) => (
         <div key={gi}>
-          {gi > 0 && <hr className="border-slate-700/50 my-1" />}
+          {gi > 0 && <hr className="border-border/50 my-1" />}
           {group.title && (
-            <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <div className="px-2.5 py-1 text-[var(--ch-text-10)] font-semibold text-muted-foreground uppercase tracking-wider">
               {group.title}
             </div>
           )}
@@ -92,10 +92,10 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
                 className={cn(
                   'w-full text-left px-2.5 py-1.5 text-xs rounded-md transition-colors duration-100 flex items-center justify-between gap-2 font-medium',
                   item.disabled
-                    ? 'text-slate-600 cursor-not-allowed'
+                    ? 'text-muted-foreground/50 cursor-not-allowed'
                     : item.variant === 'destructive'
-                      ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300'
-                      : 'text-slate-200 hover:bg-slate-700/70 hover:text-white',
+                      ? 'text-destructive hover:bg-destructive/10'
+                      : 'text-foreground hover:bg-accent-muted hover:text-accent',
                 )}
               >
                 <span className="flex items-center gap-2 truncate">
@@ -107,7 +107,7 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
                   {item.label}
                 </span>
                 {item.shortcut && (
-                  <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono shrink-0">
                     {item.shortcut}
                   </span>
                 )}

@@ -138,7 +138,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
                 ? (mode === 'dump' ? 'Dump complete' : 'Restore complete')
                 : (mode === 'dump' ? 'Generating dump...' : 'Restoring database...')}
             </p>
-            <p className="text-[10px] text-muted-foreground truncate">{schema}</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground truncate">{schema}</p>
           </div>
           <button
             onClick={handleExpand}
@@ -249,7 +249,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold border-b-2 transition-colors shrink-0',
+                  'flex items-center gap-1.5 px-3 py-2 text-[var(--ch-text-11)] font-semibold border-b-2 transition-colors shrink-0',
                   activeTab === tab.key
                     ? 'border-primary text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -257,7 +257,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
               >
                 {tab.icon}
                 {tab.label}
-                <span className="text-[10px] text-muted-foreground ml-0.5">({count})</span>
+                <span className="text-[var(--ch-text-10)] text-muted-foreground ml-0.5">({count})</span>
               </button>
             )
           })}
@@ -271,7 +271,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
             {allSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
             {allSelected ? 'Deselect All' : 'Select All'}
           </button>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[var(--ch-text-10)] text-muted-foreground">
             {totalSelected} / {totalAvailable} selected
           </span>
         </div>
@@ -298,7 +298,7 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
                   )}
                   <span className="font-mono truncate flex-1">{item}</span>
                   {size !== undefined && (
-                    <span className="text-[10px] text-muted-foreground shrink-0">{formatSize(size)}</span>
+                    <span className="text-[var(--ch-text-10)] text-muted-foreground shrink-0">{formatSize(size)}</span>
                   )}
                 </button>
               )

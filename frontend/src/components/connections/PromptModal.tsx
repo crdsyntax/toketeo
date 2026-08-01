@@ -107,7 +107,7 @@ export function PromptModal({
 
         <div className="px-4 py-3 space-y-3">
           {message && (
-            <p className="text-[11px] text-muted-foreground">{message}</p>
+            <p className="text-[var(--ch-text-11)] text-muted-foreground">{message}</p>
           )}
           <input
             ref={inputRef}
@@ -127,7 +127,7 @@ export function PromptModal({
         <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground rounded-lg hover:bg-background transition-all"
+            className="px-3 py-1.5 text-[var(--ch-text-10)] font-semibold text-muted-foreground hover:text-foreground rounded-lg hover:bg-background transition-all"
           >
             {cancelLabel}
           </button>
@@ -135,7 +135,7 @@ export function PromptModal({
             onClick={handleConfirm}
             disabled={requireInput && !value.trim()}
             className={cn(
-              "px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all",
+              "px-3 py-1.5 text-[var(--ch-text-10)] font-bold rounded-lg transition-all",
               destructive
                 ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 : "bg-primary text-primary-foreground hover:bg-primary/90",

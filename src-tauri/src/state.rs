@@ -81,6 +81,7 @@ impl AppState {
         use crate::application::assistant::tools::backup_tool::BackupTool;
         use crate::application::assistant::tools::export_tool::ExportTool;
         use crate::application::assistant::tools::auto_schema_tool::AutoSchemaTool;
+        use crate::application::assistant::tools::sync_tool::SyncTool;
 
         let mut engine = ToolEngine::new();
         engine.register(Box::new(SchemaTool));
@@ -92,6 +93,7 @@ impl AppState {
         engine.register(Box::new(BackupTool));
         engine.register(Box::new(ExportTool));
         engine.register(Box::new(AutoSchemaTool));
+        engine.register(Box::new(SyncTool));
         engine
     }
 
@@ -217,6 +219,37 @@ impl AppState {
                 session.touch();
             }
         }
+    }
+
+    /// Returns a live driver for a connection, reconnecting if the cached
+    /// session is stale or missing. Shared by Tauri commands and assistant
+    /// tools so any connection can be targeted by ID.
+    pub async fn get_or_connect_driver(&self, conn_id: &str) -> AppResult<Arc<dyn DbDriver>> {
+        if let Ok(driver) = self.get_connection(conn_id).await {
+            // Quick health check — lightweight query to verify the connection is alive
+            let healthy = match driver.db_type() {
+                // SQL databases all support SELECT 1
+                DbType::Postgres
+                | DbType::Mysql
+                | DbType::Mariadb
+                | DbType::Sqlite
+                | DbType::Sqlserver => driver.execute("SELECT 1").await.is_ok(),
+                // MongoDB doesn't support SQL — use fetch_databases instead
+                DbType::Mongodb => driver.fetch_databases().await.is_ok(),
+                DbType::Redis => driver.execute("PING").await.is_ok(),
+            };
+            if healthy {
+                return Ok(driver);
+            }
+            // Connection is stale — fall through to reconnect
+            tracing::warn!("Connection {conn_id} is stale, reconnecting...");
+        }
+
+        let config = self.storage.get_connection(conn_id).await?;
+        // Drop the stale entry before reconnecting
+        let _ = self.remove_connection(conn_id).await;
+        crate::application::connection_service::ConnectionService::connect(self, config).await?;
+        self.get_connection(conn_id).await
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<Arc<dyn DbDriver>> {

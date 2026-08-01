@@ -34,6 +34,12 @@ export function LevelBadge({ className, onClick, collapsed, hideWizard }: LevelB
         {!hideWizard && <WizardPixelArt />}
         <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
           <svg className="absolute inset-0 w-full h-full -rotate-90">
+            <defs>
+              <linearGradient id="level-ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="var(--accent)" />
+                <stop offset="100%" stopColor="var(--accent-hover)" />
+              </linearGradient>
+            </defs>
             <circle
               cx="20"
               cy="20"
@@ -45,14 +51,16 @@ export function LevelBadge({ className, onClick, collapsed, hideWizard }: LevelB
               cx="20"
               cy="20"
               r="18"
-              className="stroke-primary fill-none transition-all duration-1000 ease-out"
+              fill="none"
               strokeWidth="3"
+              stroke="url(#level-ring-grad)"
               strokeDasharray={2 * Math.PI * 18}
               strokeDashoffset={2 * Math.PI * 18 * (1 - progressPercentage / 100)}
               strokeLinecap="round"
+              className="transition-all duration-1000 ease-out"
             />
           </svg>
-          <span className="text-xs font-bold text-primary">{level}</span>
+          <span className="text-xs font-bold text-accent">{level}</span>
         </div>
       </div>
 
@@ -61,13 +69,13 @@ export function LevelBadge({ className, onClick, collapsed, hideWizard }: LevelB
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-bold text-foreground truncate">Lvl {level} {getThematicLevelName(level)}</span>
             {streak > 1 && (
-              <span className="flex items-center text-[10px] text-orange-500 font-bold" title={`${streak} days streak`}>
+              <span className="flex items-center text-[var(--ch-text-10)] text-orange-500 font-bold" title={`${streak} days streak`}>
                 <Flame className="w-3 h-3 mr-0.5" />
                 {streak}
               </span>
             )}
           </div>
-          <div className="flex items-center text-[10px] text-muted-foreground mt-0.5">
+          <div className="flex items-center text-[var(--ch-text-10)] text-muted-foreground mt-0.5">
             <Trophy className="w-3 h-3 mr-1 text-yellow-500" />
             <span className="truncate">{progressPercentage.toFixed(2)}% to Level {level + 1}</span>
           </div>

@@ -1,10 +1,11 @@
-import { Plus, Edit2, Shield, ChevronDown, Database, Server, Wifi, Loader2, AlertTriangle } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Database, Server, Wifi, Loader2, AlertTriangle, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { DatabaseType } from '@/types/database'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
+import { connectionService } from '@/services/connection.service'
 import { useAppStore } from '@/store/useAppStore'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useDiagramStore } from '@/diagram/store'
@@ -15,6 +16,7 @@ import { PromptModal } from './PromptModal'
 import { ConnectionContextMenu } from './ConnectionContextMenu'
 import { SchemaContextMenu } from './SchemaContextMenu'
 import { CreateSchemaModal } from './CreateSchemaModal'
+import { Button } from '@/components/ui/Button'
 import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
 import toast from 'react-hot-toast'
 
@@ -31,7 +33,7 @@ function TypeBadge({ type }: { type: string }) {
   const config = getEngineConfig(type as DatabaseType)
   return (
     <span className={cn(
-      'px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border',
+      'px-1 py-0.5 rounded font-bold uppercase tracking-wider border',
       config.bgClass, config.textClass, config.borderClass
     )}>
 {type === DatabaseType.POSTGRES ? 'PG' :
@@ -46,7 +48,7 @@ function TypeBadge({ type }: { type: string }) {
   )
 }
 
-function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, activeDatabaseName?: string | null, onSelect: (c: Connection, s: string) => void, onSelectSchema?: (c: Connection, dbName: string, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onToggleDefault, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, activeDatabaseName?: string | null, onSelect: (c: Connection, s: string) => void, onSelectSchema?: (c: Connection, dbName: string, s: string) => void, onToggleDefault?: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
   const { data: databases = [], isFetched } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
@@ -56,13 +58,13 @@ function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect,
   return (
     <>
       {databases.map((db) => (
-        <DatabaseItem key={db} conn={conn} dbName={db} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={onSelect} onSelectSchema={onSelectSchema} onSchemaContextMenu={onSchemaContextMenu} />
+        <DatabaseItem key={db} conn={conn} dbName={db} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={onSelect} onSelectSchema={onSelectSchema} onToggleDefault={onToggleDefault} onSchemaContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
 }
 
-function SchemaContent({ conn, activeConnection, onSelect, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, onSelect: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+function SchemaContent({ conn, activeConnection, onSelect, onToggleDefault, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, onSelect: (c: Connection, s: string) => void, onToggleDefault?: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
   const { data: schemas = [], isFetched } = useQuery({
     queryKey: ['schemas', conn.id],
     queryFn: () => schemaService.getSchemas(conn.id),
@@ -72,7 +74,7 @@ function SchemaContent({ conn, activeConnection, onSelect, onSchemaContextMenu, 
   return (
     <>
       {schemas.map((s) => (
-        <SchemaItem key={s} conn={conn} schema={s} isSelected={activeConnection?.id === conn.id && activeConnection?.database === s} onSelect={onSelect} onContextMenu={onSchemaContextMenu} />
+        <SchemaItem key={s} conn={conn} schema={s} isSelected={activeConnection?.id === conn.id && activeConnection?.database === s} isDefault={conn.defaultDatabase === s} onSelect={onSelect} onToggleDefault={onToggleDefault} onContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
@@ -126,6 +128,11 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const navigate = useNavigate()
   const location = useLocation()
   const [activeDatabaseName, setActiveDatabaseName] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('sidebarWidth')
+    return saved ? parseInt(saved, 10) : 240
+  })
+  const isResizing = useRef(false)
 
   const groupedConnections = useMemo(() => {
     const groups: Record<DatabaseType, Connection[]> = {
@@ -225,6 +232,18 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     }
   }, [])
 
+  const handleToggleDefault = useCallback(async (conn: Connection, schema: string) => {
+    const newDefault = conn.defaultDatabase === schema ? undefined : schema;
+    try {
+      const full = await connectionService.getOne(conn.id);
+      await connectionService.update(conn.id, { ...full, defaultDatabase: newDefault } as any);
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      toast.success(newDefault ? `"${schema}" set as default` : 'Default removed');
+    } catch (e) {
+      toast.error(`Failed to update default: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  }, [queryClient]);
+
   const handleSchemaDoubleClick = async (conn: Connection, schema: string) => {
     try {
       if (!connectedConnectionIds.includes(conn.id)) {
@@ -232,7 +251,14 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
       }
       setActiveConnection(conn)
       if (location.pathname === '/query') {
-        addTab(conn.id, schema)
+        const state = useAppStore.getState()
+        const existingTab = state.tabs.find(t => t.connectionId === conn.id)
+        if (existingTab) {
+          state.setActiveTabId(existingTab.id)
+          setActiveConnectionDatabase(schema)
+        } else {
+          addTab(conn.id, schema)
+        }
       } else if (location.pathname === '/diagram') {
         setActiveConnectionDatabase(schema)
         // Update active diagram to use the newly selected connection/schema
@@ -290,6 +316,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     setConnectingId(conn.id)
     try {
       await onConnect(conn)
+      if (conn.defaultDatabase) {
+        await handleSchemaDoubleClick(conn, conn.defaultDatabase);
+      }
     } catch (e) {
       toast.error(`Failed to connect: ${e instanceof Error ? e.message : 'Unknown error'}`)
     } finally {
@@ -322,12 +351,36 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     setLoadingConnId((prev) => prev === connId ? null : prev)
   }, [])
 
+  const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    const onMove = (ev: PointerEvent) => {
+      if (!isResizing.current) return
+      const newWidth = Math.max(180, Math.min(600, startWidth + ev.clientX - startX))
+      setSidebarWidth(newWidth)
+    }
+    const onUp = () => {
+      isResizing.current = false
+      localStorage.setItem('sidebarWidth', String(sidebarWidth))
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [sidebarWidth])
+
   return (
-    <div className="w-72 border-r border-border bg-background flex flex-col h-full">
-      <div className="px-3 py-3 border-b border-border flex items-center justify-between">
+    <div className="border-r border-border bg-background flex flex-col h-full relative shrink-0" style={{ width: sidebarWidth }}>
+      <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
         <h2
           onDoubleClick={() => navigate('/')}
-          className="text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase select-none"
+          className="font-bold tracking-[0.2em] text-muted-foreground uppercase select-none"
         >
           Connections
         </h2>
@@ -342,14 +395,11 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         {connections.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
             <Server className="w-8 h-8 text-muted-foreground/30 mb-3" />
-            <p className="text-xs text-muted-foreground/50 mb-3">No connections yet</p>
-            <button
-              onClick={onNew}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md hover:bg-primary/20 transition-all"
-            >
+            <p className="text-muted-foreground/50 mb-3">No connections yet</p>
+            <Button variant="primary" size="sm" onClick={onNew}>
               <Plus className="w-3 h-3" />
               Add Connection
-            </button>
+            </Button>
           </div>
         )}
         <div className="space-y-1 px-2">
@@ -376,10 +426,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                   )}>
                     <EngineIcon className={cn('w-3 h-3', config.textClass)} />
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="font-bold uppercase tracking-wider text-muted-foreground">
                     {config.label}
                   </span>
-                  <span className="text-[9px] text-muted-foreground/50 ml-auto">
+                  <span className="text-muted-foreground/50 ml-auto">
                     {engineConns.length}
                   </span>
                 </button>
@@ -390,11 +440,11 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                       <div
                         key={conn.id}
                         className={cn(
-                          'group relative rounded-lg transition-all duration-200',
+                          'group relative rounded-md transition-all duration-200',
                           connectedConnectionIds.includes(conn.id) && activeConnection?.id === conn.id
-                            ? 'bg-accent/5 ring-1 ring-primary/10'
-                            : 'hover:bg-muted/50',
-                          connectedConnectionIds.includes(conn.id) && selectedConnId === conn.id && 'bg-accent/10 ring-1 ring-primary/20'
+                            ? 'bg-accent-muted ring-1 ring-accent/20'
+                            : 'hover:bg-accent-muted/50',
+                          connectedConnectionIds.includes(conn.id) && selectedConnId === conn.id && 'bg-accent-muted ring-1 ring-accent/30'
                         )}
                       >
                         {connectedConnectionIds.includes(conn.id) && connectionErrors[conn.id] && (
@@ -419,7 +469,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className={cn(
-                                'text-xs font-semibold truncate',
+                                'font-semibold truncate',
                                 connectedConnectionIds.includes(conn.id) && selectedConnId === conn.id ? 'text-foreground' : 'text-foreground/90'
                               )}>
                                 {conn.name}
@@ -440,7 +490,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                               ) : (
                                 <Wifi className="w-2.5 h-2.5 text-muted-foreground/40" />
                               )}
-                              <span className="text-[10px] text-muted-foreground/60 font-mono truncate">
+                              <span className="text-muted-foreground/60 font-mono truncate">
                                 {conn.host}
                               </span>
                             </div>
@@ -485,9 +535,9 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                           <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
                             <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
                               {conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.REDIS ? (
-                                <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
+                                  <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onToggleDefault={handleToggleDefault} onLoaded={() => handleContentLoaded(conn.id)} />
                               ) : (
-                                <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
+                                <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onToggleDefault={handleToggleDefault} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                               )}
                             </div>
                           </div>
@@ -577,6 +627,10 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
           />
         )}
       </div>
+      <div
+        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-accent/40 active:bg-accent/60 transition-colors z-10"
+        onPointerDown={handleResizePointerDown}
+      />
     </div>
   )
 }

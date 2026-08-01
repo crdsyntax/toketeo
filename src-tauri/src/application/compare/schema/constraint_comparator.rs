@@ -23,37 +23,48 @@ fn is_pk_or_fk(typ: &str) -> bool {
     upper.contains("PRIMARY") || upper.contains("FOREIGN")
 }
 
-fn mysql_check_definitions_query() -> &'static str {
-    "SELECT cc.CONSTRAINT_NAME as name, cc.CHECK_CLAUSE as definition \
-     FROM information_schema.CHECK_CONSTRAINTS cc \
-     JOIN information_schema.TABLE_CONSTRAINTS tc \
-       ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME \
-       AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA \
-     WHERE tc.TABLE_NAME = ? AND tc.CONSTRAINT_SCHEMA = IFNULL(?, DATABASE()) \
-       AND tc.CONSTRAINT_TYPE = 'CHECK'"
+fn mysql_check_definitions_query(table: &str, schema: Option<&str>) -> String {
+    let schema_clause = match schema {
+        Some(s) => format!("'{}'", s.replace('\'', "\\'")),
+        None => "DATABASE()".to_string(),
+    };
+    format!(
+        "SELECT cc.CONSTRAINT_NAME as name, cc.CHECK_CLAUSE as definition \
+         FROM information_schema.CHECK_CONSTRAINTS cc \
+         JOIN information_schema.TABLE_CONSTRAINTS tc \
+           ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME \
+           AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA \
+         WHERE tc.TABLE_NAME = '{}' AND tc.CONSTRAINT_SCHEMA = {} \
+           AND tc.CONSTRAINT_TYPE = 'CHECK'",
+        table.replace('\'', "\\'"),
+        schema_clause,
+    )
 }
 
-fn postgres_check_definitions_query() -> &'static str {
-    "SELECT conname as name, pg_get_constraintdef(oid) as definition \
-     FROM pg_constraint \
-     WHERE conrelid = (SELECT oid FROM pg_class WHERE relname = $1) \
-       AND contype = 'c'"
+fn postgres_check_definitions_query(table: &str) -> String {
+    format!(
+        "SELECT conname as name, pg_get_constraintdef(oid) as definition \
+         FROM pg_constraint \
+         WHERE conrelid = (SELECT oid FROM pg_class WHERE relname = '{}') \
+           AND contype = 'c'",
+        table.replace('\'', "\\'"),
+    )
 }
 
 async fn fetch_check_definitions(
     driver: &dyn DbDriver,
     table: &str,
-    _schema: Option<&str>,
+    schema: Option<&str>,
 ) -> AppResult<BTreeMap<String, String>> {
     let db_type = driver.db_type();
     let mut map = BTreeMap::new();
 
     let result = match db_type {
         DbType::Mysql | DbType::Mariadb => {
-            driver.execute(mysql_check_definitions_query()).await?
+            driver.execute(&mysql_check_definitions_query(table, schema)).await?
         }
         DbType::Postgres => {
-            driver.execute_with_schema(postgres_check_definitions_query(), table).await?
+            driver.execute(&postgres_check_definitions_query(table)).await?
         }
         _ => return Ok(map),
     };

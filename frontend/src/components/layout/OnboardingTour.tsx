@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAssistantStore } from '@/store/assistantStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/Button'
 
 interface OnboardingStep {
   title: string
@@ -74,12 +75,9 @@ export function OnboardingTour({ onClose }: OnboardingTourProps) {
             <button onClick={handleSkip} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Skip tour
             </button>
-            <button
-              onClick={handleNext}
-              className="text-xs font-semibold bg-primary text-primary-foreground px-5 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-            >
+            <Button size="sm" onClick={handleNext}>
               {currentStep < STEPS.length - 1 ? 'Next' : 'Done!'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

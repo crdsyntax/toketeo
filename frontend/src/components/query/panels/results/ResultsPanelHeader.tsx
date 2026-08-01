@@ -1,5 +1,6 @@
 import { Clock, Save, Maximize2, Download, ChevronUp, ChevronDown, Table2, ChevronLeft, ChevronRight, FileJson, FileText, BarChart3 } from 'lucide-react';
 import { cn, downloadCSV } from '@/lib/utils';
+import { useAppStore } from '@/store/useAppStore';
 import type { QueryTab } from '@/store/useAppStore';
 import { ExecutionStatus } from '@/types/database';
 import type { DbRow, DbValue } from '@/types/database';
@@ -47,6 +48,8 @@ export function ResultsPanelHeader({
 }: ResultsPanelHeaderProps) {
   const currentLimitLabel = LIMIT_OPTIONS.find(o => o.value === queryLimit)?.label ?? `${queryLimit} rows`;
 
+  const editorFontFamily = useAppStore((s) => s.editorFontFamily);
+
   const { trackAction, addXP } = useGamificationStore();
 
   const handleExportJSON = async () => {
@@ -76,35 +79,35 @@ export function ResultsPanelHeader({
   };
 
   return (
-    <div className="h-11 border-b border-border bg-muted/40 flex justify-between items-center px-4 select-none shrink-0 relative overflow-visible" style={{ zIndex: 40 }}>
-      <div className="flex items-center gap-3">
+    <div className="h-9 border-b border-border bg-background/80 backdrop-blur flex justify-between items-center px-3 select-none shrink-0 relative overflow-visible" style={{ zIndex: 40 }}>
+      <div className="flex items-center gap-2">
         <button
           onClick={() => togglePanel('results')}
-          className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors"
+          className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors"
         >
-          {isResultsPanelVisible ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          {isResultsPanelVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
-        <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
-          <Table2 className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
           <span>Results</span>
           {activeTab?.status === ExecutionStatus.EXECUTING && (
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary animate-pulse ml-1">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-medium bg-primary/10 text-primary animate-pulse">
               <span className="w-1 h-1 rounded-full bg-primary" />
-              Executing...
+              Running...
             </span>
           )}
         </h3>
       </div>
 
       {activeTab?.results && isResultsPanelVisible && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setShowLimitMenu(v => !v); setShowExportMenu(false); }}
-              className="flex items-center gap-1 text-[10px] font-mono font-bold text-muted-foreground hover:text-foreground bg-muted/30 hover:bg-muted px-2 py-1 rounded-md border border-border/40 transition-colors"
+              className="flex items-center gap-1 text-[var(--ch-text-9)] font-medium text-muted-foreground hover:text-foreground bg-muted/30 hover:bg-muted px-1.5 py-0.5 rounded border border-border/40 transition-colors"
+              style={{ fontFamily: editorFontFamily }}
             >
               {currentLimitLabel}
-              <ChevronDown className="w-3 h-3" />
+              <ChevronDown className="w-2.5 h-2.5" />
             </button>
             {showLimitMenu && (
               <div
@@ -131,46 +134,46 @@ export function ResultsPanelHeader({
           </div>
 
           {activeTab.results.page !== undefined && (
-            <div className="flex items-center gap-1 bg-muted/30 px-1 py-0.5 rounded-md border border-border/40">
+            <div className="flex items-center gap-0.5 bg-muted/20 px-1 py-0.5 rounded border border-border/40">
               <button
                 disabled={activeTab.results.page <= 1 || activeTab.status === ExecutionStatus.EXECUTING}
                 onClick={() => handlePageChange(activeTab.results!.page! - 1)}
-                className="p-1 hover:bg-muted text-muted-foreground rounded disabled:opacity-30 transition-colors"
+                className="p-0.5 hover:bg-muted text-muted-foreground rounded disabled:opacity-30 transition-colors"
                 title="Previous Page"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                <ChevronLeft className="w-3 h-3" />
               </button>
-              <span className="text-[10px] font-mono font-bold mx-1 text-muted-foreground">
-                PAGE {activeTab.results.page}
+              <span className="text-[var(--ch-text-9)] font-medium mx-0.5 text-muted-foreground" style={{ fontFamily: editorFontFamily }}>
+                {activeTab.results.page}
               </span>
               <button
                 disabled={!activeTab.results.hasMore || activeTab.status === ExecutionStatus.EXECUTING}
                 onClick={() => handlePageChange(activeTab.results!.page! + 1)}
-                className="p-1 hover:bg-muted text-muted-foreground rounded disabled:opacity-30 transition-colors"
+                className="p-0.5 hover:bg-muted text-muted-foreground rounded disabled:opacity-30 transition-colors"
                 title="Next Page"
               >
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-3 h-3" />
               </button>
             </div>
           )}
 
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-1 rounded-md border border-border/40">
-            <Clock className="w-3.5 h-3.5 text-muted-foreground/70" />
+          <div className="flex items-center gap-1 text-[var(--ch-text-9)] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded border border-border/40" style={{ fontFamily: editorFontFamily }}>
+            <Clock className="w-3 h-3 text-muted-foreground/70" />
             {activeTab.results.executionTime}ms
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-1 rounded-md border border-border/40">
-            <span className="font-bold text-foreground">{sortedRows.length}</span>
-            &nbsp;rows
+          <div className="flex items-center gap-1 text-[var(--ch-text-9)] text-muted-foreground bg-muted/20 px-1.5 py-0.5 rounded border border-border/40" style={{ fontFamily: editorFontFamily }}>
+            <span className="font-semibold text-foreground">{sortedRows.length}</span>
+            rows
           </div>
 
-          <div className="h-4 w-[1px] bg-border mx-1" />
+          <div className="h-3 w-px bg-border mx-0.5" />
 
-          <div className="flex items-center gap-1">
-            <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40 mr-1">
+          <div className="flex items-center gap-0.5">
+            <div className="flex items-center bg-muted/20 p-0.5 rounded border border-border/40">
               <button
                 onClick={() => setViewMode('table')}
                 className={cn(
-                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  "px-1.5 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors",
                   viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -179,7 +182,7 @@ export function ResultsPanelHeader({
               <button
                 onClick={() => setViewMode('json')}
                 className={cn(
-                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  "px-1.5 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors",
                   viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -188,7 +191,7 @@ export function ResultsPanelHeader({
               <button
                 onClick={() => setViewMode('visualize')}
                 className={cn(
-                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  "px-1.5 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors",
                   viewMode === 'visualize' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -198,28 +201,26 @@ export function ResultsPanelHeader({
             {editingCell && (
               <button
                 onClick={handleSave}
-                className="text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm transition-colors mr-1"
+                className="flex items-center gap-1 px-1.5 py-0.5 bg-primary text-primary-foreground rounded text-[var(--ch-text-9)] font-semibold hover:bg-primary/90 transition-all"
               >
-                <Save className="w-3.5 h-3.5" />
-                Apply Changes
+                <Save className="w-3 h-3" />
+                Apply
               </button>
             )}
             <button
               onClick={() => setShowResultModal(true)}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+              className="text-[var(--ch-text-9)] font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
             >
-              <Maximize2 className="w-3.5 h-3.5" />
-              Fullscreen
+              <Maximize2 className="w-3 h-3" />
             </button>
 
             <div className="relative">
               <button
                 onClick={(e) => { e.stopPropagation(); setShowExportMenu(v => !v); setShowLimitMenu(false); }}
-                className="text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+                className="text-[var(--ch-text-9)] font-medium text-muted-foreground hover:text-foreground hover:bg-muted px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
               >
-                <Download className="w-3.5 h-3.5" />
-                Export
-                <ChevronDown className="w-3 h-3" />
+                <Download className="w-3 h-3" />
+                <ChevronDown className="w-2.5 h-2.5" />
               </button>
               {showExportMenu && (
                 <div

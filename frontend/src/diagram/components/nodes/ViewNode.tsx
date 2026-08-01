@@ -16,7 +16,7 @@ export const ViewNode = memo(({ data }: NodeProps<ViewNodeType>) => {
         <Eye className="w-3.5 h-3.5" />
         <span className="truncate">{data.label}</span>
       </div>
-      <div className="px-3 py-2 text-[10px] text-muted-foreground uppercase tracking-wider">
+      <div className="px-3 py-2 text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-wider">
         View
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-2 !h-2" />

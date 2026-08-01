@@ -9,6 +9,7 @@ export interface ChartConfig {
   groupColumn: string | null
   orientation: 'vertical' | 'horizontal'
   stacked: boolean
+  dataLabels: boolean
   title: string
 }
 
@@ -25,6 +26,7 @@ const DEFAULTS: ChartConfig = {
   groupColumn: null,
   orientation: 'vertical',
   stacked: false,
+  dataLabels: true,
   title: '',
 }
 

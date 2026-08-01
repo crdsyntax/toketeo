@@ -50,17 +50,17 @@ export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunN
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground truncate">{job.name}</span>
           {isRunning && (
-            <span className="text-[9px] uppercase tracking-widest font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded animate-pulse">
+            <span className="text-[var(--ch-text-9)] uppercase tracking-widest font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded animate-pulse">
               Running
             </span>
           )}
           {!job.enabled && !isRunning && (
-            <span className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded">Paused</span>
+            <span className="text-[var(--ch-text-9)] uppercase tracking-widest font-bold text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded">Paused</span>
           )}
         </div>
 
         {isRunning && runningJob.currentTable ? (
-          <div className="flex items-center gap-2 mt-1 text-[10px] text-primary">
+          <div className="flex items-center gap-2 mt-1 text-[var(--ch-text-10)] text-primary">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span className="truncate">
               {runningJob.tableIndex > 0 && `${runningJob.tableIndex}/${runningJob.totalTables} — `}
@@ -68,7 +68,7 @@ export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunN
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-3 mt-1 text-[var(--ch-text-10)] text-muted-foreground">
             <span className={cn('font-mono', !job.cronExpression && 'italic')}>
               {job.cronExpression || 'Manual'}
             </span>
@@ -79,7 +79,7 @@ export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunN
           </div>
         )}
 
-        <div className="flex items-center gap-4 mt-1.5 text-[10px]">
+        <div className="flex items-center gap-4 mt-1.5 text-[var(--ch-text-10)]">
           <span>
             <span className="text-muted-foreground/60">Last:</span>{' '}
             <span className={cn(job.lastRun ? 'text-muted-foreground' : 'text-muted-foreground/40')}>

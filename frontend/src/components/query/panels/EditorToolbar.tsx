@@ -89,7 +89,7 @@ export function EditorToolbar({
             className="flex items-center px-1 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-md transition-all border-l border-border"
             title="New Script with connection and database"
           >
-            <span className="text-[10px] leading-none">▼</span>
+            <span className="text-[var(--ch-text-10)] leading-none">▼</span>
           </button>
         </div>
 
@@ -119,11 +119,12 @@ export function EditorToolbar({
           className="appearance-none bg-background border border-border text-foreground px-3 py-1 rounded text-xs font-bold mr-2 outline-none cursor-pointer hover:border-primary/50 transition-colors"
           title="Connection for this query tab"
         >
+          <option value="">No connection</option>
           {connections.map(c => <option key={c.id} value={c.id}>{c.database ? `${c.name} / ${c.database}` : c.name}</option>)}
         </select>
 
         {connections.find(c => c.id === currentConnectionId)?.readOnly && (
-          <span className="px-2 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold tracking-widest uppercase rounded mr-2 flex items-center select-none">
+          <span className="px-2 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[var(--ch-text-10)] font-bold tracking-widest uppercase rounded mr-2 flex items-center select-none">
             Read-Only
           </span>
         )}
@@ -165,7 +166,7 @@ export function EditorToolbar({
         >
           <Clock className="w-4 h-4" />
           {historyCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-amber-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-0.5">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-amber-500 text-white text-[var(--ch-text-8)] font-bold rounded-full flex items-center justify-center px-0.5">
               {historyCount > 99 ? '99+' : historyCount}
             </span>
           )}

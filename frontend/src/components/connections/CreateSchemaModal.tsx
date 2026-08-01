@@ -93,7 +93,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
           <Database className="w-4 h-4 text-primary shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-foreground truncate">Create Schema</p>
-            <p className="text-[10px] text-muted-foreground truncate">{conn.name}</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground truncate">{conn.name}</p>
           </div>
           <button
             onClick={() => setIsMinimized(false)}
@@ -148,7 +148,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest border transition-all',
+                  'flex items-center gap-1.5 px-3 py-1.5 text-[var(--ch-text-9)] font-bold uppercase tracking-widest border transition-all',
                   activeTab === tab.id
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'border-border text-muted-foreground hover:border-primary/50 hover:text-primary'
@@ -166,7 +166,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
           {activeTab === 'general' && (
             <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
               <div>
-                <label className="block text-[10px] font-semibold text-foreground mb-1">
+                <label className="block text-[var(--ch-text-10)] font-semibold text-foreground mb-1">
                   Schema Name <span className="text-destructive">*</span>
                 </label>
                 <input
@@ -178,7 +178,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-foreground mb-1">
+                <label className="block text-[var(--ch-text-10)] font-semibold text-foreground mb-1">
                   Owner
                 </label>
                 <input
@@ -190,7 +190,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-foreground mb-1">
+                <label className="block text-[var(--ch-text-10)] font-semibold text-foreground mb-1">
                   Comment
                 </label>
                 <textarea
@@ -206,7 +206,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
 
           {activeTab === 'security' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-1">
+              <div className="flex items-center gap-1.5 text-[var(--ch-text-10)] text-muted-foreground mb-1">
                 <Info className="w-3 h-3" />
                 Grant privileges on this schema to roles or users.
               </div>
@@ -223,7 +223,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
                     placeholder="role_or_user"
                     className="flex-1 min-w-0 px-2 py-1 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all placeholder:text-muted-foreground/50"
                   />
-                  <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer shrink-0">
+                  <label className="flex items-center gap-1 text-[var(--ch-text-9)] text-muted-foreground cursor-pointer shrink-0">
                     <input
                       type="checkbox"
                       checked={row.usage}
@@ -232,7 +232,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
                     />
                     USAGE
                   </label>
-                  <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer shrink-0">
+                  <label className="flex items-center gap-1 text-[var(--ch-text-9)] text-muted-foreground cursor-pointer shrink-0">
                     <input
                       type="checkbox"
                       checked={row.create}
@@ -252,7 +252,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
 
               <button
                 onClick={addPrivilegeRow}
-                className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-all"
+                className="flex items-center gap-1 px-2.5 py-1 text-[var(--ch-text-9)] font-bold text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-all"
               >
                 <Plus className="w-3 h-3" />
                 Add Privilege
@@ -265,7 +265,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
         <div className="flex items-center justify-end gap-1.5 px-4 py-2.5 border-t border-border">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground bg-background rounded-md hover:bg-background/80 transition-all"
+            className="px-3 py-1.5 text-[var(--ch-text-10)] font-semibold text-muted-foreground bg-background rounded-md hover:bg-background/80 transition-all"
           >
             Cancel
           </button>
@@ -273,7 +273,7 @@ export function CreateSchemaModal({ conn, onClose, onCreated }: CreateSchemaModa
             onClick={handleCreate}
             disabled={creating || !name.trim()}
             className={cn(
-              'px-3 py-1.5 text-[10px] font-semibold rounded-md transition-all flex items-center gap-1',
+              'px-3 py-1.5 text-[var(--ch-text-10)] font-semibold rounded-md transition-all flex items-center gap-1',
               creating || !name.trim()
                 ? 'bg-primary/50 text-primary-foreground/50 cursor-not-allowed'
                 : 'bg-primary text-primary-foreground hover:bg-primary/90'

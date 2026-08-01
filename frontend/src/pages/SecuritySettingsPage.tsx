@@ -1,4 +1,4 @@
-import { Shield, Lock, Unlock, Key, AlertTriangle, CheckCircle, ArrowLeft, Fingerprint, Smartphone } from 'lucide-react'
+import { Shield, Lock, Unlock, Key, Copy, AlertTriangle, CheckCircle, ArrowLeft, Fingerprint, Smartphone } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -19,11 +19,18 @@ export function SecuritySettingsPage() {
   const [totpEnabled, setTotpEnabled] = useState(false)
   const [totpSetup, setTotpSetup] = useState<{ secret: string; uri: string; qr_code_svg: string } | null>(null)
   const [totpCode, setTotpCode] = useState('')
+  const [recoveryCodeSet, setRecoveryCodeSet] = useState(false)
+  const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState<string | null>(null)
+  const [showRecovery, setShowRecovery] = useState(false)
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState('')
+  const [recoveryNewPassword, setRecoveryNewPassword] = useState('')
+  const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('')
 
   useEffect(() => {
     checkStatus()
     checkWindowsHello()
     checkTotp()
+    checkRecoveryCode()
   }, [])
 
   useEffect(() => {
@@ -49,6 +56,15 @@ export function SecuritySettingsPage() {
       setTotpEnabled(enabled)
     } catch {
       setTotpEnabled(false)
+    }
+  }
+
+  async function checkRecoveryCode() {
+    try {
+      const set = await connectionService.isRecoveryCodeSet()
+      setRecoveryCodeSet(set)
+    } catch {
+      setRecoveryCodeSet(false)
     }
   }
 
@@ -123,11 +139,61 @@ export function SecuritySettingsPage() {
     setLoading(true)
     try {
       await connectionService.changeMasterPassword(oldPassword, newPassword)
-      setSuccess('Password changed successfully')
+      if (recoveryCodeSet) {
+        setSuccess('Password changed successfully. Your previous recovery code was invalidated — generate a new one.')
+      } else {
+        setSuccess('Password changed successfully')
+      }
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
+      setGeneratedRecoveryCode(null)
       await checkStatus()
+      await checkRecoveryCode()
+    } catch (e: unknown) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleGenerateRecoveryCode() {
+    setError('')
+    setSuccess('')
+    setLoading(true)
+    try {
+      const code = await connectionService.generateRecoveryCode()
+      setGeneratedRecoveryCode(code)
+      setRecoveryCodeSet(true)
+      setSuccess('Recovery code generated. Save it somewhere safe.')
+    } catch (e: unknown) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRecover() {
+    setError('')
+    setSuccess('')
+    if (recoveryNewPassword.length < 4) {
+      setError('New password must be at least 4 characters')
+      return
+    }
+    if (recoveryNewPassword !== recoveryConfirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+    setLoading(true)
+    try {
+      await connectionService.recoverMasterPassword(recoveryCodeInput, recoveryNewPassword)
+      setSuccess('Password reset successfully. Session unlocked.')
+      setRecoveryCodeInput('')
+      setRecoveryNewPassword('')
+      setRecoveryConfirmPassword('')
+      setShowRecovery(false)
+      await checkStatus()
+      await checkRecoveryCode()
     } catch (e: unknown) {
       setError(String(e))
     } finally {
@@ -324,6 +390,56 @@ export function SecuritySettingsPage() {
                     Unlock with Windows Hello
                   </button>
                 )}
+
+                <button
+                  onClick={() => setShowRecovery(!showRecovery)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                >
+                  Forgot your password?
+                </button>
+
+                {showRecovery && (
+                  <div className="space-y-3 border-t border-border pt-4">
+                    <p className="text-xs text-muted-foreground">
+                      Enter your recovery code to set a new master password. All stored credentials will be re-encrypted.
+                    </p>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Recovery Code</label>
+                      <input
+                        type="text"
+                        value={recoveryCodeInput}
+                        onChange={(e) => setRecoveryCodeInput(e.target.value.toUpperCase())}
+                        placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+                        className="w-full text-sm bg-muted border border-border rounded-md px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary mt-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">New Password</label>
+                      <input
+                        type="password"
+                        value={recoveryNewPassword}
+                        onChange={(e) => setRecoveryNewPassword(e.target.value)}
+                        className="w-full text-sm bg-muted border border-border rounded-md px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={recoveryConfirmPassword}
+                        onChange={(e) => setRecoveryConfirmPassword(e.target.value)}
+                        className="w-full text-sm bg-muted border border-border rounded-md px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary mt-1"
+                      />
+                    </div>
+                    <button
+                      onClick={handleRecover}
+                      disabled={loading}
+                      className="w-full text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {loading ? 'Resetting...' : 'Reset Password'}
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 
@@ -392,6 +508,49 @@ export function SecuritySettingsPage() {
                     {loading ? 'Changing...' : 'Change Password'}
                   </button>
                 </div>
+              </section>
+            )}
+
+            {/* Recovery Code */}
+            {hasPassword && isUnlocked && (
+              <section className="space-y-4 p-6 rounded-xl border border-border">
+                <div className="flex items-center gap-2">
+                  <Key className="w-4 h-4 text-primary" />
+                  <h2 className="text-sm font-semibold text-foreground">Recovery Code</h2>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {recoveryCodeSet
+                    ? 'A recovery code is set. Use it to change your master password if you ever forget it.'
+                    : 'Generate a recovery code to change your master password if you ever forget it. Keep it in a safe place.'}
+                </p>
+
+                {!generatedRecoveryCode && (
+                  <button
+                    onClick={handleGenerateRecoveryCode}
+                    disabled={loading}
+                    className="w-full text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {recoveryCodeSet ? 'Regenerate recovery code' : 'Generate recovery code'}
+                  </button>
+                )}
+
+                {generatedRecoveryCode && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground text-center">
+                      Save this code somewhere safe. It will only be shown once.
+                    </p>
+                    <div className="font-mono text-base tracking-widest text-center bg-muted p-3 rounded-md break-all select-all border border-yellow-500/40">
+                      {generatedRecoveryCode}
+                    </div>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(generatedRecoveryCode)}
+                      className="w-full flex items-center justify-center gap-2 text-xs px-4 py-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy code
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 

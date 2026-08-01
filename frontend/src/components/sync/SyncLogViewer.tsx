@@ -74,14 +74,14 @@ function BatchRow({ batch }: { batch: SyncBatch }) {
           <span className="font-mono text-muted-foreground">{batch.duration_ms}ms</span>
           <div className="flex items-center gap-1.5">
             <span className={cn(
-              "font-bold uppercase tracking-wider text-[10px]",
+              "font-bold uppercase tracking-wider text-[var(--ch-text-10)]",
               isSuccess && 'text-emerald-500',
               isError && 'text-destructive',
             )}>
               {batch.status}
             </span>
             {batch.skipped_rows > 0 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-600 border border-amber-500/20">
+              <span className="inline-flex items-center px-1.5 py-0.5 text-[var(--ch-text-9)] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-600 border border-amber-500/20">
                 {batch.skipped_rows} skipped
               </span>
             )}
@@ -104,7 +104,7 @@ function BatchRow({ batch }: { batch: SyncBatch }) {
 
           {errors && errors.length > 0 && (
             <div className="space-y-1 mt-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Row Errors ({errors.length})</p>
+              <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground">Row Errors ({errors.length})</p>
               {errors.map((err) => (
                 <RowErrorRow key={err.id} error={err} />
               ))}
@@ -112,7 +112,7 @@ function BatchRow({ batch }: { batch: SyncBatch }) {
           )}
 
           {(!errors || errors.length === 0) && !batch.error_message && (
-            <p className="text-[10px] text-muted-foreground font-mono">No errors in this batch.</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground font-mono">No errors in this batch.</p>
           )}
         </div>
       )}

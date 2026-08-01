@@ -4,12 +4,36 @@ pub struct PromptBuilder;
 
 impl PromptBuilder {
     /// Build a system prompt describing the database schema and user preferences.
-    pub fn build_system_prompt(ctx: &SchemaContext, prefs: &[Preference]) -> String {
+    ///
+    /// `connections` is a slice of `(name, id)` tuples for every saved database
+    /// connection — injected so the model can reference them when calling tools
+    /// that accept a `connection_id` argument (e.g. `compare_schema`, `backup`).
+    pub fn build_system_prompt(
+        ctx: &SchemaContext,
+        prefs: &[Preference],
+        connections: &[(&str, &str)],
+    ) -> String {
         let mut parts = vec![
-            "You are a SQL assistant. You help users write, optimize, and understand SQL queries.".to_string(),
+            "You are a DBA assistant. You help users manage databases, compare schemas, run backups, \
+             analyse performance, generate SQL, and execute database administration tasks. \
+             You have access to a set of tools — use them whenever possible instead of \
+             replying with plain text."
+                .to_string(),
         ];
 
-        parts.push(format!("Database engine: {}", ctx.db_type));
+        if !connections.is_empty() {
+            parts.push(String::new());
+            parts.push("=== AVAILABLE CONNECTIONS ===".to_string());
+            for (name, id) in connections {
+                parts.push(format!("  {name}: connection_id = {id}"));
+            }
+            parts.push(
+                "Use the connection_id values above when calling tools that require a connection."
+                    .to_string(),
+            );
+        }
+
+        parts.push(format!("Active database engine: {}", ctx.db_type));
         if let Some(ref v) = ctx.version {
             parts.push(format!("Version: {v}"));
         }
@@ -19,7 +43,7 @@ impl PromptBuilder {
 
         if !ctx.tables.is_empty() {
             parts.push(String::new());
-            parts.push("=== SCHEMA ===".to_string());
+            parts.push("=== ACTIVE SCHEMA ===".to_string());
             for table in &ctx.tables {
                 parts.push(format!(
                     "\nTABLE {} ({} columns):",
@@ -35,7 +59,8 @@ impl PromptBuilder {
                         .as_ref()
                         .map(|d| format!(" DEFAULT {d}"))
                         .unwrap_or_default();
-                    parts.push(format!("  {col_name} {col_type}{pk}{null}{def}",
+                    parts.push(format!(
+                        "  {col_name} {col_type}{pk}{null}{def}",
                         col_name = col.name,
                         col_type = col.col_type,
                     ));
@@ -77,11 +102,17 @@ impl PromptBuilder {
 
         parts.push(String::new());
         parts.push("=== RULES ===".to_string());
-        parts.push("1. Write only valid SQL for the specified engine.".to_string());
-        parts.push("2. Use appropriate data types and functions.".to_string());
-        parts.push("3. Consider performance: prefer JOINs over subqueries when possible.".to_string());
-        parts.push("4. Use EXPLAIN / query plan analysis when asked.".to_string());
-        parts.push("5. Return ONLY the SQL query in a code block when generating queries.".to_string());
+        parts.push("1. Use the available TOOLS to execute tasks — do NOT explain how to do something, DO it.".to_string());
+        parts.push("2. For schema comparisons call the `compare_schema` tool with source and target connection IDs.".to_string());
+        parts.push("3. For backups call the `backup` tool with a connection_id, schema, and file path.".to_string());
+        parts.push("4. For export call the `export` tool with a table name and format (sql/json).".to_string());
+        parts.push("5. For index suggestions call the `index` tool with a table name and connection_id.".to_string());
+        parts.push("6. For SQL explanations call the `explain` tool with a query.".to_string());
+        parts.push("7. For cross-dialect DDL generation call the `auto_schema` tool with table name and target dialect.".to_string());
+        parts.push("8. For database syncs call the `sync` tool with source_connection_id, target_connection_id, and optional tables + mode (full/incremental).".to_string());
+        parts.push("9. Write only valid SQL for the specified engine.".to_string());
+        parts.push("10. Use appropriate data types and functions.".to_string());
+        parts.push("11. Consider performance: prefer JOINs over subqueries when possible.".to_string());
 
         if !prefs.is_empty() {
             parts.push(String::new());
@@ -133,16 +164,17 @@ impl PromptBuilder {
     pub fn build_messages(
         ctx: &SchemaContext,
         prefs: &[Preference],
+        connections: &[(&str, &str)],
         history: &[ChatMessage],
         question: &str,
         max_tokens: u32,
     ) -> (Vec<ChatMessage>, usize) {
-        let system_prompt = Self::build_system_prompt(ctx, prefs);
+        let system_prompt = Self::build_system_prompt(ctx, prefs, connections);
         let system_tokens = Self::estimate_tokens(&system_prompt);
 
         let max_context_tokens = (max_tokens as usize).saturating_sub(system_tokens + 256);
         let ctx = Self::truncate_context(ctx, max_context_tokens);
-        let system_prompt = Self::build_system_prompt(&ctx, prefs);
+        let system_prompt = Self::build_system_prompt(&ctx, prefs, connections);
 
         let mut messages = vec![ChatMessage {
             role: "system".to_string(),

@@ -23,8 +23,8 @@ export const assistantService = {
   deleteProviderConfig: (id: string) =>
     tauriApi.invoke<void>('assistant_delete_provider_config', { id }),
 
-  chat: (connectionId: string, question: string) =>
-    tauriApi.invoke<AssistantTurn>('assistant_chat', { connectionId, question }),
+  chat: (connectionId: string, question: string, confirmDestructive = false) =>
+    tauriApi.invoke<AssistantTurn>('assistant_chat', { connectionId, question, confirmDestructive }),
 
   searchKnowledge: (query: string, engine: string, limit?: number) =>
     tauriApi.invoke<KnowledgeCase[]>('assistant_search_knowledge', { query, engine, limit }),

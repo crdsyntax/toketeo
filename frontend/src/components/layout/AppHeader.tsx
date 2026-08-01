@@ -54,26 +54,26 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
   const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION
 
   return (
-    <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
+    <header className="h-12 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0">
       {/* Left: Sidebar toggle + Logo + Name */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <button
           onClick={toggleSidebar}
-          className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-all duration-200"
+          className="p-1.5 hover:bg-accent-muted rounded-lg text-muted-foreground hover:text-accent transition-all duration-200"
           title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
         >
           {isSidebarOpen ? (
-            <PanelLeftClose className="w-5 h-5" />
+            <PanelLeftClose className="w-4 h-4" />
           ) : (
-            <PanelLeftOpen className="w-5 h-5" />
+            <PanelLeftOpen className="w-4 h-4" />
           )}
         </button>
 
-        <Link to="/" className="flex items-center gap-3 select-none group">
+        <Link to="/" className="flex items-center gap-2 select-none group">
           <img
             src="./principal.png"
             alt="Toketeo"
-            className="h-[70px] w-auto max-w-[220px] object-contain"
+            className="h-[52px] w-auto max-w-[160px] object-contain"
           />
 
         </Link>
@@ -98,12 +98,12 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
                     to={isLocked ? location.pathname : item.path}
                     onClick={(e) => { if (isLocked) e.preventDefault() }}
                     className={cn(
-                      "relative flex items-center justify-center w-10 h-10 transition-all duration-200 rounded-xl group/nav",
+                      "relative flex items-center justify-center w-9 h-9 transition-all duration-200 rounded-lg group/nav",
                       active
-                        ? "bg-primary/10 text-primary"
+                        ? "bg-accent-muted text-accent"
                         : isLocked
                           ? "text-muted-foreground/30 cursor-not-allowed"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          : "text-muted-foreground hover:bg-accent-muted hover:text-accent"
                     )}
                     title={
                       isLocked
@@ -112,17 +112,17 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
                     }
                   >
                     <item.icon className={cn(
-                      "w-[18px] h-[18px] transition-transform duration-200",
+                      "w-[16px] h-[16px] transition-transform duration-200",
                       !isLocked && "group-hover/nav:scale-110",
                       isLocked && "opacity-40"
                     )} />
                     {active && (
-                      <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-primary" />
+                      <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-accent" />
                     )}
 
                     {/* Tooltip */}
                     <span className={cn(
-                      "absolute top-full mt-2 px-2.5 py-1 rounded-md bg-zinc-800 text-white text-[11px] font-medium whitespace-nowrap",
+                      "absolute top-full mt-1.5 px-2 py-1 rounded-md bg-surface-elevated border border-border text-foreground text-[var(--ch-text-11)] font-medium whitespace-nowrap",
                       "opacity-0 pointer-events-none transition-opacity duration-150 group-hover/nav:opacity-100",
                       "shadow-lg shadow-black/20 z-50"
                     )}>
@@ -137,46 +137,46 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
       </nav>
 
       {/* Right: Production status + Commit/Rollback + Gamification */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {isProduction && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 border border-destructive/20 rounded-full">
-            <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">Production Mode</span>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-destructive/10 border border-destructive/20 rounded-md">
+            <AlertTriangle className="w-3 h-3 text-destructive" />
+            <span className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-destructive">Production</span>
           </div>
         )}
 
         {isProduction && activeConnection && (
-          <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border">
+          <div className="flex items-center gap-0.5 bg-surface border border-border rounded-md p-0.5">
             <button
               onClick={onRollback}
               disabled={isTransacting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all duration-200 disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded transition-all duration-200 disabled:opacity-50"
               title="Rollback Transaction"
             >
-              <RotateCcw className={cn("w-3.5 h-3.5", isTransacting && "animate-spin")} />
+              <RotateCcw className={cn("w-3 h-3", isTransacting && "animate-spin")} />
               Rollback
             </button>
-            <div className="w-px h-4 bg-border mx-1" />
+            <div className="w-px h-3 bg-border" />
             <button
               onClick={onCommit}
               disabled={isTransacting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 rounded-md transition-all duration-200 disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-accent hover:bg-accent-muted rounded transition-all duration-200 disabled:opacity-50"
               title="Commit Transaction"
             >
-              {isTransacting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+              {isTransacting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
               {isTransacting ? 'Committing...' : 'Commit'}
             </button>
           </div>
         )}
 
         <div
-          className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity select-none"
+          className="flex items-center gap-1.5 cursor-pointer hover:text-accent transition-colors select-none px-2 py-1 rounded-md hover:bg-accent-muted"
           onClick={onOpenGamification}
           title={`Level ${level} — ${streak} day streak`}
         >
-          <span className="text-sm font-bold text-foreground/80">Lvl {level}</span>
-          <span className="flex items-center gap-0.5 text-xs font-bold text-orange-400">
-            <Flame className="w-3.5 h-3.5" />
+          <span className="text-xs font-bold text-foreground/80">Lvl {level}</span>
+          <span className="flex items-center gap-0.5 text-[var(--ch-text-11)] font-bold text-amber-500">
+            <Flame className="w-3 h-3" />
             {streak}
           </span>
         </div>

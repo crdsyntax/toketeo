@@ -204,7 +204,7 @@ impl SessionService {
                 audit_prune_counter += 1;
                 if audit_prune_counter >= 30 {
                     audit_prune_counter = 0;
-                    if let Err(e) = state.storage.prune_audit_logs(10000).await {
+                    if let Err(e) = state.storage.prune_audit_logs(1000).await {
                         eprintln!("Audit log prune error: {:?}", e);
                     }
                 }

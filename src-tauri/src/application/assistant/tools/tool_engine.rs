@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -52,6 +53,25 @@ impl ToolEngine {
             .collect()
     }
 
+    /// Resolve the effective driver for a tool call: if the arguments carry a
+    /// `connection_id`, use that connection's driver (connecting if needed) so
+    /// tools can operate on any connection, not just the chat's active one.
+    /// Otherwise fall back to the chat's driver.
+    async fn resolve_driver(
+        &self,
+        args: &serde_json::Value,
+        _driver: Option<&dyn DbDriver>,
+        state: &AppState,
+    ) -> AppResult<Option<Arc<dyn DbDriver>>> {
+        match args.get("connection_id").and_then(|v| v.as_str()) {
+            Some(cid) if !cid.is_empty() => {
+                let d = state.get_or_connect_driver(cid).await?;
+                Ok(Some(d))
+            }
+            _ => Ok(None),
+        }
+    }
+
     pub async fn execute(
         &self,
         name: &str,
@@ -71,7 +91,9 @@ impl ToolEngine {
                         )),
                     })
                 } else {
-                    tool.execute(args, driver, state).await
+                    let own = self.resolve_driver(&args, driver, state).await?;
+                    let effective = own.as_deref().or(driver);
+                    tool.execute(args, effective, state).await
                 }
             }
             None => Ok(ToolResult {
@@ -103,7 +125,9 @@ impl ToolEngine {
                         )),
                     });
                 }
-                tool.execute(args, driver, state).await
+                let own = self.resolve_driver(&args, driver, state).await?;
+                let effective = own.as_deref().or(driver);
+                tool.execute(args, effective, state).await
             }
             None => Ok(ToolResult {
                 ok: false,

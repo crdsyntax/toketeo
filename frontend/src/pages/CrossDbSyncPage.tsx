@@ -284,14 +284,14 @@ export function CrossDbSyncPage() {
             <GitBranch className="w-6 h-6 text-primary" />
             Sincronización Cross-DB
           </h1>
-          <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">
+          <p className="text-[var(--ch-text-10)] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">
             Sincroniza datos entre distintos motores de base de datos
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleCreate}
-            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
           >
             <Plus className="w-4 h-4" /> Nueva Sincronización
           </button>
@@ -338,7 +338,7 @@ export function CrossDbSyncPage() {
                         </div>
                         <div>
                           <h3 className="font-bold text-sm tracking-tight truncate max-w-[140px]">{p.name}</h3>
-                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 mt-1 text-[9px] font-bold tracking-widest uppercase border", cfg.color)}>
+                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 mt-1 text-[var(--ch-text-9)] font-bold tracking-widest uppercase border", cfg.color)}>
                             <StatusIcon className={cn("w-3 h-3", p.status === PipelineStatus.Running || p.status === PipelineStatus.Retrying ? 'animate-spin' : '')} />
                             {cfg.label}
                           </span>
@@ -400,7 +400,7 @@ export function CrossDbSyncPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-3">
+                    <div className="flex items-center gap-2 text-[var(--ch-text-10)] text-muted-foreground mb-3">
                       <span className="flex items-center gap-1 truncate max-w-[120px]">
                         <Database className="w-3 h-3 shrink-0" />
                         {sc?.name ?? p.source_connection_id.slice(0, 8)}
@@ -412,13 +412,13 @@ export function CrossDbSyncPage() {
                       </span>
                     </div>
 
-                    <div className="pt-3 border-t border-border/50 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <div className="pt-3 border-t border-border/50 flex items-center justify-between text-[var(--ch-text-10)] text-muted-foreground">
                       <span className="font-bold uppercase tracking-wider">{p.mode === 'full' ? 'Completa' : 'Incremental'}</span>
                       <span>{p.tables.length} tabla{p.tables.length !== 1 ? 's' : ''}</span>
                     </div>
 
                     {lastRun && (
-                      <div className="mt-1 text-[9px] text-muted-foreground/70">
+                      <div className="mt-1 text-[var(--ch-text-9)] text-muted-foreground/70">
                         {lastRun.completed_at ? (
                           <span>Última ejecución: {timeAgo(lastRun.completed_at)} · {lastRun.processed_rows} filas, {lastRun.error_count} errores</span>
                         ) : (
@@ -437,7 +437,7 @@ export function CrossDbSyncPage() {
               <p className="text-sm max-w-md">Crea una sincronización para empezar a transferir datos entre bases de datos.</p>
               <button
                 onClick={handleCreate}
-                className="mt-6 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
+                className="mt-6 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
               >
                 <Plus className="w-4 h-4" /> Nueva Sincronización
               </button>
@@ -467,7 +467,7 @@ export function CrossDbSyncPage() {
                   key={tab.id}
                   onClick={() => setDetailTab(tab.id)}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all",
+                    "flex items-center gap-2 px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border-b-2 transition-all",
                     detailTab === tab.id
                       ? 'border-primary text-primary'
                       : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -528,7 +528,7 @@ export function CrossDbSyncPage() {
           <span className="text-xs font-bold uppercase tracking-wider text-foreground">
             {editingPipeline ? 'Editar' : 'Nueva'} Sincronización
           </span>
-          <span className="text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+          <span className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded">
             Minimizado
           </span>
         </button>

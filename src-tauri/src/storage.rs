@@ -116,6 +116,10 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        let _ = sqlx::query("ALTER TABLE connections ADD COLUMN default_database TEXT")
+            .execute(&pool)
+            .await;
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS scheduled_jobs (
                 id TEXT PRIMARY KEY,
@@ -489,6 +493,7 @@ impl Storage {
                     secret
                 }),
             database: row.get("database"),
+            default_database: row.get("default_database"),
             auth_enabled: row.try_get::<Option<i64>, _>("auth_enabled").unwrap_or(None).map(|v| v != 0),
             auth_source: row.get("auth_source"),
             replica_set: row.get("replica_set"),
@@ -540,8 +545,8 @@ impl Storage {
         };
 
         sqlx::query(
-            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, auth_enabled, auth_source, replica_set, direct_connection, ssl, ssh, read_only, max_pool_size, idle_timeout, acquire_timeout, max_lifetime, keep_alive, metadata_cache_ttl, password_enc, password_nonce, ssh_enc, ssh_nonce)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO connections (id, name, environment, type, host, port, user, password, database, default_database, auth_enabled, auth_source, replica_set, direct_connection, ssl, ssh, read_only, max_pool_size, idle_timeout, acquire_timeout, max_lifetime, keep_alive, metadata_cache_ttl, password_enc, password_nonce, ssh_enc, ssh_nonce)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 environment = excluded.environment,
@@ -555,6 +560,7 @@ impl Storage {
                     ELSE connections.password
                 END,
                 database = excluded.database,
+                default_database = excluded.default_database,
                 auth_enabled = excluded.auth_enabled,
                 auth_source = excluded.auth_source,
                 replica_set = excluded.replica_set,
@@ -585,6 +591,7 @@ impl Storage {
         .bind(&config.user)
         .bind(password)
         .bind(config.database)
+        .bind(config.default_database)
         .bind(config.auth_enabled.map(|v| if v { 1 } else { 0 }))
         .bind(config.auth_source)
         .bind(config.replica_set)
@@ -640,6 +647,7 @@ impl Storage {
                         secret
                     }),
                 database: row.get("database"),
+                default_database: row.get("default_database"),
                 auth_enabled: row.try_get::<Option<i64>, _>("auth_enabled").unwrap_or(None).map(|v| v != 0),
                 auth_source: row.get("auth_source"),
                 replica_set: row.get("replica_set"),

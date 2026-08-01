@@ -11,6 +11,7 @@ export interface AssistantMessage {
   sql?: string
   isSafeDelete?: boolean
   feedback?: 'positive' | 'negative'
+  toolUsed?: string | null
   timestamp: number
 }
 

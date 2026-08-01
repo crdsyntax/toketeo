@@ -138,7 +138,7 @@ export function SchedulerPage() {
             <p className="text-xs text-muted-foreground">{jobs.length} job{jobs.length !== 1 ? 's' : ''} scheduled</p>
             <button
               onClick={() => { setEditingJob(null); setShowForm(true) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-widest rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
               New Job

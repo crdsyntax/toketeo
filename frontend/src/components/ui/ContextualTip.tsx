@@ -38,7 +38,7 @@ export function ContextualTip({ id, message, className, onAction, actionLabel }:
         {actionLabel && onAction && (
           <button
             onClick={onAction}
-            className="mt-1.5 text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
+            className="mt-1.5 text-[var(--ch-text-10)] font-semibold text-primary hover:text-primary/80 transition-colors"
           >
             {actionLabel} →
           </button>

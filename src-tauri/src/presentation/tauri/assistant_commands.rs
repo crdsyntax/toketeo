@@ -13,7 +13,7 @@ use crate::application::assistant::tools::recommendation_engine::RecommendationE
 use crate::error::AppResult;
 use crate::models::assistant::{
     AiRequest, AssistantTurn, ChatMessage, KnowledgeCase, ModelInfo, Preference, ProviderConfig,
-    ProviderInfo, TestResult, TokenUsage, ToolDescriptor, ToolResult,
+    ProviderInfo, SchemaContext, TestResult, TokenUsage, ToolDescriptor, ToolResult,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -127,6 +127,7 @@ pub async fn assistant_delete_provider_config(
 pub async fn assistant_chat(
     connection_id: String,
     question: String,
+    confirm_destructive: bool,
     state: State<'_, AppState>,
 ) -> AppResult<AssistantTurn> {
     let configs = state.storage.load_provider_configs().await?;
@@ -146,22 +147,51 @@ pub async fn assistant_chat(
         }
     };
 
-    let driver = state.get_connection(&connection_id).await?;
-
-    let db_type = driver.db_type();
-    let db_name = match db_type {
-        crate::db::DbType::Sqlite => Some("main"),
-        _ => None,
+    let driver = if connection_id.is_empty() {
+        None
+    } else {
+        match state.get_connection(&connection_id).await {
+            Ok(d) => Some(d),
+            Err(_) => None,
+        }
     };
 
-    let ctx = state
-        .schema_engine
-        .get_or_build(&connection_id, driver.as_ref(), db_name)
-        .await?;
+    let ctx = if let Some(ref driver) = driver {
+        // Use the stored database/schema from the connection config so the schema
+        // context targets the correct database (MySQL/MariaDB "No database selected"
+        // guard). SQLite always exposes schemas via its main pseudo-database.
+        let db_type = driver.db_type();
+        let conn_cfg = state.storage.get_connection(&connection_id).await.ok();
+        let db_name = match db_type {
+            crate::db::DbType::Sqlite => Some("main"),
+            _ => conn_cfg.as_ref().and_then(|c| c.database.as_deref()),
+        };
+        state
+            .schema_engine
+            .get_or_build(&connection_id, driver.as_ref(), db_name)
+            .await
+            .ok()
+    } else {
+        None
+    };
 
-    let ctx = RelevanceFilter::filter(&ctx, &question);
+    // Without an active connection the schema context stays empty — the model
+    // can still answer general questions and generate SQL from scratch.
+    let ctx = match ctx {
+        Some(ctx) => RelevanceFilter::filter(&ctx, &question),
+        None => SchemaContext {
+            db_type: "generic".to_string(),
+            version: None,
+            database: None,
+            user: None,
+            tables: vec![],
+            views: vec![],
+            procedures: vec![],
+            triggers: vec![],
+        },
+    };
 
-    // Load conversation history
+    // Load conversation history (global when no connection is selected).
     let stored = state.storage.load_assistant_messages(&connection_id).await?;
     let history = MemoryEngine::build_history(&stored, 10);
 
@@ -173,7 +203,21 @@ pub async fn assistant_chat(
     // Include available tool descriptions
     let tools = state.tool_engine.list_tools();
 
-    let mut system_prompt = PromptBuilder::build_system_prompt(&ctx, &prefs);
+    // Inject connections into the prompt so tools can reference them by name.
+    let conn_list = state.storage.get_all_connections().await.ok();
+    let conn_refs: Vec<(String, String)> = conn_list
+        .as_ref()
+        .map(|list| {
+            list.iter()
+                .map(|c| (c.name.clone(), c.id.map(|u| u.to_string()).unwrap_or_default()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let conn_slice: Vec<(&str, &str)> = conn_refs
+        .iter()
+        .map(|(n, i)| (n.as_str(), i.as_str()))
+        .collect();
+    let system_prompt = PromptBuilder::build_system_prompt(&ctx, &prefs, &conn_slice);
 
     // ── Knowledge-first retrieval ──
     // Before calling the LLM, search the validated knowledge library for high-
@@ -243,22 +287,51 @@ pub async fn assistant_chat(
         });
     }
 
-    // Inject the top similar cases (capped at 5) as context for the model.
+    // If similar knowledge cases exist below the auto-answer threshold, show
+    // them to the user so they can pick one or ask to proceed to the LLM.
     if !scored.is_empty() {
-        system_prompt.push_str(
-            "\n\n=== KNOWLEDGE LIBRARY (validated QA pairs you may reuse) ===",
+        let suggestions: Vec<String> = scored
+            .iter()
+            .take(5)
+            .map(|(c, s)| {
+                format!(
+                    "[score {s:.2}] Q: {q}\nSQL: {sql}\n",
+                    q = c.question,
+                    sql = c.sql_text,
+                )
+            })
+            .collect();
+        let answer = format!(
+            "I found similar cases in your knowledge library. Reply with \"continue\" if none answers your question, \
+             or pick one of the following:\n\n{}",
+            suggestions.join("\n"),
         );
-        for (i, (case, score)) in scored.iter().take(5).enumerate() {
-            system_prompt.push_str(&format!(
-                "\n{}. Q: {}\n   SQL: {}\n   rating: {}, score: {:.2}, used: {}",
-                i + 1,
-                case.question,
-                case.sql_text,
-                case.rating,
-                score,
-                case.used_count,
-            ));
-        }
+        let turn_id = uuid::Uuid::new_v4().to_string();
+        let _ = state
+            .storage
+            .save_assistant_messages(&[crate::models::AssistantMessage {
+                id: turn_id.clone(),
+                role: "assistant".to_string(),
+                content: answer.clone(),
+                sql: None,
+                is_safe_delete: None,
+                feedback: None,
+                accepted_sql: None,
+                rejection_reason: None,
+                tool_used: None,
+                timestamp: chrono::Utc::now().timestamp(),
+                connection_id: Some(connection_id.clone()),
+            }])
+            .await;
+        return Ok(AssistantTurn {
+            turn_id,
+            answer,
+            sql: None,
+            tool_used: None,
+            source: "knowledge".to_string(),
+            requires_confirmation: false,
+            usage: None,
+        });
     }
 
     let user_message = ChatMessage {
@@ -297,12 +370,18 @@ pub async fn assistant_chat(
     // results back to the model; repeat up to MAX_TOOL_ROUNDS times. The final
     // non-tool response is returned to the caller. Providers that don't return
     // tool calls (Claude/Gemini fall back here) simply exit on round 0.
-    const MAX_TOOL_ROUNDS: usize = 5;
+    const MAX_TOOL_ROUNDS: usize = 12;
     let mut last_response: Option<crate::models::assistant::AiResponse> = None;
     let mut tool_used: Option<String> = None;
     let mut total_prompt = 0u32;
     let mut total_completion = 0u32;
     let mut requires_confirmation = false;
+
+    // Detect repeated identical tool calls across rounds. If the model keeps
+    // requesting the same (tool, args), it is likely stuck — we stop executing
+    // and force one final completion without tools to answer from context.
+    let mut executed_signatures: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut loop_detected = false;
 
     for round in 0..MAX_TOOL_ROUNDS {
         let request = AiRequest {
@@ -337,20 +416,55 @@ pub async fn assistant_chat(
                 messages.push(assistant_msg);
 
                 for tc in response.tool_calls.iter() {
+                    let signature = format!(
+                        "{}:{}",
+                        tc.name,
+                        serde_json::to_string(&tc.arguments).unwrap_or_default()
+                    );
+                    if !executed_signatures.insert(signature) {
+                        loop_detected = true;
+                        let result_text = serde_json::json!({
+                            "ok": false,
+                            "message": "Tool call repeated across rounds. Skipping it — answer now using the information already gathered.",
+                            "requires_confirmation": false,
+                            "data": null,
+                        })
+                        .to_string();
+                        messages.push(ChatMessage {
+                            role: "tool".to_string(),
+                            content: result_text,
+                            tool_call_id: Some(tc.id.clone()),
+                            ..Default::default()
+                        });
+                        continue;
+                    }
                     let exec = state
                         .tool_engine
                         .execute_with_confirmation(
                             &tc.name,
                             tc.arguments.clone(),
-                            Some(&*driver),
+                            driver.as_deref(),
                             &state,
-                            /*confirm_destructive=*/ false,
+                            confirm_destructive,
                         )
                         .await;
                     let result_text = match exec {
                         Ok(r) => {
                             if r.requires_confirmation {
                                 requires_confirmation = true;
+                            }
+                            // Record successful tool results as KnowledgeCases
+                            // so the knowledge-first retrieval can short-circuit
+                            // on similar future requests without re-execution.
+                            if r.ok {
+                                let _ = KnowledgeEngine::record_case(
+                                    &state.storage,
+                                    &format!("[tool:{}] {}", tc.name, question),
+                                    &serde_json::to_string(&r.data).unwrap_or_default(),
+                                    &config.provider_id,
+                                    "positive",
+                                )
+                                .await;
                             }
                             serde_json::to_string(&r).unwrap_or_else(|_| "{}".to_string())
                         }
@@ -363,14 +477,50 @@ pub async fn assistant_chat(
                         .to_string(),
                     };
                     if tool_used.is_none() {
-                        tool_used = Some(tc.name.clone());
+                        let _tn = tc.name.clone();
+                        tool_used = Some(_tn);
                     }
+                    // Persist the tool result as an assistant message so it
+                    // survives page reload and appears in conversation history.
+                    let tool_msg_id = uuid::Uuid::new_v4().to_string();
+                    let _ = state
+                        .storage
+                        .save_assistant_messages(&[crate::models::AssistantMessage {
+                            id: tool_msg_id,
+                            role: "assistant".to_string(),
+                            content: result_text.clone(),
+                            sql: None,
+                            is_safe_delete: None,
+                            feedback: None,
+                            accepted_sql: None,
+                            rejection_reason: None,
+                            tool_used: Some(tc.name.clone()),
+                            timestamp: chrono::Utc::now().timestamp(),
+                            connection_id: Some(connection_id.clone()),
+                        }])
+                        .await;
                     messages.push(ChatMessage {
                         role: "tool".to_string(),
                         content: result_text,
                         tool_call_id: Some(tc.id.clone()),
                         ..Default::default()
                     });
+                }
+
+                // The model kept requesting the same tool call. Force one final
+                // completion with tools disabled so it must answer from context.
+                if loop_detected {
+                    let final_request = AiRequest {
+                        system: system_prompt.clone(),
+                        messages: messages.clone(),
+                        tools: vec![],
+                        temperature: 0.3,
+                        max_tokens: Some(4096),
+                    };
+                    if let Ok(final_resp) = adapter.complete(final_request).await {
+                        last_response = Some(final_resp);
+                    }
+                    break;
                 }
             }
             Err(e) => {

@@ -98,6 +98,8 @@ impl AiAdapter for DeepSeekAdapter {
                             name: id,
                             provider: "deepseek".to_string(),
                             supports_tools: true,
+                            is_free: false,
+                            tier: String::new(),
                         })
                     })
                     .collect()

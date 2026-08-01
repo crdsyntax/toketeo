@@ -27,7 +27,7 @@ fred = "9"
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
 tokio-util = "0.7"
 url = "2"
-ssh2 = "0.9.4"
+russh = { version = "0.62", default-features = false, features = ["ring", "flate2", "rsa"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-log = "0.2"

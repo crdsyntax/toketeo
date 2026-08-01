@@ -19,20 +19,20 @@ export function DdlTab({
   updateDdlMutation,
 }: DdlTabProps) {
   const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
-  const storeEditorFontSize = useAppStore((s) => s.editorFontSize);
+  const storeEditorFontSize = useAppStore((s) => s.uiFontSize);
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
   const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
   const storeEditorMinimap = useAppStore((s) => s.editorMinimap);
   return (
     <div className="flex-1 flex flex-col bg-muted/30 relative">
       <div className="p-2 border-b border-border bg-background/50 flex justify-between items-center px-4">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
           Definition Editor
         </span>
         <button
           onClick={() => updateDdlMutation.mutate(editableDdl)}
           disabled={updateDdlMutation.isPending}
-          className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 py-1 rounded-md text-[10px] font-bold hover:bg-secondary/80 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 py-1 rounded-md text-[var(--ch-text-10)] font-bold hover:bg-secondary/80 transition-colors disabled:opacity-50"
         >
           {updateDdlMutation.isPending ? (
             <Loader2 className="w-2.5 h-2.5 animate-spin" />

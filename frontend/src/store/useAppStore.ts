@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Connection, QueryResult, DbValue, DatabaseObject } from '@/types/database'
 import { ExecutionStatus, SidebarTab, ExplorerTab } from '@/types/database'
+import type { AccentPalette } from '@/lib/themes'
 
 export type { DbValue }
 export interface MongoFilterState {
@@ -60,17 +61,19 @@ export interface CustomColors {
 
 export const DEFAULT_EDITOR_FONT = "'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', Consolas, 'Courier New', monospace"
 
-export const DEFAULT_COLORS: CustomColors | null = null
-
 interface AppState {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
-  customColors: CustomColors | null
-  setCustomColors: (colors: Partial<CustomColors> | null) => void
+  lightColors: CustomColors | null
+  setLightColors: (colors: Partial<CustomColors> | null) => void
+  darkColors: CustomColors | null
+  setDarkColors: (colors: Partial<CustomColors> | null) => void
   editorFontFamily: string
   setEditorFontFamily: (font: string) => void
-  editorFontSize: number
-  setEditorFontSize: (size: number) => void
+  resultsFontSize: number
+  setResultsFontSize: (size: number) => void
+  uiFontSize: number
+  setUiFontSize: (size: number) => void
   editorLineHeight: number
   setEditorLineHeight: (lh: number) => void
   editorTabSize: number
@@ -79,12 +82,10 @@ interface AppState {
   setEditorMinimap: (show: boolean) => void
   uiFontFamily: string
   setUiFontFamily: (font: string) => void
-  uiFontSize: number
-  setUiFontSize: (size: number) => void
   borderRadius: number
   setBorderRadius: (radius: number) => void
-  resultsFontSize: number
-  setResultsFontSize: (size: number) => void
+  accentPalette: AccentPalette
+  setAccentPalette: (palette: AccentPalette) => void
   accessToken: string | null
   setAccessToken: (token: string | null) => void
   activeConnection: Connection | null
@@ -141,14 +142,18 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
-      customColors: null,
-      setCustomColors: (colors) => set(() => ({
-        customColors: colors as CustomColors | null,
+      lightColors: null,
+      setLightColors: (colors) => set(() => ({
+        lightColors: colors as CustomColors | null,
+      })),
+      darkColors: null,
+      setDarkColors: (colors) => set(() => ({
+        darkColors: colors as CustomColors | null,
       })),
       editorFontFamily: DEFAULT_EDITOR_FONT,
       setEditorFontFamily: (editorFontFamily) => set({ editorFontFamily }),
-      editorFontSize: 14,
-      setEditorFontSize: (editorFontSize) => set({ editorFontSize }),
+      resultsFontSize: 13,
+      setResultsFontSize: (resultsFontSize) => set({ resultsFontSize }),
       editorLineHeight: 1.6,
       setEditorLineHeight: (editorLineHeight) => set({ editorLineHeight }),
       editorTabSize: 2,
@@ -161,8 +166,8 @@ export const useAppStore = create<AppState>()(
       setUiFontSize: (uiFontSize) => set({ uiFontSize }),
       borderRadius: 6,
       setBorderRadius: (borderRadius) => set({ borderRadius }),
-      resultsFontSize: 12,
-      setResultsFontSize: (resultsFontSize) => set({ resultsFontSize }),
+      accentPalette: 'emerald',
+      setAccentPalette: (accentPalette) => set({ accentPalette }),
       accessToken: null,
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
@@ -335,6 +340,9 @@ export const useAppStore = create<AppState>()(
         connectionErrors: {},
         connectedConnectionIds: [],
         theme: state.theme,
+        lightColors: state.lightColors,
+        darkColors: state.darkColors,
+        accentPalette: state.accentPalette,
         accessToken: state.accessToken,
         activeConnection: null,
         tabs: state.tabs.map(tab => ({ ...tab, results: null })),
@@ -354,7 +362,7 @@ export const useAppStore = create<AppState>()(
         ),
         queryHistory: state.queryHistory,
       }),
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
         const persisted = persistedState as Record<string, unknown> & { version?: number };
         if (version < 1) {
@@ -366,6 +374,15 @@ export const useAppStore = create<AppState>()(
         if (version < 2) {
           persisted.connectedConnectionIds = []
           persisted.activeConnection = null
+        }
+        if (version < 3) {
+          const oldColors = persisted.customColors as CustomColors | undefined
+          if (oldColors) {
+            persisted.lightColors = oldColors
+            persisted.darkColors = oldColors
+          }
+          delete persisted.customColors
+          delete persisted.setCustomColors
         }
         return persisted as unknown as AppState
       },

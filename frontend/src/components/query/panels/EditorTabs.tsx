@@ -42,7 +42,7 @@ export function EditorTabs({
           <div className="flex flex-col items-start gap-0.5">
             <span className="truncate max-w-[120px]">{tab.name}</span>
             {tabConnection && (
-              <span className="truncate max-w-[120px] text-[9px] opacity-70" title={`${tabConnection.name}${dbSuffix}`}>
+              <span className="truncate max-w-[120px] text-[var(--ch-text-9)] opacity-70" title={`${tabConnection.name}${dbSuffix}`}>
                 {tabConnection.name}{dbSuffix}
               </span>
             )}

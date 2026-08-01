@@ -232,7 +232,7 @@ export function DiagramCanvas({
               className="absolute top-4 right-4 z-50 bg-card border border-border rounded-lg shadow-xl p-3 min-w-[160px]"
               data-cardinality-picker
             >
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+              <div className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground mb-2">
                 {isManual ? 'Manual Connection' : 'Foreign Key'}
               </div>
               <div className="text-xs text-muted-foreground mb-2 truncate max-w-[180px]">
@@ -240,11 +240,11 @@ export function DiagramCanvas({
                 {edge.target.replace(/^table:/, '').replace(/^view:/, '')}
               </div>
               {edge.label && (
-                <div className="text-[10px] text-muted-foreground mb-2 italic">
+                <div className="text-[var(--ch-text-10)] text-muted-foreground mb-2 italic">
                   {edge.label}
                 </div>
               )}
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+              <div className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                 Cardinality
               </div>
               <div className="flex gap-1 mb-2">
@@ -252,7 +252,7 @@ export function DiagramCanvas({
                   <button
                     key={c}
                     onClick={() => handleChangeCardinality(c)}
-                    className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${
+                    className={`px-2 py-1 text-[var(--ch-text-10)] font-bold rounded transition-colors ${
                       currentCardinality === c
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -264,7 +264,7 @@ export function DiagramCanvas({
               </div>
               <button
                 onClick={handleDeleteEdge}
-                className="w-full text-[10px] font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10 rounded py-1 transition-colors"
+                className="w-full text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10 rounded py-1 transition-colors"
               >
                 Delete
               </button>
@@ -282,14 +282,14 @@ export function DiagramCanvas({
             top: cardinalityPicker.position.y,
           }}
         >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+          <div className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground mb-2">
             New Connection
           </div>
           <div className="text-xs text-muted-foreground mb-2 truncate max-w-[180px]">
             {cardinalityPicker.source.replace(/^table:/, '').replace(/^view:/, '')} →{' '}
             {cardinalityPicker.target.replace(/^table:/, '').replace(/^view:/, '')}
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+          <div className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
             Cardinality
           </div>
           <div className="flex gap-1 mb-2">
@@ -297,7 +297,7 @@ export function DiagramCanvas({
               <button
                 key={c}
                 onClick={() => confirmConnection(c)}
-                className="px-2 py-1 text-[10px] font-bold rounded bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="px-2 py-1 text-[var(--ch-text-10)] font-bold rounded bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
               >
                 {c}
               </button>
@@ -305,7 +305,7 @@ export function DiagramCanvas({
           </div>
           <button
             onClick={() => setCardinalityPicker(null)}
-            className="w-full text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-muted rounded py-1 transition-colors"
+            className="w-full text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground hover:bg-muted rounded py-1 transition-colors"
           >
             Cancel
           </button>

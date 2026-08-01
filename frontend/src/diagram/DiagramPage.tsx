@@ -131,7 +131,7 @@ function EditorInner() {
         currentSchema!,
         [...selectedTables],
       ),
-    enabled: isSchemaMode && !!diagram?.sourceConnectionId && !!currentSchema && selectedTables.size > 0,
+    enabled: showTableSelector && !!diagram?.sourceConnectionId && !!currentSchema && selectedTables.size > 0,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -334,7 +334,7 @@ function EditorInner() {
               {currentSchema && (
                 isPostgres && availableSchemas.length > 0 ? (
                   <select
-                    className="w-full text-[10px] uppercase tracking-wider text-muted-foreground bg-transparent border border-border rounded px-2 py-1 focus:border-primary focus:outline-none"
+                    className="w-full text-[var(--ch-text-10)] uppercase tracking-wider text-muted-foreground bg-transparent border border-border rounded px-2 py-1 focus:border-primary focus:outline-none"
                     value={currentSchema}
                     onChange={(e) => {
                       const newSchema = e.target.value
@@ -349,7 +349,7 @@ function EditorInner() {
                     ))}
                   </select>
                 ) : (
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">
+                  <div className="text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-wider truncate">
                     Schema: {currentSchema}
                   </div>
                 )
@@ -402,7 +402,7 @@ function EditorInner() {
 
             {selectedTables.size > 0 && (
               <div className="p-3 border-t border-border bg-muted/20">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                <div className="text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-wider">
                   {selectedTables.size} table{selectedTables.size !== 1 ? 's' : ''} selected
                 </div>
               </div>

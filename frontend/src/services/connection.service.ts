@@ -102,6 +102,18 @@ export const connectionService = {
     return await tauriApi.invoke<boolean>('is_session_unlocked')
   },
 
+  generateRecoveryCode: async (): Promise<string> => {
+    return await tauriApi.invoke<string>('generate_recovery_code')
+  },
+
+  isRecoveryCodeSet: async (): Promise<boolean> => {
+    return await tauriApi.invoke<boolean>('is_recovery_code_set')
+  },
+
+  recoverMasterPassword: async (recoveryCode: string, newPassword: string): Promise<void> => {
+    await tauriApi.invoke<void>('recover_master_password', { recoveryCode, newPassword })
+  },
+
   // Windows Hello / Keyring
   isWindowsHelloAvailable: async (): Promise<boolean> => {
     return await tauriApi.invoke<boolean>('is_windows_hello_available')

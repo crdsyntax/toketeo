@@ -80,13 +80,13 @@ export function ColumnsTab({
       <div className="px-4 py-2 border-b border-border bg-muted flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">
           <Info className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+          <span className="text-[var(--ch-text-10)] uppercase font-bold text-muted-foreground tracking-wider">
             Edit mode generates ALTER TABLE SQL statements
           </span>
         </div>
         <button 
           onClick={onAdd}
-          className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:opacity-90 px-3 py-1 rounded-md transition-all active:scale-95"
+          className="flex items-center gap-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:opacity-90 px-3 py-1 rounded-md transition-all active:scale-95"
         >
           <Plus className="w-3 h-3" />
           Add Column
@@ -96,7 +96,7 @@ export function ColumnsTab({
       <div className="flex-1 overflow-auto p-4">
         <table className="w-full text-left text-xs border-collapse min-w-[1000px]">
           <thead>
-            <tr className="border-b border-border text-muted-foreground uppercase tracking-widest text-[10px]">
+            <tr className="border-b border-border text-muted-foreground uppercase tracking-widest text-[var(--ch-text-10)]">
               <th className="pb-3 px-2 font-bold w-[20%]">Name</th>
               <th className="pb-3 px-2 font-bold w-[15%]">Type</th>
               <th className="pb-3 px-2 font-bold w-[10%] text-center">PK</th>
@@ -136,7 +136,7 @@ export function ColumnsTab({
                   <td className="py-2 px-2">
                     {isEditing ? (
                       <select
-                        className="w-full bg-background border border-border px-1 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md font-mono text-[10px]"
+                        className="w-full bg-background border border-border px-1 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md font-mono text-[var(--ch-text-10)]"
                         value={editedColData?.type.toUpperCase() || ''}
                         onChange={(e) => setEditedColData(prev => prev ? { ...prev, type: e.target.value } : null)}
                       >
@@ -146,7 +146,7 @@ export function ColumnsTab({
                         {COMMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     ) : (
-                      <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-tighter truncate block max-w-[120px]">
+                      <span className="font-mono text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tighter truncate block max-w-[120px]">
                         {col.type}
                       </span>
                     )}
@@ -172,13 +172,13 @@ export function ColumnsTab({
                   <td className="py-2 px-2">
                     {isEditing ? (
                       <input
-                        className="w-full bg-background border border-border px-2 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md text-[10px]"
+                        className="w-full bg-background border border-border px-2 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md text-[var(--ch-text-10)]"
                         value={editedColData?.defaultValue || ''}
                         placeholder="NULL"
                         onChange={(e) => setEditedColData(prev => prev ? { ...prev, defaultValue: e.target.value } : null)}
                       />
                     ) : (
-                      <span className="text-muted-foreground truncate block max-w-[100px] text-[10px]">
+                      <span className="text-muted-foreground truncate block max-w-[100px] text-[var(--ch-text-10)]">
                         {col.defaultValue || 'NULL'}
                       </span>
                     )}
@@ -186,13 +186,13 @@ export function ColumnsTab({
                   <td className="py-2 px-2">
                     {isEditing ? (
                       <input
-                        className="w-full bg-background border border-border px-2 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md text-[10px]"
+                        className="w-full bg-background border border-border px-2 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md text-[var(--ch-text-10)]"
                         value={editedColData?.comment || ''}
                         placeholder="Column description..."
                         onChange={(e) => setEditedColData(prev => prev ? { ...prev, comment: e.target.value } : null)}
                       />
                     ) : (
-                      <span className="text-muted-foreground truncate block max-w-[150px] text-[10px] italic">
+                      <span className="text-muted-foreground truncate block max-w-[150px] text-[var(--ch-text-10)] italic">
                         {col.comment || '-'}
                       </span>
                     )}

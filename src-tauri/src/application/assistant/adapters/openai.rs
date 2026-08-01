@@ -97,6 +97,8 @@ impl AiAdapter for OpenAiAdapter {
                             name: id,
                             provider: "openai".to_string(),
                             supports_tools,
+                            is_free: false,
+                            tier: String::new(),
                         })
                     })
                     .collect()

@@ -127,7 +127,7 @@ export function ResultsModal({
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <span className="text-[10px] font-mono font-bold mx-1">
+                <span className="text-[var(--ch-text-10)] font-mono font-bold mx-1">
                   PAGE {activeTab.results.page}
                 </span>
                 <button
@@ -143,13 +143,13 @@ export function ResultsModal({
               </div>
             )}
             <div className="flex items-center gap-4 ml-4 border-l border-border pl-4">
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1.5 text-[var(--ch-text-10)] text-muted-foreground">
                 Rows:{' '}
                 <span className="font-bold text-foreground">
                   {activeTab.results.rows.length}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1.5 text-[var(--ch-text-10)] text-muted-foreground">
                 <span className="font-bold text-foreground">
                   {activeTab.results.executionTime}ms
                 </span>
@@ -162,7 +162,7 @@ export function ResultsModal({
               <button
                 onClick={() => setViewMode('table')}
                 className={cn(
-                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  "px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors",
                   viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
                 title="Table View"
@@ -172,7 +172,7 @@ export function ResultsModal({
               <button
                 onClick={() => setViewMode('json')}
                 className={cn(
-                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  "px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors",
                   viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
                 title="JSON View"
@@ -182,7 +182,7 @@ export function ResultsModal({
               <button
                 onClick={() => setViewMode('visualize')}
                 className={cn(
-                  "px-2 py-1 text-[10px] font-medium rounded-sm transition-colors",
+                  "px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors",
                   viewMode === 'visualize' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
                 title="Visualize"

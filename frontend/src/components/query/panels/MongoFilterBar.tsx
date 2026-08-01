@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Filter, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import type { MongoFilterState } from '@/store/useAppStore';
+import { cn } from '@/lib/utils';
 
 interface MongoFilterBarProps {
   filter: MongoFilterState;
@@ -33,18 +34,17 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
   };
 
   return (
-    <div className="border-b border-border bg-muted/5 shrink-0">
+    <div className="border-b border-border bg-background/80 backdrop-blur shrink-0">
       {/* Header row: always visible */}
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <Filter className="w-3 h-3 text-primary/60 shrink-0" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-primary/70">
-          Mongo Filter
+      <div className="flex items-center gap-2 px-3 h-9">
+        <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-emerald-400/80 shrink-0">
+          Filter
         </span>
 
         {/* Main filter (find) always visible */}
         <input
-          className="flex-1 max-w-md bg-background border border-border/70 px-2.5 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-primary/60 placeholder:text-muted-foreground/50 font-mono"
-          placeholder='Filter: { "field": "value" }'
+          className="flex-1 max-w-sm bg-background border border-border/70 px-2.5 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-emerald-500/50 placeholder:text-muted-foreground/40 font-mono"
+          placeholder='{ "field": "value" }'
           value={filter.find}
           onChange={(e) => onChange({ find: e.target.value })}
           onKeyDown={handleKeyDown}
@@ -53,7 +53,7 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
         {/* Run button */}
         <button
           onClick={onExecute}
-          className="flex items-center gap-1.5 px-3 py-1 bg-primary text-primary-foreground rounded text-[10px] font-bold hover:opacity-90 transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 text-white rounded text-[var(--ch-text-9)] font-semibold hover:bg-emerald-500 transition-all shrink-0"
         >
           <Search className="w-3 h-3" />
           Find
@@ -62,7 +62,12 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
         {/* Toggle advanced */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground rounded hover:bg-muted/60 transition-colors"
+          className={cn(
+            'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors shrink-0',
+            expanded
+              ? 'text-emerald-400 bg-emerald-500/10'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+          )}
         >
           Options
           {expanded
@@ -74,14 +79,14 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
 
       {/* Advanced panel */}
       {expanded && (
-        <div className="px-3 pb-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+        <div className="px-3 pb-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
           {FIELDS.slice(1).map(({ key, label, placeholder }) => (
             <div key={key} className="flex flex-col gap-0.5">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">
+              <span className="text-[var(--ch-text-9)] font-semibold uppercase tracking-wider text-muted-foreground/60">
                 {label}
               </span>
               <input
-                className="bg-background border border-border/60 px-2.5 py-1 rounded text-[11px] font-mono outline-none focus:ring-1 focus:ring-primary/60 placeholder:text-muted-foreground/40"
+                className="bg-background border border-border/60 px-2.5 py-1 rounded text-[var(--ch-text-11)] font-mono outline-none focus:ring-1 focus:ring-emerald-500/40 placeholder:text-muted-foreground/30"
                 placeholder={placeholder}
                 value={filter[key]}
                 onChange={(e) => onChange({ [key]: e.target.value })}

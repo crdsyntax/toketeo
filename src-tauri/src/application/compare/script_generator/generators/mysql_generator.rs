@@ -279,10 +279,19 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for view in &report.views {
             match view.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
+                    let ddl = view.details.as_ref()
+                        .and_then(|d| d.get("source_definition"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let comment = source_comment(&report.source_name, "", &view.name, Some("view"));
+                    let sql = if ddl.is_empty() {
+                        format!("{}\n-- TODO: Recreate view `{}` (requires DDL from source)", comment, view.name)
+                    } else {
+                        format!("{}\n{}", comment, ddl)
+                    };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\n-- TODO: Recreate view `{}` (requires DDL from source)", comment, view.name),
+                        sql,
                         description: format!("Recreate view {}", view.name),
                         diff_type: "create_view".into(),
                         object_name: view.name.clone(),
@@ -317,10 +326,20 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for proc in &report.procedures {
             match proc.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
+                    let ddl = proc.details.as_ref()
+                        .and_then(|d| d.get("source_definition"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let comment = source_comment(&report.source_name, "", &proc.name, Some("procedure"));
+                    let sql = if ddl.is_empty() {
+                        format!("{}\n-- TODO: Recreate procedure `{}` (requires DDL from source)", comment, proc.name)
+                    } else {
+                        let clean = ddl.trim_end_matches(';');
+                        format!("{}\n{}", comment, clean)
+                    };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\n-- TODO: Recreate procedure `{}` (requires DDL from source)", comment, proc.name),
+                        sql: format!("{};", sql),
                         description: format!("Recreate procedure {}", proc.name),
                         diff_type: "create_procedure".into(),
                         object_name: proc.name.clone(),
@@ -352,10 +371,20 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for func in &report.functions {
             match func.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
+                    let ddl = func.details.as_ref()
+                        .and_then(|d| d.get("source_definition"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let comment = source_comment(&report.source_name, "", &func.name, Some("function"));
+                    let sql = if ddl.is_empty() {
+                        format!("{}\n-- TODO: Recreate function `{}` (requires DDL from source)", comment, func.name)
+                    } else {
+                        let clean = ddl.trim_end_matches(';');
+                        format!("{}\n{}", comment, clean)
+                    };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\n-- TODO: Recreate function `{}` (requires DDL from source)", comment, func.name),
+                        sql: format!("{};", sql),
                         description: format!("Recreate function {}", func.name),
                         diff_type: "create_function".into(),
                         object_name: func.name.clone(),
@@ -390,10 +419,20 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for trigger in &report.triggers {
             match trigger.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
+                    let ddl = trigger.details.as_ref()
+                        .and_then(|d| d.get("source_definition"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let comment = source_comment(&report.source_name, "", &trigger.name, Some("trigger"));
+                    let sql = if ddl.is_empty() {
+                        format!("{}\n-- TODO: Recreate trigger `{}` (requires DDL from source)", comment, trigger.name)
+                    } else {
+                        let clean = ddl.trim_end_matches(';');
+                        format!("{}\n{}", comment, clean)
+                    };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\n-- TODO: Recreate trigger `{}` (requires DDL from source)", comment, trigger.name),
+                        sql: format!("{};", sql),
                         description: format!("Recreate trigger {}", trigger.name),
                         diff_type: "create_trigger".into(),
                         object_name: trigger.name.clone(),

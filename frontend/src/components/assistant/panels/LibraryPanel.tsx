@@ -94,7 +94,7 @@ export function LibraryPanel() {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <BookOpen className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-semibold text-foreground">Knowledge Library</span>
-        <span className="text-[10px] text-muted-foreground ml-auto">
+        <span className="text-[var(--ch-text-10)] text-muted-foreground ml-auto">
           {cases.length} {cases.length === 1 ? 'case' : 'cases'}
         </span>
       </div>
@@ -109,7 +109,7 @@ export function LibraryPanel() {
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <BookOpen className="w-6 h-6 mb-2 opacity-30" />
             <p className="text-xs">No saved queries yet.</p>
-            <p className="text-[10px]">Rate assistant responses to build your library.</p>
+            <p className="text-[var(--ch-text-10)]">Rate assistant responses to build your library.</p>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -135,7 +135,7 @@ export function LibraryPanel() {
                     </span>
                   </div>
                   <span className={cn(
-                    'shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium',
+                    'shrink-0 text-[var(--ch-text-10)] px-1.5 py-0.5 rounded font-medium',
                     c.rating === 'positive'
                       ? 'text-green-600 bg-green-500/10'
                       : 'text-red-600 bg-red-500/10',
@@ -147,7 +147,7 @@ export function LibraryPanel() {
                 {/* SQL block */}
                 <div className="bg-[#0d1117] rounded-lg overflow-hidden ml-5 mb-1">
                   <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22]">
-                    <span className="text-[10px] font-mono text-[#8b949e]">SQL</span>
+                    <span className="text-[var(--ch-text-10)] font-mono text-[#8b949e]">SQL</span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleOpenInEditor(c.sqlText)}
@@ -168,13 +168,13 @@ export function LibraryPanel() {
                       </button>
                     </div>
                   </div>
-                  <pre className="text-[11px] font-mono leading-relaxed p-3 overflow-x-auto text-[#e6edf3] m-0">
+                  <pre className="text-[var(--ch-text-11)] font-mono leading-relaxed p-3 overflow-x-auto text-[#e6edf3] m-0">
                     {c.sqlText}
                   </pre>
                 </div>
 
                 {/* Meta row */}
-                <div className="flex items-center gap-2 ml-5 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-2 ml-5 text-[var(--ch-text-10)] text-muted-foreground">
                   <span>Used {c.usedCount} times</span>
                   <span>·</span>
                   <span>{c.engine}</span>

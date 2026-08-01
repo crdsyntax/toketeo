@@ -17,7 +17,7 @@ export function ChartControls({ config, onChange }: ChartControlsProps) {
         value={config.title}
         onChange={(e) => onChange({ title: e.target.value })}
         placeholder="Chart title..."
-        className="h-7 text-[11px] px-2 rounded-md border border-border bg-muted/40 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary w-40"
+        className="h-7 text-[var(--ch-text-11)] px-2 rounded-md border border-border bg-muted/40 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary w-40"
       />
 
       {meta.supportsOrientation && (
@@ -25,22 +25,24 @@ export function ChartControls({ config, onChange }: ChartControlsProps) {
           <button
             onClick={() => onChange({ orientation: 'vertical' })}
             className={cn(
-              'px-2 py-1 text-[10px] font-medium rounded-sm transition-colors',
+              'px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors',
               config.orientation === 'vertical'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
+            title="Vertical bars"
           >
             Vertical
           </button>
           <button
             onClick={() => onChange({ orientation: 'horizontal' })}
             className={cn(
-              'px-2 py-1 text-[10px] font-medium rounded-sm transition-colors',
+              'px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors',
               config.orientation === 'horizontal'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
+            title="Horizontal bars"
           >
             Horizontal
           </button>
@@ -48,14 +50,26 @@ export function ChartControls({ config, onChange }: ChartControlsProps) {
       )}
 
       {meta.supportsStack && config.yColumns.length > 1 && (
-        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+        <label className="flex items-center gap-1.5 text-[var(--ch-text-11)] text-muted-foreground cursor-pointer select-none">
           <input
             type="checkbox"
             checked={config.stacked}
             onChange={(e) => onChange({ stacked: e.target.checked })}
             className="rounded border-border"
           />
-          Stacked
+          Stack
+        </label>
+      )}
+
+      {(config.chartType === 'bar' || config.chartType === 'line' || config.chartType === 'pie' || config.chartType === 'doughnut') && (
+        <label className="flex items-center gap-1.5 text-[var(--ch-text-11)] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={config.dataLabels}
+            onChange={(e) => onChange({ dataLabels: e.target.checked })}
+            className="rounded border-border"
+          />
+          Labels
         </label>
       )}
     </div>

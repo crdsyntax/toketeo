@@ -1,11 +1,12 @@
 import { Editor, type Monaco } from '@monaco-editor/react';
 import type * as monaco from 'monaco-editor';
-import { ChevronUp, Terminal, Database, Code2 } from 'lucide-react';
+import { ChevronUp, Terminal, Code2, Sparkles } from 'lucide-react';
 import type { QueryTab, EditorMode } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { isMongoShellSyntax } from '@/lib/mongoShellParser';
 import { DatabaseType } from '@/types/database';
+import { cn } from '@/lib/utils';
 import {
   MONGO_SHELL_LANGUAGE_ID,
   registerMongoShellLanguage,
@@ -18,8 +19,8 @@ interface SqlEditorPanelProps {
   updateTabQuery: (id: string, query: string) => void;
   handleEditorWillMount: (monacoInstance: Monaco) => void;
   handleEditorDidMount: (editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => void;
-  connectionName: string;
-  connectionType: string;
+  connectionName?: string;
+  connectionType?: string;
   updateTabViewState: (id: string, viewState: monaco.editor.ICodeEditorViewState | null) => void;
   updateTabEditorMode: (id: string, mode: EditorMode) => void;
 }
@@ -40,10 +41,11 @@ export function SqlEditorPanel({
   const monacoRef = useRef<Monaco | null>(null);
   const prevTabIdRef = useRef<string>(activeTab.id);
   const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
-  const storeEditorFontSize = useAppStore((s) => s.editorFontSize);
+  const storeEditorFontSize = useAppStore((s) => s.uiFontSize);
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
   const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
   const storeEditorMinimap = useAppStore((s) => s.editorMinimap);
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
 
   const mode = activeTab.editorMode ?? 'auto';
 
@@ -111,6 +113,11 @@ export function SqlEditorPanel({
       editorInstance.restoreViewState(activeTab.editorViewState as monaco.editor.ICodeEditorViewState);
     }
     editorInstance.focus();
+
+    // Track cursor position
+    editorInstance.onDidChangeCursorPosition((e) => {
+      setCursorPos({ line: e.position.lineNumber, col: e.position.column });
+    });
   }, [handleEditorDidMount, activeTab.editorViewState]);
 
   const handleChange = useCallback((val: string | undefined) => {
@@ -128,77 +135,73 @@ export function SqlEditorPanel({
   // Compute editor theme
   const editorTheme = isShellMode ? 'mongo-dark' : 'vs-dark';
 
+  const modeChips = [
+    { id: 'mongosh' as EditorMode, label: 'Shell', icon: Terminal },
+    { id: 'auto' as EditorMode, label: 'Auto', icon: Code2 },
+    { id: 'json' as EditorMode, label: 'JSON', icon: Sparkles },
+  ];
+
   return (
     <div className="border border-border rounded-none bg-card overflow-hidden flex flex-col flex-1 min-h-0 w-full">
-      <div className="p-2 border-b border-border bg-muted/20 flex justify-between items-center text-left shrink-0">
-        <div className="flex items-center gap-2">
-          <button onClick={onToggle} className="p-1 hover:bg-muted rounded">
+      {/* Header */}
+      <div className="h-10 px-3 border-b border-border bg-background/80 backdrop-blur flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onToggle} className="p-1 hover:bg-muted rounded shrink-0">
             <ChevronUp className="w-3.5 h-3.5" />
           </button>
 
-          {/* Editor mode label */}
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {isShellMode
-              ? 'MongoDB Shell'
-              : isMongo
-                ? 'Schema Query Editor'
-                : 'SQL Editor'}
-          </span>
+          <span className="text-xs font-semibold text-foreground truncate">{activeTab.name || 'Untitled'}</span>
 
-          {/* Mode toggle — only show for MongoDB */}
           {isMongo && (
-            <div className="flex items-center gap-1 ml-2 border border-border rounded">
-              <button
-                onClick={() => updateTabEditorMode(activeTab.id, 'mongosh')}
-                className={`flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                  mode === 'mongosh'
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Terminal className="w-2.5 h-2.5" />
-                Shell
-              </button>
-              <button
-                onClick={() => updateTabEditorMode(activeTab.id, 'auto')}
-                className={`flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                  mode === 'auto'
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Code2 className="w-2.5 h-2.5" />
-                Auto
-              </button>
-              <button
-                onClick={() => updateTabEditorMode(activeTab.id, 'json')}
-                className={`flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                  mode === 'json'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Database className="w-2.5 h-2.5" />
-                JSON
-              </button>
+            <span className="px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              MongoDB
+            </span>
+          )}
+
+          {isMongo && (
+            <div className="flex items-center gap-0.5 ml-1 border border-border rounded-md overflow-hidden">
+              {modeChips.map((chip) => {
+                const isActive = mode === chip.id || (chip.id === 'auto' && mode === 'auto');
+                const activeClass = chip.id === 'mongosh' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : chip.id === 'json' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+                return (
+                  <button
+                    key={chip.id}
+                    onClick={() => updateTabEditorMode(activeTab.id, chip.id)}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-0.5 text-[var(--ch-text-9)] font-bold uppercase tracking-wider transition-colors border-r last:border-r-0 border-border',
+                      isActive ? activeClass : 'text-muted-foreground hover:text-foreground bg-transparent'
+                    )}
+                  >
+                    <chip.icon className="w-2.5 h-2.5" />
+                    {chip.label}
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* Hint text */}
-          <span className="text-[10px] text-primary/70 font-bold ml-2 border border-primary/20 px-2 py-0.5 rounded bg-primary/5 uppercase">
+          <span className="text-[var(--ch-text-10)] text-muted-foreground/50 ml-1 hidden sm:inline">
             {isShellMode
-              ? 'db.collection.find({…}) · Ctrl/Cmd + Enter'
-              : isMongo
-                ? 'Ctrl/Cmd + Enter to run with filters'
-                : 'Ctrl/Cmd + Enter to run selection/line'}
+              ? 'db.collection.find({…})'
+              : 'Ctrl/Cmd + Enter'}
           </span>
         </div>
 
-        <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest px-3 border-l border-border">
-          {connectionName} • {connectionType}
+        <div className="flex items-center gap-2 shrink-0">
+          {!isMongo && (
+            <span className="text-[var(--ch-text-10)] text-muted-foreground/50 hidden md:inline">
+              Ctrl/Cmd + Enter
+            </span>
+          )}
+          <span className="text-[var(--ch-text-10)] text-muted-foreground/70 font-mono">
+            {connectionName}
+          </span>
         </div>
       </div>
 
+      {/* Editor */}
       <div className="flex-1 min-h-0 relative">
         <Editor
           height="100%"
@@ -226,6 +229,27 @@ export function SqlEditorPanel({
             guides: { bracketPairs: true },
           }}
         />
+      </div>
+
+      {/* Status bar */}
+      <div className="h-6 px-3 border-t border-border bg-muted/20 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="text-[var(--ch-text-9)] text-muted-foreground/60 font-mono">
+            Ln {cursorPos.line}, Col {cursorPos.col}
+          </span>
+          <span className="text-[var(--ch-text-9)] text-muted-foreground/40">|</span>
+          <span className="text-[var(--ch-text-9)] text-muted-foreground/60 font-mono">
+            {activeTab.query.length} chars
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cn(
+            'text-[var(--ch-text-9)] font-mono uppercase tracking-wider',
+            isShellMode ? 'text-emerald-400/70' : isMongo ? 'text-blue-400/70' : 'text-primary/70'
+          )}>
+            {editorLanguage}
+          </span>
+        </div>
       </div>
     </div>
   );

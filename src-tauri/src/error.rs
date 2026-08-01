@@ -49,12 +49,6 @@ impl From<mongodb::error::Error> for AppError {
     }
 }
 
-impl From<ssh2::Error> for AppError {
-    fn from(err: ssh2::Error) -> Self {
-        AppError::Ssh(err.to_string())
-    }
-}
-
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> Self {
         AppError::Internal(err.to_string())

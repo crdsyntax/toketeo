@@ -40,13 +40,13 @@ function RunDetail({ runId }: { runId: string }) {
     queryFn: () => syncService.listBatches(runId),
   })
 
-  if (!batches) return <p className="text-[10px] text-muted-foreground py-2">Cargando detalle...</p>
-  if (batches.length === 0) return <p className="text-[10px] text-muted-foreground py-2">Sin lotes registrados.</p>
+  if (!batches) return <p className="text-[var(--ch-text-10)] text-muted-foreground py-2">Cargando detalle...</p>
+  if (batches.length === 0) return <p className="text-[var(--ch-text-10)] text-muted-foreground py-2">Sin lotes registrados.</p>
 
   return (
     <div className="space-y-1 py-2">
       {batches.map((b) => (
-        <div key={b.id} className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground pl-4">
+        <div key={b.id} className="flex items-center gap-2 text-[var(--ch-text-10)] font-mono text-muted-foreground pl-4">
           <span className={cn('w-1.5 h-1.5 rounded-full', b.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500')} />
           <span>Lote {b.batch_number}</span>
           <span>{b.table_name}</span>
@@ -71,7 +71,7 @@ function RunTableSummary({ runId }: { runId: string }) {
   const tableNames = [...new Set(batches.map((b) => b.table_name))]
 
   return (
-    <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground/70 mt-1 flex-wrap">
+    <div className="flex items-center gap-1.5 text-[var(--ch-text-9)] text-muted-foreground/70 mt-1 flex-wrap">
       <Database className="w-2.5 h-2.5 shrink-0" />
       <span className="font-bold uppercase tracking-wider">Tablas:</span>
       {tableNames.length <= 5 ? (
@@ -147,16 +147,16 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <span className={cn('text-[10px] font-bold uppercase tracking-wider', info.color)}>
+                    <span className={cn('text-[var(--ch-text-10)] font-bold uppercase tracking-wider', info.color)}>
                       {info.label}
                     </span>
                     {run.completed_at && (
-                      <span className="text-[9px] text-muted-foreground">{timeAgo(run.completed_at)}</span>
+                      <span className="text-[var(--ch-text-9)] text-muted-foreground">{timeAgo(run.completed_at)}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     {duration !== null && (
-                      <span className="text-[10px] text-muted-foreground font-mono">{duration}s</span>
+                      <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono">{duration}s</span>
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); setExpandedRun(isExpanded ? null : run.id) }}
@@ -167,7 +167,7 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 text-[10px] text-muted-foreground font-mono">
+                <div className="flex items-center gap-3 text-[var(--ch-text-10)] text-muted-foreground font-mono">
                   <span className="text-foreground font-bold">{run.processed_rows.toLocaleString()}</span>
                   <span className="text-muted-foreground/70">filas</span>
                   {run.error_count > 0 && (
@@ -182,7 +182,7 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
                 <RunTableSummary runId={run.id} />
 
                 {run.started_at && (
-                  <p className="text-[9px] text-muted-foreground/60 mt-1 font-mono">
+                  <p className="text-[var(--ch-text-9)] text-muted-foreground/60 mt-1 font-mono">
                     {new Date(run.started_at).toLocaleString()}
                   </p>
                 )}

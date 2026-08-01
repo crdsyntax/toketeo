@@ -153,7 +153,6 @@ impl CompareService {
                 Vec::new()
             }
         };
-        step += 1;
 
         Self::check_control(compare_id, controller).await?;
         let procedure_diffs = match compare_procedures(

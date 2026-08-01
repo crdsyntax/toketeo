@@ -235,6 +235,36 @@ pub async fn is_totp_enabled(storage: &Arc<Storage>) -> AppResult<bool> {
     storage.get_app_secret(TOTP_SECRET_KEY).await.map(|v| v.is_some())
 }
 
+pub async fn update_encrypted_master_key(
+    storage: &Arc<Storage>,
+    new_master_key: &[u8; 32],
+) -> AppResult<()> {
+    let Some(secret_bytes) = storage.get_app_secret(TOTP_SECRET_KEY).await? else {
+        return Ok(());
+    };
+    let secret_str = String::from_utf8(secret_bytes)
+        .map_err(|_| AppError::Auth("Invalid secret".into()))?;
+    if secret_str.is_empty() {
+        return Ok(());
+    }
+
+    let enc_key = derive_totp_encryption_key(&secret_str)
+        .map_err(|e| AppError::Auth(e))?;
+    let nonce = crypto::generate_nonce();
+    let cipher = Aes256Gcm::new_from_slice(&enc_key)
+        .map_err(|e| AppError::Auth(format!("Cipher init: {}", e)))?;
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce), new_master_key.as_ref())
+        .map_err(|e| AppError::Auth(format!("Encryption failed: {}", e)))?;
+
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&nonce);
+    payload.extend_from_slice(&ciphertext);
+
+    storage.set_app_secret(TOTP_ENCRYPTED_MASTER_KEY, &payload).await?;
+    Ok(())
+}
+
 pub async fn disable_totp(storage: &Arc<Storage>) -> AppResult<()> {
     storage.set_app_secret(TOTP_SECRET_KEY, b"").await?;
     storage.set_app_secret(TOTP_ENCRYPTED_MASTER_KEY, b"").await?;

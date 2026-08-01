@@ -177,6 +177,7 @@ export interface Connection {
   user: string
   password?: string
   database?: string
+  defaultDatabase?: string
   authEnabled?: boolean
   authSource?: string
   replicaSet?: string

@@ -28,19 +28,19 @@ export function UsagePanel() {
       <div className="grid grid-cols-2 gap-2">
         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
           <p className="text-lg font-bold text-primary">{level}</p>
-          <p className="text-[10px] text-muted-foreground">Level</p>
+          <p className="text-[var(--ch-text-10)] text-muted-foreground">Level</p>
         </div>
         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
           <p className="text-lg font-bold text-foreground">{xp}</p>
-          <p className="text-[10px] text-muted-foreground">Total XP</p>
+          <p className="text-[var(--ch-text-10)] text-muted-foreground">Total XP</p>
         </div>
         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
           <p className="text-lg font-bold text-amber-500">{streak}</p>
-          <p className="text-[10px] text-muted-foreground">Day Streak</p>
+          <p className="text-[var(--ch-text-10)] text-muted-foreground">Day Streak</p>
         </div>
         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
           <p className="text-lg font-bold text-emerald-500">{totalQueries}</p>
-          <p className="text-[10px] text-muted-foreground">Queries Run</p>
+          <p className="text-[var(--ch-text-10)] text-muted-foreground">Queries Run</p>
         </div>
       </div>
 
@@ -57,7 +57,7 @@ export function UsagePanel() {
               </div>
               <div>
                 <p className="text-xs font-medium text-foreground">{tip.title}</p>
-                <p className="text-[10px] text-muted-foreground leading-relaxed">{tip.desc}</p>
+                <p className="text-[var(--ch-text-10)] text-muted-foreground leading-relaxed">{tip.desc}</p>
               </div>
             </div>
           ))}

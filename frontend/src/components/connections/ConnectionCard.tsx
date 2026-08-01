@@ -49,7 +49,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
               {connection.name}
               {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />}
             </h3>
-            <span className={cn("inline-flex px-1.5 py-0.5 mt-1 text-[9px] font-bold tracking-widest uppercase border", getEnvColor(connection.environment))}>
+            <span className={cn("inline-flex px-1.5 py-0.5 mt-1 text-[var(--ch-text-9)] font-bold tracking-widest uppercase border", getEnvColor(connection.environment))}>
               {connection.environment}
             </span>
           </div>
@@ -93,11 +93,11 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
           </div>
         )}
         <div className="flex items-center gap-2 pt-2">
-          <div className="text-[10px] font-bold tracking-tighter bg-primary/5 text-primary/80 border border-primary/10 px-2 py-0.5">
+          <div className="text-[var(--ch-text-10)] font-bold tracking-tighter bg-primary/5 text-primary/80 border border-primary/10 px-2 py-0.5">
             {connection.type.toUpperCase()}
           </div>
           {connection.ssh && (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-400/5 border border-blue-400/20 px-2 py-0.5">
+            <div className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold text-blue-400 bg-blue-400/5 border border-blue-400/20 px-2 py-0.5">
               <Shield className="w-2.5 h-2.5" /> SSH
             </div>
           )}
@@ -110,7 +110,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
               <button 
                 onClick={() => onTest(connection)}
                 disabled={isConnecting || isTesting}
-                className={cn("text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 hover:text-primary transition-colors", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
+                className={cn("text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2 hover:text-primary transition-colors", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
               >
                 {isTesting ? (
                   <>
@@ -128,7 +128,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
               <button
                 onClick={() => onDisconnect(connection.id)}
                 disabled={isConnecting || isTesting}
-                className={cn("text-[10px] font-bold uppercase tracking-widest text-destructive flex items-center gap-2 hover:translate-x-1 transition-transform", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
+                className={cn("text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-destructive flex items-center gap-2 hover:translate-x-1 transition-transform", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
               >
                 Disconnect
               </button>
@@ -137,7 +137,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
             <button 
               onClick={() => onConnect(connection)}
               disabled={isConnecting || isTesting}
-              className={cn("text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
+              className={cn("text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-primary flex items-center gap-2 hover:translate-x-1 transition-transform", (isConnecting || isTesting) && "opacity-60 cursor-not-allowed")}
             >
               {isConnecting ? (
                 <>

@@ -27,6 +27,8 @@ fn compare_routine_names(
     target_names: &[String],
     source_hashes: &BTreeMap<String, String>,
     target_hashes: &BTreeMap<String, String>,
+    source_ddls: &BTreeMap<String, String>,
+    target_ddls: &BTreeMap<String, String>,
 ) -> Vec<ObjectDiff> {
     let src_set: BTreeSet<String> = source_names.iter().map(|v| v.to_lowercase()).collect();
     let tgt_set: BTreeSet<String> = target_names.iter().map(|v| v.to_lowercase()).collect();
@@ -52,9 +54,11 @@ fn compare_routine_names(
         match (in_source, in_target) {
             (true, false) => {
                 results.push(ObjectDiff {
-                    name: display,
+                    name: display.clone(),
                     status: CompareStatus::Missing,
-                    details: None,
+                    details: source_ddls.get(&display).map(|ddl| serde_json::json!({
+                        "source_definition": ddl,
+                    })),
                 });
             }
             (false, true) => {
@@ -67,6 +71,8 @@ fn compare_routine_names(
             (true, true) => {
                 let src_hash = source_hashes.get(&key).cloned().unwrap_or_default();
                 let tgt_hash = target_hashes.get(&key).cloned().unwrap_or_default();
+                let src_ddl = source_ddls.get(&display).cloned().unwrap_or_default();
+                let tgt_ddl = target_ddls.get(&display).cloned().unwrap_or_default();
                 let is_modified = src_hash != tgt_hash;
                 let status = if is_modified {
                     CompareStatus::Modified
@@ -80,6 +86,8 @@ fn compare_routine_names(
                         Some(serde_json::json!({
                             "source_hash": src_hash,
                             "target_hash": tgt_hash,
+                            "source_definition": src_ddl,
+                            "target_definition": tgt_ddl,
                         }))
                     } else {
                         None
@@ -151,6 +159,8 @@ pub async fn compare_procedures(
         &tgt_procs,
         &src_hashes,
         &tgt_hashes,
+        &src_ddls,
+        &tgt_ddls,
     ))
 }
 
@@ -188,6 +198,8 @@ pub async fn compare_functions(
         &tgt_funcs,
         &src_hashes,
         &tgt_hashes,
+        &src_ddls,
+        &tgt_ddls,
     ))
 }
 
@@ -206,7 +218,7 @@ mod tests {
         src_h.insert("sp_get_user".into(), "abc123".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("sp_get_user".into(), "abc123".into());
-        let diffs = compare_routine_names(&names, &names, &src_h, &tgt_h);
+        let diffs = compare_routine_names(&names, &names, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Equal);
     }
@@ -218,7 +230,11 @@ mod tests {
         src_h.insert("sp_get_user".into(), "aaa".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("sp_get_user".into(), "bbb".into());
-        let diffs = compare_routine_names(&names, &names, &src_h, &tgt_h);
+        let mut src_ddls = BTreeMap::new();
+        src_ddls.insert("sp_get_user".into(), "CREATE PROCEDURE sp_get_user() BEGIN SELECT 1; END".into());
+        let mut tgt_ddls = BTreeMap::new();
+        tgt_ddls.insert("sp_get_user".into(), "CREATE PROCEDURE sp_get_user() BEGIN SELECT 2; END".into());
+        let diffs = compare_routine_names(&names, &names, &src_h, &tgt_h, &src_ddls, &tgt_ddls);
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Modified);
         assert!(diffs[0].details.is_some());
@@ -230,7 +246,7 @@ mod tests {
         let tgt: Vec<String> = vec![];
         let src_h = BTreeMap::new();
         let tgt_h = BTreeMap::new();
-        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h);
+        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Missing);
     }
@@ -241,7 +257,7 @@ mod tests {
         let tgt = vec![proc("sp_new")];
         let src_h = BTreeMap::new();
         let tgt_h = BTreeMap::new();
-        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h);
+        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::New);
     }
@@ -254,7 +270,7 @@ mod tests {
         src_h.insert("sp_common".into(), "hash1".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("sp_common".into(), "hash1".into());
-        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h);
+        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(diffs.len(), 3);
         let by_name: BTreeMap<_, _> = diffs.iter().map(|d| (d.name.as_str(), &d.status)).collect();
         assert_eq!(by_name["sp_common"], &CompareStatus::Equal);
@@ -290,7 +306,7 @@ mod tests {
         src_h.insert("sp_get_user".into(), "hash1".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("sp_get_user".into(), "hash1".into());
-        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h);
+        let diffs = compare_routine_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Equal);
     }

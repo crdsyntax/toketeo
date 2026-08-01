@@ -26,6 +26,8 @@ pub struct DbConnectionConfig {
     )]
     pub password: Option<SecretString>,
     pub database: Option<String>,
+    #[serde(rename = "defaultDatabase")]
+    pub default_database: Option<String>,
     #[serde(rename = "authEnabled")]
     pub auth_enabled: Option<bool>,
     #[serde(rename = "authSource")]
@@ -332,6 +334,7 @@ mod tests {
             user: "admin".into(),
             password: Some(SecretString::new("super-secret".into())),
             database: Some("main".into()),
+            default_database: None,
             auth_enabled: None,
             auth_source: None,
             replica_set: None,

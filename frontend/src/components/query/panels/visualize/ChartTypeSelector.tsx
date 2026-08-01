@@ -12,6 +12,15 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   AreaChart: <Waves className="w-4 h-4" />,
 }
 
+const DESC: Record<string, string> = {
+  bar: 'Compare values across categories',
+  line: 'Trend over time or sequential data',
+  area: 'Emphasize magnitude of change over time',
+  pie: 'Show proportions of a whole',
+  scatter: 'Correlation between two variables',
+  doughnut: 'Show proportions with a hollow center',
+}
+
 interface ChartTypeSelectorProps {
   types: ChartTypeMeta[]
   active: ChartType
@@ -27,17 +36,20 @@ export function ChartTypeSelector({ types, active, suggested, onChange }: ChartT
           key={t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            'relative flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-md transition-colors border',
+            'relative flex items-center gap-1.5 px-2.5 py-1.5 text-[var(--ch-text-10)] font-medium rounded-md transition-colors border',
             active === t.id
-              ? 'bg-primary/10 text-primary border-primary/30'
+              ? 'bg-primary/10 text-primary border-primary/30 shadow-sm'
               : 'text-muted-foreground border-transparent hover:bg-muted hover:text-foreground',
           )}
-          title={t.label}
+          title={DESC[t.id] ?? t.label}
         >
           {ICON_MAP[t.icon] ?? <BarChart3 className="w-4 h-4" />}
           <span className="hidden sm:inline">{t.label}</span>
           {suggested === t.id && (
-            <span className="absolute -top-1.5 -right-1.5 w-2 h-2 rounded-full bg-green-500 ring-1 ring-background" />
+            <span
+              className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-background"
+              title="Recommended"
+            />
           )}
         </button>
       ))}

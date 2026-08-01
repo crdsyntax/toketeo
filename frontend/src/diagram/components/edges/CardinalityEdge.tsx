@@ -53,7 +53,7 @@ export const CardinalityEdge = memo(
         <EdgeLabelRenderer>
           <div
             className={cn(
-              'absolute px-1.5 py-0.5 rounded text-[9px] font-bold border pointer-events-none',
+              'absolute px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-bold border pointer-events-none',
               'bg-card text-foreground border-border shadow-sm',
               selected && 'border-primary text-primary',
             )}

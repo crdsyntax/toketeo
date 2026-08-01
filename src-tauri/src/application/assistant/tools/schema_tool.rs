@@ -36,6 +36,10 @@ impl AssistantTool for SchemaTool {
                     "type": "string",
                     "enum": ["table", "view", "procedure", "function", "trigger"],
                     "description": "Type of the object"
+                },
+                "connection_id": {
+                    "type": "string",
+                    "description": "Connection ID to inspect (defaults to the chat's active connection)"
                 }
             },
             "required": ["action"]

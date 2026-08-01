@@ -153,26 +153,26 @@ export function DataDefenderGame({ onClose }: { onClose: () => void }) {
                         <MapIcon className="w-3.5 h-3.5 text-primary" />
                         {m.name}
                       </span>
-                      <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border', DIFF_STYLE[m.difficulty])}>
+                      <span className={cn('text-[var(--ch-text-9)] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border', DIFF_STYLE[m.difficulty])}>
                         {m.difficulty}
                       </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground line-clamp-2">{m.subtitle}</p>
-                    <p className="text-[9px] text-muted-foreground/60 mt-1 font-mono">
+                    <p className="text-[var(--ch-text-10)] text-muted-foreground line-clamp-2">{m.subtitle}</p>
+                    <p className="text-[var(--ch-text-9)] text-muted-foreground/60 mt-1 font-mono">
                       {m.enemies.length} foes · {m.lives}♥ · +{m.clearBonus} clear
                     </p>
                   </button>
                 ))}
               </div>
 
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground/70 font-mono mt-1">
+              <div className="flex items-center gap-3 text-[var(--ch-text-10)] text-muted-foreground/70 font-mono mt-1">
                 <span>A/D move</span>
                 <span>Space jump</span>
                 <span>J strike</span>
                 <span>Q weapon</span>
               </div>
 
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-[var(--ch-text-11)] text-muted-foreground">
                 {weaponLabel === 'sword' ? (
                   <><Sword className="w-3.5 h-3.5" /> Blade — close slash</>
                 ) : (

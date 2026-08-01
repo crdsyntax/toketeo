@@ -181,10 +181,10 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           <p className="text-xs font-bold uppercase tracking-wider">
             {isRunning ? 'Sincronizando...' : isCompleted && progress.errors === 0 ? 'Completado' : 'Completado con errores'}
           </p>
-          <p className="text-[10px] text-muted-foreground font-mono">{fmt(progress.elapsedMs)}</p>
+          <p className="text-[var(--ch-text-10)] text-muted-foreground font-mono">{fmt(progress.elapsedMs)}</p>
         </div>
         {progress.currentTable && isRunning && (
-          <div className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground">
+          <div className="ml-auto flex items-center gap-2 text-[var(--ch-text-10)] text-muted-foreground">
             <Database className="w-3 h-3 animate-pulse" />
             {progress.totalTables > 0 && (
               <span className="font-bold">{progress.tableIndex}/{progress.totalTables}</span>
@@ -200,7 +200,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           <p className="text-4xl font-bold font-mono tabular-nums">
             {progress.processedRows.toLocaleString()}
           </p>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+          <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground mt-1">
             de {progress.totalRows.toLocaleString()} filas
           </p>
         </div>
@@ -209,7 +209,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           <p className={cn("text-4xl font-bold font-mono tabular-nums", progress.errors > 0 && 'text-destructive')}>
             {progress.errors}
           </p>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+          <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground mt-1">
             errores
           </p>
         </div>
@@ -218,7 +218,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
             <p className="text-4xl font-bold font-mono tabular-nums text-amber-600">
               {progress.skipped}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+            <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground mt-1">
               omitidas
             </p>
           </div>
@@ -244,7 +244,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
             </div>
           )}
         </div>
-        <div className="flex justify-between mt-1 text-[9px] text-muted-foreground font-mono">
+        <div className="flex justify-between mt-1 text-[var(--ch-text-9)] text-muted-foreground font-mono">
           <span>{pct}%</span>
           {isRunning && progress.estimatedMs > 0 && (
             <span>~{fmt(progress.estimatedMs)} restantes</span>
@@ -254,13 +254,13 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
 
       {/* Mini logs */}
       <div className="p-4">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Últimas operaciones</p>
+        <p className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground mb-2">Últimas operaciones</p>
         <div className="space-y-1 max-h-[120px] overflow-y-auto">
           {logs.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground italic">Esperando eventos...</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground italic">Esperando eventos...</p>
           ) : (
             logs.map((log, i) => (
-              <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
+              <div key={i} className="flex items-center gap-2 text-[var(--ch-text-10)] font-mono">
                 <span className={cn(
                   'w-1.5 h-1.5 rounded-full shrink-0',
                   log.type === 'batch' && 'bg-primary',

@@ -143,6 +143,15 @@ pub struct ModelInfo {
     pub name: String,
     pub provider: String,
     pub supports_tools: bool,
+    /// True when the model is served by a free/no-cost tier (e.g. Zen free
+    /// endpoint). Used by the UI to surface a "FREE" badge.
+    #[serde(default)]
+    pub is_free: bool,
+    /// Category used by the UI to group models, e.g. "go" (Zen Go plan),
+    /// "zen" (general Zen catalog) or "free". Empty for providers without
+    /// tiers.
+    #[serde(default)]
+    pub tier: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

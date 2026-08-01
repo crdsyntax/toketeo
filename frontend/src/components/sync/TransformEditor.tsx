@@ -26,7 +26,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
     return (
       <button
         onClick={() => { setType('trim'); onChange({ type: 'trim' }) }}
-        className="text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+        className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
       >
         <Plus className="w-3 h-3 inline mr-1" />Add Transform
       </button>
@@ -40,7 +40,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
   return (
     <div className="border border-border bg-muted/20 p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transform</span>
+        <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Transform</span>
         <button
           onClick={() => { setType('none'); onChange(undefined) }}
           className="p-1 text-muted-foreground hover:text-destructive transition-colors"
@@ -62,7 +62,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
       {/* Param inputs per type */}
       {(type === 'default_value') && (
         <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Value</label>
+          <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Value</label>
           <input
             className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
             value={transform?.value ?? ''}
@@ -75,7 +75,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
       {(type === 'regex') && (
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Pattern</label>
+            <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Pattern</label>
             <input
               className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
               value={transform?.pattern ?? ''}
@@ -84,7 +84,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Replacement</label>
+            <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Replacement</label>
             <input
               className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
               value={transform?.replacement ?? ''}
@@ -101,7 +101,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
 
       {(type === 'cast') && (
         <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Target Type</label>
+          <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Target Type</label>
           <select
             className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none appearance-none cursor-pointer"
             value={transform?.target_type ?? 'string'}
@@ -116,7 +116,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
 
       {(type === 'date_format') && (
         <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Format</label>
+          <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Format</label>
           <input
             className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
             value={transform?.format ?? ''}
@@ -134,7 +134,7 @@ function ConcatPartsEditor({ parts, onChange }: { parts?: string[]; onChange: (p
 
   return (
     <div className="space-y-2">
-      <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Parts</label>
+      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Parts</label>
       {items.map((part, i) => (
         <div key={i} className="flex items-center gap-2">
           <input
@@ -156,7 +156,7 @@ function ConcatPartsEditor({ parts, onChange }: { parts?: string[]; onChange: (p
       ))}
       <button
         onClick={() => onChange([...items, ''])}
-        className="text-[10px] font-bold uppercase tracking-wider text-primary hover:text-primary/80 flex items-center gap-1"
+        className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-primary hover:text-primary/80 flex items-center gap-1"
       >
         <Plus className="w-3 h-3" /> Add Part
       </button>

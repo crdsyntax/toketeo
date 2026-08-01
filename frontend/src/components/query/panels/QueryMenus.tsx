@@ -23,7 +23,7 @@ export function QueryMenus({
     <>
       {showContextMenu && (
         <div 
-          className="fixed z-[200] bg-popover border border-border rounded-md shadow-lg py-1 min-w-[150px]" 
+          className="fixed z-[200] bg-background border border-border rounded-md shadow-lg py-1 min-w-[150px]" 
           style={{ top: showContextMenu.y, left: showContextMenu.x }}
         >
           <button 
@@ -36,8 +36,8 @@ export function QueryMenus({
       )}
 
       {showLayoutMenu && (
-        <div className="absolute top-12 right-0 z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[180px]">
-          <div className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border mb-1 text-left">
+        <div className="absolute top-12 right-0 z-50 bg-background border border-border rounded-md shadow-lg py-1 min-w-[180px]">
+          <div className="px-3 py-1.5 text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-widest border-b border-border mb-1 text-left">
             Toggle Panels
           </div>
           <button 
