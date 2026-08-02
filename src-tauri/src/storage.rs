@@ -2054,3 +2054,109 @@ fn row_to_sync_checkpoint(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncCheckpo
         batch_number: row.get::<i64, _>("batch_number") as u64,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Storage;
+    use crate::models::assistant::ProviderConfig;
+    use crate::models::sync::{PipelineStatus, SyncMode, SyncPipeline, SyncTableConfig};
+    use uuid::Uuid;
+
+    async fn test_storage() -> Storage {
+        let dir = std::env::temp_dir().join(format!("toketeo_storage_test_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        std::fs::File::create(&db_path).unwrap();
+        Storage::new(db_path).await.unwrap()
+    }
+
+    fn sample_pipeline() -> SyncPipeline {
+        SyncPipeline {
+            id: None,
+            name: "Test pipe".to_string(),
+            source_connection_id: "src-1".to_string(),
+            target_connection_id: "tgt-1".to_string(),
+            source_schema: None,
+            target_schema: None,
+            mode: SyncMode::Full,
+            status: PipelineStatus::Ready,
+            tables: vec![SyncTableConfig {
+                source_table: "users".to_string(),
+                target_table: "users".to_string(),
+                column_mappings: vec![],
+                filters: None,
+                primary_key: None,
+            }],
+            batch_size: 500,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn sync_pipeline_crud() {
+        let storage = test_storage().await;
+        let saved = storage.save_sync_pipeline(&sample_pipeline()).await.unwrap();
+        let id = saved.id.clone().unwrap();
+
+        let fetched = storage.get_sync_pipeline(&id).await.unwrap();
+        assert_eq!(fetched.name, "Test pipe");
+        assert_eq!(fetched.tables.len(), 1);
+        assert_eq!(fetched.mode, SyncMode::Full);
+
+        storage.update_sync_pipeline_status(&id, PipelineStatus::Completed).await.unwrap();
+        let updated = storage.get_sync_pipeline(&id).await.unwrap();
+        assert_eq!(updated.status, PipelineStatus::Completed);
+
+        let list = storage.list_sync_pipelines().await.unwrap();
+        assert_eq!(list.len(), 1);
+
+        storage.delete_sync_pipeline(&id).await.unwrap();
+        assert!(storage.get_sync_pipeline(&id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn provider_config_roundtrip() {
+        let storage = test_storage().await;
+        let cfg = ProviderConfig {
+            id: None,
+            provider_id: "opencode".to_string(),
+            model: Some("opencode/gpt-5.5".to_string()),
+            api_key: None,
+            base_url: Some("https://opencode.ai/zen/v1".to_string()),
+        };
+        let id = storage.save_provider_config(&cfg).await.unwrap();
+        let loaded = storage.get_provider_config_by_id(&id).await.unwrap().unwrap();
+        assert_eq!(loaded.provider_id, "opencode");
+        assert_eq!(loaded.model, Some("opencode/gpt-5.5".to_string()));
+
+        let all = storage.load_provider_configs().await.unwrap();
+        assert_eq!(all.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn assistant_messages_roundtrip_per_connection() {
+        let storage = test_storage().await;
+        let msg = crate::models::AssistantMessage {
+            id: Uuid::new_v4().to_string(),
+            role: "user".to_string(),
+            content: "hello".to_string(),
+            sql: None,
+            is_safe_delete: None,
+            feedback: None,
+            accepted_sql: None,
+            rejection_reason: None,
+            tool_used: None,
+            timestamp: 1234567890,
+            connection_id: Some("conn-a".to_string()),
+        };
+        storage.save_assistant_messages(&[msg]).await.unwrap();
+
+        let from_a = storage.load_assistant_messages("conn-a").await.unwrap();
+        assert_eq!(from_a.len(), 1);
+        assert_eq!(from_a[0].content, "hello");
+
+        let from_b = storage.load_assistant_messages("conn-b").await.unwrap();
+        assert!(from_b.is_empty());
+    }
+}

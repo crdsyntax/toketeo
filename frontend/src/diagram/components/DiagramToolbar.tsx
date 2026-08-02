@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { ArrowLeft, Save, Download, Upload, Plus, Table2, Eye, Columns, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { ArrowLeft, Save, Download, Upload, Plus, Table2, Eye, PanelLeftClose, PanelLeft, Braces, Copy, FileDown } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 interface DiagramToolbarProps {
   diagramName: string
+  mermaidCode: string
   onRename: (name: string) => void
   onAddTable: () => void
   onAddView: () => void
@@ -18,6 +20,7 @@ interface DiagramToolbarProps {
 
 export function DiagramToolbar({
   diagramName,
+  mermaidCode,
   onRename,
   onAddTable,
   onAddView,
@@ -32,7 +35,9 @@ export function DiagramToolbar({
 }: DiagramToolbarProps) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(diagramName)
+  const [mermaidOpen, setMermaidOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const mermaidRef = useRef<HTMLDivElement>(null)
 
   const startEditing = () => {
     setName(diagramName)
@@ -45,6 +50,47 @@ export function DiagramToolbar({
       inputRef.current.select()
     }
   }, [editing])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (mermaidRef.current && !mermaidRef.current.contains(e.target as Node)) {
+        setMermaidOpen(false)
+      }
+    }
+    if (mermaidOpen) {
+      setTimeout(() => document.addEventListener('mousedown', handler), 0)
+    }
+    return () => document.removeEventListener('mousedown', handler)
+  }, [mermaidOpen])
+
+  const handleCopyMermaid = async () => {
+    try {
+      await navigator.clipboard.writeText(mermaidCode)
+      toast.success('Mermaid code copied to clipboard')
+    } catch {
+      // Fallback for restricted webviews
+      const ta = document.createElement('textarea')
+      ta.value = mermaidCode
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      toast.success('Mermaid code copied to clipboard')
+    }
+    setMermaidOpen(false)
+  }
+
+  const handleDownloadMermaid = () => {
+    const blob = new Blob([mermaidCode], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${diagramName.replace(/[^\w]+/g, '_') || 'diagram'}.mmd`
+    a.click()
+    URL.revokeObjectURL(url)
+    setMermaidOpen(false)
+    toast.success('Mermaid file downloaded')
+  }
 
   const handleSubmit = () => {
     const trimmed = name.trim()
@@ -126,6 +172,34 @@ export function DiagramToolbar({
       <div className="h-4 w-px bg-border mx-1" />
 
       <div className="flex items-center gap-1">
+        <div className="relative" ref={mermaidRef}>
+          <button
+            onClick={() => setMermaidOpen((v) => !v)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-violet-500/10 text-violet-500 hover:bg-violet-500/20 rounded-md transition-colors"
+            title="Export to Mermaid (erDiagram)"
+          >
+            <Braces className="w-3.5 h-3.5" />
+            Mermaid
+          </button>
+          {mermaidOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl py-1 min-w-[180px]">
+              <button
+                onClick={handleCopyMermaid}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors text-left"
+              >
+                <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                Copy code
+              </button>
+              <button
+                onClick={handleDownloadMermaid}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors text-left"
+              >
+                <FileDown className="w-3.5 h-3.5 text-muted-foreground" />
+                Download .mmd
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={onSave}
           disabled={isSaving}

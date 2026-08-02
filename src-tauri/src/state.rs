@@ -82,6 +82,20 @@ impl AppState {
         use crate::application::assistant::tools::export_tool::ExportTool;
         use crate::application::assistant::tools::auto_schema_tool::AutoSchemaTool;
         use crate::application::assistant::tools::sync_tool::SyncTool;
+        use crate::application::assistant::tools::connections_tool::ConnectionsTool;
+        use crate::application::assistant::tools::connection_manage_tool::ConnectionManageTool;
+        use crate::application::assistant::tools::explorer_tool::ExplorerTool;
+        use crate::application::assistant::tools::history_tool::HistoryTool;
+        use crate::application::assistant::tools::knowledge_tool::KnowledgeTool;
+        use crate::application::assistant::tools::assistant_config_tool::AssistantConfigTool;
+        use crate::application::assistant::tools::query_tool::QueryTool;
+        use crate::application::assistant::tools::query_edit_tool::QueryEditTool;
+        use crate::application::assistant::tools::transaction_tool::TransactionTool;
+        use crate::application::assistant::tools::ddl_tool::DdlTool;
+        use crate::application::assistant::tools::compare_sessions_tool::CompareSessionsTool;
+        use crate::application::assistant::tools::jobs_tool::JobsTool;
+        use crate::application::assistant::tools::diagrams_tool::DiagramsTool;
+        use crate::application::assistant::tools::app_settings_tool::AppSettingsTool;
 
         let mut engine = ToolEngine::new();
         engine.register(Box::new(SchemaTool));
@@ -94,6 +108,20 @@ impl AppState {
         engine.register(Box::new(ExportTool));
         engine.register(Box::new(AutoSchemaTool));
         engine.register(Box::new(SyncTool));
+        engine.register(Box::new(ConnectionsTool));
+        engine.register(Box::new(ExplorerTool));
+        engine.register(Box::new(HistoryTool));
+        engine.register(Box::new(KnowledgeTool));
+        engine.register(Box::new(AssistantConfigTool));
+        engine.register(Box::new(QueryTool));
+        engine.register(Box::new(QueryEditTool));
+        engine.register(Box::new(TransactionTool));
+        engine.register(Box::new(DdlTool));
+        engine.register(Box::new(ConnectionManageTool));
+        engine.register(Box::new(CompareSessionsTool));
+        engine.register(Box::new(JobsTool));
+        engine.register(Box::new(DiagramsTool));
+        engine.register(Box::new(AppSettingsTool));
         engine
     }
 

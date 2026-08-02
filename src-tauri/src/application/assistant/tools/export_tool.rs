@@ -107,36 +107,11 @@ impl AssistantTool for ExportTool {
                 "rows": result.rows,
             }),
             _ => {
-                let inserts: Vec<String> = result
-                    .rows
-                    .iter()
-                    .map(|row| {
-                        let vals: Vec<String> = col_names
-                            .iter()
-                            .map(|c| {
-                                row.get(c)
-                                    .map(|v| match v {
-                                        serde_json::Value::String(s) => {
-                                            format!("'{}'", s.replace('\'', "''"))
-                                        }
-                                        serde_json::Value::Null => "NULL".to_string(),
-                                        other => other.to_string(),
-                                    })
-                                    .unwrap_or_else(|| "NULL".to_string())
-                            })
-                            .collect();
-                        format!(
-                            "INSERT INTO {table} ({cols}) VALUES ({vals});",
-                            cols = col_names.join(", "),
-                            vals = vals.join(", ")
-                        )
-                    })
-                    .collect();
-
+                let sql = format_insert(&table, &col_names, &result.rows);
                 serde_json::json!({
                     "table": table,
                     "rowCount": result.rows.len(),
-                    "sql": inserts.join("\n"),
+                    "sql": sql,
                 })
             }
         };
@@ -147,5 +122,71 @@ impl AssistantTool for ExportTool {
             requires_confirmation: false,
             message: None,
         })
+    }
+}
+
+/// Build `INSERT INTO ... VALUES ...;` statements from rows. Strings are
+/// escaped by doubling single quotes; nulls become NULL.
+fn format_insert(table: &str, columns: &[String], rows: &[serde_json::Value]) -> String {
+    rows.iter()
+        .map(|row| {
+            let vals: Vec<String> = columns
+                .iter()
+                .map(|c| {
+                    row.get(c)
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => {
+                                format!("'{}'", s.replace('\'', "''"))
+                            }
+                            serde_json::Value::Null => "NULL".to_string(),
+                            other => other.to_string(),
+                        })
+                        .unwrap_or_else(|| "NULL".to_string())
+                })
+                .collect();
+            format!(
+                "INSERT INTO {table} ({cols}) VALUES ({vals});",
+                cols = columns.join(", "),
+                vals = vals.join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_insert;
+
+    #[test]
+    fn escapes_single_quotes_in_strings() {
+        let rows = vec![serde_json::json!({ "name": "O'Brien" })];
+        let sql = format_insert("users", &["name".to_string()], &rows);
+        assert!(sql.contains("'O''Brien'"), "got: {sql}");
+        assert!(sql.starts_with("INSERT INTO users (name) VALUES"));
+    }
+
+    #[test]
+    fn nulls_become_null_literal() {
+        let rows = vec![serde_json::json!({ "a": null })];
+        let sql = format_insert("t", &["a".to_string()], &rows);
+        assert!(sql.contains("VALUES (NULL)"));
+    }
+
+    #[test]
+    fn numbers_are_serialized_plain() {
+        let rows = vec![serde_json::json!({ "n": 42.5 })];
+        let sql = format_insert("t", &["n".to_string()], &rows);
+        assert!(sql.contains("VALUES (42.5)"));
+    }
+
+    #[test]
+    fn one_statement_per_row() {
+        let rows = vec![
+            serde_json::json!({ "id": 1 }),
+            serde_json::json!({ "id": 2 }),
+        ];
+        let sql = format_insert("t", &["id".to_string()], &rows);
+        assert_eq!(sql.matches("INSERT INTO t").count(), 2);
     }
 }

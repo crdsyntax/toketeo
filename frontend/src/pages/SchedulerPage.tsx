@@ -106,6 +106,15 @@ export function SchedulerPage() {
     }
   }, [stopJobNow])
 
+  const handleToggleEnabled = useCallback(async (job: ScheduledJob) => {
+    try {
+      await updateJob(job.id, { enabled: !job.enabled })
+      toast.success(job.enabled ? `Schedule de "${job.name}" desactivado` : `Schedule de "${job.name}" activado`)
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }, [updateJob])
+
   return (
     <div className="h-full overflow-auto p-6">
       <div className="max-w-3xl mx-auto space-y-6">
@@ -165,6 +174,7 @@ export function SchedulerPage() {
                   onDelete={handleDelete}
                   onRunNow={handleRunNow}
                   onStopNow={handleStopNow}
+                  onToggleEnabled={handleToggleEnabled}
                 />
               ))}
             </div>

@@ -250,7 +250,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                     )}
                   >
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,_rgba(255,193,7,0.18),_transparent_40%)]" />
-                    <div className="absolute inset-[1px] rounded-[10px] border border-amber-500/10" />
+                    <div className="absolute inset-[1px] rounded-lg border border-amber-500/10" />
                     <div className="relative flex h-full flex-col items-center justify-center gap-2 text-center">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/30 bg-[linear-gradient(135deg,_rgba(255,193,7,0.22),_rgba(0,0,0,0.75))] shadow-[0_0_16px_rgba(255,193,7,0.18)]">
                         <div className="flex flex-col items-center justify-center">

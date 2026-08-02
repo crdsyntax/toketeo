@@ -162,7 +162,7 @@ export function ResultsPanelTable({
                         />
                       ) : (
                         isNull ? (
-                          <span className="inline-block bg-muted/60 border border-border/80 rounded-[4px] px-1.5 py-0.5 text-[var(--ch-text-10)] text-muted-foreground/70 italic select-none">
+                          <span className="inline-block bg-muted/60 border border-border/80 rounded-sm px-1.5 py-0.5 text-[var(--ch-text-10)] text-muted-foreground/70 italic select-none">
                             NULL
                           </span>
                         ) : (formatCellValue(row[col]))

@@ -164,6 +164,21 @@ pub mod redis;
 pub mod sqlite;
 pub mod sqlserver;
 
+#[cfg(test)]
+pub mod mock;
+
+/// Quote an identifier (table/column/index/constraint) according to the engine
+/// dialect. Shared by Tauri commands and assistant tools.
+pub(crate) fn quote_identifier(db_type: &DbType, name: &str) -> String {
+    match db_type {
+        DbType::Postgres => postgres::quote_pg(name),
+        DbType::Mysql | DbType::Mariadb => mysql::quote_mysql(name),
+        DbType::Sqlserver => sqlserver::quote_ss(name),
+        DbType::Sqlite => sqlite::quote_sqlite(name),
+        _ => name.to_string(),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
     pub max_connections: u32,

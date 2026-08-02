@@ -11,6 +11,7 @@ import { ResultsPanelTable } from './results/ResultsPanelTable';
 import { ResultsPanelSkeleton } from './results/ResultsPanelSkeleton';
 import { ResultsPanelJsonView } from './results/ResultsPanelJsonView';
 import { VisualizePanel } from './VisualizePanel';
+import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 
 const LIMIT_OPTIONS = [
   { label: '100 rows', value: 100 },
@@ -27,6 +28,9 @@ interface ResultsPanelProps {
   editingCell: { rowIndex: number; column: string; value: DbValue } | null;
   setEditingCell: (cell: { rowIndex: number; column: string; value: DbValue } | null) => void;
   handleSave: () => void;
+  pendingEdit: { rowIndex: number; column: string; prevValue: DbValue; nextValue: DbValue } | null;
+  confirmPendingEdit: () => void;
+  discardPendingEdit: () => void;
   setShowResultModal: (show: boolean) => void;
   requestSort: (key: string) => void;
   sortConfig: { key: string; direction: 'asc' | 'desc' } | null;
@@ -47,6 +51,9 @@ export function ResultsPanel({
   editingCell,
   setEditingCell,
   handleSave,
+  pendingEdit,
+  confirmPendingEdit,
+  discardPendingEdit,
   setShowResultModal,
   requestSort,
   sortConfig,
@@ -136,6 +143,17 @@ export function ResultsPanel({
               <Table2 className="w-8 h-8 opacity-20" />
               <span className="text-xs italic">No data rows returned or empty dataset</span>
             </div>
+          )}
+
+          {/* Review Change panel for inline cell edits (centered fallback) */}
+          {pendingEdit && (
+            <ReviewChangePanel
+              column={pendingEdit.column}
+              prevValue={pendingEdit.prevValue}
+              nextValue={pendingEdit.nextValue}
+              onConfirm={confirmPendingEdit}
+              onDiscard={discardPendingEdit}
+            />
           )}
         </div>
       )}

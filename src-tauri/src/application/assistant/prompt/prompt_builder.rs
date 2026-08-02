@@ -113,6 +113,9 @@ impl PromptBuilder {
         parts.push("9. Write only valid SQL for the specified engine.".to_string());
         parts.push("10. Use appropriate data types and functions.".to_string());
         parts.push("11. Consider performance: prefer JOINs over subqueries when possible.".to_string());
+        parts.push("12. If the user refers to the connection that is currently active in the app, call tools WITHOUT a connection_id — the active connection is used automatically. Only pass connection_id when the user asks for a DIFFERENT connection.".to_string());
+        parts.push("13. When a tool reports that a connection is not active or that an operation needs approval, reply to the user with a single natural-language question (e.g. \"¿Conecto la conexión X?\" or \"¿Procedo con Y?\") and STOP calling tools until the user confirms. NEVER mention confirm_destructive, requires_confirmation, tool names, JSON payloads, or any internal mechanism.".to_string());
+        parts.push("14. After a tool succeeds, reply ONLY with the requested data (e.g. the rows, counts or files) formatted readably — never raw JSON, never the tool output itself. If the operation failed, say briefly why it failed and suggest what the user could try next.".to_string());
 
         if !prefs.is_empty() {
             parts.push(String::new());

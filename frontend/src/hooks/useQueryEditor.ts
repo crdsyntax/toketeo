@@ -171,6 +171,7 @@ export function useQueryEditor() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevRect, setPrevRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
+  const [pendingEdit, setPendingEdit] = useState<{ rowIndex: number; column: string; prevValue: DbValue; nextValue: DbValue } | null>(null)
   const [isInteracting, setIsInteracting] = useState(false)
   const lastExecutedSqlRef = useRef('')
   const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
@@ -714,8 +715,33 @@ export function useQueryEditor() {
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
-    await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
-  }, [editingCell, updateCell])
+    // When the Review Change panel is disabled (Settings → Query Editor →
+    // Inline edition), apply the edit immediately.
+    if (!useAppStore.getState().inlineEditReview) {
+      await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
+      return
+    }
+    // Stage the edit so the user can review the diff before committing.
+    const row = activeTab?.results?.rows[editingCell.rowIndex]
+    const prevValue = row ? row[editingCell.column] : null
+    setPendingEdit({
+      rowIndex: editingCell.rowIndex,
+      column: editingCell.column,
+      prevValue,
+      nextValue: editingCell.value,
+    })
+    setEditingCell(null)
+  }, [editingCell, updateCell, activeTab])
+
+  const confirmPendingEdit = useCallback(async () => {
+    if (!pendingEdit) return
+    await updateCell(pendingEdit.rowIndex, pendingEdit.column, pendingEdit.nextValue)
+    setPendingEdit(null)
+  }, [pendingEdit, updateCell])
+
+  const discardPendingEdit = useCallback(() => {
+    setPendingEdit(null)
+  }, [])
 
   const undo = useCallback(() => {
     if (!activeTabId) return;
@@ -1137,6 +1163,9 @@ export function useQueryEditor() {
     toggleMaximize,
     editingCell,
     setEditingCell,
+    pendingEdit,
+    confirmPendingEdit,
+    discardPendingEdit,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,

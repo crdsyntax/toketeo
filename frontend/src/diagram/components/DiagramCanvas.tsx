@@ -11,6 +11,7 @@ import {
   type Connection,
   type OnNodesChange,
   type OnEdgesChange,
+  ConnectionMode,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { TableNode } from './nodes/TableNode'
@@ -26,6 +27,7 @@ interface DiagramCanvasProps {
   onEdgeCreate: (edge: Edge) => void
   onEdgeDataChange: (edgeId: string, data: Record<string, unknown>) => void
   onEdgeDelete: (edgeId: string) => void
+  onNodeEdit?: (node: Node) => void
   emptyMessage?: string
 }
 
@@ -48,6 +50,7 @@ export function DiagramCanvas({
   onEdgeCreate,
   onEdgeDataChange,
   onEdgeDelete,
+  onNodeEdit,
   emptyMessage = 'No objects in this diagram.',
 }: DiagramCanvasProps) {
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null)
@@ -193,6 +196,7 @@ export function DiagramCanvas({
             onConnect={onConnect}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
+            onNodeDoubleClick={(_: React.MouseEvent, node: Node) => onNodeEdit?.(node)}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
@@ -201,6 +205,8 @@ export function DiagramCanvas({
             attributionPosition="bottom-left"
             deleteKeyCode={['Backspace', 'Delete']}
             onEdgesDelete={onEdgesDelete}
+            connectionMode={ConnectionMode.Loose}
+            nodesConnectable
             connectionLineStyle={{
               stroke: 'hsl(var(--muted-foreground))',
               strokeWidth: 2,

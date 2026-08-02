@@ -78,7 +78,7 @@ export const useGamificationStore = create<GamificationState>()(
             toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
               duration: 6000,
               position: 'bottom-right',
-              style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+              style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: 'var(--radius-xl)' },
               icon: '✨'
             });
           }
@@ -133,7 +133,7 @@ export const useGamificationStore = create<GamificationState>()(
               toast.success(`🔓 Feature Unlocked: ${perk.title}\n${perk.description}`, {
                 duration: 6000,
                 position: 'bottom-right',
-                style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+                style: { background: '#8b5cf6', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: 'var(--radius-xl)' },
                 icon: '✨'
               });
             }
@@ -171,7 +171,7 @@ export const useGamificationStore = create<GamificationState>()(
           toast.success(`Streak: ${newStreak} days!\n+${streakXp} XP`, {
             duration: 5000,
             position: 'bottom-right',
-            style: { background: '#f97316', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: '12px' },
+            style: { background: '#f97316', color: '#fff', fontWeight: 'bold', padding: '16px', borderRadius: 'var(--radius-xl)' },
             icon: '🔥'
           });
         } else if (diffDays > 1) {

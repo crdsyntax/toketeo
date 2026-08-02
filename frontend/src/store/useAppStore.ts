@@ -70,6 +70,8 @@ interface AppState {
   setDarkColors: (colors: Partial<CustomColors> | null) => void
   editorFontFamily: string
   setEditorFontFamily: (font: string) => void
+  inlineEditReview: boolean
+  setInlineEditReview: (enabled: boolean) => void
   resultsFontSize: number
   setResultsFontSize: (size: number) => void
   uiFontSize: number
@@ -152,6 +154,8 @@ export const useAppStore = create<AppState>()(
       })),
       editorFontFamily: DEFAULT_EDITOR_FONT,
       setEditorFontFamily: (editorFontFamily) => set({ editorFontFamily }),
+      inlineEditReview: true,
+      setInlineEditReview: (inlineEditReview) => set({ inlineEditReview }),
       resultsFontSize: 13,
       setResultsFontSize: (resultsFontSize) => set({ resultsFontSize }),
       editorLineHeight: 1.6,

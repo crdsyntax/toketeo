@@ -1,5 +1,4 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useState } from 'react'
 import {
   LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen,
   CheckCircle, Loader2, RotateCcw, AlertTriangle, GitBranch, Palette,
@@ -10,6 +9,7 @@ import { Environment } from '@/types/database'
 import { useAppStore } from '@/store/useAppStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
+import { NotificationBell } from './NotificationBell'
 
 interface NavItem {
   name: string
@@ -168,6 +168,8 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
             </button>
           </div>
         )}
+
+        <NotificationBell />
 
         <div
           className="flex items-center gap-1.5 cursor-pointer hover:text-accent transition-colors select-none px-2 py-1 rounded-md hover:bg-accent-muted"

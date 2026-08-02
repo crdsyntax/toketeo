@@ -111,9 +111,11 @@ pub fn parse_response(data: &serde_json::Value, default_model: &str) -> AppResul
                     Some(ToolCall {
                         id: tc["id"].as_str()?.to_string(),
                         name: tc["function"]["name"].as_str()?.to_string(),
-                        // OpenAI returns arguments as a string-encoded JSON;
-                        // store as-is so the tool executor can .parse() it.
-                        arguments: tc["function"]["arguments"].clone(),
+                        // OpenAI-compatible providers return `arguments` as a
+                        // string-encoded JSON object. Normalise it to a real
+                        // object here so tool executors can `args.get(...)`;
+                        // fall back to the raw value if it cannot be parsed.
+                        arguments: normalize_arguments(&tc["function"]["arguments"]),
                     })
                 })
                 .collect()
@@ -138,4 +140,91 @@ pub fn parse_response(data: &serde_json::Value, default_model: &str) -> AppResul
         }),
         model,
     })
+}
+
+/// Normalise a provider tool-call `arguments` payload into a JSON object.
+/// OpenAI-compatible providers send it as a string-encoded JSON object; if the
+/// payload is already an object (or cannot be parsed) it is kept as-is.
+fn normalize_arguments(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) => {
+            serde_json::from_str(s).unwrap_or_else(|_| serde_json::Value::String(s.clone()))
+        }
+        other => other.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_messages, normalize_arguments, parse_response};
+    use crate::models::assistant::ToolCall;
+
+    #[test]
+    fn normalizes_string_encoded_arguments() {
+        let args = normalize_arguments(&serde_json::json!(
+            "{\"connection_id\": \"abc\", \"sql\": \"SELECT 1\"}"
+        ));
+        assert_eq!(args["connection_id"], "abc");
+        assert_eq!(args["sql"], "SELECT 1");
+    }
+
+    #[test]
+    fn keeps_object_arguments_as_is() {
+        let args = normalize_arguments(&serde_json::json!({
+            "connection_id": "abc",
+        }));
+        assert_eq!(args["connection_id"], "abc");
+    }
+
+    #[test]
+    fn keeps_unparseable_string() {
+        let args = normalize_arguments(&serde_json::json!("not-json"));
+        assert_eq!(args, serde_json::json!("not-json"));
+    }
+
+    #[test]
+    fn parse_response_parses_tool_call_arguments() {
+        let data = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "query",
+                            "arguments": "{\"connection_id\":\"c1\",\"sql\":\"SELECT 1\"}",
+                        },
+                    }],
+                }
+            }],
+            "usage": { "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 },
+            "model": "test-model",
+        });
+        let resp = parse_response(&data, "fallback").unwrap();
+        assert_eq!(resp.tool_calls.len(), 1);
+        let tc = &resp.tool_calls[0];
+        assert_eq!(tc.name, "query");
+        assert_eq!(tc.arguments["connection_id"], "c1");
+        assert_eq!(tc.arguments["sql"], "SELECT 1");
+    }
+
+    #[test]
+    fn build_messages_serializes_arguments_back_to_string() {
+        let tc = ToolCall {
+            id: "call_1".to_string(),
+            name: "query".to_string(),
+            arguments: serde_json::json!({ "connection_id": "c1" }),
+        };
+        let msg = crate::models::assistant::ChatMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            tool_calls: vec![tc],
+            ..Default::default()
+        };
+        let messages = build_messages("", &[msg]);
+        assert!(messages[0]["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .is_some(), "arguments must be re-serialized as a string for the provider");
+    }
 }

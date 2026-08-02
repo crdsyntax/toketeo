@@ -14,9 +14,12 @@ type TableNodeType = Node<TableNodeData, 'table'>
 
 export const TableNode = memo(({ data }: NodeProps<TableNodeType>) => {
   return (
-    <div className="bg-card border border-border rounded-lg shadow-md min-w-[220px] overflow-hidden">
-      <Handle type="target" position={Position.Top} className="!bg-primary !w-2 !h-2" />
-      <div className="bg-primary/10 px-3 py-2 border-b border-border font-semibold text-sm text-primary flex items-center gap-2">
+    <div className="bg-card border border-border rounded-lg shadow-md min-w-[220px] overflow-hidden group">
+      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-3 !border-2 !border-background hover:!scale-125 !transition-transform" title="Arrastra para conectar" />
+      <div
+        className="bg-primary/10 px-3 py-2 border-b border-border font-semibold text-sm text-primary flex items-center gap-2 cursor-grab"
+        title="Doble clic para editar"
+      >
         <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
         <span className="truncate">{data.label}</span>
       </div>
@@ -39,7 +42,7 @@ export const TableNode = memo(({ data }: NodeProps<TableNodeType>) => {
           </div>
         ))}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-2 !h-2" />
+      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-3 !border-2 !border-background hover:!scale-125 !transition-transform" title="Arrastra para conectar" />
     </div>
   )
 })

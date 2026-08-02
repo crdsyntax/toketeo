@@ -1,8 +1,15 @@
 import { useEffect } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { useAppStore } from '@/store/useAppStore'
 import { themePalettes, type AccentPalette } from '@/lib/themes'
 
 const THEME_VARS = ['--ch-primary', '--ch-secondary', '--ch-accent', '--ch-background'] as const
+
+interface SettingsChangePayload {
+  kind: 'theme' | 'accent' | 'colors'
+  mode?: 'light' | 'dark'
+  value: string | { primary?: string | null; secondary?: string | null; accent?: string | null; background?: string | null }
+}
 
 function getAccentColors(palette: AccentPalette, isDark: boolean) {
   const p = themePalettes[palette]
@@ -17,6 +24,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const uiFontFamily = useAppStore((s) => s.uiFontFamily)
   const uiFontSize = useAppStore((s) => s.uiFontSize)
   const borderRadius = useAppStore((s) => s.borderRadius)
+
+  // Apply appearance changes requested through the assistant (same path as
+  // the Settings page). The store persists them to localStorage.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    listen<SettingsChangePayload>('app:settings-change', (event) => {
+      const p = event.payload
+      const store = useAppStore.getState()
+      if (p.kind === 'theme' && (p.value === 'light' || p.value === 'dark')) {
+        store.setTheme(p.value)
+      } else if (p.kind === 'accent' && typeof p.value === 'string' && p.value in themePalettes) {
+        store.setAccentPalette(p.value as AccentPalette)
+      } else if (p.kind === 'colors' && p.value && typeof p.value === 'object') {
+        const colors = p.value as { primary?: string | null; secondary?: string | null; accent?: string | null; background?: string | null }
+        if (colors.primary || colors.secondary || colors.accent || colors.background) {
+          if (p.mode === 'light') store.setLightColors(colors as Parameters<typeof store.setLightColors>[0])
+          else store.setDarkColors(colors as Parameters<typeof store.setDarkColors>[0])
+        }
+      }
+    }).then((fn) => { unlisten = fn })
+    return () => { unlisten?.() }
+  }, [])
 
   const modeColors = theme === 'dark' ? darkColors : lightColors
 

@@ -222,3 +222,55 @@ impl AiAdapter for OpenCodeAdapter {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::OpenCodeAdapter;
+
+    #[test]
+    fn strip_prefix_removes_opencode_prefix() {
+        assert_eq!(OpenCodeAdapter::strip_prefix("opencode/deepseek-v4-flash"), "deepseek-v4-flash");
+        assert_eq!(OpenCodeAdapter::strip_prefix("deepseek-v4-flash"), "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn strip_prefix_normalizes_case_and_spaces() {
+        assert_eq!(OpenCodeAdapter::strip_prefix("OpenCode/DeepSeek V4 Flash"), "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn free_model_by_suffix() {
+        let a = OpenCodeAdapter::new(String::new(), Some("opencode/deepseek-v4-flash-free".to_string()), None);
+        assert!(a.is_free_model());
+    }
+
+    #[test]
+    fn paid_model_not_free_by_default() {
+        let a = OpenCodeAdapter::new(String::new(), Some("opencode/deepseek-v4-flash".to_string()), None);
+        assert!(!a.is_free_model());
+    }
+
+    #[test]
+    fn free_endpoint_derived_from_go_url() {
+        let a = OpenCodeAdapter::new(
+            String::new(),
+            None,
+            Some("https://opencode.ai/zen/go/v1".to_string()),
+        );
+        assert_eq!(a.free_base_url, "https://opencode.ai/zen/v1");
+        assert_eq!(a.base_url, "https://opencode.ai/zen/go/v1");
+    }
+
+    #[test]
+    fn free_endpoint_defaults_to_base_url() {
+        let a = OpenCodeAdapter::new(String::new(), None, Some("https://opencode.ai/zen/v1".to_string()));
+        assert_eq!(a.free_base_url, "https://opencode.ai/zen/v1");
+    }
+
+    #[test]
+    fn default_model_has_opencode_prefix_stripped() {
+        let a = OpenCodeAdapter::new(String::new(), None, None);
+        assert_eq!(a.model_raw, "gpt-5.5");
+        assert_eq!(a.base_url, "https://opencode.ai/zen/v1");
+    }
+}

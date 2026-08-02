@@ -54,22 +54,58 @@ impl ToolEngine {
     }
 
     /// Resolve the effective driver for a tool call: if the arguments carry a
-    /// `connection_id`, use that connection's driver (connecting if needed) so
-    /// tools can operate on any connection, not just the chat's active one.
-    /// Otherwise fall back to the chat's driver.
+    /// `connection_id`, use that connection's driver so tools can operate on
+    /// any connection, not just the chat's active one. **Opening a connection
+    /// that is not currently active is a side effect that requires user
+    /// confirmation** — unless `confirm_destructive` was given, a
+    /// `requires_confirmation` result is returned and nothing is connected.
     async fn resolve_driver(
         &self,
         args: &serde_json::Value,
         _driver: Option<&dyn DbDriver>,
         state: &AppState,
-    ) -> AppResult<Option<Arc<dyn DbDriver>>> {
-        match args.get("connection_id").and_then(|v| v.as_str()) {
-            Some(cid) if !cid.is_empty() => {
-                let d = state.get_or_connect_driver(cid).await?;
-                Ok(Some(d))
-            }
-            _ => Ok(None),
+        confirm_destructive: bool,
+    ) -> Result<Option<Arc<dyn DbDriver>>, ToolResult> {
+        let Some(cid) = args
+            .get("connection_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        else {
+            return Ok(None);
+        };
+
+        // Already active — reuse it without confirmation.
+        if let Ok(d) = state.get_connection(cid).await {
+            return Ok(Some(d));
         }
+
+        if !confirm_destructive {
+            let name = state
+                .storage
+                .get_connection(cid)
+                .await
+                .map(|c| c.name)
+                .unwrap_or_else(|_| cid.to_string());
+            return Err(ToolResult {
+                ok: false,
+                data: None,
+                requires_confirmation: true,
+                message: Some(format!(
+                    "CONNECTION_NOT_ACTIVE|{name}|{cid}"
+                )),
+            });
+        }
+
+        let d = state
+            .get_or_connect_driver(cid)
+            .await
+            .map_err(|e| ToolResult {
+                ok: false,
+                data: None,
+                requires_confirmation: false,
+                message: Some(e.to_string()),
+            })?;
+        Ok(Some(d))
     }
 
     pub async fn execute(
@@ -91,9 +127,13 @@ impl ToolEngine {
                         )),
                     })
                 } else {
-                    let own = self.resolve_driver(&args, driver, state).await?;
-                    let effective = own.as_deref().or(driver);
-                    tool.execute(args, effective, state).await
+                    match self.resolve_driver(&args, driver, state, false).await {
+                        Ok(own) => {
+                            let effective = own.as_deref().or(driver);
+                            tool.execute(args, effective, state).await
+                        }
+                        Err(blocked) => Ok(blocked),
+                    }
                 }
             }
             None => Ok(ToolResult {
@@ -125,9 +165,13 @@ impl ToolEngine {
                         )),
                     });
                 }
-                let own = self.resolve_driver(&args, driver, state).await?;
-                let effective = own.as_deref().or(driver);
-                tool.execute(args, effective, state).await
+                match self.resolve_driver(&args, driver, state, confirm_destructive).await {
+                    Ok(own) => {
+                        let effective = own.as_deref().or(driver);
+                        tool.execute(args, effective, state).await
+                    }
+                    Err(blocked) => Ok(blocked),
+                }
             }
             None => Ok(ToolResult {
                 ok: false,
@@ -155,5 +199,44 @@ impl SafetyClassifier {
             || trimmed.starts_with("RENAME")
             || trimmed.starts_with("REPLACE")
             || trimmed.starts_with("CALL")
+    }
+}
+
+
+
+
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::SafetyClassifier;
+
+    #[test]
+    fn safety_classifier_detects_destructive_statements() {
+        for q in [
+            "INSERT INTO t VALUES (1)",
+            "UPDATE t SET a = 1",
+            "DELETE FROM t",
+            "DROP TABLE t",
+            "ALTER TABLE t ADD c INT",
+            "TRUNCATE t",
+            "CREATE TABLE t (id INT)",
+            "RENAME TABLE a TO b",
+            "REPLACE INTO t VALUES (1)",
+            "  select * from t",
+        ] {
+            let expected = !q.trim_start().starts_with("select");
+            assert_eq!(SafetyClassifier::is_destructive_query(q), expected, "for {q}");
+        }
+    }
+
+    #[test]
+    fn safety_classifier_treats_select_as_safe() {
+        assert!(!SafetyClassifier::is_destructive_query("SELECT * FROM users"));
+        assert!(!SafetyClassifier::is_destructive_query("  select count(*) from t"));
+        assert!(!SafetyClassifier::is_destructive_query("WITH x AS (SELECT 1) SELECT * FROM x"));
     }
 }

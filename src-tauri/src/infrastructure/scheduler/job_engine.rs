@@ -63,6 +63,10 @@ impl JobEngine {
         self.app_handle = Some(handle);
     }
 
+    pub fn app_handle(&self) -> Option<AppHandle> {
+        self.app_handle.clone()
+    }
+
     pub fn cancel_job(&self, job_id: &str) -> bool {
         if let Ok(tokens) = self.cancel_tokens.lock() {
             if let Some(token) = tokens.get(job_id) {

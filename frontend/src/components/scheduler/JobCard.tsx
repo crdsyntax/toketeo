@@ -12,6 +12,7 @@ interface JobCardProps {
   onDelete: (job: ScheduledJob) => void
   onRunNow: (job: ScheduledJob) => void
   onStopNow: (job: ScheduledJob) => void
+  onToggleEnabled: (job: ScheduledJob) => void
 }
 
 const jobTypeConfig: Record<JobType, { label: string; icon: typeof CalendarClock; color: string }> = {
@@ -26,7 +27,7 @@ function formatDate(dateStr: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunNow, onStopNow }: JobCardProps) {
+export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunNow, onStopNow, onToggleEnabled }: JobCardProps) {
   const config = jobTypeConfig[job.jobType]
   const Icon = config.icon
   const conn = connections.find((c) => c.id === job.connectionId)
@@ -93,6 +94,30 @@ export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunN
             </span>
           </span>
         </div>
+      </div>
+
+      {/* Schedule enabled toggle */}
+      <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5">
+        <button
+          onClick={() => onToggleEnabled(job)}
+          disabled={isRunning}
+          className={cn(
+            'relative w-9 h-5 rounded-full transition-colors disabled:opacity-50',
+            job.enabled ? 'bg-primary' : 'bg-muted',
+          )}
+          title={job.enabled ? 'Desactivar schedule' : 'Activar schedule'}
+          aria-pressed={job.enabled}
+        >
+          <span
+            className={cn(
+              'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all',
+              job.enabled ? 'left-[18px]' : 'left-0.5',
+            )}
+          />
+        </button>
+        <span className="text-[var(--ch-text-8)] uppercase tracking-widest font-bold text-muted-foreground/60">
+          {job.enabled ? 'On' : 'Off'}
+        </span>
       </div>
 
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">

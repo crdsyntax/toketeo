@@ -62,6 +62,8 @@ export function SettingsPage() {
   const setDarkColors = useAppStore((s) => s.setDarkColors)
   const editorFontFamily = useAppStore((s) => s.editorFontFamily)
   const setEditorFontFamily = useAppStore((s) => s.setEditorFontFamily)
+  const inlineEditReview = useAppStore((s) => s.inlineEditReview)
+  const setInlineEditReview = useAppStore((s) => s.setInlineEditReview)
   const resultsFontSize = useAppStore((s) => s.resultsFontSize)
   const setResultsFontSize = useAppStore((s) => s.setResultsFontSize)
 
@@ -422,6 +424,34 @@ export function SettingsPage() {
                     >
                       {editorMinimap ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                       {editorMinimap ? 'On' : 'Off'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Query Editor sub-section ── */}
+                <h2 className="text-sm font-semibold text-foreground flex items-center gap-2 pt-4 border-t border-border">
+                  <Table2 className="w-4 h-4" />
+                  Query Editor
+                </h2>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Inline edition</label>
+                      <p className="text-[var(--ch-text-10)] text-muted-foreground/70 mt-0.5">
+                        Show the Review Change panel when editing a cell directly in the data explorer
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setInlineEditReview(!inlineEditReview)}
+                      className={cn(
+                        'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors',
+                        inlineEditReview
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
+                      )}
+                    >
+                      {inlineEditReview ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
+                      {inlineEditReview ? 'On' : 'Off'}
                     </button>
                   </div>
                 </div>

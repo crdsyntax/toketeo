@@ -13,8 +13,6 @@ import {
   X,
   Copy,
   FileCode,
-  Diff,
-  ArrowRightLeft,
   Terminal,
 } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -32,6 +30,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { formatCellValue } from '@/lib/formatCellValue';
 import { Button } from '@/components/ui/Button';
+import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -124,6 +123,10 @@ export function DataTab({
 
   // Phase 9 — Visual diff before committing a cell edit
   const [pendingEdit, setPendingEdit] = useState<PendingCellEdit | null>(null);
+  // Position (viewport-fixed) for the Review Change panel, computed from the
+  // edited cell so it appears near the column being edited.
+  const [reviewPos, setReviewPos] = useState<{ top: number; left: number } | null>(null);
+  const editingCellRef = useRef<HTMLTableCellElement | null>(null);
 
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const activeConnection = useAppStore((state) => state.activeConnection);
@@ -132,6 +135,7 @@ export function DataTab({
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
   const resultsFontSize = useAppStore((s) => s.uiFontSize);
+  const inlineEditReview = useAppStore((s) => s.inlineEditReview);
 
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
@@ -203,7 +207,7 @@ export function DataTab({
         const bVal = b[sortState.column];
         if (aVal === null || aVal === undefined) return 1;
         if (bVal === null || bVal === undefined) return -1;
-        let cmp = 0;
+        let cmp: number;
         const aIsNum = typeof aVal === 'number';
         const bIsNum = typeof bVal === 'number';
         if (aIsNum && bIsNum) {
@@ -274,6 +278,40 @@ export function DataTab({
   const handleSaveEdit = (row: DbRow) => {
     if (!editingCell) return;
     const prevValue = row[editingCell.column];
+    // When the Review Change panel is disabled (Settings → Query Editor →
+    // Inline edition), apply the edit immediately.
+    if (!inlineEditReview) {
+      updateCell(row, editingCell.column, editValue);
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push({
+        row,
+        col: editingCell.column,
+        prev: prevValue,
+        next: editValue,
+      });
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+      setEditingCell(null);
+      return;
+    }
+    // Place the review panel next to the edited cell: centered under it when
+    // the cell is in the upper half of the viewport, above it otherwise.
+    const PANEL_W = 400;
+    const PANEL_H = 210;
+    const rect = editingCellRef.current?.getBoundingClientRect();
+    if (rect) {
+      const left = Math.min(
+        Math.max(rect.left + rect.width / 2 - PANEL_W / 2, 8),
+        Math.max(8, window.innerWidth - PANEL_W - 8),
+      );
+      const below = rect.top + rect.height / 2 < window.innerHeight / 2;
+      const top = below
+        ? Math.min(rect.bottom + 8, window.innerHeight - PANEL_H - 8)
+        : Math.max(8, rect.top - PANEL_H - 8);
+      setReviewPos({ top: Math.max(8, top), left });
+    } else {
+      setReviewPos(null);
+    }
     // Stage for diff review
     setPendingEdit({
       row,
@@ -299,9 +337,10 @@ export function DataTab({
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
     setPendingEdit(null);
+    setReviewPos(null);
   };
 
-  const discardPendingEdit = () => setPendingEdit(null);
+  const discardPendingEdit = () => { setPendingEdit(null); setReviewPos(null); };
 
 
   const undo = useCallback(() => {
@@ -630,6 +669,7 @@ export function DataTab({
                       return (
                         <td
                           key={col}
+                          ref={editingCell?.rowIndex === i && editingCell?.column === col ? editingCellRef : undefined}
                           className={cn(
                             "p-2 border-r border-border last:border-0 truncate cursor-text relative group/cell",
                             isSelectedCell && "ring-1 ring-primary/50 bg-primary/5"
@@ -793,49 +833,16 @@ export function DataTab({
           </div>
         )}
 
-      {/* Phase 9: Visual Diff Panel for cell edits */}
-      {pendingEdit && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col w-[400px] animate-in slide-in-from-bottom-4">
-          <div className="bg-muted/50 px-3 py-2 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Diff className="w-4 h-4 text-primary" />
-              <span className="text-xs font-bold uppercase tracking-wider">Review Change</span>
-            </div>
-            <button onClick={discardPendingEdit} className="text-muted-foreground hover:text-foreground">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-3 text-xs space-y-2 font-mono bg-muted/10">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Column</span>
-              <span className="font-bold text-foreground">{pendingEdit.column}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pt-2 border-t border-border/50">
-              <div className="p-2 bg-destructive/10 text-destructive rounded overflow-x-auto whitespace-nowrap">
-                {formatCellValue(pendingEdit.prevValue) || <span className="italic opacity-50">NULL</span>}
-              </div>
-              <ArrowRightLeft className="w-3 h-3 text-muted-foreground" />
-              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded overflow-x-auto whitespace-nowrap">
-                {pendingEdit.nextValue || <span className="italic opacity-50">EMPTY</span>}
-              </div>
-            </div>
-          </div>
-          <div className="p-2 bg-muted/30 border-t border-border flex justify-end gap-2">
-            <button
-              onClick={discardPendingEdit}
-              className="px-3 py-1.5 text-xs font-medium hover:bg-muted rounded"
-            >
-              Discard
-            </button>
-            <button
-              onClick={confirmPendingEdit}
-              className="px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded flex items-center gap-1.5 shadow-sm"
-            >
-              <Check className="w-3.5 h-3.5" />
-              Commit
-            </button>
-          </div>
-        </div>
+      {/* Phase 9: Visual Diff Panel for cell edits — positioned near the edited cell */}
+      {pendingEdit && reviewPos && (
+        <ReviewChangePanel
+          column={pendingEdit.column}
+          prevValue={pendingEdit.prevValue}
+          nextValue={pendingEdit.nextValue}
+          onConfirm={confirmPendingEdit}
+          onDiscard={discardPendingEdit}
+          position={reviewPos}
+        />
       )}
 
       {/* Phase 9: Inline SQL Preview Panel */}

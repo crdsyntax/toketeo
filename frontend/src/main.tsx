@@ -14,6 +14,9 @@ import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { connectionService } from './services/connection.service'
+import { initToastInterceptor } from './lib/notifications'
+
+initToastInterceptor()
 
 self.MonacoEnvironment = {
   getWorker(_, label) {

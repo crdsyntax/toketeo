@@ -212,9 +212,11 @@ export function QueriesPanel() {
   const handleSend = async (text: string, confirmDestructive = false) => {
     if (!text.trim() || isStreaming) return
     const ts = (nowRef.current = nowRef.current + 1)
-    const sentText = confirmDestructive ? `CONFIRMADO. Procede con la operación: ${text}` : text
-    const userMsg = { id: crypto.randomUUID(), role: 'user' as const, content: sentText, timestamp: ts }
-    addMessage(userMsg)
+    // Confirmation retries are implicit: the original user message is already
+    // in the chat, so no "CONFIRMADO..." echo is added.
+    if (!confirmDestructive) {
+      addMessage({ id: crypto.randomUUID(), role: 'user' as const, content: text, timestamp: ts })
+    }
     setInput('')
     recallIndexRef.current = -1
     trackAction('EXECUTE_QUERY')
@@ -469,7 +471,7 @@ export function QueriesPanel() {
                   className="flex items-center gap-2 text-[12px] px-3 py-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-400/30 hover:bg-amber-500/20 transition-colors"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  Confirmar y ejecutar (destructivo)
+                  Confirmar y continuar
                 </button>
               </div>
             )}

@@ -276,6 +276,46 @@ pub struct ScheduledJob {
     pub created_at: DateTime<Utc>,
 }
 
+/// Typed IPC DTO for the `config` payload of scheduled jobs. Known fields are
+/// mapped explicitly; anything else (e.g. connection details injected by the
+/// backend for backup jobs) is preserved via `extra`.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JobConfigDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collections: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl JobConfigDto {
+    pub fn to_value(&self) -> serde_json::Value {
+        let mut map = self.extra.clone();
+        if let Some(q) = &self.query {
+            map.insert("query".to_string(), serde_json::Value::String(q.clone()));
+        }
+        if let Some(db) = &self.database {
+            map.insert("database".to_string(), serde_json::Value::String(db.clone()));
+        }
+        if let Some(c) = &self.collections {
+            map.insert(
+                "collections".to_string(),
+                serde_json::Value::Array(c.iter().map(|s| serde_json::Value::String(s.clone())).collect()),
+            );
+        }
+        if let Some(o) = &self.output_dir {
+            map.insert("output_dir".to_string(), serde_json::Value::String(o.clone()));
+        }
+        serde_json::Value::Object(map)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JobExecutionLog {
     pub id: Uuid,

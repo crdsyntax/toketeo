@@ -56,6 +56,9 @@ export default function QueryEditor() {
     toggleMaximize,
     editingCell,
     setEditingCell,
+    pendingEdit,
+    confirmPendingEdit,
+    discardPendingEdit,
     handleExecuteAll,
     handleCancel,
     handleSave,
@@ -355,6 +358,9 @@ export default function QueryEditor() {
                 sortedRows={sortedRows}
                 editingCell={editingCell}
                 setEditingCell={setEditingCell}
+                pendingEdit={pendingEdit}
+                confirmPendingEdit={confirmPendingEdit}
+                discardPendingEdit={discardPendingEdit}
                 handlePageChange={handlePageChange}
                 setContextMenuSql={setContextMenuSql}
                 queryLimit={queryLimit}

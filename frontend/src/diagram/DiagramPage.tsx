@@ -21,6 +21,8 @@ import { DiagramDashboard } from './components/DiagramDashboard'
 import { DiagramToolbar } from './components/DiagramToolbar'
 import { DiagramCanvas } from './components/DiagramCanvas'
 import { TableFormModal } from './components/TableFormModal'
+import { ViewFormModal } from './components/ViewFormModal'
+import { nodesToMermaid } from './lib/toMermaid'
 import type { SchemaDiagramData, ColumnResponse, ForeignKeyResponse } from '@/types/database'
 import { DIAGRAM_FILE_EXTENSION, DIAGRAM_FILE_FILTER } from './types'
 
@@ -86,6 +88,8 @@ function EditorInner() {
   const [showTableSelector, setShowTableSelector] = useState(!diagram || (hasConnection && diagram.nodes.length === 0))
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set())
   const [tableFormOpen, setTableFormOpen] = useState(false)
+  const [editingNode, setEditingNode] = useState<Node | null>(null)
+  const [editingViewName, setEditingViewName] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
 
@@ -103,7 +107,8 @@ function EditorInner() {
     if (!diagram.sourceSchema && availableSchemas.length > 0) {
       const defaultSchema = availableSchemas.includes('public') ? 'public' : availableSchemas[0]
       setDiagramSchema(diagram.id, defaultSchema)
-      setSelectedTables(new Set())
+      const t = setTimeout(() => setSelectedTables(new Set()), 0)
+      return () => clearTimeout(t)
     }
   }, [diagram, isPostgres, availableSchemas, setDiagramSchema])
 
@@ -151,6 +156,9 @@ function EditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
+  // Live Mermaid erDiagram export of the current diagram.
+  const mermaidCode = useMemo(() => nodesToMermaid(nodes, edges), [nodes, edges])
+
   // Sync React Flow state when initial nodes/edges change (table selection, data load)
   useEffect(() => { setNodes(initialNodes) }, [initialNodes, setNodes])
   useEffect(() => { setEdges(initialEdges) }, [initialEdges, setEdges])
@@ -190,22 +198,43 @@ function EditorInner() {
     setSelectedTables(new Set())
   }, [])
 
-  // Add nodes
+  // Add or update a table node (edit mode renames and migrates edges)
   const handleAddTable = useCallback((tableName: string, columns: ColumnResponse[], foreignKeys: ForeignKeyResponse[]) => {
+    const editing = editingNode
     const newId = `table:${tableName}`
-    const existingNode = nodes.find((n) => n.id === newId)
-    if (existingNode) return
 
-    const offset = nodes.length * 30
-    const newNode: Node = {
-      id: newId,
-      type: 'table',
-      position: { x: 50 + offset, y: 50 + offset },
-      data: { label: tableName, columns, foreignKeys },
+    setNodes((nds) => {
+      const existingIndex = nds.findIndex((n) => n.id === newId)
+      const newNode: Node = {
+        id: newId,
+        type: 'table',
+        position: editing?.position ?? { x: 50 + nds.length * 30, y: 50 + nds.length * 30 },
+        data: { label: tableName, columns, foreignKeys },
+      }
+      if (editing) {
+        // Replace the edited node (its id may have changed on rename).
+        return nds.map((n) => (n.id === editing.id ? newNode : n))
+      }
+      if (existingIndex >= 0) return nds
+      return [...nds, newNode]
+    })
+
+    // Migrate edges that referenced the old node id (rename).
+    if (editing && editing.id !== newId) {
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.source === editing.id
+            ? { ...e, source: newId }
+            : e.target === editing.id
+              ? { ...e, target: newId }
+              : e,
+        ),
+      )
     }
-    setNodes((nds) => [...nds, newNode])
+
+    setEditingNode(null)
     setTableFormOpen(false)
-  }, [nodes, setNodes])
+  }, [editingNode, setNodes, setEdges])
 
   const handleAddView = useCallback(() => {
     const viewName = `view_${nodes.length + 1}`
@@ -219,6 +248,41 @@ function EditorInner() {
     }
     setNodes((nds) => [...nds, newNode])
   }, [nodes, setNodes])
+
+  // Rename/update an existing view node (query included; edges migrate on rename).
+  const handleSaveView = useCallback((name: string, query?: string) => {
+    if (!editingViewName) return
+    const newId = `view:${name}`
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === editingViewName
+          ? { ...n, id: newId, data: { ...n.data, label: name, query } }
+          : n,
+      ),
+    )
+    if (editingViewName !== newId) {
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.source === editingViewName
+            ? { ...e, source: newId }
+            : e.target === editingViewName
+              ? { ...e, target: newId }
+              : e,
+        ),
+      )
+    }
+    setEditingViewName(null)
+  }, [editingViewName, setNodes, setEdges])
+
+  // Double-click on a node opens its editor.
+  const handleNodeEdit = useCallback((node: Node) => {
+    if (node.type === 'table') {
+      setEditingNode(node)
+      setTableFormOpen(true)
+    } else if (node.type === 'view') {
+      setEditingViewName(node.id)
+    }
+  }, [])
 
   // Edge mutations from canvas
   const handleEdgeCreate = useCallback((edge: Edge) => {
@@ -299,6 +363,7 @@ function EditorInner() {
     <div className="flex flex-col h-full">
       <DiagramToolbar
         diagramName={diagram.name}
+        mermaidCode={mermaidCode}
         onRename={handleRename}
         onAddTable={() => setTableFormOpen(true)}
         onAddView={handleAddView}
@@ -437,6 +502,7 @@ function EditorInner() {
                 onEdgeCreate={handleEdgeCreate}
                 onEdgeDataChange={handleEdgeDataChange}
                 onEdgeDelete={handleEdgeDelete}
+                onNodeEdit={handleNodeEdit}
               />
             )
           ) : (
@@ -449,6 +515,7 @@ function EditorInner() {
               onEdgeCreate={handleEdgeCreate}
               onEdgeDataChange={handleEdgeDataChange}
               onEdgeDelete={handleEdgeDelete}
+              onNodeEdit={handleNodeEdit}
               emptyMessage="Add tables to start designing your diagram."
             />
           )}
@@ -456,10 +523,29 @@ function EditorInner() {
       </div>
 
       <TableFormModal
+        key={editingNode?.id ?? 'new-table'}
         isOpen={tableFormOpen}
-        onClose={() => setTableFormOpen(false)}
+        onClose={() => { setTableFormOpen(false); setEditingNode(null) }}
         onSave={handleAddTable}
+        initialName={(editingNode?.data as { label?: string } | undefined)?.label ?? ''}
+        initialColumns={(editingNode?.data as { columns?: ColumnResponse[] } | undefined)?.columns}
+        initialForeignKeys={(editingNode?.data as { foreignKeys?: ForeignKeyResponse[] } | undefined)?.foreignKeys}
       />
+
+      {/* View form modal (name + SQL query) */}
+      {editingViewName && (() => {
+        const node = nodes.find((n) => n.id === editingViewName)
+        const data = node?.data as { label?: string; query?: string } | undefined
+        return (
+          <ViewFormModal
+            key={editingViewName}
+            initialName={data?.label ?? ''}
+            initialQuery={data?.query ?? ''}
+            onClose={() => setEditingViewName(null)}
+            onSave={handleSaveView}
+          />
+        )
+      })()}
     </div>
   )
 }

@@ -200,39 +200,42 @@ export default function Connections() {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto py-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-border pb-6">
+    <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto py-5 sm:py-6 px-4 sm:px-6 overflow-x-clip min-w-0">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-border pb-5 sm:pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight uppercase">Connections</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight uppercase">Connections</h1>
           <p className="text-[var(--ch-text-10)] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">Manage database access configurations</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={handleImport}
             disabled={isImporting}
-            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+            className="clay-btn flex items-center gap-2 bg-secondary text-secondary-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest disabled:opacity-50"
           >
             <UploadCloud className="w-4 h-4" />
-            Import JSON
+            <span className="hidden sm:inline">Import JSON</span>
+            <span className="sm:hidden">Import</span>
           </button>
           <button
             onClick={handleExportAll}
             disabled={isExporting}
-            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+            className="clay-btn flex items-center gap-2 bg-secondary text-secondary-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            Export All
+            <span className="hidden sm:inline">Export All</span>
+            <span className="sm:hidden">Export</span>
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
+            className="clay-btn flex items-center gap-2 bg-primary text-primary-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest"
           >
             <Plus className="w-4 h-4" />
-            New Connection
+            <span className="hidden sm:inline">New Connection</span>
+            <span className="sm:hidden">New</span>
           </button>
           <button
             onClick={() => setShowWizard(true)}
-            className="flex items-center gap-2 bg-muted text-foreground px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:bg-muted/80 border border-border transition-all rounded-md"
+            className="clay-btn flex items-center gap-2 bg-muted text-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest border border-border"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Wizard
@@ -241,24 +244,24 @@ export default function Connections() {
       </div>
 
       {toastMessage && (
-        <div className={`rounded-md border px-4 py-3 text-sm ${toastMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-700' : 'bg-red-500/10 border-red-500 text-red-700'}`}>
+        <div className={`rounded-full border px-4 py-2.5 text-sm break-words ${toastMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-700' : 'bg-red-500/10 border-red-500 text-red-700'}`}>
           {toastMessage.text}
         </div>
       )}
 
-      <div className="flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none">
+      <div className="flex items-center gap-1.5 flex-wrap">
         <button
           onClick={() => setActiveEngineFilter('all')}
           className={cn(
-            'flex items-center gap-2 px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
+            'clay-btn flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest transition-all whitespace-nowrap',
             activeEngineFilter === 'all'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              ? 'bg-primary/15 text-primary'
+              : 'bg-muted/40 text-muted-foreground hover:text-foreground'
           )}
         >
           All
           {connections && (
-            <span className="text-[var(--ch-text-9)] px-1.5 py-0.5 rounded bg-muted/50">
+            <span className="text-[var(--ch-text-9)] px-1.5 py-0.5 rounded-full bg-primary/10">
               {connections.length}
             </span>
           )}
@@ -273,15 +276,15 @@ export default function Connections() {
               key={engineType}
               onClick={() => setActiveEngineFilter(engineType)}
               className={cn(
-                'flex items-center gap-2 px-3 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap',
+                'clay-btn flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest transition-all whitespace-nowrap',
                 activeEngineFilter === engineType
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  ? 'bg-primary/15 text-primary'
+                  : 'bg-muted/40 text-muted-foreground hover:text-foreground'
               )}
             >
               <EngineIcon className={cn('w-3 h-3', activeEngineFilter === engineType ? config.textClass : '')} />
               {config.label}
-              <span className="text-[var(--ch-text-9)] px-1.5 py-0.5 rounded bg-muted/50">
+              <span className="text-[var(--ch-text-9)] px-1.5 py-0.5 rounded-full bg-primary/10">
                 {count}
               </span>
             </button>
@@ -291,8 +294,8 @@ export default function Connections() {
 
       {connectingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative z-10 flex items-center gap-3 bg-background/90 border border-border rounded-md px-6 py-4 shadow">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative z-10 flex items-center gap-3 clay-card bg-background/95 px-6 py-4 shadow-2xl">
             <svg className="w-6 h-6 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
@@ -303,13 +306,13 @@ export default function Connections() {
       )}
 
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-44 bg-secondary/30 border border-border animate-pulse" />
+            <div key={i} className="clay-card h-44 bg-secondary/30 animate-pulse w-full min-w-0" />
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 min-w-0">
           {filteredConnections.map((conn) => (
             <ConnectionCard 
               key={conn.id} 

@@ -20,7 +20,6 @@ export default function MainLayout() {
   const removeConnectedConnection = useAppStore((state) => state.removeConnectedConnection)
   const setMiniToast = useAppStore((state) => state.setMiniToast)
   const setConnectionError = useAppStore((state) => state.setConnectionError)
-  const connectionErrors = useAppStore((state) => state.connectionErrors)
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
@@ -188,7 +187,7 @@ export default function MainLayout() {
           />
         )}
         <main className="flex-1 overflow-auto p-3">
-          <div className="h-full rounded-lg bg-surface border border-border shadow-sm">
+          <div className="h-full min-w-0 overflow-hidden rounded-lg bg-surface border border-border shadow-sm">
             <Outlet />
           </div>
         </main>

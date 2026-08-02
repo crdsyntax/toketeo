@@ -38,6 +38,22 @@ impl KnowledgeEngine {
         Ok(id)
     }
 
+    /// Remove knowledge cases that were previously auto-recorded from tool
+    /// results (question prefixed with `[tool:`). Those polluted the library
+    /// with raw JSON payloads that are never useful as validated SQL answers.
+    /// Returns how many cases were removed.
+    pub async fn purge_tool_cases(storage: &Arc<Storage>) -> AppResult<usize> {
+        let cases = storage.list_knowledge_global(1000).await?;
+        let mut removed = 0;
+        for case in cases {
+            if case.question.starts_with("[tool:") {
+                storage.delete_knowledge_case(&case.id).await?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
     /// Find similar existing cases based on keyword overlap.
     /// Returns references ranked by descending score (filtered to ≥ threshold).
     pub fn find_similar<'a>(

@@ -8,14 +8,13 @@ use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::model_generator_service::ModelGeneratorService;
 use crate::application::compare::compare_service::CompareService;
 use crate::application::sync::sync_service::SyncService;
-use crate::application::sync::strategies::SyncEvent;
+use crate::db::quote_identifier;
+
 use crate::error::{AppError, AppResult};
-use crate::infrastructure::database::connection_string_builder::ConnectionStringBuilder;
-use crate::infrastructure::drivers::driver_factory::DriverFactory;
 use crate::infrastructure::scheduler::job_engine;
 use crate::models::compare::{DataReport, SchemaReport, ScriptOptions, SyncScript};
 use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, PipelineStatus};
-use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobType, ScheduledJob};
+use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobConfigDto, JobType, ScheduledJob};
 use secrecy::ExposeSecret;
 use crate::state::AppState;
 use serde::Serialize;
@@ -23,7 +22,7 @@ use std::sync::Arc;
 use tauri::Manager;
 use std::process::Command;
 use std::str::FromStr;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
@@ -788,16 +787,6 @@ pub async fn edit_column(
         .map(|_| ())
 }
 
-fn quote_identifier(db_type: &crate::db::DbType, name: &str) -> String {
-    match db_type {
-        crate::db::DbType::Postgres => crate::db::postgres::quote_pg(name),
-        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => crate::db::mysql::quote_mysql(name),
-        crate::db::DbType::Sqlserver => crate::db::sqlserver::quote_ss(name),
-        crate::db::DbType::Sqlite => crate::db::sqlite::quote_sqlite(name),
-        _ => name.to_string(),
-    }
-}
-
 #[tauri::command]
 pub async fn drop_column(
     id: String,
@@ -1095,15 +1084,13 @@ fn normalize_cron(expr: &str) -> String {
 
 #[tauri::command]
 pub async fn scheduler_get_databases(connection_id: String, state: State<'_, AppState>) -> AppResult<Vec<String>> {
-    // Try reusing an active connection first
-    if let Ok(driver) = state.get_connection(&connection_id).await {
-        tracing::info!("[scheduler] Reusing active connection for database listing: {}", connection_id);
-        return driver.fetch_databases().await;
-    }
-    // Fallback: create an ephemeral connection
-    let config = state.storage.get_connection(&connection_id).await?;
-    let url = ConnectionStringBuilder::build(&config)?;
-    let driver = DriverFactory::create(config.db_type.clone(), &url, false, None).await?;
+    // Only reuse an active session — never open a new connection implicitly
+    // (a dead endpoint would hang for the driver timeout before failing).
+    let driver = state.get_connection(&connection_id).await.map_err(|_| {
+        AppError::Validation(
+            "La conexión no está activa. Conéctala primero desde la barra lateral.".to_string(),
+        )
+    })?;
     driver.fetch_databases().await
 }
 
@@ -1113,17 +1100,12 @@ pub async fn scheduler_get_tables(
     database: String,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    // Try reusing an active connection first
-    if let Ok(driver) = state.get_connection(&connection_id).await {
-        tracing::info!("[scheduler] Reusing active connection for table listing: {} / {}", connection_id, database);
-        // For MongoDB, pass database as schema so get_db() uses it
-        return driver.fetch_tables(Some(database), None).await;
-    }
-    // Fallback: create an ephemeral connection
-    let mut config = state.storage.get_connection(&connection_id).await?;
-    config.database = Some(database.clone());
-    let url = ConnectionStringBuilder::build(&config)?;
-    let driver = DriverFactory::create(config.db_type.clone(), &url, false, None).await?;
+    let driver = state.get_connection(&connection_id).await.map_err(|_| {
+        AppError::Validation(
+            "La conexión no está activa. Conéctala primero desde la barra lateral.".to_string(),
+        )
+    })?;
+    // For MongoDB, pass database as schema so get_db() uses it
     driver.fetch_tables(Some(database), None).await
 }
 
@@ -1133,7 +1115,7 @@ pub async fn create_scheduled_job(
     connection_id: String,
     job_type: JobType,
     cron_expression: Option<String>,
-    config: serde_json::Value,
+    config: JobConfigDto,
     state: State<'_, AppState>,
 ) -> AppResult<ScheduledJob> {
     let now = chrono::Utc::now();
@@ -1152,27 +1134,10 @@ pub async fn create_scheduled_job(
     let conn_id = Uuid::parse_str(&connection_id)
         .map_err(|e| AppError::Validation(format!("Invalid connection ID: {}", e)))?;
 
-    let config = if job_type == JobType::Backup {
-        let conn = state.storage.get_connection(&connection_id).await?;
-        let mut cfg = config.as_object().cloned().unwrap_or_default();
-        cfg.insert("dbType".into(), serde_json::Value::String(conn.db_type.to_string()));
-        cfg.insert("host".into(), serde_json::Value::String(conn.host));
-        cfg.insert("port".into(), serde_json::Value::Number(conn.port.into()));
-        cfg.insert("user".into(), serde_json::Value::String(conn.user));
-        if let Some(pw) = &conn.password {
-            cfg.insert("password".into(), serde_json::Value::String(pw.expose_secret().to_string()));
-        }
-        // Only set database from connection if frontend didn't send one
-        let has_db = cfg.get("database").and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
-        if !has_db {
-            if let Some(db) = &conn.database {
-                cfg.insert("database".into(), serde_json::Value::String(db.clone()));
-            }
-        }
-        serde_json::Value::Object(cfg)
-    } else {
-        config
-    };
+    let mut config = config.to_value();
+    if job_type == JobType::Backup {
+        inject_backup_connection_details(&state, &connection_id, &mut config).await?;
+    }
 
     let job = ScheduledJob {
         id: Uuid::new_v4(),
@@ -1191,12 +1156,46 @@ pub async fn create_scheduled_job(
     Ok(job)
 }
 
+/// Inject connection details (dbType/host/port/user/password, and database
+/// when missing) into a backup job config so the scheduler can execute the
+/// dump without the user re-entering credentials. Used by create and update.
+async fn inject_backup_connection_details(
+    state: &AppState,
+    connection_id: &str,
+    config: &mut serde_json::Value,
+) -> AppResult<()> {
+    let conn = state.storage.get_connection(connection_id).await?;
+    let cfg = config
+        .as_object_mut()
+        .ok_or_else(|| AppError::Internal("Job config must be an object".into()))?;
+    cfg.insert("dbType".into(), serde_json::Value::String(conn.db_type.to_string()));
+    cfg.insert("host".into(), serde_json::Value::String(conn.host));
+    cfg.insert("port".into(), serde_json::Value::Number(conn.port.into()));
+    cfg.insert("user".into(), serde_json::Value::String(conn.user));
+    if let Some(pw) = &conn.password {
+        cfg.insert("password".into(), serde_json::Value::String(pw.expose_secret().to_string()));
+    }
+    // Only set database from connection if frontend didn't send one
+    let has_db = cfg
+        .get("database")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_db {
+        if let Some(db) = &conn.database {
+            cfg.insert("database".into(), serde_json::Value::String(db.clone()));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn update_scheduled_job(
     id: String,
     name: Option<String>,
-    cron_expression: Option<String>,
-    config: Option<serde_json::Value>,
+    // `Some(None)` clears the cron (manual-only); `None` leaves it unchanged.
+    cron_expression: Option<Option<String>>,
+    config: Option<JobConfigDto>,
     enabled: Option<bool>,
     state: State<'_, AppState>,
 ) -> AppResult<ScheduledJob> {
@@ -1207,22 +1206,41 @@ pub async fn update_scheduled_job(
     }
 
     if let Some(cron_expression) = cron_expression {
-        if cron_expression.trim().is_empty() {
-            job.cron_expression = None;
-            job.next_run = None;
-        } else {
-            let normalized = normalize_cron(&cron_expression);
-            let _ = cron::Schedule::from_str(&normalized)
-                .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
-            job.cron_expression = Some(normalized);
-            job.next_run = job.cron_expression.as_deref()
-                .and_then(|s| cron::Schedule::from_str(s).ok())
-                .and_then(|s| s.after(&chrono::Utc::now()).next());
+        match cron_expression {
+            // Some(None) → clear the schedule (manual-only).
+            None => {
+                job.cron_expression = None;
+                job.next_run = None;
+            }
+            Some(expr) if expr.trim().is_empty() => {
+                job.cron_expression = None;
+                job.next_run = None;
+            }
+            Some(expr) => {
+                let normalized = normalize_cron(&expr);
+                let _ = cron::Schedule::from_str(&normalized)
+                    .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
+                job.cron_expression = Some(normalized);
+                job.next_run = job.cron_expression.as_deref()
+                    .and_then(|s| cron::Schedule::from_str(s).ok())
+                    .and_then(|s| s.after(&chrono::Utc::now()).next());
+            }
         }
     }
 
     if let Some(config) = config {
-        job.config = config;
+        let mut config_value = config.to_value();
+        // Backup jobs must keep their injected connection credentials — the
+        // frontend only sends database/tables/outputDir on edit.
+        if job.job_type == JobType::Backup {
+            inject_backup_connection_details(
+                &state,
+                &job.connection_id.to_string(),
+                &mut config_value,
+            )
+            .await?;
+        }
+        job.config = config_value;
     }
 
     if let Some(enabled) = enabled {
@@ -1380,184 +1398,10 @@ pub async fn start_sync(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> AppResult<()> {
-    let mut pipeline = state.storage.get_sync_pipeline(&id).await?;
-
-    // Fill schemas from connection configs if pipeline doesn't have them
-    if pipeline.source_schema.is_none() {
-        if let Ok(cfg) = state.storage.get_connection(&pipeline.source_connection_id).await {
-            pipeline.source_schema = cfg.database.clone();
-        }
-    }
-    if pipeline.target_schema.is_none() {
-        if let Ok(cfg) = state.storage.get_connection(&pipeline.target_connection_id).await {
-            pipeline.target_schema = cfg.database.clone();
-        }
-    }
-
-    tracing::info!(
-        "[sync] Starting pipeline '{}': source_schema={:?}, target_schema={:?}",
-        pipeline.name,
-        pipeline.source_schema,
-        pipeline.target_schema,
-    );
-
-    let source_driver = get_or_connect_driver(&state, &pipeline.source_connection_id).await?;
-    let target_driver = get_or_connect_driver(&state, &pipeline.target_connection_id).await?;
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
-    let emit_handle = app_handle.clone();
-
-    tokio::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            let payload = serde_json::to_value(&event).unwrap_or_default();
-            let _ = emit_handle.emit("sync:event", &payload);
-        }
-    });
-
-    let storage = state.storage.clone();
-
-    let pipeline_id = pipeline.id.clone().unwrap_or_default();
-    state.set_sync_control(&pipeline_id, crate::state::SyncControl::Running).await;
-    if let Err(e) = storage.update_sync_pipeline_status(&pipeline_id, PipelineStatus::Running).await {
-        tracing::error!("[sync] Failed to update pipeline status to Running: {e}");
-    }
-
-    let controller = state.sync_controller.clone();
-
-    // Prevent session cleanup from closing pools while sync is running
-    let source_conn_id = pipeline.source_connection_id.clone();
-    let target_conn_id = pipeline.target_connection_id.clone();
-    state.mark_session_in_use(&source_conn_id, true).await;
-    state.mark_session_in_use(&target_conn_id, true).await;
-
-    // Keepalive: periodically touch source & target sessions so the cleanup
-    // task does not close their pools while the sync is running.
-    let keepalive_source = source_conn_id.clone();
-    let keepalive_target = target_conn_id.clone();
-    let keepalive_handle = app_handle.clone();
-    let (keepalive_tx, mut keepalive_rx) = tokio::sync::oneshot::channel::<()>();
-    tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-        // skip the first immediate tick
-        interval.tick().await;
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    let st = keepalive_handle.state::<AppState>();
-                    let _ = st.get_connection(&keepalive_source).await;
-                    let _ = st.get_connection(&keepalive_target).await;
-                }
-                _ = &mut keepalive_rx => break,
-            }
-        }
-    });
-
-    let unmark_source = source_conn_id.clone();
-    let unmark_target = target_conn_id.clone();
-    let unmark_handle = app_handle.clone();
-
-    tokio::spawn(async move {
-        let mut pipeline = pipeline;
-
-        tracing::info!(
-            "[sync] Starting pipeline: source_schema={:?}, target_schema={:?}, tables={}",
-            pipeline.source_schema,
-            pipeline.target_schema,
-            pipeline.tables.len(),
-        );
-
-        // Auto-detect primary keys for tables that don't have them
-        {
-            let tables_needing_pk: Vec<usize> = pipeline
-                .tables
-                .iter()
-                .enumerate()
-                .filter(|(_, t)| t.primary_key.is_none() || t.primary_key.as_ref().map_or(false, |v| v.is_empty()))
-                .map(|(i, _)| i)
-                .collect();
-
-            if !tables_needing_pk.is_empty() {
-                tracing::info!("[sync] Auto-detecting PKs for {} tables", tables_needing_pk.len());
-                const PK_CHUNK_SIZE: usize = 5;
-                for chunk in tables_needing_pk.chunks(PK_CHUNK_SIZE) {
-                    let futures: Vec<_> = chunk
-                        .iter()
-                        .map(|&idx| {
-                            let src = source_driver.clone();
-                            let table = pipeline.tables[idx].source_table.clone();
-                            let schema = pipeline.source_schema.clone();
-                            async move {
-                                let cols = src.fetch_columns(&table, schema).await;
-                                (idx, table, cols)
-                            }
-                        })
-                        .collect();
-
-                    let results = futures::future::join_all(futures).await;
-                    for (idx, table_name, cols_result) in results {
-                        match cols_result {
-                            Ok(cols) => {
-                                let pks: Vec<String> = cols
-                                    .iter()
-                                    .filter(|c| {
-                                        c.get("isPrimaryKey")
-                                            .or_else(|| c.get("isPrimary"))
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false)
-                                    })
-                                    .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
-                                    .collect();
-                                if !pks.is_empty() {
-                                    tracing::info!("[sync] PK detected for {}: {:?}", table_name, pks);
-                                    pipeline.tables[idx].primary_key = Some(pks);
-                                } else {
-                                    tracing::warn!("[sync] No PK found for table {}, falling back to 'id'", table_name);
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!("[sync] Failed to fetch columns for {}: {}", table_name, e);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let pipeline_result = SyncService::execute_pipeline(
-            &pipeline,
-            &*source_driver,
-            &*target_driver,
-            storage.clone(),
-            Some(tx),
-            &controller,
-        ).await;
-
-        let final_status = match &pipeline_result {
-            Ok(_) => PipelineStatus::Completed,
-            Err(_) => PipelineStatus::Failed,
-        };
-        if let Err(e) = storage.update_sync_pipeline_status(&pipeline_id, final_status).await {
-            tracing::error!("[sync] Failed to update pipeline status: {e}");
-        }
-
-        if let Err(e) = pipeline_result {
-            let _ = app_handle.emit("sync:error", &e.to_string());
-        }
-
-        // Stop the keepalive task — sessions can now idle normally
-        let _ = keepalive_tx.send(());
-
-        // Release in_use flags so cleanup can expire idle sessions again
-        {
-            let st = unmark_handle.state::<AppState>();
-            st.mark_session_in_use(&unmark_source, false).await;
-            st.mark_session_in_use(&unmark_target, false).await;
-        }
-
-        controller.remove(&pipeline_id).await;
-    });
-
-    Ok(())
+    crate::application::sync::sync_execution_service::SyncExecutionService::start(
+        &state, app_handle, &id,
+    )
+    .await
 }
 
 #[tauri::command]
