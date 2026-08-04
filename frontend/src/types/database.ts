@@ -290,3 +290,12 @@ export interface JobProgressPayload {
   tableIndex: number
   totalTables: number
 }
+
+export interface JobAlertPayload {
+  jobId: string
+  jobName: string
+  level: 'warning' | 'connected'
+  message: string
+  retryCount: number
+  nextRetrySecs: number | null
+}

@@ -103,4 +103,17 @@ describe('nodesToMermaid', () => {
     expect(code).toContain('USERS {')
     expect(code).toContain('USERS_2 {')
   })
+
+  it('tolerates nodes without data (corrupted/legacy diagrams)', () => {
+    // Simulates legacy/corrupted diagrams stored without node data.
+    const nodes = [
+      { id: 'table:orphan', type: 'table', position: { x: 0, y: 0 } },
+      { id: 'view:orphan_view', type: 'view', position: { x: 0, y: 0 } },
+    ] as unknown as Node[]
+    const code = nodesToMermaid(nodes, [])
+    // Falls back to the node id, quoted because of the ':' character.
+    expect(code).toContain('["table:orphan"] {')
+    expect(code).toContain('%% VIEW view:orphan_view')
+    expect(code).toContain('["view:orphan_view"] {}')
+  })
 })

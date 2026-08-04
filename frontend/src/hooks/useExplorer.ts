@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'sql-formatter';
 import { schemaService } from '@/services/schema.service';
+import { connectionService } from '@/services/connection.service';
 import { useAppStore } from '@/store/useAppStore';
 import { tauriApi } from '@/lib/api';
 import { toast } from 'react-hot-toast';
@@ -32,11 +33,28 @@ export function useExplorer() {
   } = useAppStore();
   const queryClient = useQueryClient();
 
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  });
+
   const { search, sidebarTab, activeExplorerTabId } = explorer;
 
   const activeTabState = activeExplorerTabId
     ? explorerTabs[activeExplorerTabId]
     : null;
+
+  // Each explorer tab carries its own connection context (connectionId +
+  // database). All operations below resolve against the ACTIVE tab's
+  // connection, falling back to the global activeConnection only when the tab
+  // has no connection (legacy) or it can't be found.
+  const resolvedConnection = useMemo(() => {
+    const tabConnId = activeTabState?.connectionId;
+    if (tabConnId) {
+      return connections.find((c) => c.id === tabConnId) ?? activeConnection;
+    }
+    return activeConnection;
+  }, [activeTabState?.connectionId, connections, activeConnection]);
 
   const {
     selectedItem,
@@ -130,7 +148,7 @@ export function useExplorer() {
     [activeExplorerTabId, updateExplorerTab],
   );
 
-  const currentSchema = activeConnection?.database;
+  const currentSchema = activeTabState?.database || activeConnection?.database;
 
   const handleSetPageSize = useCallback(
     (size: number) => {
@@ -187,17 +205,17 @@ export function useExplorer() {
   const prevConnIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (activeConnection?.id && activeConnection.id !== prevConnIdRef.current) {
+    if (resolvedConnection?.id && resolvedConnection.id !== prevConnIdRef.current) {
       setIsSidebarCollapsed(false);
-      prevConnIdRef.current = activeConnection.id;
+      prevConnIdRef.current = resolvedConnection.id;
     }
-  }, [activeConnection?.id, setExplorerState]);
+  }, [resolvedConnection?.id, setExplorerState]);
 
   const handleSelectItem = useCallback(
     (item: DatabaseObject) => {
-      if (!activeConnection) return;
+      if (!resolvedConnection) return;
 
-      const tabId = `${activeConnection.id}:${currentSchema || 'default'}:${item.name}`;
+      const tabId = `${resolvedConnection.id}:${currentSchema || 'default'}:${item.name}`;
       const nextActiveTab =
         item.type === DatabaseObjectType.TABLE ||
         item.type === DatabaseObjectType.VIEW
@@ -210,9 +228,34 @@ export function useExplorer() {
           socketResults: null,
         });
         setExplorerState({ activeExplorerTabId: tabId });
+      } else if (
+        activeExplorerTabId &&
+        explorerTabs[activeExplorerTabId] &&
+        !explorerTabs[activeExplorerTabId].selectedItem?.name
+      ) {
+        // The active tab is an empty slot left after switching databases via
+        // the connections sidebar. Reuse it (re-keyed to the new object)
+        // instead of accumulating hidden tabs.
+        removeExplorerTab(activeExplorerTabId);
+        addExplorerTab({
+          id: tabId,
+          connectionId: resolvedConnection.id,
+          database: currentSchema || '',
+          selectedItem: item,
+          activeTab: nextActiveTab,
+          executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
+          socketResults: null,
+          page: 0,
+          pageSize: 50,
+          editableDdl: '',
+          filter: '',
+        });
       } else {
         addExplorerTab({
           id: tabId,
+          connectionId: resolvedConnection.id,
+          database: currentSchema || '',
           selectedItem: item,
           activeTab: nextActiveTab,
           executionStatus: ExecutionStatus.IDLE,
@@ -228,11 +271,13 @@ export function useExplorer() {
       setIsSidebarCollapsed(true);
     },
     [
-      activeConnection,
+      resolvedConnection,
       currentSchema,
       explorerTabs,
+      activeExplorerTabId,
       addExplorerTab,
       updateExplorerTab,
+      removeExplorerTab,
       setExplorerState,
     ],
   );
@@ -242,9 +287,9 @@ export function useExplorer() {
     isLoading: isLoadingTables,
     refetch: refetchTables,
   } = useQuery({
-    queryKey: ['tables', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection && sidebarTab === SidebarTab.TABLES,
+    queryKey: ['tables', resolvedConnection?.id, currentSchema],
+    queryFn: () => schemaService.getTables(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.TABLES,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -253,9 +298,9 @@ export function useExplorer() {
     isLoading: isLoadingViews,
     refetch: refetchViews,
   } = useQuery({
-    queryKey: ['views', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection && sidebarTab === SidebarTab.VIEWS,
+    queryKey: ['views', resolvedConnection?.id, currentSchema],
+    queryFn: () => schemaService.getViews(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.VIEWS,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -264,10 +309,10 @@ export function useExplorer() {
     isLoading: isLoadingProcedures,
     refetch: refetchProcedures,
   } = useQuery({
-    queryKey: ['procedures', activeConnection?.id, currentSchema],
+    queryKey: ['procedures', resolvedConnection?.id, currentSchema],
     queryFn: () =>
-      schemaService.getProcedures(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection && sidebarTab === SidebarTab.PROCEDURES,
+      schemaService.getProcedures(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.PROCEDURES,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -276,10 +321,10 @@ export function useExplorer() {
     isLoading: isLoadingTriggers,
     refetch: refetchTriggers,
   } = useQuery({
-    queryKey: ['triggers', activeConnection?.id, currentSchema],
+    queryKey: ['triggers', resolvedConnection?.id, currentSchema],
     queryFn: () =>
-      schemaService.getTriggers(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection && sidebarTab === SidebarTab.TRIGGERS,
+      schemaService.getTriggers(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.TRIGGERS,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -288,16 +333,16 @@ export function useExplorer() {
     isLoading: isLoadingFunctions,
     refetch: refetchFunctions,
   } = useQuery({
-    queryKey: ['functions', activeConnection?.id, currentSchema],
+    queryKey: ['functions', resolvedConnection?.id, currentSchema],
     queryFn: () =>
-      schemaService.getFunctions(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection && sidebarTab === SidebarTab.FUNCTIONS,
+      schemaService.getFunctions(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.FUNCTIONS,
     staleTime: 5 * 60 * 1000,
   });
 
   const handleRefetch = useCallback(() => {
-    if (activeConnection) {
-      schemaService.clearMetadataCache(activeConnection.id).catch(() => undefined)
+    if (resolvedConnection) {
+      schemaService.clearMetadataCache(resolvedConnection.id).catch(() => undefined)
     }
     if (sidebarTab === SidebarTab.TABLES) refetchTables();
     else if (sidebarTab === SidebarTab.VIEWS) refetchViews();
@@ -309,7 +354,7 @@ export function useExplorer() {
       setExecutionStatus(ExecutionStatus.IDLE);
     }
   }, [
-    activeConnection,
+    resolvedConnection,
     sidebarTab,
     refetchTables,
     refetchViews,
@@ -322,15 +367,15 @@ export function useExplorer() {
   ]);
 
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
-    queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
+    queryKey: ['columns', resolvedConnection?.id, selectedItem, currentSchema],
     queryFn: () =>
       schemaService.getColumns(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         currentSchema,
       ),
     enabled:
-      !!activeConnection &&
+      !!resolvedConnection &&
       !!selectedItem &&
       (selectedItem.type === DatabaseObjectType.TABLE ||
         selectedItem.type === DatabaseObjectType.VIEW),
@@ -338,15 +383,15 @@ export function useExplorer() {
   });
 
   const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
-    queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema],
+    queryKey: ['indexes', resolvedConnection?.id, selectedItem, currentSchema],
     queryFn: () =>
       schemaService.getIndexes(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         currentSchema,
       ),
     enabled:
-      !!activeConnection &&
+      !!resolvedConnection &&
       !!selectedItem &&
       selectedItem.type === DatabaseObjectType.TABLE,
     staleTime: 5 * 60 * 1000,
@@ -355,18 +400,18 @@ export function useExplorer() {
   const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
     queryKey: [
       'foreign-keys',
-      activeConnection?.id,
+      resolvedConnection?.id,
       selectedItem,
       currentSchema,
     ],
     queryFn: () =>
       schemaService.getForeignKeys(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         currentSchema,
       ),
     enabled:
-      !!activeConnection &&
+      !!resolvedConnection &&
       !!selectedItem &&
       selectedItem.type === DatabaseObjectType.TABLE,
     staleTime: 5 * 60 * 1000,
@@ -375,18 +420,18 @@ export function useExplorer() {
   const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
     queryKey: [
       'constraints',
-      activeConnection?.id,
+      resolvedConnection?.id,
       selectedItem,
       currentSchema,
     ],
     queryFn: () =>
       schemaService.getConstraints(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         currentSchema,
       ),
     enabled:
-      !!activeConnection &&
+      !!resolvedConnection &&
       !!selectedItem &&
       selectedItem.type === DatabaseObjectType.TABLE,
     staleTime: 5 * 60 * 1000,
@@ -397,10 +442,10 @@ export function useExplorer() {
     isLoading: isLoadingDDL,
     error: errorDDL,
   } = useQuery({
-    queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
+    queryKey: ['ddl', resolvedConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
       const ddl = await schemaService.getDDL(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         selectedItem!.type,
         currentSchema,
@@ -408,7 +453,7 @@ export function useExplorer() {
       let formatted = ddl;
       try {
         let lang = 'mysql';
-        switch (activeConnection?.type) {
+        switch (resolvedConnection?.type) {
           case DatabaseType.POSTGRES:
             lang = 'postgresql';
             break;
@@ -428,7 +473,7 @@ export function useExplorer() {
       return { ddl: formatted };
     },
     enabled:
-      !!activeConnection &&
+      !!resolvedConnection &&
       !!selectedItem &&
       (activeTab === ExplorerTab.DDL ||
         selectedItem.type === DatabaseObjectType.PROCEDURE ||
@@ -445,16 +490,16 @@ export function useExplorer() {
   }, [ddlData?.ddl, setEditableDdl]);
 
   const { data: parameters } = useQuery({
-    queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
+    queryKey: ['parameters', resolvedConnection?.id, selectedItem, currentSchema],
     queryFn: () =>
       schemaService.getParameters(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         selectedItem!.type,
         currentSchema,
       ),
     enabled:
-      !!activeConnection &&
+      !!resolvedConnection &&
       !!selectedItem &&
       (selectedItem.type === DatabaseObjectType.PROCEDURE ||
         selectedItem.type === DatabaseObjectType.VIEW),
@@ -464,7 +509,7 @@ export function useExplorer() {
   const updateDdlMutation = useMutation({
     mutationFn: (sql: string) =>
       schemaService.updateDDL(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         selectedItem!.type,
         sql,
@@ -472,22 +517,22 @@ export function useExplorer() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['ddl', activeConnection?.id, selectedItem],
+        queryKey: ['ddl', resolvedConnection?.id, selectedItem],
       });
       handleRefetch();
     },
   });
 
   const commitTransaction = useCallback(async () => {
-    if (!activeConnection) return;
+    if (!resolvedConnection) return;
     setTransactionFeedback('pending', 'Committing transaction...');
     try {
-      await schemaService.commitTransaction(activeConnection.id);
+      await schemaService.commitTransaction(resolvedConnection.id);
       queryClient.invalidateQueries({
-        queryKey: ['ddl', activeConnection.id, selectedItem],
+        queryKey: ['ddl', resolvedConnection.id, selectedItem],
       });
       queryClient.invalidateQueries({
-        queryKey: ['procedures', activeConnection.id, currentSchema],
+        queryKey: ['procedures', resolvedConnection.id, currentSchema],
       });
       handleRefetch();
       setTransactionFeedback('success', 'Transaction committed successfully.');
@@ -497,7 +542,7 @@ export function useExplorer() {
       setTransactionFeedback('error', message);
     }
   }, [
-    activeConnection,
+    resolvedConnection,
     currentSchema,
     handleRefetch,
     queryClient,
@@ -506,15 +551,15 @@ export function useExplorer() {
   ]);
 
   const rollbackTransaction = useCallback(async () => {
-    if (!activeConnection) return;
+    if (!resolvedConnection) return;
     setTransactionFeedback('pending', 'Rolling back transaction...');
     try {
-      await schemaService.rollbackTransaction(activeConnection.id);
+      await schemaService.rollbackTransaction(resolvedConnection.id);
       queryClient.invalidateQueries({
-        queryKey: ['ddl', activeConnection.id, selectedItem],
+        queryKey: ['ddl', resolvedConnection.id, selectedItem],
       });
       queryClient.invalidateQueries({
-        queryKey: ['procedures', activeConnection.id, currentSchema],
+        queryKey: ['procedures', resolvedConnection.id, currentSchema],
       });
       handleRefetch();
       setTransactionFeedback(
@@ -529,7 +574,7 @@ export function useExplorer() {
       setTransactionFeedback('error', message);
     }
   }, [
-    activeConnection,
+    resolvedConnection,
     currentSchema,
     handleRefetch,
     queryClient,
@@ -540,7 +585,7 @@ export function useExplorer() {
   const editColumnMutation = useMutation({
     mutationFn: (sql: string) =>
       schemaService.editColumn(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         sql,
         currentSchema,
@@ -549,7 +594,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'columns',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -561,7 +606,7 @@ export function useExplorer() {
   const dropColumnMutation = useMutation({
     mutationFn: (columnName: string) =>
       schemaService.dropColumn(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         columnName,
         currentSchema,
@@ -570,7 +615,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'columns',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -581,7 +626,7 @@ export function useExplorer() {
   const dropIndexMutation = useMutation({
     mutationFn: (indexName: string) =>
       schemaService.dropIndex(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         indexName,
         currentSchema,
@@ -590,7 +635,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'indexes',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -601,7 +646,7 @@ export function useExplorer() {
   const renameIndexMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
       schemaService.renameIndex(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         oldName,
         newName,
@@ -611,7 +656,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'indexes',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -622,7 +667,7 @@ export function useExplorer() {
   const dropForeignKeyMutation = useMutation({
     mutationFn: (constraintName: string) =>
       schemaService.dropForeignKey(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         constraintName,
         currentSchema,
@@ -631,7 +676,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'foreign-keys',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -642,7 +687,7 @@ export function useExplorer() {
   const renameForeignKeyMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
       schemaService.renameForeignKey(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         oldName,
         newName,
@@ -652,7 +697,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'foreign-keys',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -663,7 +708,7 @@ export function useExplorer() {
   const dropConstraintMutation = useMutation({
     mutationFn: (constraintName: string) =>
       schemaService.dropConstraint(
-        activeConnection!.id,
+        resolvedConnection!.id,
         selectedItem!.name,
         constraintName,
         currentSchema,
@@ -672,7 +717,7 @@ export function useExplorer() {
       queryClient.invalidateQueries({
         queryKey: [
           'constraints',
-          activeConnection?.id,
+          resolvedConnection?.id,
           selectedItem,
           currentSchema,
         ],
@@ -682,9 +727,9 @@ export function useExplorer() {
 
   const updateCell = useCallback(
     (row: DbRow, column: string, newValue: DbValue) => {
-      if (!selectedItem || !activeConnection) return;
+      if (!selectedItem || !resolvedConnection) return;
 
-      if (activeConnection.environment === Environment.PRODUCTION) {
+      if (resolvedConnection.environment === Environment.PRODUCTION) {
         toast(
           'Editing production data — changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
           { icon: '⚠️', duration: 5000 },
@@ -697,7 +742,7 @@ export function useExplorer() {
 
       tauriApi
         .invoke('update_cell', {
-          id: activeConnection.id,
+          id: resolvedConnection.id,
           input: {
             schema: currentSchema,
             table: selectedItem.name,
@@ -707,8 +752,11 @@ export function useExplorer() {
             primaryKeys,
           },
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error('Failed to update cell:', err);
+          const message =
+            err instanceof Error ? err.message : 'Failed to update cell.';
+          toast.error(message, { duration: 5000 });
         });
 
       setSocketResults((prev: QueryResult | null) => {
@@ -723,12 +771,12 @@ export function useExplorer() {
         return { ...prev, rows: newRows } as QueryResult;
       });
     },
-    [selectedItem, activeConnection, columns, currentSchema, setSocketResults],
+    [selectedItem, resolvedConnection, columns, currentSchema, setSocketResults],
   );
 
   const handleExecute = useCallback(
     async (useParams: boolean = false) => {
-      if (selectedItem && activeConnection) {
+      if (selectedItem && resolvedConnection) {
         if (!useParams && parameters && parameters.length > 0) {
           setShowParamModal(true);
           return;
@@ -749,7 +797,7 @@ export function useExplorer() {
           const currentFilter = tabId ? store.explorerTabs[tabId]?.filter ?? '' : '';
 
           const result = await schemaService.executeExplorer({
-            connectionId: activeConnection.id,
+            connectionId: resolvedConnection.id,
             database: currentSchema,
             name: selectedItem.name,
             objectType: selectedItem.type,
@@ -781,7 +829,7 @@ export function useExplorer() {
     },
     [
       selectedItem,
-      activeConnection,
+      resolvedConnection,
       pageSize,
       page,
       parameters,
@@ -789,7 +837,6 @@ export function useExplorer() {
       currentSchema,
       updateExplorerTab,
       activeExplorerTabId,
-      filter,
     ],
   );
 
@@ -859,22 +906,22 @@ export function useExplorer() {
     );
   }, [sidebarTab, tables, views, procedures, triggers, functions, search]);
 
-  // Resolve db type: prefer activeConnection.type (already stored), confirm from backend only if needed
+  // Resolve db type: prefer resolvedConnection.type (already stored), confirm from backend only if needed
   const dbType: DatabaseType | undefined = (() => {
-    if (!activeConnection?.type) return undefined;
-    switch (activeConnection.type) {
+    if (!resolvedConnection?.type) return undefined;
+    switch (resolvedConnection.type) {
       case DatabaseType.MONGODB: return DatabaseType.MONGODB;
       case DatabaseType.SQLSERVER: return DatabaseType.SQLSERVER;
       case DatabaseType.POSTGRES: return DatabaseType.POSTGRES;
       case DatabaseType.MARIADB: return DatabaseType.MARIADB;
-      default: return activeConnection.type as DatabaseType;
+      default: return resolvedConnection.type as DatabaseType;
     }
   })();
 
   const isMongoDB = dbType === DatabaseType.MONGODB;
 
   return {
-    activeConnection,
+    activeConnection: resolvedConnection,
     search,
     setSearch,
     selectedItem,

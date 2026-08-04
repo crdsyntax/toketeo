@@ -63,10 +63,10 @@ export default function MainLayout() {
     try {
       await connectionService.disconnect(id)
       removeConnectedConnection(id)
+      const { setActiveConnection, removeExplorerTabsForConnection } = useAppStore.getState()
+      removeExplorerTabsForConnection(id)
       if (activeConnection?.id === id) {
         setActiveConnection(null)
-        const { setExplorerState } = useAppStore.getState()
-        setExplorerState({ activeExplorerTabId: null })
       }
       queryClient.invalidateQueries({ queryKey: ['connections'] })
       setMiniToast(id, { type: 'success', text: 'Disconnected' })

@@ -27,6 +27,8 @@ interface AssistantState {
   onboardingCompleted: boolean
   dismissedTips: string[]
   schemaCache: SchemaCache
+  isStreaming: boolean
+  pendingConfirmation: { question: string } | null
 
   setActiveTab: (tab: AssistantTab) => void
   addMessage: (msg: AssistantMessage) => void
@@ -37,6 +39,8 @@ interface AssistantState {
   setSchemaCache: (cache: SchemaCache) => void
   clearSchemaCache: () => void
   updateMessageFeedback: (id: string, feedback: 'positive' | 'negative') => void
+  setStreaming: (streaming: boolean) => void
+  setPendingConfirmation: (pending: { question: string } | null) => void
 }
 
 export const useAssistantStore = create<AssistantState>()(
@@ -48,6 +52,8 @@ export const useAssistantStore = create<AssistantState>()(
       onboardingCompleted: false,
       dismissedTips: [],
       schemaCache: { tables: [], columns: {} },
+      isStreaming: false,
+      pendingConfirmation: null,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
@@ -62,6 +68,8 @@ export const useAssistantStore = create<AssistantState>()(
       updateMessageFeedback: (id, feedback) => set((s) => ({
         messages: s.messages.map((m) => m.id === id ? { ...m, feedback } : m),
       })),
+      setStreaming: (streaming) => set({ isStreaming: streaming }),
+      setPendingConfirmation: (pending) => set({ pendingConfirmation: pending }),
     }),
     {
       name: 'toketeo-assistant-storage',

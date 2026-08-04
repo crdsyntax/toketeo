@@ -15,6 +15,7 @@ interface CreateObjectModalProps {
   objectType: DatabaseObjectType
   schema?: string
   dbType?: DatabaseType
+  connectionId?: string
   onCreated: () => void
 }
 
@@ -60,7 +61,7 @@ function typeLabel(type: DatabaseObjectType): string {
   }
 }
 
-export function CreateObjectModal({ open, onClose, objectType, schema, dbType, onCreated }: CreateObjectModalProps) {
+export function CreateObjectModal({ open, onClose, objectType, schema, dbType, connectionId, onCreated }: CreateObjectModalProps) {
   const [tab, setTab] = useState<'form' | 'sql'>('form')
   const [name, setName] = useState('')
   const [columns, setColumns] = useState<ColumnDef[]>([defaultColumn()])
@@ -73,6 +74,7 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, o
   const [params, setParams] = useState('')
   const [executing, setExecuting] = useState(false)
   const activeConnection = useAppStore((s) => s.activeConnection)
+  const targetConnectionId = connectionId ?? activeConnection?.id
   const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily)
   const storeEditorFontSize = useAppStore((s) => s.uiFontSize)
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight)
@@ -149,11 +151,11 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, o
   }, [])
 
   const handleExecute = useCallback(async () => {
-    if (!activeConnection || !currentSql.trim()) return
+    if (!targetConnectionId || !currentSql.trim()) return
     setExecuting(true)
     try {
       await tauriApi.invoke('execute_query', {
-        id: activeConnection.id,
+        id: targetConnectionId,
         query: currentSql.trim(),
         schema: schema || null,
       })
@@ -165,7 +167,7 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, o
     } finally {
       setExecuting(false)
     }
-  }, [activeConnection, currentSql, schema, name, objectType, onCreated, onClose])
+  }, [targetConnectionId, currentSql, schema, name, objectType, onCreated, onClose])
 
   const title = getTitle(objectType)
 

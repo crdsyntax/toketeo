@@ -12,7 +12,7 @@ type ViewNodeType = Node<ViewNodeData, 'view'>
 export const ViewNode = memo(({ data }: NodeProps<ViewNodeType>) => {
   return (
     <div className="bg-card border border-border rounded-lg shadow-md min-w-[200px] overflow-hidden group">
-      <Handle type="target" position={Position.Top} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background hover:!scale-125 !transition-transform" title="Arrastra para conectar" />
+      <Handle type="target" position={Position.Top} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background" title="Arrastra para conectar" />
       <div
         className="bg-emerald-500/10 px-3 py-2 border-b border-border font-semibold text-sm text-emerald-500 flex items-center gap-2 cursor-grab"
         title="Doble clic para editar"
@@ -32,7 +32,7 @@ export const ViewNode = memo(({ data }: NodeProps<ViewNodeType>) => {
           Sin consulta — doble clic para editar
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background hover:!scale-125 !transition-transform" title="Arrastra para conectar" />
+      <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background" title="Arrastra para conectar" />
     </div>
   )
 })

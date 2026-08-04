@@ -136,6 +136,7 @@ export default function Explorer() {
           sidebarTab={sidebarTab}
           setSidebarTab={setSidebarTab}
           currentSchema={currentSchema}
+          connectionId={activeConnection?.id}
           handleRefetch={handleRefetch}
           isLoadingSidebar={isLoadingSidebar}
           search={search}
@@ -160,6 +161,7 @@ export default function Explorer() {
             activeExplorerTabId={activeExplorerTabId}
             removeExplorerTab={removeExplorerTab}
             setExplorerState={setExplorerState}
+            connection={activeConnection}
             selectedItem={selectedItem}
             activeTab={activeTab}
             setActiveTab={setActiveTab}

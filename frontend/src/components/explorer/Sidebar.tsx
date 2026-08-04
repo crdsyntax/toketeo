@@ -10,6 +10,7 @@ interface SidebarProps {
   sidebarTab: SidebarTab
   setSidebarTab: (tab: SidebarTab) => void
   currentSchema: string | undefined
+  connectionId?: string
   handleRefetch: () => void
   isLoadingSidebar: boolean
   search: string
@@ -29,7 +30,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  sidebarTab, setSidebarTab, currentSchema, handleRefetch, isLoadingSidebar,
+  sidebarTab, setSidebarTab, currentSchema, connectionId, handleRefetch, isLoadingSidebar,
   search, setSearch, filteredItems, selectedItem, setSelectedItem,
   setPage, setSocketResults, setExecutionStatus, setExecutionError,
   setParamsValues, setActiveTab, isCollapsed, onToggle, dbType
@@ -271,6 +272,7 @@ export function Sidebar({
           objectType={createModalType}
           schema={currentSchema}
           dbType={dbType}
+          connectionId={connectionId}
           onCreated={handleRefetch}
         />
       )}

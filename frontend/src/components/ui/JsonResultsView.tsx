@@ -4,16 +4,16 @@ import JsonView from '@uiw/react-json-view';
 import { darkTheme } from '@uiw/react-json-view/dark';
 import type { DbRow } from '@/types/database';
 
-interface ResultsPanelJsonViewProps {
-  sortedRows: DbRow[];
+interface JsonResultsViewProps {
+  rows: DbRow[];
 }
 
-export function ResultsPanelJsonView({ sortedRows }: ResultsPanelJsonViewProps) {
+export function JsonResultsView({ rows }: JsonResultsViewProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
-    count: sortedRows.length,
+    count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 100, // Dynamic height estimation
     overscan: 5,
@@ -30,7 +30,7 @@ export function ResultsPanelJsonView({ sortedRows }: ResultsPanelJsonViewProps) 
         }}
       >
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const isLast = virtualRow.index === sortedRows.length - 1;
+          const isLast = virtualRow.index === rows.length - 1;
           return (
             <div
               key={virtualRow.key}
@@ -47,7 +47,7 @@ export function ResultsPanelJsonView({ sortedRows }: ResultsPanelJsonViewProps) 
             >
               <div className="relative">
                 <JsonView
-                  value={sortedRows[virtualRow.index]}
+                  value={rows[virtualRow.index]}
                   style={{ ...darkTheme, backgroundColor: 'transparent' }}
                   shouldExpandNodeInitially={(isExpanded, { value }) => {
                     if (Array.isArray(value)) return false;

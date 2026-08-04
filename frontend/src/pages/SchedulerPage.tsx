@@ -6,12 +6,12 @@ import { JobCard } from '@/components/scheduler/JobCard'
 import { JobFormModal } from '@/components/scheduler/JobFormModal'
 import { useSchedulerStore } from '@/store/schedulerStore'
 import { connectionService } from '@/services/connection.service'
-import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload, JobStartedPayload, JobProgressPayload, Connection } from '@/types/database'
+import type { ScheduledJob, CreateScheduledJobDto, JobCompletedPayload, JobStartedPayload, JobProgressPayload, JobAlertPayload, Connection } from '@/types/database'
 import toast from 'react-hot-toast'
 import { listen } from '@tauri-apps/api/event'
 
 export function SchedulerPage() {
-  const { jobs, loading, error, fetchJobs, createJob, updateJob, deleteJob, runJobNow, stopJobNow, setLastCompleted, setJobStarted, setJobProgress, clearRunningJob, runningJobs } = useSchedulerStore()
+  const { jobs, loading, error, fetchJobs, createJob, updateJob, deleteJob, runJobNow, stopJobNow, setLastCompleted, setJobStarted, setJobProgress, setJobAlert, clearRunningJob, runningJobs } = useSchedulerStore()
   const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -31,6 +31,16 @@ export function SchedulerPage() {
       setJobProgress(event.payload)
     })
 
+    const unlistenAlert = listen<JobAlertPayload>('scheduler:job-alert', (event) => {
+      const p = event.payload
+      if (p.level === 'warning') {
+        toast.error(`${p.jobName}: ${p.message}`, { duration: 5000 })
+      } else {
+        toast.success(`${p.jobName}: ${p.message}`, { duration: 4000 })
+      }
+      setJobAlert(p)
+    })
+
     const unlistenCompleted = listen<JobCompletedPayload>('scheduler:job-completed', (event) => {
       const p = event.payload
       setLastCompleted(p)
@@ -46,9 +56,10 @@ export function SchedulerPage() {
     return () => {
       unlistenStarted.then((f) => f())
       unlistenProgress.then((f) => f())
+      unlistenAlert.then((f) => f())
       unlistenCompleted.then((f) => f())
     }
-  }, [fetchJobs, setLastCompleted, setJobStarted, setJobProgress, clearRunningJob])
+  }, [fetchJobs, setLastCompleted, setJobStarted, setJobProgress, setJobAlert, clearRunningJob])
 
   const handleSave = useCallback(async (dto: CreateScheduledJobDto) => {
     setSaving(true)

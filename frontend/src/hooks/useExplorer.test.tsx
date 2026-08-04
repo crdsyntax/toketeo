@@ -2,14 +2,17 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { useExplorer } from './useExplorer'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { schemaService } from '@/services/schema.service'
+import { connectionService } from '@/services/connection.service'
 import { useAppStore } from '@/store/useAppStore'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { ExecutionStatus, SidebarTab, ExplorerTab } from '@/types/database'
+import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseType, Environment } from '@/types/database'
+import type { Connection } from '@/types/database'
 
 // Mock the store and service
 vi.mock('@/store/useAppStore')
 vi.mock('@/services/schema.service')
+vi.mock('@/services/connection.service')
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -30,6 +33,7 @@ describe('useExplorer Performance and Caching', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(connectionService.getAll).mockResolvedValue([])
     vi.mocked(useAppStore).mockReturnValue({
       activeConnection: mockActiveConnection,
       explorer: {
@@ -41,6 +45,7 @@ describe('useExplorer Performance and Caching', () => {
         executionError: null,
         socketResults: null
       },
+      explorerTabs: {},
       setExplorerState: vi.fn(),
     } as unknown as ReturnType<typeof useAppStore>)
   })
@@ -73,5 +78,66 @@ describe('useExplorer Performance and Caching', () => {
     // Simulate same schema (no change)
     rerender()
     expect(schemaService.getTables).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves the connection of the active explorer tab', async () => {
+    const pgConn: Connection = {
+      id: 'pg-id',
+      name: 'Postgres',
+      type: DatabaseType.POSTGRES,
+      environment: Environment.LOCAL,
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      database: 'public',
+      createdAt: '',
+      updatedAt: '',
+    }
+    const mongoConn: Connection = {
+      id: 'mongo-id',
+      name: 'Mongo',
+      type: DatabaseType.MONGODB,
+      environment: Environment.LOCAL,
+      host: 'localhost',
+      port: 27017,
+      user: '',
+      database: 'myapp',
+      createdAt: '',
+      updatedAt: '',
+    }
+    vi.mocked(connectionService.getAll).mockResolvedValue([pgConn, mongoConn])
+    vi.mocked(useAppStore).mockReturnValue({
+      activeConnection: pgConn,
+      explorer: {
+        sidebarTab: SidebarTab.TABLES,
+        search: '',
+        activeExplorerTabId: 'mongo-id:myapp:students',
+      },
+      explorerTabs: {
+        'mongo-id:myapp:students': {
+          id: 'mongo-id:myapp:students',
+          connectionId: 'mongo-id',
+          database: 'myapp',
+          selectedItem: { name: 'students', type: 'table' },
+          activeTab: ExplorerTab.DATA,
+          executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
+          socketResults: null,
+          page: 0,
+          pageSize: 50,
+          editableDdl: '',
+          filter: '',
+        },
+      },
+      setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+    } as unknown as ReturnType<typeof useAppStore>)
+
+    const { result } = renderHook(() => useExplorer(), { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(result.current.activeConnection?.id).toBe('mongo-id')
+    })
+    expect(result.current.currentSchema).toBe('myapp')
   })
 })

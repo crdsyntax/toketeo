@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Toketeo",
-  "version": "0.2.3",
+  "version": "0.3.8",
   "identifier": "com.toketeo.app",
   "build": {
     "frontendDist": "../frontend/dist",
@@ -43,6 +43,14 @@
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM2QjlGNkE3MjhBNzlGMkEKUldRcW42Y29wL2E1eHJvbVIyWXh2d1dBd21OZitHMXBoUmsyeEwvV0pGSVJ4dXRVNncydzJmdlYK",
+      "endpoints": [
+        "https://updates.toketeo.app/latest.json"
+      ]
     }
   }
 }

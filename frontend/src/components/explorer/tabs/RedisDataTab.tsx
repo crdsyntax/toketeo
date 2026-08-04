@@ -18,6 +18,7 @@ import type {
   DatabaseObject,
   DbRow,
   DbValue,
+  Connection,
 } from '@/types/database';
 import { ExecutionStatus, Environment } from '@/types/database';
 import { invoke } from '@tauri-apps/api/core';
@@ -27,6 +28,7 @@ import { formatCellValue } from '@/lib/formatCellValue';
 
 interface RedisDataTabProps {
   selectedItem: DatabaseObject;
+  connection?: Connection | null;
   isLoading: boolean;
   executionStatus: ExecutionStatus;
   executionError: string | null;
@@ -43,6 +45,7 @@ interface RedisDataTabProps {
 
 export function RedisDataTab({
   selectedItem,
+  connection,
   isLoading,
   executionStatus,
   executionError,
@@ -59,7 +62,8 @@ export function RedisDataTab({
   const [command, setCommand] = useState(filter || 'SCAN 0 COUNT 100');
   const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
   const copiedTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const activeConnection = useAppStore((state) => state.activeConnection);
+  const storeConnection = useAppStore((state) => state.activeConnection);
+  const activeConnection = connection ?? storeConnection;
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
   const resultsFontSize = useAppStore((s) => s.uiFontSize);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});

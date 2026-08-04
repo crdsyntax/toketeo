@@ -13,6 +13,7 @@ import { ComparePage } from '@/pages/ComparePage'
 import { AssistantPage } from '@/pages/AssistantPage'
 import { ThemeProvider } from '@/components/gamification/ThemeProvider'
 import { AppBootstrap } from '@/components/layout/AppBootstrap'
+import { UpdateModal } from '@/components/update/UpdateModal'
 import { Toaster } from 'react-hot-toast'
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
     <AppBootstrap>
       <ThemeProvider>
         <Toaster position="bottom-right" />
+        <UpdateModal />
         <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<Connections />} />

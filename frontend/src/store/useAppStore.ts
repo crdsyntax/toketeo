@@ -15,6 +15,8 @@ export interface MongoFilterState {
 
 export type EditorMode = 'auto' | 'mongosh' | 'json'
 
+export type DataTabViewMode = 'table' | 'list' | 'json'
+
 export interface QueryTab {
   id: string
   name: string
@@ -41,6 +43,8 @@ export interface QueryHistoryEntry {
 
 export interface ExplorerTabState {
   id: string; // connectionId:database:name
+  connectionId: string;
+  database: string;
   selectedItem: DatabaseObject;
   activeTab: ExplorerTab;
   executionStatus: ExecutionStatus;
@@ -72,6 +76,8 @@ interface AppState {
   setEditorFontFamily: (font: string) => void
   inlineEditReview: boolean
   setInlineEditReview: (enabled: boolean) => void
+  dataTabViewMode: DataTabViewMode
+  setDataTabViewMode: (mode: DataTabViewMode) => void
   resultsFontSize: number
   setResultsFontSize: (size: number) => void
   uiFontSize: number
@@ -128,6 +134,7 @@ interface AppState {
   addExplorerTab: (tab: ExplorerTabState) => void
   updateExplorerTab: (id: string, updates: Partial<ExplorerTabState>) => void
   removeExplorerTab: (id: string) => void
+  removeExplorerTabsForConnection: (connectionId: string) => void
   miniToasts: Record<string, { type: 'success' | 'error', text: string } | null>
   setMiniToast: (id: string, msg: { type: 'success' | 'error', text: string }) => void
   clearMiniToast: (id: string) => void
@@ -156,6 +163,8 @@ export const useAppStore = create<AppState>()(
       setEditorFontFamily: (editorFontFamily) => set({ editorFontFamily }),
       inlineEditReview: true,
       setInlineEditReview: (inlineEditReview) => set({ inlineEditReview }),
+      dataTabViewMode: 'table',
+      setDataTabViewMode: (dataTabViewMode) => set({ dataTabViewMode }),
       resultsFontSize: 13,
       setResultsFontSize: (resultsFontSize) => set({ resultsFontSize }),
       editorLineHeight: 1.6,
@@ -219,18 +228,35 @@ export const useAppStore = create<AppState>()(
         explorerTabs: { ...state.explorerTabs, [tab.id]: tab },
         explorer: { ...state.explorer, activeExplorerTabId: tab.id }
       })),
-      updateExplorerTab: (id, updates) => set((state) => ({
-        explorerTabs: {
-          ...state.explorerTabs,
-          [id]: { ...state.explorerTabs[id], ...updates }
+      updateExplorerTab: (id, updates) => set((state) => {
+        if (!state.explorerTabs[id]) return state
+        return {
+          explorerTabs: {
+            ...state.explorerTabs,
+            [id]: { ...state.explorerTabs[id], ...updates }
+          }
         }
-      })),
+      }),
       removeExplorerTab: (id) => set((state) => {
         const remainingTabs = Object.fromEntries(
           Object.entries(state.explorerTabs).filter(([tabId]) => tabId !== id)
         )
         let nextActiveId = state.explorer.activeExplorerTabId
         if (nextActiveId === id) {
+          const tabIds = Object.keys(remainingTabs)
+          nextActiveId = tabIds.length > 0 ? tabIds[tabIds.length - 1] : null
+        }
+        return {
+          explorerTabs: remainingTabs,
+          explorer: { ...state.explorer, activeExplorerTabId: nextActiveId }
+        }
+      }),
+      removeExplorerTabsForConnection: (connectionId) => set((state) => {
+        const remainingTabs = Object.fromEntries(
+          Object.entries(state.explorerTabs).filter(([, tab]) => tab.connectionId !== connectionId)
+        )
+        let nextActiveId = state.explorer.activeExplorerTabId
+        if (nextActiveId && state.explorerTabs[nextActiveId]?.connectionId === connectionId) {
           const tabIds = Object.keys(remainingTabs)
           nextActiveId = tabIds.length > 0 ? tabIds[tabIds.length - 1] : null
         }
@@ -366,7 +392,7 @@ export const useAppStore = create<AppState>()(
         ),
         queryHistory: state.queryHistory,
       }),
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, version: number) => {
         const persisted = persistedState as Record<string, unknown> & { version?: number };
         if (version < 1) {
@@ -387,6 +413,16 @@ export const useAppStore = create<AppState>()(
           }
           delete persisted.customColors
           delete persisted.setCustomColors
+        }
+        if (version < 4) {
+          const tabs = persisted.explorerTabs as Record<string, Partial<ExplorerTabState>> | undefined
+          if (tabs) {
+            for (const [id, tab] of Object.entries(tabs)) {
+              const [connId, db] = id.split(':')
+              if (!tab.connectionId && connId) tab.connectionId = connId
+              if (!tab.database && db) tab.database = db
+            }
+          }
         }
         return persisted as unknown as AppState
       },

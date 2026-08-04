@@ -253,6 +253,86 @@ impl DbDriver for MongoDbDriver {
 
         tracing::info!("[MongoDB Execute] query: {}", query);
 
+        // Cell update support:
+        // { "database": "db", "collection": "name", "update": { "filter": {...}, "set": { "col": value } } }
+        // Must run BEFORE the 'collection' find branch below, which also
+        // matches any query that carries a "collection" field.
+        if let Some(update_spec) = obj
+            .get("update")
+            .and_then(|v| v.as_object())
+            .filter(|o| o.contains_key("filter") && o.contains_key("set"))
+        {
+            let coll_name = obj
+                .get("collection")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    AppError::Validation(
+                        "MongoDB cell update requires a 'collection' field".into(),
+                    )
+                })?;
+
+            let filter_doc = match update_spec.get("filter") {
+                Some(serde_json::Value::Object(map)) => {
+                    let mut doc = Document::new();
+                    for (k, v) in map {
+                        doc.insert(k, json_value_to_bson(v));
+                    }
+                    doc
+                }
+                _ => {
+                    return Err(AppError::Validation(
+                        "MongoDB cell update 'filter' must be an object".into(),
+                    ))
+                }
+            };
+
+            let set_value = update_spec
+                .get("set")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| {
+                    AppError::Validation("MongoDB cell update 'set' must be an object".into())
+                })?;
+            if set_value.contains_key("_id") {
+                return Err(AppError::Validation(
+                    "Updating the '_id' field is not supported".into(),
+                ));
+            }
+            let mut set_doc = Document::new();
+            for (k, v) in set_value {
+                set_doc.insert(k, json_value_to_bson(v));
+            }
+
+            let db_name = obj
+                .get("database")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let db = self.get_db(db_name.clone())?;
+            let coll = db.collection::<Document>(coll_name);
+
+            let result = coll
+                .update_one(filter_doc, doc! { "$set": set_doc })
+                .await
+                .map_err(|e| AppError::Database(format!("MongoDB cell update failed: {}", e)))?;
+
+            tracing::info!(
+                "[MongoDB Execute] path=cell_update, collection={}, modified={}, matched={}",
+                coll_name,
+                result.modified_count,
+                result.matched_count,
+            );
+
+            return Ok(QueryResult {
+                columns: vec!["modified".to_string(), "matched".to_string()],
+                rows: vec![serde_json::json!({
+                    "modified": result.modified_count,
+                    "matched": result.matched_count,
+                })],
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys: Some(vec!["_id".to_string()]),
+                rows_affected: result.modified_count,
+            });
+        }
+
         // Simple 'find' support: { "collection": "name", "find": { ... }, "limit": 100 }
         if let Some(coll_name) = obj.get("collection").and_then(|v| v.as_str()) {
             let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);

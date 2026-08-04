@@ -14,6 +14,9 @@ import {
   Copy,
   FileCode,
   Terminal,
+  Table2,
+  Rows3,
+  FileJson,
 } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type {
@@ -21,19 +24,23 @@ import type {
   DatabaseObject,
   DbRow,
   DbValue,
+  Connection,
 } from '@/types/database';
 import { ExecutionStatus, Environment, DatabaseType } from '@/types/database';
 import { ModelExportModal } from '../ModelExportModal';
 import { ContextMenu } from '@/components/ui/ContextMenu';
 import { invoke } from '@tauri-apps/api/core';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, type DataTabViewMode } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { formatCellValue } from '@/lib/formatCellValue';
 import { Button } from '@/components/ui/Button';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
+import { JsonResultsView } from '@/components/ui/JsonResultsView';
+import { DataListView } from './DataListView';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
+  connection?: Connection | null;
   isLoading: boolean;
   executionStatus: ExecutionStatus;
   executionError: string | null;
@@ -66,6 +73,7 @@ interface SqlPreviewState {
 
 export function DataTab({
   selectedItem,
+  connection,
   isLoading,
   executionStatus,
   executionError,
@@ -129,13 +137,16 @@ export function DataTab({
   const editingCellRef = useRef<HTMLTableCellElement | null>(null);
 
   const [modelModalOpen, setModelModalOpen] = useState(false);
-  const activeConnection = useAppStore((state) => state.activeConnection);
+  const storeConnection = useAppStore((state) => state.activeConnection);
+  const activeConnection = connection ?? storeConnection;
   const isMongo = activeConnection?.type === DatabaseType.MONGODB;
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
   const resultsFontSize = useAppStore((s) => s.uiFontSize);
   const inlineEditReview = useAppStore((s) => s.inlineEditReview);
+  const viewMode = useAppStore((s) => s.dataTabViewMode);
+  const setViewMode = useAppStore((s) => s.setDataTabViewMode);
 
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
@@ -492,6 +503,7 @@ export function DataTab({
         isOpen={modelModalOpen}
         onClose={() => setModelModalOpen(false)}
         tableName={selectedItem.name}
+        connection={activeConnection}
       />
 
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex flex-col shrink-0">
@@ -534,6 +546,30 @@ export function DataTab({
               Advanced
               {showAdvancedMongo ? <ChevronDown className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
             </button>
+          )}
+
+          {isMongo && (
+            <div className="ml-auto flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40">
+              {([
+                { mode: 'table' as DataTabViewMode, icon: <Table2 className="w-3.5 h-3.5" />, title: 'Table View' },
+                { mode: 'list' as DataTabViewMode, icon: <Rows3 className="w-3.5 h-3.5" />, title: 'List View' },
+                { mode: 'json' as DataTabViewMode, icon: <FileJson className="w-3.5 h-3.5" />, title: 'JSON View' },
+              ]).map(({ mode, icon, title }) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors",
+                    viewMode === mode
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title={title}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         
@@ -611,6 +647,18 @@ export function DataTab({
             </div>
           </div>
         ) : queryData ? (
+          isMongo && viewMode === 'list' ? (
+            <DataListView
+              rows={sortedRows}
+              indexOffset={page * pageSize}
+              fontFamily={editorFontFamily}
+              fontSize={resultsFontSize}
+            />
+          ) : isMongo && viewMode === 'json' ? (
+            <div className="h-full relative">
+              <JsonResultsView rows={sortedRows} />
+            </div>
+          ) : (
           <div className="min-w-full inline-block align-middle">
             <table className="min-w-full text-left border-collapse table-fixed" style={{ fontFamily: editorFontFamily, fontSize: resultsFontSize }}>
               <thead className="sticky top-0 bg-background border-b border-border z-10">
@@ -757,6 +805,7 @@ export function DataTab({
               </tbody>
             </table>
           </div>
+          )
         ) : (
           executionStatus === ExecutionStatus.SUCCESS && (
             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic">

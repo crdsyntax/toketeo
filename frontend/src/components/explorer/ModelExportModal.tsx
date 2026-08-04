@@ -2,21 +2,24 @@ import { useState, useEffect } from 'react';
 import { X, Copy, Code } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
+import type { Connection } from '@/types/database';
 
 interface ModelExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   tableName: string;
   schema?: string | null;
+  connection?: Connection | null;
 }
 
 const FRAMEWORKS = ['Mongoose', 'TypeORM', 'Prisma', 'Sequelize'];
 
-export function ModelExportModal({ isOpen, onClose, tableName, schema }: ModelExportModalProps) {
+export function ModelExportModal({ isOpen, onClose, tableName, schema, connection }: ModelExportModalProps) {
   const [selectedFramework, setSelectedFramework] = useState(FRAMEWORKS[0]);
   const [modelCode, setModelCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const activeConnection = useAppStore((state) => state.activeConnection);
+  const storeConnection = useAppStore((state) => state.activeConnection);
+  const activeConnection = connection ?? storeConnection;
 
   useEffect(() => {
     if (!isOpen || !activeConnection) return;

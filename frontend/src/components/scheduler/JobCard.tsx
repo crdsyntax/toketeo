@@ -1,4 +1,4 @@
-import { Play, Pencil, Trash2, CalendarClock, Database, FileJson, FileSpreadsheet, FileDown, Loader2, Square } from 'lucide-react'
+import { Play, Pencil, Trash2, CalendarClock, Database, FileJson, FileSpreadsheet, FileDown, Loader2, Square, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { JobType } from '@/types/database'
 import type { ScheduledJob, Connection } from '@/types/database'
@@ -55,12 +55,24 @@ export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunN
               Running
             </span>
           )}
+          {isRunning && runningJob.reconnecting && (
+            <span className="text-[var(--ch-text-9)] uppercase tracking-widest font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded animate-pulse">
+              Reconnecting
+            </span>
+          )}
           {!job.enabled && !isRunning && (
             <span className="text-[var(--ch-text-9)] uppercase tracking-widest font-bold text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded">Paused</span>
           )}
         </div>
 
-        {isRunning && runningJob.currentTable ? (
+        {isRunning && runningJob.reconnecting ? (
+          <div className="flex items-center gap-2 mt-1 text-amber-500">
+            <RefreshCw className="w-3 h-3 animate-spin" />
+            <span className="truncate">
+              Conexión perdida — reintento {runningJob.retryCount ?? 1} en {runningJob.nextRetrySecs ?? 5}s...
+            </span>
+          </div>
+        ) : isRunning && runningJob.currentTable ? (
           <div className="flex items-center gap-2 mt-1 text-[var(--ch-text-10)] text-primary">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span className="truncate">

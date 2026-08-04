@@ -19,7 +19,7 @@ impl AssistantTool for DiagramsTool {
     }
 
     fn description(&self) -> &str {
-        "Manage schema diagrams: 'list', 'get' (by id), 'save' (a diagram object {name, nodes, edges, ...}), 'createFromTables' (build a real diagram from the schema of a connection: columns and FK relationships included), 'delete' (by id, destructive — requires confirmation)."
+        "Manage schema diagrams: 'list', 'get' (by id), 'save' (a diagram object {name, nodes, edges, ...}), 'createFromTables' (build a real diagram from the schema of a connection: columns and FK relationships included), 'addRelation' (add a manual logical relation between two nodes of a saved diagram, e.g. when the database has no real FK), 'delete' (by id, destructive — requires confirmation)."
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -212,7 +212,32 @@ impl DiagramsTool {
             );
         }
 
-        // Tables: from args, or all tables of the schema when omitted.
+        // Tables: from args, or all tables of the schema when omitted. The
+        // requested names are validated against the real schema — the diagram
+        // is never created from tables that do not exist.
+        let driver = match state.get_connection(connection_id).await {
+            Ok(d) => d,
+            Err(e) => {
+                return Ok(ToolResult {
+                    ok: false,
+                    data: None,
+                    requires_confirmation: false,
+                    message: Some(format!("Connection not active: {e}")),
+                })
+            }
+        };
+        let existing = match driver.fetch_tables(Some(schema.clone()), None).await {
+            Ok(t) => t,
+            Err(e) => {
+                return Ok(ToolResult {
+                    ok: false,
+                    data: None,
+                    requires_confirmation: false,
+                    message: Some(format!("Failed to list tables: {e}")),
+                })
+            }
+        };
+
         let mut tables: Vec<String> = args
             .get("tables")
             .and_then(|v| v.as_array())
@@ -222,30 +247,49 @@ impl DiagramsTool {
                     .collect()
             })
             .unwrap_or_default();
+
         if tables.is_empty() {
-            let driver = match state.get_connection(connection_id).await {
-                Ok(d) => d,
-                Err(e) => {
-                    return Ok(ToolResult {
-                        ok: false,
-                        data: None,
-                        requires_confirmation: false,
-                        message: Some(format!("Connection not active: {e}")),
-                    })
-                }
-            };
-            tables = match driver.fetch_tables(Some(schema.clone()), None).await {
-                Ok(t) => t,
-                Err(e) => {
-                    return Ok(ToolResult {
-                        ok: false,
-                        data: None,
-                        requires_confirmation: false,
-                        message: Some(format!("Failed to list tables: {e}")),
-                    })
-                }
-            };
+            tables = existing.clone();
+        } else {
+            // Strip quoting/backticks the model may have added, then compare.
+            let existing_set: std::collections::HashSet<String> = existing
+                .iter()
+                .map(|t| strip_quotes(t).to_string())
+                .collect();
+            let missing: Vec<String> = tables
+                .iter()
+                .filter(|t| !existing_set.contains(strip_quotes(t)))
+                .cloned()
+                .collect();
+            if !missing.is_empty() {
+                let available = existing
+                    .iter()
+                    .take(30)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Ok(ToolResult {
+                    ok: false,
+                    data: None,
+                    requires_confirmation: false,
+                    message: Some(format!(
+                        "Las tablas no existen en el esquema '{schema}': {}. Tablas disponibles: {}",
+                        missing.join(", "),
+                        if available.is_empty() {
+                            "(ninguna)".to_string()
+                        } else {
+                            available
+                        }
+                    )),
+                });
+            }
+            // Keep original requested order.
+            tables = tables
+                .iter()
+                .map(|t| strip_quotes(t).to_string())
+                .collect();
         }
+
         if tables.is_empty() {
             return missing("No tables found for the given schema");
         }
@@ -363,6 +407,11 @@ impl DiagramsTool {
             }),
         }
     }
+}
+
+/// Strip backticks/quotes a model may add around table names.
+fn strip_quotes(t: &str) -> &str {
+    t.trim_matches(|c| c == '`' || c == '"' || c == '\'')
 }
 
 fn missing(msg: &str) -> AppResult<ToolResult> {

@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { schemaService } from '@/services/schema.service'
 import { assistantService } from '@/services/assistant.service'
 import { tauriApi } from '@/lib/api'
+import { requestRunQuery } from '@/lib/queryRunEvents'
 import { cn } from '@/lib/utils'
 import type { ColumnResponse } from '@/types/database'
 import type { ModelInfo, ProviderConfig } from '@/types/assistant'
@@ -16,6 +17,21 @@ const EXAMPLES = [
   'List all tables with their row counts',
   'Find duplicate email addresses',
 ]
+
+// Detect a SQL query inside a user message: a fenced ```sql block, or a
+// message that starts with a SQL statement keyword.
+function extractSqlFromText(text: string): string | null {
+  const fence = text.match(/```(?:sql)?\s*([\s\S]*?)```/i)
+  if (fence) {
+    const sql = fence[1].trim()
+    if (sql) return sql
+  }
+  const trimmed = text.trim()
+  if (/^\s*(SELECT|INSERT|UPDATE|DELETE|WITH|SHOW|DESCRIBE|EXPLAIN|CREATE|ALTER|DROP|TRUNCATE|USE|CALL|EXEC)\b/i.test(trimmed)) {
+    return trimmed
+  }
+  return null
+}
 
 // Detect free models: trust the backend `tier`/`isFree` flags when present,
 // fall back to common patterns in model names for providers without tiers.
@@ -113,11 +129,14 @@ export function QueriesPanel() {
   const trackAction = useGamificationStore((s) => s.trackAction)
   const addXP = useGamificationStore((s) => s.addXP)
   const activeConnection = useAppStore((s) => s.activeConnection)
+  const isStreaming = useAssistantStore((s) => s.isStreaming)
+  const setStreaming = useAssistantStore((s) => s.setStreaming)
+  const pendingConfirmation = useAssistantStore((s) => s.pendingConfirmation)
+  const setPendingConfirmation = useAssistantStore((s) => s.setPendingConfirmation)
   const listRef = useRef<HTMLDivElement>(null)
   const recallIndexRef = useRef(-1)
   const userMessagesRef = useRef<string[]>([])
   const isArrowRecallRef = useRef(false)
-  const [isStreaming, setIsStreaming] = useState(false)
   const [models, setModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
@@ -207,7 +226,6 @@ export function QueriesPanel() {
   }
 
   const nowRef = useRef(0)
-  const [pendingConfirmation, setPendingConfirmation] = useState<{ question: string } | null>(null)
 
   const handleSend = async (text: string, confirmDestructive = false) => {
     if (!text.trim() || isStreaming) return
@@ -234,16 +252,28 @@ export function QueriesPanel() {
       return
     }
 
-    setIsStreaming(true)
+    // User-provided SQL: run it directly in the editor and save it to the
+    // knowledge library instead of sending it to the model.
+    const userSql = extractSqlFromText(text)
+    if (userSql) {
+      const engine = activeConnection?.type ?? 'mysql'
+      updateTabQuery(activeTabId, userSql)
+      requestRunQuery(userSql)
+      assistantService.recordCase(text.trim(), userSql, engine, 'positive').catch(() => undefined)
+      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: 'Consulta ejecutada en el editor y guardada en la biblioteca de conocimiento.', sql: userSql, timestamp: (nowRef.current = nowRef.current + 1) })
+      return
+    }
+
+    setStreaming(true)
     try {
       const response = await assistantService.chat(activeConnection?.id ?? '', text, confirmDestructive)
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: response.answer, toolUsed: response.toolUsed ?? null, timestamp: (nowRef.current = nowRef.current + 1) })
+      addMessage({ id: response.turnId, role: 'assistant', content: response.answer, sql: response.sql ?? undefined, toolUsed: response.toolUsed ?? null, timestamp: (nowRef.current = nowRef.current + 1) })
       // A destructive tool was blocked — ask the user to confirm before retrying.
       setPendingConfirmation(response.requiresConfirmation ? { question: text } : null)
     } catch (err) {
       addMessage({ id: crypto.randomUUID(), role: 'assistant', content: err instanceof Error ? err.message : 'Failed to get response', timestamp: (nowRef.current = nowRef.current + 1) })
     } finally {
-      setIsStreaming(false)
+      setStreaming(false)
     }
   }
 

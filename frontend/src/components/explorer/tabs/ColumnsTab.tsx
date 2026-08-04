@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import type { ColumnResponse } from '@/types/database';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { ContextMenu } from '@/components/ui/ContextMenu';
+import { MONGODB_TYPES } from '@/lib/mongo-types';
 
 interface ColumnsTabProps {
   tableName: string;
@@ -12,6 +13,7 @@ interface ColumnsTabProps {
   onAdd: () => void;
   editColumnMutation: UseMutationResult<unknown, Error, string>;
   dropColumnMutation: UseMutationResult<unknown, Error, string>;
+  isMongoDB?: boolean;
 }
 
 const COMMON_TYPES = [
@@ -34,10 +36,13 @@ export function ColumnsTab({
   onAdd,
   editColumnMutation,
   dropColumnMutation,
+  isMongoDB = false,
 }: ColumnsTabProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [editedColData, setEditedColData] = useState<ColumnResponse | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; col: ColumnResponse } | null>(null);
+
+  const columnTypes = isMongoDB ? MONGODB_TYPES : COMMON_TYPES;
 
   const startEdit = (col: ColumnResponse) => {
     setEditingColumn(col.name);
@@ -81,7 +86,9 @@ export function ColumnsTab({
         <div className="flex items-center gap-2">
           <Info className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-[var(--ch-text-10)] uppercase font-bold text-muted-foreground tracking-wider">
-            Edit mode generates ALTER TABLE SQL statements
+            {isMongoDB
+              ? 'Schema inferred from sample documents — add a field to set it on existing documents'
+              : 'Edit mode generates ALTER TABLE SQL statements'}
           </span>
         </div>
         <button 
@@ -114,6 +121,7 @@ export function ColumnsTab({
                   key={col.name} 
                   className={cn("group hover:bg-muted transition-colors", isEditing && "bg-primary")}
                   onContextMenu={(e) => {
+                    if (isMongoDB) return;
                     e.preventDefault();
                     setContextMenu({ x: e.pageX, y: e.pageY, col });
                   }}
@@ -137,13 +145,13 @@ export function ColumnsTab({
                     {isEditing ? (
                       <select
                         className="w-full bg-background border border-border px-1 py-1 outline-none focus:ring-1 focus:ring-primary rounded-md font-mono text-[var(--ch-text-10)]"
-                        value={editedColData?.type.toUpperCase() || ''}
+                        value={isMongoDB ? (editedColData?.type || '') : (editedColData?.type || '').toUpperCase()}
                         onChange={(e) => setEditedColData(prev => prev ? { ...prev, type: e.target.value } : null)}
                       >
-                        {editedColData?.type && !COMMON_TYPES.includes(editedColData.type.toUpperCase()) && (
+                        {editedColData?.type && !columnTypes.includes(isMongoDB ? editedColData.type : editedColData.type.toUpperCase()) && (
                            <option value={editedColData.type}>{editedColData.type}</option>
                         )}
-                        {COMMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        {columnTypes.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     ) : (
                       <span className="font-mono text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tighter truncate block max-w-[120px]">
@@ -198,27 +206,29 @@ export function ColumnsTab({
                     )}
                   </td>
                   <td className="py-2 px-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {isEditing ? (
-                        <>
-                          <button onClick={() => saveEdit(col.name)} className="p-1.5 bg-primary text-primary-foreground rounded-md transition-colors">
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={cancelEdit} className="p-1.5 bg-destructive text-destructive-foreground rounded-md transition-colors">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => startEdit(col)} className="p-1.5 text-muted-foreground hover:text-primary transition-all opacity-0 group-hover:opacity-100">
-                            Edit
-                          </button>
-                          <button onClick={() => handleDelete(col.name)} className="p-1.5 text-muted-foreground hover:text-destructive transition-all opacity-0 group-hover:opacity-100">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    {!isMongoDB && (
+                      <div className="flex items-center justify-end gap-1">
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => saveEdit(col.name)} className="p-1.5 bg-primary text-primary-foreground rounded-md transition-colors">
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={cancelEdit} className="p-1.5 bg-destructive text-destructive-foreground rounded-md transition-colors">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => startEdit(col)} className="p-1.5 text-muted-foreground hover:text-primary transition-all opacity-0 group-hover:opacity-100">
+                              Edit
+                            </button>
+                            <button onClick={() => handleDelete(col.name)} className="p-1.5 text-muted-foreground hover:text-destructive transition-all opacity-0 group-hover:opacity-100">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

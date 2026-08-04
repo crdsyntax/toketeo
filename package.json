@@ -1,6 +1,6 @@
 {
   "name": "toketeo",
-  "version": "0.2.0",
+  "version": "0.3.8",
   "description": "Toketeo Database Client and Administration Panel",
   "author": "crdsyntax <crdsyntax@example.com>",
   "private": true,

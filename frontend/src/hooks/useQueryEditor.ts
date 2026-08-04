@@ -15,6 +15,7 @@ import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { usePerformanceStore } from '@/store/performanceStore'
 import { calculateQueryXp, hashQuery } from '@/lib/gamification'
+import { onRunQueryRequested } from '@/lib/queryRunEvents'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -264,8 +265,9 @@ export function useQueryEditor() {
 
   const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
-  const handleExecuteAll = useCallback(async (page: number = 1, limit?: number) => {
-    if (!activeTab?.query) return
+  const handleExecuteAll = useCallback(async (page: number = 1, limit?: number, overrideSql?: string) => {
+    const raw = overrideSql?.trim() ?? activeTab?.query
+    if (!raw) return
     const targetConnectionId = activeTab.connectionId || activeConnection?.id;
     const targetConnection = activeConnection && activeConnection.id === targetConnectionId
       ? activeConnection
@@ -280,10 +282,10 @@ export function useQueryEditor() {
     }
     setSafeDeleteSuggestion(null)
     const isMongo = targetConnection.type === DatabaseType.MONGODB;
-    if (checkDangerousQuery(activeTab.query, isMongo, targetConnection)) return
+    if (checkDangerousQuery(raw, isMongo, targetConnection)) return
 
       const effectiveLimit = limit ?? queryLimit;
-      let sql = activeTab.query.trim();
+      let sql = raw;
 
       if (isMongo) {
         sql = buildMongoJsonQuery(sql, activeTab.mongoFilter, activeTab.editorMode);
@@ -342,7 +344,7 @@ export function useQueryEditor() {
 
         // Handle MongoDB use <db> — update connection's active database
         if (isMongo) {
-          const useMatch = activeTab.query.trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
+          const useMatch = raw.match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
           if (useMatch) {
             setActiveConnectionDatabase(useMatch[1]);
           }
@@ -356,7 +358,7 @@ export function useQueryEditor() {
         trackAction('EXECUTE_QUERY');
         const histEntry: QueryHistoryEntry = {
           id: Math.random().toString(36).substring(2),
-          query: activeTab.query.trim(),
+          query: raw,
           connectionId: targetConnection.id,
           executedAt: Date.now(),
           durationMs,
@@ -368,7 +370,7 @@ export function useQueryEditor() {
         usePerformanceStore.getState().addRecord({
           id: histEntry.id,
           connectionId: targetConnection.id,
-          sql: activeTab.query.trim(),
+          sql: raw,
           durationMs,
           rowsReturned: result.rows.length,
           executedAt: Date.now(),
@@ -382,7 +384,7 @@ export function useQueryEditor() {
         });
         const histEntry: QueryHistoryEntry = {
           id: Math.random().toString(36).substring(2),
-          query: activeTab.query.trim(),
+          query: raw,
           connectionId: targetConnection.id,
           executedAt: Date.now(),
           durationMs,
@@ -394,7 +396,7 @@ export function useQueryEditor() {
 
         // Auto-detect FK violation and generate safe delete suggestion
         if (isFKViolation(message) && targetConnection) {
-          const table = extractTableFromQuery(activeTab.query)
+          const table = extractTableFromQuery(raw)
           if (table) {
             try {
               const safeSql = await schemaService.generateSafeDeleteSql(
@@ -410,6 +412,16 @@ export function useQueryEditor() {
         }
       }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
+
+  // Run a query requested from the assistant into the active editor tab.
+  useEffect(() => {
+    return onRunQueryRequested((sql) => {
+      const tabId = useAppStore.getState().activeTabId
+      if (!tabId) return
+      updateTabQuery(tabId, sql)
+      handleExecuteAll(1, undefined, sql)
+    })
+  }, [handleExecuteAll, updateTabQuery])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
     if (!editorRef.current || !activeTab) return

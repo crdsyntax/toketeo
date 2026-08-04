@@ -19,7 +19,7 @@ import { ExecutionStatus } from '@/types/database';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { ResultsPanelTable } from './panels/results/ResultsPanelTable';
-import { ResultsPanelJsonView } from './panels/results/ResultsPanelJsonView';
+import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { VisualizePanel } from './panels/VisualizePanel';
 
 interface ResultsModalProps {
@@ -238,7 +238,7 @@ export function ResultsModal({
         </div>
         <div className="flex-1 overflow-hidden relative flex flex-col">
           {viewMode === 'json' ? (
-            <ResultsPanelJsonView sortedRows={sortedRows} />
+            <JsonResultsView rows={sortedRows} />
           ) : viewMode === 'visualize' ? (
             <VisualizePanel sortedRows={sortedRows} />
           ) : (

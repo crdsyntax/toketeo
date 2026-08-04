@@ -31,6 +31,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_log::Builder::default().skip_logger().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_handle = app.handle();
             let _ = crate::ssh::APP_HANDLE.set(app_handle.clone());
@@ -134,6 +136,7 @@ pub fn run() {
             commands::import_connections_dialog,
             commands::open_file_dialog,
             commands::save_file_dialog,
+            commands::save_png_dialog,
             commands::select_folder_dialog,
             commands::check_master_password_exists,
             commands::create_master_password,

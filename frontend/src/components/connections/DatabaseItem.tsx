@@ -13,11 +13,12 @@ interface DatabaseItemProps {
   activeDatabaseName?: string | null
   onSelect: (conn: Connection, schema: string) => void
   onSelectSchema?: (conn: Connection, dbName: string, schema: string) => void
+  onSelectDatabase?: (conn: Connection, dbName: string) => void
   onToggleDefault?: (conn: Connection, schema: string) => void
   onSchemaContextMenu?: (e: React.MouseEvent, conn: Connection, schema: string) => void
 }
 
-export function DatabaseItem({ conn, dbName, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onToggleDefault, onSchemaContextMenu }: DatabaseItemProps) {
+export function DatabaseItem({ conn, dbName, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onSelectDatabase, onToggleDefault, onSchemaContextMenu }: DatabaseItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const { data: schemas = [], refetch } = useQuery({
@@ -41,8 +42,9 @@ export function DatabaseItem({ conn, dbName, activeConnection, activeDatabaseNam
       <div 
         className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-muted/80 hover:text-foreground transition-colors rounded-sm group"
         onClick={toggleExpand}
-        onDoubleClick={(e) => { e.stopPropagation(); if (!isExpanded) toggleExpand(); }}
+        onDoubleClick={(e) => { e.stopPropagation(); onSelectDatabase?.(conn, dbName); if (!isExpanded) toggleExpand(); }}
         onContextMenu={(e) => onSchemaContextMenu?.(e, conn, dbName)}
+        title="Double click to switch to this database"
       >
         <ChevronDown className={cn("w-3 h-3 transition-transform", !isExpanded && "-rotate-90")} />
         <Database className="w-3 h-3 text-blue-400" />

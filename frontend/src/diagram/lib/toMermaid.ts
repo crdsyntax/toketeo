@@ -73,7 +73,7 @@ export function nodesToMermaid(nodes: Node[], edges: Edge[]): string {
       continue
     }
 
-    const data = node.data as unknown as TableData
+    const data = (node.data ?? {}) as unknown as TableData
     const columns = data.columns ?? []
     const fkColumns = new Set((data.foreignKeys ?? []).map((fk) => fk.columnName))
 

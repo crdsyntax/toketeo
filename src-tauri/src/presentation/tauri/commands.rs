@@ -124,7 +124,60 @@ pub async fn update_cell(
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
     let driver = state.get_connection(&id).await?;
-    let sql = SqlGeneratorService::generate_cell_update(driver.db_type(), &input)?;
+    let db_type = driver.db_type();
+    tracing::info!(
+        "[update_cell] invoked: db_type={}, table={}, column={}, schema={:?}",
+        db_type,
+        input.table,
+        input.column,
+        input.schema,
+    );
+
+    if db_type == crate::db::DbType::Mongodb {
+        if state.is_read_only(&id).await.unwrap_or(false) {
+            return Err(AppError::Validation(
+                "Connection is in read-only mode. Destructive queries are disabled.".to_string(),
+            ));
+        }
+        let filter_key = input
+            .primary_keys
+            .first()
+            .map(|s| s.as_str())
+            .filter(|k| !k.is_empty())
+            .unwrap_or("_id");
+        let filter_value = input
+            .row
+            .get(filter_key)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+
+        let mut filter_map = serde_json::Map::new();
+        filter_map.insert(filter_key.to_string(), filter_value);
+        let mut set_map = serde_json::Map::new();
+        set_map.insert(input.column, input.new_value);
+        let mut update_map = serde_json::Map::new();
+        update_map.insert("filter".to_string(), serde_json::Value::Object(filter_map));
+        update_map.insert("set".to_string(), serde_json::Value::Object(set_map));
+
+        let mut command_map = serde_json::Map::new();
+        command_map.insert(
+            "database".to_string(),
+            input
+                .schema
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        command_map.insert(
+            "collection".to_string(),
+            serde_json::Value::String(input.table),
+        );
+        command_map.insert("update".to_string(), serde_json::Value::Object(update_map));
+
+        let command = serde_json::Value::Object(command_map).to_string();
+        return ExplorerService::execute_query(&state, &id, &command, None).await;
+    }
+
+    let sql = SqlGeneratorService::generate_cell_update(db_type, &input)?;
     ExplorerService::execute_query(&state, &id, &sql, None).await
 }
 
@@ -455,6 +508,45 @@ pub async fn save_file_dialog(
     };
 
     std::fs::write(&path, content).map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Some(path.display().to_string()))
+}
+
+#[tauri::command]
+pub async fn save_png_dialog(
+    content_base64: String,
+    default_file_name: String,
+    filter_name: Option<String>,
+    filter_ext: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<Option<String>> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(content_base64)
+        .map_err(|e| AppError::Internal(format!("Invalid base64 PNG data: {e}")))?;
+
+    let mut dialog = app_handle
+        .dialog()
+        .file()
+        .set_title("Save PNG")
+        .set_file_name(default_file_name);
+
+    if let (Some(name), Some(ext)) = (filter_name, filter_ext) {
+        dialog = dialog.add_filter(name, &[&ext]);
+    }
+
+    dialog = dialog.add_filter("All Files", &["*"]);
+
+    let file_path = dialog.blocking_save_file();
+
+    let path = match file_path {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+        None => return Ok(None),
+    };
+
+    std::fs::write(&path, &bytes).map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(Some(path.display().to_string()))
 }

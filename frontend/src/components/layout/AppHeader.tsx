@@ -54,7 +54,7 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
   const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION
 
   return (
-    <header className="h-12 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0">
+    <header className="h-12 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0 relative z-40">
       {/* Left: Sidebar toggle + Logo + Name */}
       <div className="flex items-center gap-2">
         <button

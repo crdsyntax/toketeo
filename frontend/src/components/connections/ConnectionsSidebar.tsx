@@ -1,7 +1,7 @@
-import { Plus, Edit2, Shield, ChevronDown, Database, Server, Wifi, Loader2, AlertTriangle, Star } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Server, Wifi, Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
-import { DatabaseType } from '@/types/database'
+import { DatabaseType, DatabaseObjectType, ExplorerTab, ExecutionStatus } from '@/types/database'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
@@ -48,7 +48,7 @@ function TypeBadge({ type }: { type: string }) {
   )
 }
 
-function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onToggleDefault, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, activeDatabaseName?: string | null, onSelect: (c: Connection, s: string) => void, onSelectSchema?: (c: Connection, dbName: string, s: string) => void, onToggleDefault?: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
+function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onSelectDatabase, onToggleDefault, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, activeDatabaseName?: string | null, onSelect: (c: Connection, s: string) => void, onSelectSchema?: (c: Connection, dbName: string, s: string) => void, onSelectDatabase?: (c: Connection, dbName: string) => void, onToggleDefault?: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
   const { data: databases = [], isFetched } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
@@ -58,7 +58,7 @@ function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect,
   return (
     <>
       {databases.map((db) => (
-        <DatabaseItem key={db} conn={conn} dbName={db} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={onSelect} onSelectSchema={onSelectSchema} onToggleDefault={onToggleDefault} onSchemaContextMenu={onSchemaContextMenu} />
+        <DatabaseItem key={db} conn={conn} dbName={db} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={onSelect} onSelectSchema={onSelectSchema} onSelectDatabase={onSelectDatabase} onToggleDefault={onToggleDefault} onSchemaContextMenu={onSchemaContextMenu} />
       ))}
     </>
   )
@@ -121,7 +121,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     [DatabaseType.REDIS]: false,
   })
   const queryClient = useQueryClient()
-  const { setActiveConnectionDatabase, addTab } = useAppStore()
+  const { setActiveConnectionDatabase, addTab, addExplorerTab, updateExplorerTab, setExplorerState } = useAppStore()
   const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds)
   const setActiveConnection = useAppStore((state) => state.setActiveConnection)
   const connectionErrors = useAppStore((state) => state.connectionErrors)
@@ -273,6 +273,46 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         // Optimistic update: update frontend state immediately so the UI
         // reflects the selected schema without waiting for the backend.
         setActiveConnectionDatabase(schema)
+        const store = useAppStore.getState()
+        const activeTabId = store.explorer.activeExplorerTabId
+        const activeTab = activeTabId ? store.explorerTabs[activeTabId] : null
+        // Keep the open explorer tab but point it at the newly selected
+        // database: update its database and reset the object context so the
+        // sidebar loads the new DB's objects without closing the tab or
+        // losing its connection.
+        const resetObjectContext = {
+          selectedItem: { name: '', type: DatabaseObjectType.TRIGGER },
+          activeTab: ExplorerTab.COLUMNS,
+          executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
+          socketResults: null,
+          page: 0,
+          editableDdl: '',
+          filter: '',
+        }
+        if (activeTab && activeTab.connectionId === conn.id) {
+          updateExplorerTab(activeTabId!, { database: schema, ...resetObjectContext })
+        } else {
+          // The active tab belongs to another connection (or none). Reuse an
+          // empty slot tab for this connection if one exists, otherwise open
+          // a fresh database slot so the explorer shows the selected DB
+          // without closing existing tabs or the connection.
+          const emptySlot = Object.values(store.explorerTabs).find(
+            (t) => t.connectionId === conn.id && !t.selectedItem?.name,
+          )
+          if (emptySlot) {
+            updateExplorerTab(emptySlot.id, { database: schema, ...resetObjectContext })
+            setExplorerState({ activeExplorerTabId: emptySlot.id })
+          } else {
+            addExplorerTab({
+              id: `${conn.id}:${schema}:__db__`,
+              connectionId: conn.id,
+              database: schema,
+              pageSize: 50,
+              ...resetObjectContext,
+            })
+          }
+        }
         queryClient.invalidateQueries({ queryKey: ['connections'] })
         queryClient.invalidateQueries({ queryKey: ['schemas', conn.id] })
         queryClient.invalidateQueries({ queryKey: ['tables', conn.id] })
@@ -303,6 +343,21 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const handleSchemaDatabaseDoubleClick = async (conn: Connection, dbName: string, schema: string) => {
     setActiveDatabaseName(dbName)
     await handleSchemaDoubleClick(conn, schema)
+  }
+
+  const handleDatabaseDoubleClick = async (conn: Connection, dbName: string) => {
+    try {
+      setActiveDatabaseName(dbName)
+      if (!connectedConnectionIds.includes(conn.id)) {
+        await onConnect(conn)
+      }
+      await schemaService.switchDatabase(conn.id, dbName)
+      const schemas = await schemaService.getSchemas(conn.id)
+      const schema = schemas.find((s) => s === 'public') ?? schemas[0] ?? 'public'
+      await handleSchemaDoubleClick(conn, schema)
+    } catch (e) {
+      toast.error(`Failed to switch database: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
   }
 
   const handleConnectionSingleClick = async (conn: Connection) => {
@@ -535,7 +590,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                           <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
                             <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
                               {conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.REDIS ? (
-                                  <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSchemaContextMenu={handleSchemaContextMenu} onToggleDefault={handleToggleDefault} onLoaded={() => handleContentLoaded(conn.id)} />
+                                  <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSelectDatabase={conn.type === DatabaseType.POSTGRES ? handleDatabaseDoubleClick : undefined} onSchemaContextMenu={handleSchemaContextMenu} onToggleDefault={handleToggleDefault} onLoaded={() => handleContentLoaded(conn.id)} />
                               ) : (
                                 <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onToggleDefault={handleToggleDefault} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                               )}

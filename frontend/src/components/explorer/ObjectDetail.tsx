@@ -7,6 +7,7 @@ import type {
   ConstraintResponse,
   DbRow,
   DbValue,
+  Connection,
 } from '@/types/database';
 import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database';
 import { Table2, Eye, Terminal, Zap, List, Table, Database, Binary, X, Code } from 'lucide-react';
@@ -33,6 +34,7 @@ interface ObjectDetailProps {
   activeExplorerTabId: string | null;
   removeExplorerTab: (id: string) => void;
   setExplorerState: (state: Partial<{ activeExplorerTabId: string | null }>) => void;
+  connection?: Connection | null;
   selectedItem: DatabaseObject | null;
   activeTab: ExplorerTab;
   setActiveTab: (tab: ExplorerTab) => void;
@@ -80,6 +82,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
     activeExplorerTabId,
     removeExplorerTab,
     setExplorerState,
+    connection,
     selectedItem,
     activeTab,
     setActiveTab,
@@ -125,7 +128,8 @@ export function ObjectDetail(props: ObjectDetailProps) {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addIndexOpen, setAddIndexOpen] = useState(false);
   const [addFKOpen, setAddFKOpen] = useState(false);
-  const activeConnection = useAppStore((s) => s.activeConnection);
+  const storeConnection = useAppStore((s) => s.activeConnection);
+  const activeConnection = connection ?? storeConnection;
 
   const handleAddObject = (type: string) => {
     if (type === 'column') {
@@ -380,6 +384,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
               onAdd={() => handleAddObject('column')}
               editColumnMutation={editColumnMutation}
               dropColumnMutation={dropColumnMutation}
+              isMongoDB={isMongoDB}
             />
           )}
 
@@ -420,6 +425,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
             isRedis ? (
               <RedisDataTab
                 selectedItem={selectedItem}
+                connection={activeConnection}
                 isLoading={isLoadingData}
                 executionStatus={executionStatus}
                 executionError={executionError}
@@ -436,6 +442,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
             ) : (
               <DataTab
                 selectedItem={selectedItem}
+                connection={activeConnection}
                 isLoading={isLoadingData}
                 executionStatus={executionStatus}
                 executionError={executionError}
@@ -470,6 +477,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
           onClose={() => setModelModalOpen(false)} 
           tableName={selectedItem.name} 
           schema={currentSchema}
+          connection={activeConnection}
         />
       )}
 
@@ -480,6 +488,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
           tableName={selectedItem.name}
           schema={currentSchema}
           connectionId={activeConnection.id}
+          isMongoDB={isMongoDB}
           onCreated={() => {
             setAddColumnOpen(false)
             schemaService.clearMetadataCache(activeConnection.id).catch(() => {})

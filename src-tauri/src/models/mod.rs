@@ -310,7 +310,7 @@ impl JobConfigDto {
             );
         }
         if let Some(o) = &self.output_dir {
-            map.insert("output_dir".to_string(), serde_json::Value::String(o.clone()));
+            map.insert("outputDir".to_string(), serde_json::Value::String(o.clone()));
         }
         serde_json::Value::Object(map)
     }
@@ -439,5 +439,46 @@ mod tests {
         let ssh: SshConfig = serde_json::from_str(json).unwrap();
         assert_eq!(ssh.auth_type, SshAuthType::Password);
         assert_eq!(ssh.password.unwrap().expose_secret(), "ssh-pass");
+    }
+}
+
+#[cfg(test)]
+mod job_config_tests {
+    use super::JobConfigDto;
+
+    #[test]
+    fn output_dir_serializes_as_camel_case() {
+        let dto: JobConfigDto = serde_json::from_value(serde_json::json!({
+            "outputDir": "/backups/db",
+            "database": "app",
+        }))
+        .unwrap();
+        let value = dto.to_value();
+        // The scheduler executor reads config["outputDir"] — the key must be
+        // camelCase, not snake_case.
+        assert_eq!(value["outputDir"], "/backups/db");
+        assert!(value.get("output_dir").is_none());
+        assert_eq!(value["database"], "app");
+    }
+
+    #[test]
+    fn output_dir_roundtrips_through_deserialize() {
+        let dto: JobConfigDto = serde_json::from_value(serde_json::json!({
+            "outputDir": "C:\\backups",
+        }))
+        .unwrap();
+        assert_eq!(dto.output_dir.as_deref(), Some("C:\\backups"));
+    }
+
+    #[test]
+    fn extra_fields_are_preserved() {
+        let dto: JobConfigDto = serde_json::from_value(serde_json::json!({
+            "query": "SELECT 1",
+            "customFlag": true,
+        }))
+        .unwrap();
+        let value = dto.to_value();
+        assert_eq!(value["query"], "SELECT 1");
+        assert_eq!(value["customFlag"], true);
     }
 }

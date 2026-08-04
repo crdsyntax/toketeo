@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Download, HelpCircle } from 'lucide-react'
 import { useVisualizerStore } from '@/store/visualizerStore'
+import { tauriApi } from '@/lib/api'
 import { CHART_TYPES } from '@/lib/chart-types'
-import { detectColumns, suggestChart, type ColumnProfile } from '@/lib/column-detection'
+import { detectColumns, suggestChart } from '@/lib/column-detection'
 import { ChartRenderer } from './visualize/ChartRenderer'
 import { ChartTypeSelector } from './visualize/ChartTypeSelector'
 import { ColumnPicker } from './visualize/ColumnPicker'
@@ -87,15 +88,22 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
             <HelpCircle className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               const canvas = document.querySelector(
                 '#visualize-chart-container canvas',
               ) as HTMLCanvasElement | null
-              if (canvas) {
-                const link = document.createElement('a')
-                link.download = 'chart.png'
-                link.href = canvas.toDataURL('image/png')
-                link.click()
+              if (!canvas) return
+              const dataUrl = canvas.toDataURL('image/png')
+              const contentBase64 = dataUrl.replace(/^data:image\/png;base64,/, '')
+              try {
+                await tauriApi.invoke('save_png_dialog', {
+                  contentBase64,
+                  defaultFileName: 'chart.png',
+                  filterName: 'PNG Files',
+                  filterExt: 'png',
+                })
+              } catch (err) {
+                console.error('Failed to export PNG:', err)
               }
             }}
             className="flex items-center gap-1 text-[var(--ch-text-10)] text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"

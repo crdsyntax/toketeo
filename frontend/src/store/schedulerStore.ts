@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { schedulerService } from '@/services/scheduler.service'
-import type { ScheduledJob, CreateScheduledJobDto, UpdateScheduledJobDto, JobCompletedPayload, JobProgressPayload } from '@/types/database'
+import type { ScheduledJob, CreateScheduledJobDto, UpdateScheduledJobDto, JobCompletedPayload, JobProgressPayload, JobAlertPayload } from '@/types/database'
 
 export interface RunningJob {
   jobId: string
@@ -8,6 +8,10 @@ export interface RunningJob {
   currentTable: string
   tableIndex: number
   totalTables: number
+  reconnecting?: boolean
+  retryCount?: number
+  nextRetrySecs?: number | null
+  alertMessage?: string
 }
 
 interface SchedulerState {
@@ -25,6 +29,7 @@ interface SchedulerState {
   setLastCompleted: (payload: JobCompletedPayload | null) => void
   setJobStarted: (jobId: string, jobName: string) => void
   setJobProgress: (payload: JobProgressPayload) => void
+  setJobAlert: (payload: JobAlertPayload) => void
   clearRunningJob: (jobId: string) => void
 }
 
@@ -106,9 +111,30 @@ export const useSchedulerStore = create<SchedulerState>()((set, get) => ({
         currentTable: payload.currentTable,
         tableIndex: payload.tableIndex,
         totalTables: payload.totalTables,
+        reconnecting: state.runningJobs[payload.jobId]?.reconnecting,
+        retryCount: state.runningJobs[payload.jobId]?.retryCount,
+        nextRetrySecs: state.runningJobs[payload.jobId]?.nextRetrySecs,
+        alertMessage: state.runningJobs[payload.jobId]?.alertMessage,
       },
     },
   })),
+
+  setJobAlert: (payload) => set((state) => {
+    const existing = state.runningJobs[payload.jobId]
+    const base = existing ?? { jobId: payload.jobId, jobName: payload.jobName, currentTable: '', tableIndex: 0, totalTables: 0 }
+    return {
+      runningJobs: {
+        ...state.runningJobs,
+        [payload.jobId]: {
+          ...base,
+          reconnecting: payload.level === 'warning',
+          retryCount: payload.retryCount,
+          nextRetrySecs: payload.nextRetrySecs,
+          alertMessage: payload.message,
+        },
+      },
+    }
+  }),
 
   clearRunningJob: (jobId) => set((state) => {
     const { [jobId]: _, ...rest } = state.runningJobs

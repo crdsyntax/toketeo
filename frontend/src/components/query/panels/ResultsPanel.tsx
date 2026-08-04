@@ -9,7 +9,7 @@ import { ResultsPanelHeader } from './results/ResultsPanelHeader';
 import { ResultsPanelError } from './results/ResultsPanelError';
 import { ResultsPanelTable } from './results/ResultsPanelTable';
 import { ResultsPanelSkeleton } from './results/ResultsPanelSkeleton';
-import { ResultsPanelJsonView } from './results/ResultsPanelJsonView';
+import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { VisualizePanel } from './VisualizePanel';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 
@@ -109,7 +109,7 @@ export function ResultsPanel({
             <>
               {viewMode === 'json' ? (
                 <div className="flex-1 overflow-auto relative h-full">
-                  <ResultsPanelJsonView sortedRows={sortedRows} />
+                  <JsonResultsView rows={sortedRows} />
                 </div>
               ) : viewMode === 'visualize' ? (
                 <VisualizePanel sortedRows={sortedRows} />
