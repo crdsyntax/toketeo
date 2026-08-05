@@ -117,7 +117,10 @@ export default function Connections() {
     setConnectingId(conn.id)
     try {
       await connectionService.connect(conn)
-      setActiveConnection(conn)
+      setActiveConnection({
+        ...conn,
+        database: conn.defaultDatabase || conn.database
+      })
       setConnectedConnection(conn.id)
       navigate('/explorer')
     } catch (error: unknown) {

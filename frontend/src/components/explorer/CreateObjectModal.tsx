@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo } from 'react'
-import { Editor } from '@monaco-editor/react'
 import { Play, Loader2, Plus, Trash2, Code } from 'lucide-react'
 import { Dialog, DialogBody, DialogFooter } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
@@ -8,6 +7,7 @@ import { tauriApi } from '@/lib/api'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from 'react-hot-toast'
 import { cn } from '@/lib/utils'
+import { SqlCodeEditor } from '@/components/editor/SqlCodeEditor'
 
 interface CreateObjectModalProps {
   open: boolean
@@ -79,7 +79,6 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
   const storeEditorFontSize = useAppStore((s) => s.uiFontSize)
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight)
   const storeEditorTabSize = useAppStore((s) => s.editorTabSize)
-  const storeEditorMinimap = useAppStore((s) => s.editorMinimap)
 
   const prefix = schema ? `${schema}.` : ''
 
@@ -381,20 +380,15 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
               <div className="space-y-1.5">
                 <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground">Body</label>
                 <div className="h-[200px] border border-border rounded-md overflow-hidden">
-                  <Editor
-                    height="100%"
-                    defaultLanguage={language}
-                    theme="vs-dark"
+                  <SqlCodeEditor
                     value={body}
+                    language={language}
                     onChange={(val) => { setBody(val || ''); setSqlOverride('') }}
                     options={{
-                      minimap: { enabled: false },
                       fontSize: storeEditorFontSize,
                       fontFamily: storeEditorFontFamily,
                       lineHeight: storeEditorLineHeight,
                       tabSize: storeEditorTabSize,
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
                     }}
                   />
                 </div>
@@ -408,21 +402,16 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
               SQL Definition
             </label>
             <div className="h-[400px] border border-border rounded-md overflow-hidden">
-              <Editor
-                height="100%"
-                defaultLanguage={language}
-                theme="vs-dark"
+              <SqlCodeEditor
                 value={currentSql}
+                language={language}
                 onChange={(val) => setSqlOverride(val || '')}
                 options={{
-                  minimap: { enabled: storeEditorMinimap },
                   fontSize: storeEditorFontSize,
                   fontFamily: storeEditorFontFamily,
                   lineHeight: storeEditorLineHeight,
                   tabSize: storeEditorTabSize,
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  padding: { top: 16 },
+                  paddingTop: 16,
                 }}
               />
             </div>

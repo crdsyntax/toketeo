@@ -1,7 +1,7 @@
 import { Loader2, Save } from 'lucide-react';
-import { Editor } from '@monaco-editor/react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { useAppStore } from '@/store/useAppStore';
+import { SqlCodeEditor } from '@/components/editor/SqlCodeEditor';
 
 interface DdlTabProps {
   isLoading: boolean;
@@ -22,7 +22,6 @@ export function DdlTab({
   const storeEditorFontSize = useAppStore((s) => s.uiFontSize);
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
   const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
-  const storeEditorMinimap = useAppStore((s) => s.editorMinimap);
   return (
     <div className="flex-1 flex flex-col bg-muted/30 relative">
       <div className="p-2 border-b border-border bg-background/50 flex justify-between items-center px-4">
@@ -57,21 +56,16 @@ export function DdlTab({
             </div>
           </div>
         ) : (
-          <Editor
-            height="100%"
-            defaultLanguage="sql"
-            theme="vs-dark"
+          <SqlCodeEditor
             value={editableDdl}
+            language="sql"
             onChange={(val) => setEditableDdl(val || '')}
             options={{
-              minimap: { enabled: storeEditorMinimap },
               fontSize: storeEditorFontSize,
               fontFamily: storeEditorFontFamily,
               lineHeight: storeEditorLineHeight,
               tabSize: storeEditorTabSize,
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 16 },
+              paddingTop: 16,
             }}
           />
         )}

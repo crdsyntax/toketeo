@@ -1,8 +1,6 @@
-import type * as monaco from 'monaco-editor'
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import type { Monaco } from '@monaco-editor/react'
+﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import type { EditorView } from '@codemirror/view'
 import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
-import { useAssistantStore } from '@/store/assistantStore'
 import { queryService } from '@/services/query.service'
 import { schemaService } from '@/services/schema.service'
 import { tauriApi } from '@/lib/api'
@@ -67,40 +65,40 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
   const mode = editorMode ?? 'auto';
 
   if (mode === 'mongosh') {
-    // Shell mode — pure shell parsing, NO filter bar merge, NO legacy fallback
+    // Shell mode â€” pure shell parsing, NO filter bar merge, NO legacy fallback
     const parseResult = parseMongoShell(cleaned);
     if (parseResult.success) {
       const payload = parseResult.protocol as unknown as Record<string, unknown>;
-      // Explicitly do NOT merge filter bar — user's query text is authoritative
+      // Explicitly do NOT merge filter bar â€” user's query text is authoritative
       return JSON.stringify(payload);
     }
-    // Parse failed — throw so the caller shows the error instead of sending garbage
+    // Parse failed â€” throw so the caller shows the error instead of sending garbage
     throw new Error(`Failed to parse MongoDB shell syntax:\n${parseResult.error}\n\n${cleaned}`);
   }
 
   if (mode === 'json') {
-    // JSON mode — only try JSON protocol, no filter bar merge
+    // JSON mode â€” only try JSON protocol, no filter bar merge
     try {
       const parsed = JSON.parse(cleaned) as Record<string, unknown>;
       if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
-        // Do NOT merge filter bar — user's JSON is authoritative
+        // Do NOT merge filter bar â€” user's JSON is authoritative
         return JSON.stringify(parsed);
       }
-      // Valid JSON but missing 'collection' key — send as generic MongoDB command
+      // Valid JSON but missing 'collection' key â€” send as generic MongoDB command
       return cleaned;
     } catch {
       throw new Error(`Invalid JSON for MongoDB command:\n${cleaned}`);
     }
   }
 
-  // 'auto' — try JSON first, then shell, then legacy (with filter bar)
+  // 'auto' â€” try JSON first, then shell, then legacy (with filter bar)
   try {
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
       mergeFilterBar(parsed, mongoFilter);
       return JSON.stringify(parsed);
     }
-  } catch { /* not JSON — fall through */ }
+  } catch { /* not JSON â€” fall through */ }
 
   if (isMongoShellSyntax(cleaned)) {
     const parseResult = parseMongoShell(cleaned);
@@ -222,7 +220,7 @@ export function useQueryEditor() {
     }
   }, [])
 
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const editorRef = useRef<EditorView | null>(null)
 
   const checkDangerousQuery = useCallback((sql: string, isMongo: boolean, connection?: Connection | null): boolean => {
     if (isMongo) {
@@ -342,7 +340,7 @@ export function useQueryEditor() {
         });
         toast.success(`Query returned successfully in ${durationMs} ms`);
 
-        // Handle MongoDB use <db> — update connection's active database
+        // Handle MongoDB use <db> â€” update connection's active database
         if (isMongo) {
           const useMatch = raw.match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
           if (useMatch) {
@@ -406,7 +404,7 @@ export function useQueryEditor() {
               )
               setSafeDeleteSuggestion(safeSql)
             } catch {
-              // silent — suggestion is optional
+              // silent â€” suggestion is optional
             }
           }
         }
@@ -424,40 +422,44 @@ export function useQueryEditor() {
   }, [handleExecuteAll, updateTabQuery])
 
   const handleExecuteCurrent = useCallback(async (page = 1) => {
-    if (!editorRef.current || !activeTab) return
+    const view = editorRef.current
+    if (!view || !activeTab) return
     setSafeDeleteSuggestion(null)
 
-    const position = editorRef.current.getPosition()
-    if (!position) return
-
-    const fullText = editorRef.current.getValue()
-    const selection = editorRef.current.getSelection()
+    const fullText = view.state.doc.toString()
+    const mainSel = view.state.selection.main
+    const cursorPos = mainSel.head
     let sqlSnippet: string
-    
-    if (selection && !selection.isEmpty()) {
-      sqlSnippet = editorRef.current.getModel()?.getValueInRange(selection) || ''
+
+    if (!mainSel.empty) {
+      sqlSnippet = view.state.sliceDoc(mainSel.from, mainSel.to)
     } else {
-      // Improved logic: Find the SQL block bounded by semicolons or file start/end
-      const lines = fullText.split('\n')
-      const cursorLine = position.lineNumber - 1
-      
-      let startIdx = 0
-      for (let i = cursorLine; i >= 0; i--) {
-        if (lines[i].includes(';') && i < cursorLine) {
-          startIdx = i + 1
+      // Execute the statement at the cursor: the text bounded by the previous ';'
+      // (or start of file) and the next ';' at/after the cursor (or end of file).
+      let start = 0
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        if (fullText[i] === ';') {
+          start = i + 1
           break
         }
       }
-      
-      let endIdx = lines.length - 1
-      for (let i = cursorLine; i < lines.length; i++) {
-        if (lines[i].includes(';')) {
-          endIdx = i
+
+      let end = fullText.length - 1
+      for (let i = cursorPos; i < fullText.length; i++) {
+        if (fullText[i] === ';') {
+          end = i
           break
         }
       }
-      
-      sqlSnippet = lines.slice(startIdx, endIdx + 1).join('\n').trim()
+
+      sqlSnippet = fullText.slice(start, end + 1).trim()
+
+      // Cursor over blank whitespace (e.g. right after a trailing ';'): fall
+      // back to the preceding statement so Ctrl+Enter still runs the finished query.
+      if (!sqlSnippet) {
+        start = fullText.lastIndexOf(';', Math.max(0, start - 2)) + 1
+        sqlSnippet = fullText.slice(start, end + 1).trim()
+      }
     }
 
     if (!sqlSnippet) return
@@ -531,7 +533,7 @@ export function useQueryEditor() {
       const durationMs = Date.now() - startTime;
       toast.success(`Query returned successfully in ${durationMs} ms`);
 
-      // Handle MongoDB use <db> — update connection's active database
+      // Handle MongoDB use <db> â€” update connection's active database
       if (isMongo) {
         const useMatch = (activeTab?.query ?? sqlSnippet).trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
         if (useMatch) {
@@ -564,14 +566,14 @@ export function useQueryEditor() {
             )
             setSafeDeleteSuggestion(safeSql)
           } catch {
-            // silent — suggestion is optional
+            // silent â€” suggestion is optional
           }
         }
       }
     }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
 
-  // Use refs to avoid stale closures in Monaco addCommand
+  // Use refs to avoid stale closures in editor keybindings
   const executeCurrentRef = useRef(handleExecuteCurrent)
   const executeAllRef = useRef(handleExecuteAll)
   
@@ -604,8 +606,8 @@ export function useQueryEditor() {
 
     if (targetConnection.environment === Environment.PRODUCTION && !isUndoRedo) {
       toast(
-        'Editing production data — changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
-        { icon: '⚠️', duration: 5000 },
+        'Editing production data â€” changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
+        { icon: 'âš ï¸', duration: 5000 },
       );
     }
 
@@ -727,7 +729,7 @@ export function useQueryEditor() {
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
-    // When the Review Change panel is disabled (Settings → Query Editor →
+    // When the Review Change panel is disabled (Settings â†’ Query Editor â†’
     // Inline edition), apply the edit immediately.
     if (!useAppStore.getState().inlineEditReview) {
       await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
@@ -860,227 +862,6 @@ export function useQueryEditor() {
     }
   }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults]);
 
-  const handleEditorWillMount = useCallback((monacoInstance: Monaco) => {
-    const languages = monacoInstance.languages as typeof monacoInstance.languages & { sqlProviderRegistered?: boolean };
-    if (languages.sqlProviderRegistered) return;
-    languages.sqlProviderRegistered = true;
-
-    const schemaCache = new Map<string, { tables: string[]; columns: Record<string, { name: string; type: string; isNullable: boolean; isPrimaryKey: boolean }[]> }>();
-
-    const SQL_KEYWORDS: { label: string; insertText: string; doc: string; kind: number }[] = [
-      { label: 'SELECT', insertText: 'SELECT ', doc: 'Retrieve rows from a table', kind: 13 },
-      { label: 'FROM', insertText: 'FROM ', doc: 'Specify the source table', kind: 13 },
-      { label: 'WHERE', insertText: 'WHERE ', doc: 'Filter results', kind: 13 },
-      { label: 'AND', insertText: 'AND ', doc: 'Combine conditions', kind: 13 },
-      { label: 'OR', insertText: 'OR ', doc: 'Alternative condition', kind: 13 },
-      { label: 'IN', insertText: 'IN ', doc: 'Check value membership', kind: 13 },
-      { label: 'NOT', insertText: 'NOT ', doc: 'Negate a condition', kind: 13 },
-      { label: 'NULL', insertText: 'NULL', doc: 'Represents no value', kind: 13 },
-      { label: 'IS', insertText: 'IS ', doc: 'Compare with NULL or TRUE/FALSE', kind: 13 },
-      { label: 'BETWEEN', insertText: 'BETWEEN ', doc: 'Range check', kind: 13 },
-      { label: 'LIKE', insertText: 'LIKE ', doc: 'Pattern matching', kind: 13 },
-      { label: 'ORDER BY', insertText: 'ORDER BY ', doc: 'Sort results', kind: 13 },
-      { label: 'GROUP BY', insertText: 'GROUP BY ', doc: 'Group rows for aggregation', kind: 13 },
-      { label: 'HAVING', insertText: 'HAVING ', doc: 'Filter groups', kind: 13 },
-      { label: 'LIMIT', insertText: 'LIMIT ', doc: 'Limit number of rows', kind: 13 },
-      { label: 'OFFSET', insertText: 'OFFSET ', doc: 'Skip rows', kind: 13 },
-      { label: 'JOIN', insertText: 'JOIN ', doc: 'Join tables', kind: 13 },
-      { label: 'INNER JOIN', insertText: 'INNER JOIN ', doc: 'Inner join', kind: 13 },
-      { label: 'LEFT JOIN', insertText: 'LEFT JOIN ', doc: 'Left outer join', kind: 13 },
-      { label: 'RIGHT JOIN', insertText: 'RIGHT JOIN ', doc: 'Right outer join', kind: 13 },
-      { label: 'CROSS JOIN', insertText: 'CROSS JOIN ', doc: 'Cross join', kind: 13 },
-      { label: 'ON', insertText: 'ON ', doc: 'Join condition', kind: 13 },
-      { label: 'AS', insertText: 'AS ', doc: 'Alias', kind: 13 },
-      { label: 'DISTINCT', insertText: 'DISTINCT ', doc: 'Remove duplicates', kind: 13 },
-      { label: 'UNION', insertText: 'UNION ', doc: 'Combine result sets', kind: 13 },
-      { label: 'ALL', insertText: 'ALL ', doc: 'Include duplicates', kind: 13 },
-      { label: 'CASE', insertText: 'CASE WHEN ${1:condition} THEN ${2:result} END', doc: 'Conditional expression', kind: 17 },
-      { label: 'INSERT INTO', insertText: 'INSERT INTO ${1:table} (${2:columns}) VALUES (${3:values});', doc: 'Insert rows', kind: 17 },
-      { label: 'UPDATE', insertText: 'UPDATE ${1:table} SET ${2:column} = ${3:value} WHERE ${4:condition};', doc: 'Update rows', kind: 17 },
-      { label: 'DELETE FROM', insertText: 'DELETE FROM ${1:table} WHERE ${2:condition};', doc: 'Delete rows', kind: 17 },
-      { label: 'CREATE TABLE', insertText: 'CREATE TABLE ${1:name} (\n  ${2:column} ${3:type}\n);', doc: 'Create a new table', kind: 17 },
-      { label: 'ALTER TABLE', insertText: 'ALTER TABLE ${1:table} ', doc: 'Modify a table', kind: 17 },
-      { label: 'DROP TABLE', insertText: 'DROP TABLE IF EXISTS ${1:table};', doc: 'Drop a table', kind: 17 },
-      { label: 'CREATE INDEX', insertText: 'CREATE INDEX ${1:idx_name} ON ${2:table} (${3:column});', doc: 'Create an index', kind: 17 },
-      { label: 'CREATE VIEW', insertText: 'CREATE VIEW ${1:view_name} AS ${2:SELECT ...};', doc: 'Create a view', kind: 17 },
-      { label: 'CREATE PROCEDURE', insertText: 'CREATE PROCEDURE ${1:name}()\nBEGIN\n  ${2:body}\nEND;', doc: 'Create a stored procedure', kind: 17 },
-      { label: 'CREATE FUNCTION', insertText: 'CREATE FUNCTION ${1:name}() RETURNS ${2:type}\nBEGIN\n  ${3:body}\nEND;', doc: 'Create a function', kind: 17 },
-      { label: 'CREATE TRIGGER', insertText: 'CREATE TRIGGER ${1:name} ${2:BEFORE|AFTER} ${3:INSERT|UPDATE|DELETE} ON ${4:table}\nFOR EACH ROW\nBEGIN\n  ${5:body}\nEND;', doc: 'Create a trigger', kind: 17 },
-      { label: 'EXISTS', insertText: 'EXISTS ', doc: 'Check existence in subquery', kind: 13 },
-      { label: 'ANY', insertText: 'ANY ', doc: 'Compare with any subquery value', kind: 13 },
-      { label: 'SOME', insertText: 'SOME ', doc: 'Synonym for ANY', kind: 13 },
-      { label: 'WITH', insertText: 'WITH ', doc: 'Common Table Expression', kind: 13 },
-      { label: 'RECURSIVE', insertText: 'RECURSIVE ', doc: 'Recursive CTE', kind: 13 },
-      { label: 'EXPLAIN', insertText: 'EXPLAIN ', doc: 'Show query execution plan', kind: 13 },
-      { label: 'DESCRIBE', insertText: 'DESCRIBE ', doc: 'Show table structure', kind: 13 },
-    ];
-
-    const SQL_FUNCTIONS: { label: string; insertText: string; doc: string }[] = [
-      { label: 'COUNT', insertText: 'COUNT(${1:*})', doc: 'Count rows' },
-      { label: 'SUM', insertText: 'SUM(${1:column})', doc: 'Sum values' },
-      { label: 'AVG', insertText: 'AVG(${1:column})', doc: 'Average value' },
-      { label: 'MIN', insertText: 'MIN(${1:column})', doc: 'Minimum value' },
-      { label: 'MAX', insertText: 'MAX(${1:column})', doc: 'Maximum value' },
-      { label: 'COALESCE', insertText: 'COALESCE(${1:column}, ${2:default})', doc: 'First non-null value' },
-      { label: 'IFNULL', insertText: 'IFNULL(${1:column}, ${2:default})', doc: 'Replace null with default' },
-      { label: 'NULLIF', insertText: 'NULLIF(${1:a}, ${2:b})', doc: 'Null if equal' },
-      { label: 'CAST', insertText: 'CAST(${1:value} AS ${2:type})', doc: 'Convert data type' },
-      { label: 'CONVERT', insertText: 'CONVERT(${1:value}, ${2:type})', doc: 'Convert data type' },
-      { label: 'CONCAT', insertText: 'CONCAT(${1:a}, ${2:b})', doc: 'Concatenate strings' },
-      { label: 'SUBSTRING', insertText: 'SUBSTRING(${1:str}, ${2:pos}, ${3:len})', doc: 'Extract substring' },
-      { label: 'LENGTH', insertText: 'LENGTH(${1:str})', doc: 'String length' },
-      { label: 'TRIM', insertText: 'TRIM(${1:str})', doc: 'Remove whitespace' },
-      { label: 'UPPER', insertText: 'UPPER(${1:str})', doc: 'Uppercase' },
-      { label: 'LOWER', insertText: 'LOWER(${1:str})', doc: 'Lowercase' },
-      { label: 'NOW', insertText: 'NOW()', doc: 'Current timestamp' },
-      { label: 'CURDATE', insertText: 'CURDATE()', doc: 'Current date' },
-      { label: 'DATE_FORMAT', insertText: 'DATE_FORMAT(${1:date}, \'${2:%Y-%m-%d}\')', doc: 'Format date' },
-      { label: 'DATEDIFF', insertText: 'DATEDIFF(${1:a}, ${2:b})', doc: 'Date difference' },
-      { label: 'EXTRACT', insertText: 'EXTRACT(${1:YEAR} FROM ${2:date})', doc: 'Extract date part' },
-      { label: 'ROUND', insertText: 'ROUND(${1:num}, ${2:decimals})', doc: 'Round number' },
-      { label: 'ABS', insertText: 'ABS(${1:num})', doc: 'Absolute value' },
-    ];
-
-    monacoInstance.languages.registerCompletionItemProvider('sql', {
-      triggerCharacters: ['.', ' ', '('],
-      provideCompletionItems: async (model: monaco.editor.ITextModel, position: monaco.Position) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-
-        const lineContent = model.getLineContent(position.lineNumber);
-        const textBeforeCursor = lineContent.slice(0, position.column - 1);
-        const afterDot = textBeforeCursor.match(/(\w+)\.\s*$/);
-
-        const suggestions: monaco.languages.CompletionItem[] = [];
-
-        // Try assistant store cache first (fast, synchronous)
-        const cached = useAssistantStore.getState().schemaCache;
-        let tables = cached.tables.map(t => t.name);
-        let columns = cached.columns as Record<string, { name: string; type: string; isNullable: boolean; isPrimaryKey: boolean }[]>;
-
-        // If no cache, try async fetch
-        if (tables.length === 0) {
-          const appState = useAppStore.getState();
-          const activeTab = appState.tabs.find(t => t.id === appState.activeTabId);
-          const connId = activeTab?.connectionId;
-          if (connId) {
-            const db = appState.activeConnection?.database;
-            if (schemaCache.has(connId)) {
-              const cached = schemaCache.get(connId)!;
-              tables = cached.tables;
-              columns = cached.columns;
-            } else {
-              try {
-                const tbls = await schemaService.getTables(connId, db);
-                tables = tbls.map(t => t.name);
-                const cols: typeof columns = {};
-                await Promise.all(tables.map(async (n) => {
-                  try {
-                    cols[n] = (await schemaService.getColumns(connId, n, db)).map(c => ({
-                      name: c.name, type: c.type, isNullable: c.isNullable, isPrimaryKey: c.isPrimaryKey,
-                    }));
-                  } catch { /* skip */ }
-                }));
-                columns = cols;
-                schemaCache.set(connId, { tables, columns });
-              } catch {
-                console.warn('[autocomplete] schema fetch failed');
-              }
-            }
-          }
-        }
-
-        // After dot: only show columns for that table
-        if (afterDot) {
-          const colList = columns[afterDot[1]] || [];
-          for (const col of colList) {
-            suggestions.push({
-              label: { label: col.name, description: col.type },
-              kind: 4,
-              insertText: col.name,
-              detail: col.type,
-              documentation: `${col.name} (${col.type})${col.isPrimaryKey ? ' PK' : ''}${col.isNullable ? '' : ' NOT NULL'}`,
-              range,
-            });
-          }
-          return { suggestions };
-        }
-
-        // Tables
-        for (const tbl of tables) {
-          const colList = columns[tbl] || [];
-          suggestions.push({
-            label: { label: tbl, description: `${colList.length} cols` },
-            kind: 5,
-            insertText: tbl,
-            detail: 'TABLE',
-            documentation: `Table: ${tbl}${colList.length > 0 ? ` (${colList.length} columns)` : ''}`,
-            range,
-          });
-        }
-
-        // Columns
-        for (const cols of Object.values(columns)) {
-          for (const col of cols) {
-            suggestions.push({
-              label: { label: col.name, description: col.type },
-              kind: 4,
-              insertText: col.name,
-              detail: col.type,
-              documentation: `Column: ${col.name} (${col.type})${col.isPrimaryKey ? ' PK' : ''}`,
-              range,
-            });
-          }
-        }
-
-        // Keywords
-        for (const kw of SQL_KEYWORDS) {
-          suggestions.push({
-            label: kw.label,
-            kind: kw.kind,
-            insertText: kw.insertText,
-            insertTextRules: kw.kind === 17 ? 4 : undefined,
-            documentation: kw.doc,
-            range,
-          });
-        }
-
-        // Functions
-        for (const fn of SQL_FUNCTIONS) {
-          suggestions.push({
-            label: { label: fn.label, description: 'function' },
-            kind: 2,
-            insertText: fn.insertText,
-            insertTextRules: 4,
-            documentation: fn.doc,
-            range,
-          });
-        }
-
-        return { suggestions };
-      },
-    });
-  }, [])
-
-  const handleEditorDidMount = useCallback((editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
-    editorRef.current = editorInstance
-    
-    // Ctrl/Cmd + Enter: Execute Current Statement (or selection)
-    editorInstance.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, () => {
-      executeCurrentRef.current()
-    })
-
-    // F5: Execute All (Legacy SQL editor behavior)
-    editorInstance.addCommand(monacoInstance.KeyCode.F5, () => {
-      executeAllRef.current()
-    })
-  }, [])
-
   const sortedRows = useMemo(() => {
     const rows = activeTab?.results?.rows;
     if (!rows) return []
@@ -1120,7 +901,7 @@ export function useQueryEditor() {
     const state = useAppStore.getState();
     const currentTab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
     
-    const content = editorRef.current ? editorRef.current.getValue() : currentTab?.query;
+    const content = editorRef.current ? editorRef.current.state.doc.toString() : currentTab?.query;
     if (!content) return;
 
     try {
@@ -1183,8 +964,9 @@ export function useQueryEditor() {
     handleCancel,
     handleSave,
     handleSaveScript,
-    handleEditorWillMount,
-    handleEditorDidMount,
+    editorRef,
+    executeCurrentRef,
+    executeAllRef,
     handlePageChange,
     clearTabResults,
     isInteracting,

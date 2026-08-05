@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen,
   CheckCircle, Loader2, RotateCcw, AlertTriangle, GitBranch, Palette,
-  CalendarClock, Sparkles, Flame, Shield, Star
+  CalendarClock, Sparkles, Flame, Shield, Star, Gauge
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Environment } from '@/types/database'
@@ -25,6 +25,7 @@ const navGroups: NavItem[][] = [
   ],
   [
     { name: 'Query Editor', icon: Terminal, path: '/query', perkId: null },
+    { name: 'Monitor', icon: Gauge, path: '/monitor', perkId: null },
     { name: 'Audit', icon: FileText, path: '/audit', perkId: null },
     { name: 'Scheduler', icon: CalendarClock, path: '/scheduler', perkId: 'query_scheduler' },
     { name: 'DB Compare', icon: GitBranch, path: '/compare', perkId: 'multi_connection' },
@@ -122,7 +123,7 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
 
                     {/* Tooltip */}
                     <span className={cn(
-                      "absolute top-full mt-1.5 px-2 py-1 rounded-md bg-surface-elevated border border-border text-foreground text-[var(--ch-text-11)] font-medium whitespace-nowrap",
+                      "absolute top-full mt-1.5 px-2 py-1 rounded-md bg-surface-elevated border border-border text-foreground text-[length:var(--ch-text-11)] font-medium whitespace-nowrap",
                       "opacity-0 pointer-events-none transition-opacity duration-150 group-hover/nav:opacity-100",
                       "shadow-lg shadow-black/20 z-50"
                     )}>

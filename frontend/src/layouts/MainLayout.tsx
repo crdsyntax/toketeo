@@ -154,7 +154,10 @@ export default function MainLayout() {
   const handleConnect = async (conn: Connection) => {
     try {
       await connectionService.connect(conn)
-      setActiveConnection(conn)
+      setActiveConnection({
+        ...conn,
+        database: conn.defaultDatabase || conn.database
+      })
       setConnectedConnection(conn.id)
     } catch (error: unknown) {
       console.error('Failed to connect to database:', error)

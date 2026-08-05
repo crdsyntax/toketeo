@@ -14,6 +14,15 @@ export const connectionService = {
   },
 
   /**
+   * Returns a single stored secret (`password` | `ssh_password` |
+   * `ssh_private_key` | `ssh_passphrase`) for a connection. Only available
+   * while the session is unlocked.
+   */
+  revealSecret: async (id: string, field: string): Promise<string | null> => {
+    return await tauriApi.invoke<string | null>('reveal_connection_secret', { id, field })
+  },
+
+  /**
    * Persists a connection configuration to the local Rust database.
    */
   create: async (config: CreateConnectionDto): Promise<void> => {
@@ -94,6 +103,20 @@ export const connectionService = {
     await tauriApi.invoke<void>('lock_session')
   },
 
+  lockSecrets: async (): Promise<void> => {
+    await tauriApi.invoke<void>('lock_secrets')
+  },
+
+  isSecretsBlocked: async (): Promise<boolean> => {
+    return await tauriApi.invoke<boolean>('is_secrets_blocked')
+  },
+
+  isSecretsUnlocked: async (): Promise<boolean> => {
+    const session = await tauriApi.invoke<boolean>('is_session_unlocked')
+    if (!session) return false
+    return !(await tauriApi.invoke<boolean>('is_secrets_blocked'))
+  },
+
   changeMasterPassword: async (oldPassword: string, newPassword: string): Promise<void> => {
     await tauriApi.invoke<void>('change_master_password', { oldPassword, newPassword })
   },
@@ -123,8 +146,8 @@ export const connectionService = {
     await tauriApi.invoke<void>('store_master_in_keyring', { password })
   },
 
-  getMasterFromKeyring: async (): Promise<string | null> => {
-    return await tauriApi.invoke<string | null>('get_master_from_keyring')
+  isMasterInKeyring: async (): Promise<boolean> => {
+    return await tauriApi.invoke<boolean>('is_master_in_keyring')
   },
 
   removeMasterFromKeyring: async (): Promise<void> => {

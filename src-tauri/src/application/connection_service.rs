@@ -13,7 +13,18 @@ use crate::infrastructure::drivers::driver_factory::DriverFactory;
 
 pub struct ConnectionService;
 
+/// Placeholder returned to the frontend in place of real secrets. The backend
+/// treats this sentinel as "keep the stored secret" during merge, so a hostile
+/// webview can never read the actual credential nor accidentally overwrite it.
+pub const REDACTED: &str = "********";
+
 impl ConnectionService {
+    fn is_redacted(v: &Option<secrecy::SecretString>) -> bool {
+        v.as_ref()
+            .map(|s| s.expose_secret() == REDACTED)
+            .unwrap_or(false)
+    }
+
     fn encrypt_connection(
         config: &mut DbConnectionConfig,
         key: &[u8; 32],
@@ -46,6 +57,12 @@ impl ConnectionService {
                     .map_err(|e| crate::error::AppError::Auth(e))?;
                 config.ssh_enc = Some(enc);
                 config.ssh_nonce = Some(nonce.to_vec());
+                // Never persist plaintext SSH secrets; they are restored from ssh_enc on decrypt.
+                if let Some(ref mut ssh) = config.ssh_tunnel {
+                    ssh.password = None;
+                    ssh.private_key = None;
+                    ssh.passphrase = None;
+                }
             }
         }
         Ok(())
@@ -54,8 +71,7 @@ impl ConnectionService {
     pub(crate) fn decrypt_connection(
         config: &mut DbConnectionConfig,
         key: &[u8; 32],
-    ) -> AppResult<()> {
-        if let Some(ref enc) = config.password_enc.clone() {
+    ) -> AppResult<()> {        if let Some(ref enc) = config.password_enc.clone() {
             if let Some(ref nonce_vec) = config.password_nonce.clone() {
                 if nonce_vec.len() == 12 {
                     let mut nonce = [0u8; 12];
@@ -96,6 +112,29 @@ impl ConnectionService {
         Ok(())
     }
 
+    /// Replaces all secrets with the REDACTED sentinel so they are never sent
+    /// to the frontend. Used by `get_connection` (the webview is untrusted).
+    fn mask_secrets(config: &mut DbConnectionConfig) {
+        if config.password.is_some() {
+            config.password = Some(secrecy::SecretString::from(REDACTED));
+        }
+        config.password_enc = None;
+        config.password_nonce = None;
+        config.ssh_enc = None;
+        config.ssh_nonce = None;
+        if let Some(ref mut ssh) = config.ssh_tunnel {
+            if ssh.password.is_some() {
+                ssh.password = Some(secrecy::SecretString::from(REDACTED));
+            }
+            if ssh.private_key.is_some() {
+                ssh.private_key = Some(secrecy::SecretString::from(REDACTED));
+            }
+            if ssh.passphrase.is_some() {
+                ssh.passphrase = Some(secrecy::SecretString::from(REDACTED));
+            }
+        }
+    }
+
     async fn merge_sensitive_data(state: &AppState, config: &mut DbConnectionConfig) {
         if let Some(id) = config.id {
             if let Ok(mut db_config) = state.storage.get_connection(&id.to_string()).await {
@@ -112,7 +151,8 @@ impl ConnectionService {
                 // When auth is explicitly disabled, clear password and skip merge
                 if config.auth_enabled == Some(false) {
                     config.password = None;
-                } else if config.password.is_none()
+                } else if Self::is_redacted(&config.password)
+                    || config.password.is_none()
                     || config
                         .password
                         .as_ref()
@@ -125,7 +165,8 @@ impl ConnectionService {
                 // Merge SSH secrets
                 if let Some(ref mut incoming_ssh) = config.ssh_tunnel {
                     if let Some(ref db_ssh) = db_config.ssh_tunnel {
-                        if incoming_ssh.password.is_none()
+                        if Self::is_redacted(&incoming_ssh.password)
+                            || incoming_ssh.password.is_none()
                             || incoming_ssh
                                 .password
                                 .as_ref()
@@ -134,7 +175,8 @@ impl ConnectionService {
                         {
                             incoming_ssh.password = db_ssh.password.clone();
                         }
-                        if incoming_ssh.private_key.is_none()
+                        if Self::is_redacted(&incoming_ssh.private_key)
+                            || incoming_ssh.private_key.is_none()
                             || incoming_ssh
                                 .private_key
                                 .as_ref()
@@ -143,7 +185,8 @@ impl ConnectionService {
                         {
                             incoming_ssh.private_key = db_ssh.private_key.clone();
                         }
-                        if incoming_ssh.passphrase.is_none()
+                        if Self::is_redacted(&incoming_ssh.passphrase)
+                            || incoming_ssh.passphrase.is_none()
                             || incoming_ssh
                                 .passphrase
                                 .as_ref()
@@ -244,12 +287,57 @@ impl ConnectionService {
     }
 
     pub async fn get_connection(state: &AppState, id: &str) -> AppResult<DbConnectionConfig> {
-        tracing::debug!("Fetching single connection with secrets: {}", id);
+        tracing::debug!("Fetching single connection config: {}", id);
+        let mut conn = state.storage.get_connection(id).await?;
+        // Secrets are decrypted (in-memory) so the merge logic on save can work,
+        // then masked with the REDACTED sentinel — the webview never receives them.
+        if let Ok(key) = state.require_unlock().await {
+            Self::decrypt_connection(&mut conn, &key)?;
+        }
+        Self::mask_secrets(&mut conn);
+        Ok(conn)
+    }
+
+    /// Returns a single secret field for a connection. The session must already
+    /// be unlocked (gated at the command boundary). Only the requested field is
+    /// returned, never the whole config, and only while the caller is
+    /// authenticated. Field names: `password`, `ssh_password`,
+    /// `ssh_private_key`, `ssh_passphrase`.
+    pub async fn reveal_secret(state: &AppState, id: &str, field: &str) -> AppResult<Option<String>> {
         let mut conn = state.storage.get_connection(id).await?;
         if let Ok(key) = state.require_unlock().await {
             Self::decrypt_connection(&mut conn, &key)?;
         }
-        Ok(conn)
+        let value = match field {
+            "password" => conn
+                .password
+                .as_ref()
+                .map(|s| s.expose_secret().to_string()),
+            "ssh_password" => conn
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|s| s.password.as_ref())
+                .map(|s| s.expose_secret().to_string()),
+            "ssh_private_key" => conn
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|s| s.private_key.as_ref())
+                .map(|s| s.expose_secret().to_string()),
+            "ssh_passphrase" => conn
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|s| s.passphrase.as_ref())
+                .map(|s| s.expose_secret().to_string()),
+            other => {
+                return Err(crate::error::AppError::Internal(format!(
+                    "Unknown secret field: {}",
+                    other
+                )))
+            }
+        };
+        // Drop any decrypted material that is not being returned.
+        conn.strip_secrets();
+        Ok(value)
     }
 
     pub async fn delete_connection(state: &AppState, id: &str) -> AppResult<()> {
@@ -282,7 +370,15 @@ impl ConnectionService {
                 ssh_config.port
             );
 
-            match crate::ssh::SshTunnel::open(ssh_config, &config.host, config.port, Some(id.clone())).await {
+            match crate::ssh::SshTunnel::open(
+                ssh_config,
+                &config.host,
+                config.port,
+                Some(id.clone()),
+                state.known_hosts.clone(),
+            )
+            .await
+            {
                 Ok(tunnel) => {
                     config.port = tunnel.local_port;
                     Some(tunnel)

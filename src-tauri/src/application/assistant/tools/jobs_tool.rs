@@ -407,6 +407,7 @@ impl JobsTool {
 
     async fn run_job(&self, state: &AppState, id: &str) -> AppResult<()> {
         let storage = state.storage.clone();
+        let known_hosts = state.known_hosts.clone();
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let token_clone = cancel_token.clone();
 
@@ -424,7 +425,7 @@ impl JobsTool {
         let job_id = id.to_string();
         tokio::spawn(async move {
             if let Err(e) =
-                job_engine::execute_job_now(&storage, &app_handle, &job_id, Some(token_clone)).await
+                job_engine::execute_job_now(&storage, &known_hosts, &app_handle, &job_id, Some(token_clone)).await
             {
                 tracing::error!("[jobs] run_job_now error: {e}");
             }

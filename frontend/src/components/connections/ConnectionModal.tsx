@@ -1,8 +1,9 @@
-import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Clock, Minimize2, Maximize2, FolderOpen } from 'lucide-react'
+import { X, Shield, Loader2, Database, Globe, Check, AlertTriangle, Terminal, RefreshCw, Server, Cpu, Lock, Key, Eye, EyeOff, Copy, Clock, Minimize2, Maximize2, FolderOpen } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import { DatabaseType, Environment, SshAuthType } from '@/types/database'
 import type { Connection, CreateConnectionDto, SshConfig } from '@/types/database'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { connectionService } from '@/services/connection.service'
 import { useDraggablePanel } from '@/hooks/useDraggablePanel'
 import { UnlockPrompt } from '@/components/security/UnlockPrompt'
@@ -41,20 +42,140 @@ const INITIAL_FORM: CreateConnectionDto = {
   metadataCacheTtl: 300,
 }
 
+// Sentinel used by the backend to mask stored secrets. A value equal to this
+// sentinel means "the real secret is stored server-side", so the eye button
+// must fetch it from the backend instead of revealing this placeholder.
+const REDACTED = '********'
+
+type SecretField = 'password' | 'ssh_password' | 'ssh_passphrase'
+
 export function ConnectionModal({
   isOpen, onClose, onSave, onTest, editingConnection, isSaving, isTesting, testMessage
-}: ConnectionModalProps) {
-  const [activeTab, setActiveTab] = useState<'general' | 'ssh' | 'pool'>('general')
+}: ConnectionModalProps) {  const [activeTab, setActiveTab] = useState<'general' | 'ssh' | 'pool'>('general')
   const [form, setForm] = useState<CreateConnectionDto>(INITIAL_FORM)
   const [storePassword, setStorePassword] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoadingConnection, setIsLoadingConnection] = useState(false)
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(false)
   const [pendingReveal, setPendingReveal] = useState<'password' | 'ssh_password' | 'ssh_passphrase' | null>(null)
+  const [pendingCopy, setPendingCopy] = useState(false)
   const [showSshPassword, setShowSshPassword] = useState(false)
   const [showSshPassphrase, setShowSshPassphrase] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
+  const clipboardClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { pos, handleMouseDown } = useDraggablePanel(320, 60)
+
+  const clearSecretTimers = () => {
+    if (clipboardClearTimer.current) clearTimeout(clipboardClearTimer.current)
+    if (autoLockTimer.current) clearTimeout(autoLockTimer.current)
+    clipboardClearTimer.current = null
+    autoLockTimer.current = null
+  }
+
+  // Returns the real secret value for a field: the typed value if it is not the
+  // REDACTED sentinel, otherwise it fetches the stored secret from the backend
+  // (requires an unlocked session).
+  const resolveSecret = async (field: SecretField): Promise<string | null> => {
+    if (field === 'password' && form.password !== REDACTED) return form.password ?? null
+    if (field === 'ssh_password' && form.ssh?.password !== REDACTED) return form.ssh?.password ?? null
+    if (field === 'ssh_passphrase' && form.ssh?.passphrase !== REDACTED) return form.ssh?.passphrase ?? null
+    if (!editingConnection) return null
+    return connectionService.revealSecret(editingConnection.id, field)
+  }
+
+  // Toggles an eye button: hides when visible, otherwise prompts for unlock
+  // (if needed) and fetches the real secret from the backend when the field
+  // still holds the REDACTED sentinel.
+  const toggleReveal = async (field: SecretField) => {
+    if (field === 'password' && showPassword) return setShowPassword(false)
+    if (field === 'ssh_password' && showSshPassword) return setShowSshPassword(false)
+    if (field === 'ssh_passphrase' && showSshPassphrase) return setShowSshPassphrase(false)
+
+    const unlocked = await connectionService.isSecretsUnlocked()
+    if (!unlocked) {
+      setPendingReveal(field)
+      setPendingCopy(false)
+      setShowUnlockPrompt(true)
+      return
+    }
+    await applyReveal(field)
+  }
+
+  const applyReveal = async (field: SecretField) => {
+    if (!editingConnection) {
+      if (field === 'password') return setShowPassword(true)
+      if (field === 'ssh_password') return setShowSshPassword(true)
+      return setShowSshPassphrase(true)
+    }
+
+    try {
+      const value = await resolveSecret(field)
+      if (value === null) return
+      if (field === 'password') {
+        setForm((prev) => ({ ...prev, password: value }))
+        setShowPassword(true)
+      } else if (field === 'ssh_password') {
+        setForm((prev) => ({ ...prev, ssh: { ...(prev.ssh as SshConfig), password: value } }))
+        setShowSshPassword(true)
+      } else {
+        setForm((prev) => ({ ...prev, ssh: { ...(prev.ssh as SshConfig), passphrase: value } }))
+        setShowSshPassphrase(true)
+      }
+    } catch {
+      // tauriApi already surfaces the error; keep the field masked.
+    }
+  }
+
+  const copySecret = async (field: SecretField) => {
+    const unlocked = await connectionService.isSecretsUnlocked()
+    if (!unlocked) {
+      setPendingReveal(field)
+      setPendingCopy(true)
+      setShowUnlockPrompt(true)
+      return
+    }
+    await doCopy(field)
+  }
+
+  const doCopy = async (field: SecretField) => {
+    try {
+      const value = await resolveSecret(field)
+      if (value === null) return
+      await navigator.clipboard.writeText(value)
+
+      clearSecretTimers()
+
+      // Auto-clean the clipboard 40s after copying so the secret does not linger
+      // in a shared, OS-wide buffer. Only clears it if it still holds our value.
+      clipboardClearTimer.current = setTimeout(async () => {
+        try {
+          const current = await navigator.clipboard.readText()
+          if (current === value) await navigator.clipboard.writeText('')
+        } catch {
+          // Clipboard unreadable: never clobber unknown content.
+        }
+      }, 40_000)
+
+      // Block only secret revelation 1min20s after copying so the credential
+      // cannot be revealed or re-copied once the window is over. DB operations
+      // (connect, queries) are NOT affected.
+      autoLockTimer.current = setTimeout(async () => {
+        try {
+          await connectionService.lockSecrets()
+          toast('Revelado de contraseñas bloqueado por seguridad')
+        } catch {
+          // Session may already be locked; nothing else to do.
+        }
+      }, 80_000)
+
+      toast.success('Contraseña copiada al portapapeles')
+    } catch {
+      toast.error('No se pudo copiar la contraseña')
+    }
+  }
+
+  useEffect(() => () => clearSecretTimers(), [])
 
   useEffect(() => {
     if (!isOpen) return;
@@ -67,6 +188,7 @@ export function ConnectionModal({
       setShowSshPassword(false)
       setShowSshPassphrase(false)
       setActiveTab('general')
+      setPendingCopy(false)
     }
 
     if (!editingConnection) {
@@ -400,22 +522,18 @@ export function ConnectionModal({
                     />
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (showPassword) {
-                          setShowPassword(false)
-                          return
-                        }
-                        const unlocked = await connectionService.isSessionUnlocked()
-                        if (unlocked) {
-                          setShowPassword(true)
-                        } else {
-                          setPendingReveal('password')
-                          setShowUnlockPrompt(true)
-                        }
-                      }}
+                      onClick={() => toggleReveal('password')}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copySecret('password')}
+                      title="Copiar contraseña"
+                      className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+                    >
+                      <Copy className="w-4 h-4" />
                     </button>
                   </div>
                   {editingConnection && (
@@ -739,16 +857,24 @@ export function ConnectionModal({
                           />
                           <button
                             type="button"
-                            onClick={() => setShowSshPassword((prev) => !prev)}
+                            onClick={() => toggleReveal('ssh_password')}
                             className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                           >
                             {showSshPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copySecret('ssh_password')}
+                            title="Copiar contraseña SSH"
+                            className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+                          >
+                            <Copy className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-2 animate-in fade-in duration-300">
-                        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Passphrase (Optional)</label>
+                        <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Passphrase (required for encrypted keys)</label>
                         <div className="relative">
                           <input 
                             type={showSshPassphrase ? 'text' : 'password'}
@@ -759,10 +885,18 @@ export function ConnectionModal({
                           />
                           <button
                             type="button"
-                            onClick={() => setShowSshPassphrase((prev) => !prev)}
+                            onClick={() => toggleReveal('ssh_passphrase')}
                             className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                           >
                             {showSshPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copySecret('ssh_passphrase')}
+                            title="Copiar passphrase"
+                            className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+                          >
+                            <Copy className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -895,14 +1029,17 @@ export function ConnectionModal({
         <UnlockPrompt
           onUnlocked={() => {
             setShowUnlockPrompt(false)
-            if (pendingReveal === 'password') setShowPassword(true)
-            if (pendingReveal === 'ssh_password') setShowSshPassword(true)
-            if (pendingReveal === 'ssh_passphrase') setShowSshPassphrase(true)
+            if (pendingReveal) {
+              if (pendingCopy) doCopy(pendingReveal)
+              else applyReveal(pendingReveal)
+            }
             setPendingReveal(null)
+            setPendingCopy(false)
           }}
           onCancel={() => {
             setShowUnlockPrompt(false)
             setPendingReveal(null)
+            setPendingCopy(false)
           }}
         />
       )}

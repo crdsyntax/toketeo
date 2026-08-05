@@ -17,7 +17,7 @@ export function Tooltip({ children, content, side = 'top' }: TooltipProps) {
   return (
     <div className="group relative inline-block">
       {children}
-      <div className={`pointer-events-none absolute z-50 ${position} px-3 py-1.5 bg-foreground text-background text-[var(--ch-text-10)] font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap`}>
+      <div className={`pointer-events-none absolute z-50 ${position} px-3 py-1.5 bg-foreground text-background text-[length:var(--ch-text-10)] font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap`}>
         {content}
       </div>
     </div>

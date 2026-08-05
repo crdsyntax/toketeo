@@ -60,11 +60,11 @@ export default function QueryEditor() {
     confirmPendingEdit,
     discardPendingEdit,
     handleExecuteAll,
+    handleExecuteCurrent,
     handleCancel,
     handleSave,
     handleSaveScript,
-    handleEditorWillMount,
-    handleEditorDidMount,
+    editorRef,
     handlePageChange,
     clearTabResults,
     isInteracting,
@@ -309,7 +309,7 @@ export default function QueryEditor() {
       <div className="flex-1 flex min-h-0">
         <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {panels.editor && (
-            <div style={{ height: panels.results ? `${panels.editorHeight}%` : '100%' }} className="min-h-[100px] flex flex-col">
+            <div className="min-h-[100px] flex flex-col flex-1">
               {isMongo && activeTab && (
                 <MongoFilterBar
                   filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
@@ -323,8 +323,9 @@ export default function QueryEditor() {
                     activeTab={activeTab}
                     onToggle={() => togglePanel('editor')}
                     updateTabQuery={updateTabQuery}
-                    handleEditorWillMount={handleEditorWillMount}
-                    handleEditorDidMount={handleEditorDidMount}
+                    editorRef={editorRef}
+                    executeCurrent={handleExecuteCurrent}
+                    executeAll={handleExecuteAll}
                     connectionName={targetConnection?.name}
                     connectionType={targetConnection?.type}
                     updateTabViewState={updateTabViewState}

@@ -5,6 +5,7 @@ pub mod compare;
 pub mod connection_service;
 pub mod keyring_service;
 pub mod totp_service;
+pub mod monitoring_service;
 pub mod explorer_service;
 pub mod session_service;
 pub mod sync;

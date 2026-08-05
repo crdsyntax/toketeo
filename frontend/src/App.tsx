@@ -4,6 +4,7 @@ import Connections from '@/pages/Connections'
 import Explorer from '@/pages/Explorer'
 import QueryEditor from '@/pages/QueryEditor'
 import AuditLog from '@/pages/AuditLog'
+import MonitorPage from '@/pages/MonitorPage'
 import { DiagramPage } from '@/diagram'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
@@ -28,6 +29,7 @@ function App() {
           <Route path="explorer" element={<Explorer />} />
           <Route path="diagram" element={<DiagramPage />} />
           <Route path="query" element={<QueryEditor />} />
+          <Route path="monitor" element={<MonitorPage />} />
           <Route path="audit" element={<AuditLog />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="scheduler" element={<SchedulerPage />} />

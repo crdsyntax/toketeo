@@ -17,6 +17,11 @@ export type EditorMode = 'auto' | 'mongosh' | 'json'
 
 export type DataTabViewMode = 'table' | 'list' | 'json'
 
+export interface EditorViewState {
+  scrollTop?: number
+  selection?: { anchor?: number; head?: number }
+}
+
 export interface QueryTab {
   id: string
   name: string
@@ -25,7 +30,7 @@ export interface QueryTab {
   results?: QueryResult | null
   status?: ExecutionStatus
   error?: string | null
-  editorViewState?: import('monaco-editor').editor.ICodeEditorViewState | null
+  editorViewState?: EditorViewState | null
   mongoFilter?: MongoFilterState
   editorMode?: EditorMode
 }
@@ -112,7 +117,7 @@ interface AppState {
   updateTabResults: (id: string, updates: Partial<Pick<QueryTab, 'results' | 'status' | 'error'>>) => void
   clearTabResults: (id: string) => void
   setActiveTabId: (id: string) => void
-  updateTabViewState: (id: string, viewState: import('monaco-editor').editor.ICodeEditorViewState | null) => void
+  updateTabViewState: (id: string, viewState: EditorViewState | null) => void
   updateTabMongoFilter: (id: string, filter: Partial<MongoFilterState>) => void
   updateTabEditorMode: (id: string, mode: EditorMode) => void
   panels: {
@@ -191,7 +196,11 @@ export const useAppStore = create<AppState>()(
           }
           return tab
         })
-        return { activeConnection: connection, tabs: updatedTabs }
+        const switchingConnection = connection && connection.id !== state.activeConnection?.id
+        const explorer = switchingConnection
+          ? { ...state.explorer, activeExplorerTabId: null }
+          : state.explorer
+        return { activeConnection: connection, tabs: updatedTabs, explorer }
       }),
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null

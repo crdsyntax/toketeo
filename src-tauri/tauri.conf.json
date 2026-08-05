@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Toketeo",
-  "version": "0.3.8",
+  "version": "0.4.0",
   "identifier": "com.toketeo.app",
   "build": {
     "frontendDist": "../frontend/dist",
@@ -20,7 +20,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws://localhost:* http://localhost:*"
+      "dangerousDisableAssetCspModification": ["style-src"],
+      "csp": "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:8565 http://localhost:8565"
     }
   },
   "bundle": {
@@ -47,9 +48,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM2QjlGNkE3MjhBNzlGMkEKUldRcW42Y29wL2E1eHJvbVIyWXh2d1dBd21OZitHMXBoUmsyeEwvV0pGSVJ4dXRVNncydzJmdlYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzQ0JFQ0UzRjlEQ0NGNzUKUldSMXo5ejU0K3pMa3p2KzM4K2pDY0lCUlM1Q0M4ZnNQbk1lTW91ME5sanhFYjRhMUNwMUZXZ24K",
       "endpoints": [
-        "https://updates.toketeo.app/latest.json"
+        "https://toketeo-updates.crdsyntax.workers.dev/latest.json"
       ]
     }
   }

@@ -2,6 +2,7 @@ use crate::db::{DbDriver, DbType};
 use crate::infrastructure::database::connection_string_builder::ConnectionStringBuilder;
 use crate::infrastructure::drivers::driver_factory::DriverFactory;
 use crate::models::{JobType, ScheduledJob};
+use crate::ssh::KnownHostsStore;
 use crate::storage::Storage;
 use chrono::Utc;
 use std::sync::Arc;
@@ -240,15 +241,15 @@ fn retry_delay(attempt: u32) -> std::time::Duration {
 pub struct JobExecutor;
 
 impl JobExecutor {
-    pub async fn execute(job: &ScheduledJob, storage: &Storage, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    pub async fn execute(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
         match job.job_type {
-            JobType::Backup => Self::execute_backup(job, storage, app_handle, cancel_token).await,
-            JobType::Report => Self::execute_report(job, storage, app_handle, cancel_token).await,
-            JobType::CsvExport => Self::execute_csv_export(job, storage, app_handle, cancel_token).await,
+            JobType::Backup => Self::execute_backup(job, storage, known_hosts, app_handle, cancel_token).await,
+            JobType::Report => Self::execute_report(job, storage, known_hosts, app_handle, cancel_token).await,
+            JobType::CsvExport => Self::execute_csv_export(job, storage, known_hosts, app_handle, cancel_token).await,
         }
     }
 
-    async fn build_driver(job: &ScheduledJob, storage: &Storage) -> Result<JobOutput, ExecutionResult> {
+    async fn build_driver(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>) -> Result<JobOutput, ExecutionResult> {
         let conn_id = job.connection_id.to_string();
         let mut conn_config = storage.get_connection(&conn_id).await.map_err(|e| err(format!("Failed to get connection: {}", e)))?;
 
@@ -270,7 +271,7 @@ impl JobExecutor {
             tracing::info!("[scheduler] Opening SSH tunnel to {}:{}", ssh_config.host, ssh_config.port);
             let remote_host = conn_config.host.clone();
             let remote_port = conn_config.port;
-            match crate::ssh::SshTunnel::open(ssh_config, &remote_host, remote_port, Some(conn_id)).await {
+            match crate::ssh::SshTunnel::open(ssh_config, &remote_host, remote_port, Some(conn_id), known_hosts.clone()).await {
                 Ok(t) => {
                     conn_config.port = t.local_port;
                     Some(t)
@@ -300,6 +301,7 @@ impl JobExecutor {
     async fn retry_connect<T, F, Fut>(
         job: &ScheduledJob,
         storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
         app_handle: &AppHandle,
         cancel_token: Option<CancellationToken>,
         output: JobOutput,
@@ -338,7 +340,7 @@ impl JobExecutor {
                     } else {
                         tokio::time::sleep(delay).await;
                     }
-                    match Self::build_driver(job, storage).await {
+                    match Self::build_driver(job, storage, known_hosts).await {
                         Ok(rebuilt) => {
                             tracing::info!("[scheduler] Connection restored, resuming job {}", job.name);
                             emit_job_alert(
@@ -361,13 +363,13 @@ impl JobExecutor {
         }
     }
 
-    async fn execute_backup(job: &ScheduledJob, storage: &Storage, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn execute_backup(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
         let output_dir = job.config.get("outputDir").and_then(|v| v.as_str()).unwrap_or("/tmp");
         let filter_tables: Vec<String> = job.config.get("tables").and_then(|v| v.as_array()).map(|a| {
             a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
         }).unwrap_or_default();
 
-        let output = match Self::build_driver(job, storage).await {
+        let output = match Self::build_driver(job, storage, known_hosts).await {
             Ok(v) => v,
             Err(e) => return e,
         };
@@ -378,16 +380,16 @@ impl JobExecutor {
 
         let db_type = output.db_type.clone();
         match db_type {
-            DbType::Mongodb => Self::dump_mongodb(job, storage, output, output_dir, &filter_tables, app_handle, cancel_token).await,
-            _ => Self::dump_sql(job, storage, output, output_dir, &filter_tables, app_handle, cancel_token).await,
+            DbType::Mongodb => Self::dump_mongodb(job, storage, known_hosts, output, output_dir, &filter_tables, app_handle, cancel_token).await,
+            _ => Self::dump_sql(job, storage, known_hosts, output, output_dir, &filter_tables, app_handle, cancel_token).await,
         }
     }
 
-    async fn dump_sql(job: &ScheduledJob, storage: &Storage, output: JobOutput, output_dir: &str, filter_tables: &[String], app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn dump_sql(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, output: JobOutput, output_dir: &str, filter_tables: &[String], app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
         let db_type = output.db_type.clone();
         let db_name = output.db_name.clone();
 
-        let (tables, mut output) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, |driver| async move {
+        let (tables, mut output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
             driver.fetch_tables(None, None).await.map_err(|e| e.to_string())
         }).await;
         let tables = match tables {
@@ -418,7 +420,7 @@ impl JobExecutor {
 
             let qid = |id: &str| quote_id(&db_type, id);
 
-            let (columns, out) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, |driver| async move {
+            let (columns, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
                 driver.fetch_columns(table, None).await.map_err(|e| e.to_string())
             }).await;
             output = out;
@@ -476,7 +478,7 @@ impl JobExecutor {
             sql.push_str("\n);\n\n");
 
             let query = format!("SELECT * FROM {}", qid(table));
-            let (rows, out) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, {
+            let (rows, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
                 let q = query.clone();
                 move |driver| {
                     let q = q.clone();
@@ -524,10 +526,10 @@ impl JobExecutor {
         ok(output_dir.to_string())
     }
 
-    async fn dump_mongodb(job: &ScheduledJob, storage: &Storage, output: JobOutput, output_dir: &str, filter_collections: &[String], app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn dump_mongodb(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, output: JobOutput, output_dir: &str, filter_collections: &[String], app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
         let db_name = output.db_name.clone();
 
-        let (collections, mut output) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, |driver| async move {
+        let (collections, mut output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
             driver.fetch_tables(None, None).await.map_err(|e| e.to_string())
         }).await;
         let collections = match collections {
@@ -554,7 +556,7 @@ impl JobExecutor {
             emit_progress(app_handle, job, collection, idx + 1, total);
 
             let query = format!("{{\"collection\":\"{}\",\"find\":{{}},\"limit\":0}}", collection);
-            let (exec, out) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, {
+            let (exec, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
                 let q = query.clone();
                 move |driver| {
                     let q = q.clone();
@@ -591,13 +593,13 @@ impl JobExecutor {
         ok(output_dir.to_string())
     }
 
-    async fn execute_report(job: &ScheduledJob, storage: &Storage, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn execute_report(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
         let output_dir = job.config.get("outputDir").and_then(|v| v.as_str()).unwrap_or("/tmp");
         let filter_tables: Vec<String> = job.config.get("tables").and_then(|v| v.as_array()).map(|a| {
             a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
         }).unwrap_or_default();
 
-        let output = match Self::build_driver(job, storage).await {
+        let output = match Self::build_driver(job, storage, known_hosts).await {
             Ok(v) => v,
             Err(e) => return e,
         };
@@ -618,7 +620,7 @@ impl JobExecutor {
                 }
             }
 
-            let (exec, _output) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, |driver| async move {
+            let (exec, _output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
                 driver.execute(query).await.map_err(|e| e.to_string())
             }).await;
             match exec {
@@ -650,7 +652,7 @@ impl JobExecutor {
                 }
 
                 let query = format!("SELECT * FROM {}", table);
-                let (exec, out) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, {
+                let (exec, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
                     let q = query.clone();
                     move |driver| {
                         let q = q.clone();
@@ -687,13 +689,13 @@ impl JobExecutor {
         }
     }
 
-    async fn execute_csv_export(job: &ScheduledJob, storage: &Storage, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn execute_csv_export(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
         let output_dir = job.config.get("outputDir").and_then(|v| v.as_str()).unwrap_or("/tmp");
         let filter_tables: Vec<String> = job.config.get("tables").and_then(|v| v.as_array()).map(|a| {
             a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
         }).unwrap_or_default();
 
-        let output = match Self::build_driver(job, storage).await {
+        let output = match Self::build_driver(job, storage, known_hosts).await {
             Ok(v) => v,
             Err(e) => return e,
         };
@@ -714,7 +716,7 @@ impl JobExecutor {
                 }
             }
 
-            let (exec, _output) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, |driver| async move {
+            let (exec, _output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
                 driver.execute(query).await.map_err(|e| e.to_string())
             }).await;
             match exec {
@@ -746,7 +748,7 @@ impl JobExecutor {
                 }
 
                 let query = format!("SELECT * FROM {}", table);
-                let (exec, out) = Self::retry_connect(job, storage, app_handle, cancel_token.clone(), output, {
+                let (exec, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
                     let q = query.clone();
                     move |driver| {
                         let q = q.clone();

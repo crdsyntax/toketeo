@@ -35,8 +35,8 @@ export function SecuritySettingsPage() {
 
   useEffect(() => {
     if (hasPassword && isUnlocked) {
-      connectionService.getMasterFromKeyring().then((pw) => {
-        setUseWindowsHello(pw !== null)
+      connectionService.isMasterInKeyring().then((stored) => {
+        setUseWindowsHello(stored)
       })
     }
   }, [hasPassword, isUnlocked])

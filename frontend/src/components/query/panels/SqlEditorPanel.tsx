@@ -1,27 +1,26 @@
-import { Editor, type Monaco } from '@monaco-editor/react';
-import type * as monaco from 'monaco-editor';
+import type { EditorView } from '@codemirror/view';
+import type { Extension } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
 import { ChevronUp, Terminal, Code2, Sparkles } from 'lucide-react';
-import type { QueryTab, EditorMode } from '@/store/useAppStore';
+import type { QueryTab, EditorMode, EditorViewState } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { isMongoShellSyntax } from '@/lib/mongoShellParser';
 import { DatabaseType } from '@/types/database';
 import { cn } from '@/lib/utils';
-import {
-  MONGO_SHELL_LANGUAGE_ID,
-  registerMongoShellLanguage,
-  defineMongoTheme,
-} from '@/lib/mongoLanguage';
+import { MONGO_SHELL_LANGUAGE_ID } from '@/lib/editor/mongoShellLanguage';
+import { SqlCodeEditor } from '@/components/editor/SqlCodeEditor';
 
 interface SqlEditorPanelProps {
   activeTab: QueryTab;
   onToggle: () => void;
   updateTabQuery: (id: string, query: string) => void;
-  handleEditorWillMount: (monacoInstance: Monaco) => void;
-  handleEditorDidMount: (editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => void;
+  editorRef: React.MutableRefObject<EditorView | null>;
+  executeCurrent: () => void;
+  executeAll: () => void;
   connectionName?: string;
   connectionType?: string;
-  updateTabViewState: (id: string, viewState: monaco.editor.ICodeEditorViewState | null) => void;
+  updateTabViewState: (id: string, viewState: EditorViewState | null) => void;
   updateTabEditorMode: (id: string, mode: EditorMode) => void;
 }
 
@@ -29,23 +28,30 @@ export function SqlEditorPanel({
   activeTab,
   onToggle,
   updateTabQuery,
-  handleEditorWillMount,
-  handleEditorDidMount,
+  editorRef,
+  executeCurrent,
+  executeAll,
   connectionName,
   connectionType,
   updateTabViewState,
   updateTabEditorMode,
 }: SqlEditorPanelProps) {
   const isMongo = connectionType === DatabaseType.MONGODB;
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const monacoRef = useRef<Monaco | null>(null);
+  const localViewRef = useRef<EditorView | null>(null);
   const prevTabIdRef = useRef<string>(activeTab.id);
+  const viewStatesRef = useRef<Record<string, EditorViewState>>({});
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+
+  // Keep the latest tab id available to event listeners without re-creating them.
+  const activeTabIdRef = useRef<string>(activeTab.id);
+  useEffect(() => {
+    activeTabIdRef.current = activeTab.id;
+  }, [activeTab.id]);
+
   const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
   const storeEditorFontSize = useAppStore((s) => s.uiFontSize);
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
   const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
-  const storeEditorMinimap = useAppStore((s) => s.editorMinimap);
-  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
 
   const mode = activeTab.editorMode ?? 'auto';
 
@@ -56,84 +62,137 @@ export function SqlEditorPanel({
     : isMongoShellSyntax(activeTab.query)
   );
 
-  // Dynamically update the Monaco editor language when shell mode toggles
-  useEffect(() => {
-    const editor = editorRef.current;
-    const monacoInstance = monacoRef.current;
-    if (!editor || !monacoInstance) return;
-    const model = editor.getModel();
-    if (!model) return;
-    const targetLang = isShellMode
-      ? MONGO_SHELL_LANGUAGE_ID
-      : isMongo
-        ? 'json'
-        : 'sql';
-    monacoInstance.editor.setModelLanguage(model, targetLang);
-  }, [isShellMode, isMongo]);
+  // Capture the live view state (selection + scroll) keyed by the current tab.
+  const captureState = useCallback((view: EditorView) => {
+    const sel = view.state.selection.main;
+    viewStatesRef.current[activeTabIdRef.current] = {
+      scrollTop: view.scrollDOM.scrollTop,
+      selection: { anchor: sel.anchor, head: sel.head },
+    };
+  }, []);
 
-  // Save state when switching away from a tab or unmounting
+  const restoreState = useCallback((view: EditorView, vs: EditorViewState) => {
+    if (vs.selection && typeof vs.selection.anchor === 'number' && typeof vs.selection.head === 'number') {
+      view.dispatch({
+        selection: { anchor: vs.selection.anchor, head: vs.selection.head },
+        scrollIntoView: false,
+      });
+    }
+    if (typeof vs.scrollTop === 'number') {
+      const scrollTop = vs.scrollTop;
+      requestAnimationFrame(() => {
+        view.scrollDOM.scrollTop = scrollTop;
+      });
+    }
+  }, []);
+
+  const handleMount = useCallback((view: EditorView) => {
+    localViewRef.current = view;
+    editorRef.current = view;
+
+    requestAnimationFrame(() => {
+      view.focus();
+    });
+
+    const handleEditorPaste = async (event: ClipboardEvent) => {
+      const clipboardText = event.clipboardData?.getData('text/plain');
+      if (clipboardText) {
+        return;
+      }
+
+      if (!window.isSecureContext || !navigator.clipboard?.readText) {
+        return;
+      }
+
+      event.preventDefault();
+      const text = await navigator.clipboard.readText().catch(() => '');
+      if (!text) return;
+
+      const mainSel = view.state.selection.main;
+      view.dispatch({
+        changes: {
+          from: mainSel.from,
+          to: mainSel.to,
+          insert: text,
+        },
+        selection: {
+          anchor: mainSel.from + text.length,
+          head: mainSel.from + text.length,
+        },
+      });
+    };
+
+    const handleEditorKeyUp = () => {
+      const pos = view.state.selection.main.head;
+      const line = view.state.doc.lineAt(pos);
+      setCursorPos({ line: line.number, col: pos - line.from + 1 });
+      captureState(view);
+    };
+
+    view.dom.addEventListener('paste', handleEditorPaste);
+    view.dom.addEventListener('keyup', handleEditorKeyUp);
+    view.dom.addEventListener('click', () => captureState(view));
+    view.scrollDOM.addEventListener('scroll', () => captureState(view));
+  }, [editorRef, captureState]);
+
+  // Restore the stored view state once the editor mounts for a given tab.
   useEffect(() => {
-    if (editorRef.current && prevTabIdRef.current !== activeTab.id) {
-      const state = editorRef.current.saveViewState();
-      updateTabViewState(prevTabIdRef.current, state);
+    const view = localViewRef.current;
+    if (!view) return;
+    const vs = activeTab.editorViewState;
+    if (vs) restoreState(view, vs);
+  }, [activeTab.id, activeTab.editorViewState, restoreState]);
+
+  // Ctrl/Cmd + Enter: Execute Current Statement (or selection). F5: Execute All.
+  const execExtensions: Extension[] = useMemo(() => {
+    return [
+      keymap.of([
+        {
+          key: 'Mod-Enter',
+          run: () => {
+            executeCurrent();
+            return true;
+          },
+        },
+        {
+          key: 'F5',
+          run: () => {
+            executeAll();
+            return true;
+          },
+        },
+      ]),
+    ];
+  }, [executeCurrent, executeAll]);
+
+  const handleChange = useCallback((val: string) => {
+    updateTabQuery(activeTab.id, val);
+  }, [activeTab.id, updateTabQuery]);
+
+  // Flush the captured view state of the previous tab when switching tabs.
+  useEffect(() => {
+    if (prevTabIdRef.current !== activeTab.id) {
+      const saved = viewStatesRef.current[prevTabIdRef.current];
+      if (saved) updateTabViewState(prevTabIdRef.current, saved);
       prevTabIdRef.current = activeTab.id;
     }
   }, [activeTab.id, updateTabViewState]);
 
+  // Flush the current tab's state on unmount.
   useEffect(() => {
+    const viewStates = viewStatesRef.current;
+    const tabId = prevTabIdRef.current;
     return () => {
-      // On unmount, save the current tab's state
-      if (editorRef.current) {
-        const state = editorRef.current.saveViewState();
-        updateTabViewState(prevTabIdRef.current, state);
-      }
+      const saved = viewStates[tabId];
+      if (saved) updateTabViewState(tabId, saved);
     };
   }, [updateTabViewState]);
 
-  // Restore state when switching to a new tab
-  useEffect(() => {
-    if (editorRef.current && activeTab.editorViewState) {
-      editorRef.current.restoreViewState(activeTab.editorViewState as monaco.editor.ICodeEditorViewState);
-    }
-  }, [activeTab.id, activeTab.editorViewState]);
-
-  const onBeforeMount = useCallback((monacoInstance: Monaco) => {
-    // Register MongoDB shell language & theme
-    registerMongoShellLanguage(monacoInstance);
-    defineMongoTheme(monacoInstance);
-    // Delegate to parent hook for SQL completions, etc.
-    handleEditorWillMount(monacoInstance);
-  }, [handleEditorWillMount]);
-
-  const onMount = useCallback((editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
-    editorRef.current = editorInstance;
-    monacoRef.current = monacoInstance;
-    handleEditorDidMount(editorInstance, monacoInstance);
-    if (activeTab.editorViewState) {
-      editorInstance.restoreViewState(activeTab.editorViewState as monaco.editor.ICodeEditorViewState);
-    }
-    editorInstance.focus();
-
-    // Track cursor position
-    editorInstance.onDidChangeCursorPosition((e) => {
-      setCursorPos({ line: e.position.lineNumber, col: e.position.column });
-    });
-  }, [handleEditorDidMount, activeTab.editorViewState]);
-
-  const handleChange = useCallback((val: string | undefined) => {
-    const query = val ?? '';
-    updateTabQuery(activeTab.id, query);
-  }, [activeTab.id, updateTabQuery]);
-
-  // Compute editor language
   const editorLanguage = isShellMode
     ? MONGO_SHELL_LANGUAGE_ID
     : isMongo
       ? 'json'
       : 'sql';
-
-  // Compute editor theme
-  const editorTheme = isShellMode ? 'mongo-dark' : 'vs-dark';
 
   const modeChips = [
     { id: 'mongosh' as EditorMode, label: 'Shell', icon: Terminal },
@@ -203,30 +262,19 @@ export function SqlEditorPanel({
 
       {/* Editor */}
       <div className="flex-1 min-h-0 relative">
-        <Editor
-          height="100%"
-          path={activeTab.id}
-          language={editorLanguage}
-          theme={editorTheme}
+        <SqlCodeEditor
           value={activeTab.query}
+          language={editorLanguage}
+          onMount={handleMount}
           onChange={handleChange}
-          beforeMount={onBeforeMount}
-          onMount={onMount}
+          extensions={execExtensions}
           options={{
-            minimap: { enabled: storeEditorMinimap },
             fontSize: storeEditorFontSize,
             fontFamily: storeEditorFontFamily,
             lineHeight: storeEditorLineHeight,
             tabSize: storeEditorTabSize,
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            padding: { top: 16 },
-            lineNumbers: 'on',
-            cursorStyle: 'line',
-            renderLineHighlight: 'all',
             wordWrap: 'on',
-            bracketPairColorization: { enabled: true },
-            guides: { bracketPairs: true },
+            paddingTop: 16,
           }}
         />
       </div>

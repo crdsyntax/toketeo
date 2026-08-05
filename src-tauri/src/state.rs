@@ -4,6 +4,7 @@ use crate::application::session_service::ConnectionSession;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
 use crate::infrastructure::scheduler::job_engine::JobEngine;
+use crate::ssh::KnownHostsStore;
 use crate::storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -45,9 +46,11 @@ impl SyncController {
 pub struct AppState {
     pub connections: RwLock<HashMap<String, ConnectionSession>>,
     pub storage: Arc<Storage>,
+    pub known_hosts: Arc<KnownHostsStore>,
     pub master_key: RwLock<Option<[u8; 32]>>,
     pub session_expires_at: RwLock<Option<std::time::Instant>>,
     pub ui_locked: RwLock<bool>,
+    pub secrets_blocked: RwLock<bool>,
     pub sync_controller: SyncController,
     pub compare_controller: SyncController,
     pub job_engine: RwLock<Option<Arc<JobEngine>>>,
@@ -57,12 +60,16 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(storage: Storage) -> Self {
+        let storage = Arc::new(storage);
+        let known_hosts = Arc::new(KnownHostsStore::new(storage.clone()));
         Self {
             connections: RwLock::new(HashMap::new()),
-            storage: Arc::new(storage),
+            storage: storage.clone(),
+            known_hosts,
             master_key: RwLock::new(None),
             session_expires_at: RwLock::new(None),
             ui_locked: RwLock::new(true),
+            secrets_blocked: RwLock::new(false),
             sync_controller: SyncController::new(),
             compare_controller: SyncController::new(),
             job_engine: RwLock::new(None),
@@ -179,18 +186,54 @@ impl AppState {
         }
     }
 
+    /// Gate for sensitive IPC commands.
+    ///
+    /// If no master password has been configured yet (fresh install), no secrets
+    /// exist to protect and the operation is allowed. Otherwise the session must
+    /// be unlocked and not expired — a hostile webview cannot run sensitive
+    /// commands (queries, connect, export/import, delete, ...) while locked.
+    pub async fn require_session_auth(&self) -> crate::error::AppResult<()> {
+        if crate::application::auth_service::check_master_password_exists(&self.storage)
+            .await
+            .unwrap_or(false)
+        {
+            self.require_unlock().await?;
+        }
+        Ok(())
+    }
+
+    /// Gate for secret-reveal IPC commands.
+    ///
+    /// Same requirements as `require_session_auth`, plus the secrets may not be
+    /// in a blocked state (set by the auto-protect flow after copying a
+    /// credential). DB operations are intentionally NOT blocked by
+    /// `secrets_blocked` — only the ability to reveal stored secrets.
+    pub async fn require_secret_auth(&self) -> crate::error::AppResult<()> {
+        self.require_session_auth().await?;
+        if *self.secrets_blocked.read().await {
+            return Err(crate::error::AppError::Unauthorized(
+                "Secret reveal locked".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn lock_secrets(&self) {
+        *self.secrets_blocked.write().await = true;
+    }
+
+    pub async fn is_secrets_blocked(&self) -> bool {
+        *self.secrets_blocked.read().await
+    }
+
     pub async fn set_master_key(&self, key: [u8; 32], timeout_secs: u64) {
         *self.master_key.write().await = Some(key);
         self.storage.set_master_key(key);
         *self.session_expires_at.write().await =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs));
         *self.ui_locked.write().await = false;
-    }
-
-    pub async fn clear_master_key(&self) {
-        *self.master_key.write().await = None;
-        *self.session_expires_at.write().await = None;
-        *self.ui_locked.write().await = true;
+        // A fresh unlock (re)enables secret revelation.
+        *self.secrets_blocked.write().await = false;
     }
 
     pub async fn is_session_unlocked(&self) -> bool {

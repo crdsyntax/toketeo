@@ -257,7 +257,7 @@ export function QueriesPanel() {
     const userSql = extractSqlFromText(text)
     if (userSql) {
       const engine = activeConnection?.type ?? 'mysql'
-      updateTabQuery(activeTabId, userSql)
+      if (activeTabId) updateTabQuery(activeTabId, userSql)
       requestRunQuery(userSql)
       assistantService.recordCase(text.trim(), userSql, engine, 'positive').catch(() => undefined)
       addMessage({ id: crypto.randomUUID(), role: 'assistant', content: 'Consulta ejecutada en el editor y guardada en la biblioteca de conocimiento.', sql: userSql, timestamp: (nowRef.current = nowRef.current + 1) })

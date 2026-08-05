@@ -208,6 +208,32 @@ pub async fn delete_connection(id: String, state: State<'_, AppState>) -> AppRes
 }
 
 #[tauri::command]
+pub async fn reveal_connection_secret(
+    id: String,
+    field: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<String>> {
+    // Revealing a credential is a sensitive operation: requires an unlocked
+    // session (or no master password configured on fresh installs) and the
+    // secrets must not be in the auto-protect blocked state.
+    state.require_secret_auth().await?;
+    ConnectionService::reveal_secret(&state, &id, &field).await
+}
+
+#[tauri::command]
+pub async fn lock_secrets(state: State<'_, AppState>) -> AppResult<()> {
+    // Soft lock: blocks only secret revelation (copy/reveal), not DB
+    // operations. Used by the auto-protect flow after copying a credential.
+    state.lock_secrets().await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn is_secrets_blocked(state: State<'_, AppState>) -> AppResult<bool> {
+    Ok(state.is_secrets_blocked().await)
+}
+
+#[tauri::command]
 pub async fn check_master_password_exists(state: State<'_, AppState>) -> AppResult<bool> {
     auth_service::check_master_password_exists(&state.storage).await
 }
@@ -237,6 +263,9 @@ pub async fn unlock_session(password: String, state: State<'_, AppState>) -> App
 
 #[tauri::command]
 pub async fn lock_session(state: State<'_, AppState>) -> AppResult<()> {
+    // Lock the UI: blocks sensitive commands (queries, reveals, export/import,
+    // save/delete) which re-require the master password. The derived master key
+    // stays in memory so `connect`/`reconnect` keep working while locked.
     *state.ui_locked.write().await = true;
     Ok(())
 }
@@ -300,8 +329,10 @@ pub async fn store_master_in_keyring(password: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn get_master_from_keyring() -> AppResult<Option<String>> {
-    keyring_service::get_password()
+pub async fn is_master_in_keyring() -> AppResult<bool> {
+    // Presence check only — the master password itself must never reach the
+    // frontend (hostile webview).
+    keyring_service::has_password()
 }
 
 #[tauri::command]
@@ -376,6 +407,11 @@ pub async fn disable_totp(state: State<'_, AppState>) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn connect(config: DbConnectionConfig, state: State<'_, AppState>) -> AppResult<String> {
+    // Connecting must always work once the master key is in memory (unlocked at
+    // least once this run): the session lock and the secret-reveal block only
+    // gate queries/reveals/exports, never the ability to reach a database.
+    // `ConnectionService::connect` decrypts stored secrets via
+    // `get_decryption_key`, which is independent of the UI lock state.
     ConnectionService::connect(&state, config).await
 }
 
@@ -626,6 +662,48 @@ pub async fn execute_query(
     state: State<'_, AppState>,
 ) -> AppResult<QueryResult> {
     ExplorerService::execute_query(&state, &id, &query, schema).await
+}
+
+// ── Real-time Monitoring / Diagnostics ──────────────────────────────────────
+
+/// List active (non-sleeping) queries for a connection, ordered by TIME DESC.
+#[tauri::command]
+pub async fn monitor_process_list(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<serde_json::Value>> {
+    crate::application::monitoring_service::MonitoringService::get_process_list(&state, &id).await
+}
+
+/// Queries with a running time above `min_time` seconds (Sleep excluded).
+#[tauri::command]
+pub async fn monitor_slow_queries(
+    id: String,
+    min_time: u64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<serde_json::Value>> {
+    crate::application::monitoring_service::MonitoringService::get_slow_queries(&state, &id, min_time)
+        .await
+}
+
+/// InnoDB engine status with the TRANSACTIONS section extracted (MySQL/MariaDB).
+#[tauri::command]
+pub async fn monitor_innodb_status(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<serde_json::Value> {
+    crate::application::monitoring_service::MonitoringService::get_innodb_status(&state, &id).await
+}
+
+/// Kill a running process by numeric ID (validated; blocked on read-only).
+#[tauri::command]
+pub async fn monitor_kill_process(
+    id: String,
+    process_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    crate::application::monitoring_service::MonitoringService::kill_process(&state, &id, &process_id)
+        .await
 }
 
 #[tauri::command]
@@ -1356,6 +1434,7 @@ pub async fn get_scheduled_jobs(state: State<'_, AppState>) -> AppResult<Vec<Sch
 #[tauri::command]
 pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: AppHandle) -> AppResult<()> {
     let storage = state.storage.clone();
+    let known_hosts = state.known_hosts.clone();
     let app_handle = Some(app_handle);
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let token_clone = cancel_token.clone();
@@ -1369,7 +1448,7 @@ pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: App
     }
 
     tokio::spawn(async move {
-        if let Err(e) = job_engine::execute_job_now(&storage, &app_handle, &id, Some(token_clone)).await {
+        if let Err(e) = job_engine::execute_job_now(&storage, &known_hosts, &app_handle, &id, Some(token_clone)).await {
             eprintln!("[run_job_now] Error: {}", e);
         }
     });

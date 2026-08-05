@@ -1,6 +1,7 @@
 use crate::error::AppResult;
 use crate::infrastructure::scheduler::executors::JobExecutor;
 use crate::models::ScheduledJob;
+use crate::ssh::KnownHostsStore;
 use crate::storage::Storage;
 use chrono::Utc;
 use cron::Schedule;
@@ -36,6 +37,7 @@ pub struct JobStartedPayload {
 
 pub struct JobEngine {
     storage: Arc<Storage>,
+    known_hosts: Arc<KnownHostsStore>,
     app_handle: Option<AppHandle>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     cancel_tokens: std::sync::Mutex<HashMap<String, CancellationToken>>,
@@ -50,9 +52,10 @@ impl Drop for JobEngine {
 }
 
 impl JobEngine {
-    pub fn new(storage: Arc<Storage>) -> Self {
+    pub fn new(storage: Arc<Storage>, known_hosts: Arc<KnownHostsStore>) -> Self {
         Self {
             storage,
+            known_hosts,
             app_handle: None,
             shutdown_tx: None,
             cancel_tokens: std::sync::Mutex::new(HashMap::new()),
@@ -126,7 +129,7 @@ impl JobEngine {
             if should_run_now(&job, &now) {
                 let token = CancellationToken::new();
                 engine.register_token(&job.id.to_string(), token.clone());
-                let result = execute_job(&engine.storage, &mut job, &engine.app_handle, Some(token.clone())).await;
+                let result = execute_job(&engine.storage, &engine.known_hosts, &mut job, &engine.app_handle, Some(token.clone())).await;
                 engine.remove_token(&job.id.to_string());
                 match result {
                     Ok(payload) => {
@@ -195,9 +198,16 @@ fn should_run_now(job: &ScheduledJob, now: &chrono::DateTime<Utc>) -> bool {
     }
 }
 
-pub async fn execute_job_now(storage: &Arc<Storage>, app_handle: &Option<AppHandle>, job_id: &str, cancel_token: Option<CancellationToken>) -> AppResult<JobCompletedPayload> {
+pub async fn execute_job_now(
+    storage: &Arc<Storage>,
+    known_hosts: &Arc<KnownHostsStore>,
+    app_handle: &Option<AppHandle>,
+    job_id: &str,
+    cancel_token: Option<CancellationToken>,
+) -> AppResult<JobCompletedPayload> {
     let mut job = storage.get_scheduled_job(job_id).await?;
-    let result = execute_job(storage, &mut job, app_handle, cancel_token).await?;
+
+    let result = execute_job(storage, known_hosts, &mut job, app_handle, cancel_token).await?;
 
     job.last_run = Some(Utc::now());
     if let Some(ref cron_str) = job.cron_expression {
@@ -216,6 +226,7 @@ pub async fn execute_job_now(storage: &Arc<Storage>, app_handle: &Option<AppHand
 
 async fn execute_job(
     storage: &Arc<Storage>,
+    known_hosts: &Arc<KnownHostsStore>,
     job: &mut ScheduledJob,
     app_handle: &Option<AppHandle>,
     cancel_token: Option<CancellationToken>,
@@ -237,7 +248,7 @@ async fn execute_job(
     }
 
     let result = if let Some(ref handle) = app_handle {
-        JobExecutor::execute(job, storage, handle, cancel_token).await
+        JobExecutor::execute(job, storage, known_hosts, handle, cancel_token).await
     } else {
         return Err(crate::error::AppError::Internal("No app handle available".into()));
     };

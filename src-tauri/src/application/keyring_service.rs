@@ -111,6 +111,12 @@ pub fn get_password() -> AppResult<Option<String>> {
     }
 }
 
+/// Returns whether a master password is stored in the OS keyring, WITHOUT
+/// retrieving the secret. Never expose the actual password to the frontend.
+pub fn has_password() -> AppResult<bool> {
+    get_password().map(|p| p.is_some())
+}
+
 pub fn delete_password() -> AppResult<()> {
     let entry = keyring::Entry::new(SERVICE_NAME, MASTER_KEY_ENTRY)
         .map_err(|e| AppError::Internal(format!("Keyring init: {}", e)))?;

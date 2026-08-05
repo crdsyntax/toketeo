@@ -59,11 +59,12 @@ pub fn run() {
             })?;
 
             let state = tauri::async_runtime::block_on(AppState::new(storage));
+            let known_hosts = state.known_hosts.clone();
             let storage_arc = state.storage.clone();
 
             app.manage(state);
 
-            let mut engine = Arc::new(JobEngine::new(storage_arc.clone()));
+            let mut engine = Arc::new(JobEngine::new(storage_arc.clone(), known_hosts));
             Arc::get_mut(&mut engine).unwrap().set_app_handle(app.handle().clone());
 
             // Store job engine in AppState
@@ -100,6 +101,10 @@ pub fn run() {
             commands::disconnect,
             commands::disconnect_all,
             commands::execute_query,
+            commands::monitor_process_list,
+            commands::monitor_slow_queries,
+            commands::monitor_innodb_status,
+            commands::monitor_kill_process,
             commands::update_cell,
             commands::get_schemas,
             commands::get_tables,
@@ -142,6 +147,8 @@ pub fn run() {
             commands::create_master_password,
             commands::unlock_session,
             commands::lock_session,
+            commands::lock_secrets,
+            commands::is_secrets_blocked,
             commands::change_master_password,
             commands::generate_recovery_code,
             commands::is_recovery_code_set,
@@ -149,7 +156,7 @@ pub fn run() {
             commands::is_session_unlocked,
             commands::is_windows_hello_available,
             commands::store_master_in_keyring,
-            commands::get_master_from_keyring,
+            commands::is_master_in_keyring,
             commands::remove_master_from_keyring,
             commands::unlock_with_windows_hello,
             commands::is_totp_available,
@@ -161,6 +168,7 @@ pub fn run() {
             commands::save_connection,
             commands::get_connections,
             commands::get_connection,
+            commands::reveal_connection_secret,
             commands::delete_connection,
             commands::get_databases,
             commands::diagnose_connection,
