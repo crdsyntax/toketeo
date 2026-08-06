@@ -2,12 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="./fav-ico.png" />
+    <link rel="icon" type="image/png" href="./sinfondologo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>Toketeo</title>
+    <style>
+      body {
+        margin: 0;
+        background-color: #0a0a0a;
+        color: #e0e0e0;
+      }
+      /* Minimal pre-splash styles to avoid white flash before CSS loads */
+      #pre-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+        background: #0a0a0a;
+        z-index: 9999;
+      }
+      .pre-splash-logo {
+        width: 220px;
+        height: auto;
+      }
+      .pre-splash-label {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #606060;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="pre-splash">
+        <div>
+          <img src="/principal.png" alt="Toketeo" class="pre-splash-logo" />
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+          <p class="pre-splash-label">INITIALIZING...</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

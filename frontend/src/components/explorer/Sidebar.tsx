@@ -1,11 +1,16 @@
-import type { DatabaseObject, QueryResult, ExecutionStatus } from '@/types/database'
-import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight } from 'lucide-react'
+import React, { useState } from 'react'
+import type { DatabaseObject, QueryResult } from '@/types/database'
+import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType, DatabaseType } from '@/types/database'
+import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy, Trash2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ContextMenu } from '@/components/ui/ContextMenu'
+import { CreateObjectModal } from './CreateObjectModal'
 
 interface SidebarProps {
-  sidebarTab: 'tables' | 'views' | 'procedures' | 'triggers'
-  setSidebarTab: (tab: 'tables' | 'views' | 'procedures' | 'triggers') => void
-  currentSchema: string
+  sidebarTab: SidebarTab
+  setSidebarTab: (tab: SidebarTab) => void
+  currentSchema: string | undefined
+  connectionId?: string
   handleRefetch: () => void
   isLoadingSidebar: boolean
   search: string
@@ -18,17 +23,67 @@ interface SidebarProps {
   setExecutionStatus: (status: ExecutionStatus) => void
   setExecutionError: (err: string | null) => void
   setParamsValues: (v: Record<string, string>) => void
-  setActiveTab: (tab: 'columns' | 'data' | 'ddl') => void
+  setActiveTab: (tab: ExplorerTab) => void
   isCollapsed?: boolean
   onToggle?: () => void
+  dbType?: DatabaseType
 }
 
 export function Sidebar({
-  sidebarTab, setSidebarTab, currentSchema, handleRefetch, isLoadingSidebar,
+  sidebarTab, setSidebarTab, currentSchema, connectionId, handleRefetch, isLoadingSidebar,
   search, setSearch, filteredItems, selectedItem, setSelectedItem,
   setPage, setSocketResults, setExecutionStatus, setExecutionError,
-  setParamsValues, setActiveTab, isCollapsed, onToggle
+  setParamsValues, setActiveTab, isCollapsed, onToggle, dbType
 }: SidebarProps) {
+  const isMongoDB = dbType === DatabaseType.MONGODB
+  const isRedis = dbType === DatabaseType.REDIS
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: { name: string; type: DatabaseObjectType } } | null>(null);
+  const [createModalType, setCreateModalType] = useState<DatabaseObjectType | null>(null)
+
+  const sidebarTabToObjectType = (tab: SidebarTab): DatabaseObjectType => {
+    switch (tab) {
+      case SidebarTab.TABLES: return DatabaseObjectType.TABLE
+      case SidebarTab.VIEWS: return DatabaseObjectType.VIEW
+      case SidebarTab.PROCEDURES: return DatabaseObjectType.PROCEDURE
+      case SidebarTab.TRIGGERS: return DatabaseObjectType.TRIGGER
+      case SidebarTab.FUNCTIONS: return DatabaseObjectType.FUNCTION
+    }
+  }
+
+  // For MongoDB only show Collections (= Tables) and Views (if any)
+  // For Redis only show Keys (= Tables)
+  const visibleTabs = isMongoDB || isRedis
+    ? [SidebarTab.TABLES]
+    : [SidebarTab.TABLES, SidebarTab.VIEWS, SidebarTab.PROCEDURES, SidebarTab.TRIGGERS, SidebarTab.FUNCTIONS]
+
+  const getTabLabel = (tab: SidebarTab): string => {
+    if (isRedis && tab === SidebarTab.TABLES) return 'Keys'
+    if (isMongoDB && tab === SidebarTab.TABLES) return 'Collections'
+    switch (tab) {
+      case SidebarTab.TABLES: return 'Tables'
+      case SidebarTab.VIEWS: return 'Views'
+      case SidebarTab.PROCEDURES: return 'Procedures'
+      case SidebarTab.TRIGGERS: return 'Triggers'
+      case SidebarTab.FUNCTIONS: return 'Functions'
+      default: return 'Tables'
+    }
+  }
+
+  const getTabIcon = (tab: SidebarTab) => {
+    if (isRedis && tab === SidebarTab.TABLES) return Zap
+    if (isMongoDB && tab === SidebarTab.TABLES) return Database
+    switch (tab) {
+      case SidebarTab.TABLES: return Table2
+      case SidebarTab.VIEWS: return Eye
+      case SidebarTab.PROCEDURES: return Terminal
+      case SidebarTab.TRIGGERS: return Zap
+      case SidebarTab.FUNCTIONS: return Binary
+      default: return Table2
+    }
+  }
+
+  const currentTabLabel = getTabLabel(sidebarTab)
+
   return (
     <div className={cn(
       "flex border border-border rounded-none bg-card overflow-hidden shrink-0 transition-all duration-300",
@@ -43,40 +98,64 @@ export function Sidebar({
           <ChevronRight className={cn("w-5 h-5 transition-transform", !isCollapsed && "rotate-180")} />
         </button>
         <div className="w-full h-px bg-border/50 mb-2" />
-        <button onClick={() => { setSidebarTab('tables'); if(isCollapsed && onToggle) onToggle(); }} title="Tables" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'tables' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Table2 className="w-5 h-5" />
-        </button>
-        <button onClick={() => { setSidebarTab('views'); if(isCollapsed && onToggle) onToggle(); }} title="Views" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'views' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Eye className="w-5 h-5" />
-        </button>
-        <button onClick={() => { setSidebarTab('procedures'); if(isCollapsed && onToggle) onToggle(); }} title="Procedures" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'procedures' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Terminal className="w-5 h-5" />
-        </button>
-        <button onClick={() => { setSidebarTab('triggers'); if(isCollapsed && onToggle) onToggle(); }} title="Triggers" className={cn("p-2 rounded-none transition-colors", sidebarTab === 'triggers' ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>
-          <Zap className="w-5 h-5" />
-        </button>
+
+        {visibleTabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setSidebarTab(tab); if(isCollapsed && onToggle) onToggle(); }}
+              title={getTabLabel(tab)}
+              className={cn("p-2 rounded-none transition-colors", sidebarTab === tab ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}
+            >
+              {React.createElement(getTabIcon(tab), { className: 'w-5 h-5' })}
+            </button>
+          ))}
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="p-4 border-b border-border space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold flex flex-col gap-0.5 text-xs text-left">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest truncate max-w-[140px]">{currentSchema}</span>
+            <h3 className="font-bold flex flex-col gap-0.5 text-xs text-left overflow-hidden">
+              <span className="text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-widest truncate">
+                {currentSchema || 'No Database'}
+              </span>
               <div className="flex items-center gap-2">
-                {sidebarTab === 'tables' && <Table2 className="w-3 h-3 text-primary" />}
-                {sidebarTab === 'views' && <Eye className="w-3 h-3 text-primary" />}
-                {sidebarTab === 'procedures' && <Terminal className="w-3 h-3 text-primary" />}
-                {sidebarTab === 'triggers' && <Zap className="w-3 h-3 text-primary" />}
-                <span className="capitalize">{sidebarTab}</span>
+                {React.createElement(getTabIcon(sidebarTab), { className: 'w-3 h-3 text-primary' })}
+                <span className="capitalize">{currentTabLabel}</span>
+                {isMongoDB && (
+                  <span className="px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                    MongoDB
+                  </span>
+                )}
+                {isRedis && (
+                  <span className="px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                    Redis
+                  </span>
+                )}
               </div>
             </h3>
-            <button onClick={handleRefetch} className="p-1.5 hover:bg-muted rounded-none transition-colors">
-              <RefreshIcon className={cn("w-3.5 h-3.5", isLoadingSidebar && "animate-spin")} />
-            </button>
+            <div className="flex items-center gap-0.5">
+              {!isMongoDB && !isRedis && (
+                <button
+                  onClick={() => setCreateModalType(sidebarTabToObjectType(sidebarTab))}
+                  className="p-1.5 hover:bg-muted rounded-none transition-colors shrink-0"
+                  title={`Create ${currentTabLabel.slice(0, -1)}`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button onClick={handleRefetch} className="p-1.5 hover:bg-muted rounded-none transition-colors shrink-0">
+                <RefreshIcon className={cn("w-3.5 h-3.5", isLoadingSidebar && "animate-spin")} />
+              </button>
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${sidebarTab}...`} className="w-full bg-muted/50 border border-border rounded-none pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${currentTabLabel.toLowerCase()}...`}
+              className="w-full bg-muted/50 border border-border rounded-none pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+            />
           </div>
         </div>
         <div className="flex-1 overflow-auto p-2 text-left">
@@ -86,33 +165,117 @@ export function Sidebar({
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Results ({filteredItems?.length || 0})</div>
-              {filteredItems?.map((item) => (
-                <button key={item.name} onClick={() => {
-                  const type = sidebarTab === 'tables' ? 'table' : sidebarTab === 'views' ? 'view' : sidebarTab === 'procedures' ? 'procedure' : 'trigger';
-                  setSelectedItem({ name: item.name, type })
-                  setPage(0)
-                  setSocketResults(null)
-                  setExecutionStatus('idle')
-                  setExecutionError(null)
-                  setParamsValues({})
-                  setActiveTab(type === 'table' ? 'columns' : 'ddl')
-                }} className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
-                  (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
-                )}>
-                  {sidebarTab === 'tables' && <Table2 className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  {sidebarTab === 'views' && <Eye className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  {sidebarTab === 'procedures' && <Terminal className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  {sidebarTab === 'triggers' && <Zap className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />}
-                  <span className="truncate flex-1">{item.name}</span>
-                  <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
-                </button>
-              ))}
+              <div className="px-2 py-1 text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-wider">
+                Results ({filteredItems?.length || 0})
+              </div>
+              {filteredItems?.map((item) => {
+                let type: DatabaseObjectType
+                switch (sidebarTab) {
+                  case SidebarTab.TABLES: type = DatabaseObjectType.TABLE; break
+                  case SidebarTab.VIEWS: type = DatabaseObjectType.VIEW; break
+                  case SidebarTab.PROCEDURES: type = DatabaseObjectType.PROCEDURE; break
+                  case SidebarTab.TRIGGERS: type = DatabaseObjectType.TRIGGER; break
+                  case SidebarTab.FUNCTIONS: type = DatabaseObjectType.FUNCTION; break
+                }
+                return (
+                  <button 
+                    key={item.name} 
+                    onClick={() => {
+                      setSelectedItem({ name: item.name, type })
+                      setPage(0)
+                      setSocketResults(null)
+                      setExecutionStatus(ExecutionStatus.IDLE)
+                      setExecutionError(null)
+                      setParamsValues({})
+                      setActiveTab((type === DatabaseObjectType.TABLE || type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL)
+                    }} 
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.pageX, y: e.pageY, item: { name: item.name, type } });
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
+                      (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                    )}
+                  >
+                    {isRedis && sidebarTab === SidebarTab.TABLES
+                      ? <Zap className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-amber-400" : "text-muted-foreground")} />
+                      : isMongoDB && sidebarTab === SidebarTab.TABLES
+                      ? <Database className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-orange-400" : "text-muted-foreground")} />
+                      : (() => {
+                          const Icon = getTabIcon(sidebarTab)
+                          return <Icon className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />
+                        })()
+                    }
+                    <span className="truncate flex-1">{item.name}</span>
+                    <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDismiss={() => setContextMenu(null)}
+          groups={[
+            {
+              title: isRedis ? 'Key Actions' : contextMenu.item.type,
+              items: [
+                {
+                  label: 'Copy Name',
+                  icon: <Copy className="w-3.5 h-3.5" />,
+                  onClick: () => navigator.clipboard.writeText(contextMenu.item.name)
+                },
+                {
+                  label: 'Select Object',
+                  icon: <ChevronRight className="w-3.5 h-3.5" />,
+                  onClick: () => {
+                    setSelectedItem(contextMenu.item);
+                    setPage(0);
+                    setSocketResults(null);
+                    setExecutionStatus(ExecutionStatus.IDLE);
+                    setExecutionError(null);
+                    setParamsValues({});
+                    setActiveTab((contextMenu.item.type === DatabaseObjectType.TABLE || contextMenu.item.type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL);
+                  }
+                },
+                ...(isRedis ? [
+                  {
+                    label: 'Delete Key',
+                    icon: <Trash2 className="w-3.5 h-3.5" />,
+                    onClick: () => {
+                      setSelectedItem(contextMenu.item);
+                      setPage(0);
+                      setSocketResults(null);
+                      setExecutionStatus(ExecutionStatus.IDLE);
+                      setExecutionError(null);
+                      setParamsValues({});
+                      setActiveTab(ExplorerTab.DATA);
+                    }
+                  }
+                ] : [])
+              ]
+            }
+          ]}
+        />
+      )}
+
+      {createModalType !== null && (
+        <CreateObjectModal
+          open={createModalType !== null}
+          onClose={() => setCreateModalType(null)}
+          objectType={createModalType}
+          schema={currentSchema}
+          dbType={dbType}
+          connectionId={connectionId}
+          onCreated={handleRefetch}
+        />
+      )}
     </div>
   )
 }

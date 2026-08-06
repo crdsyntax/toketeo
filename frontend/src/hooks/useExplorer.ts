@@ -1,349 +1,903 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { io, Socket } from 'socket.io-client'
-import { format } from 'sql-formatter'
-import { schemaService } from '@/services/schema.service'
-import { useAppStore } from '@/store/useAppStore'
-import { getApiUrl } from '@/lib/api'
-import type { DatabaseObject, QueryResult, DbValue, DbRow } from '@/types/database'
-
-export interface TableInfo {
-  name: string
-  schema?: string
-  type: string
-}
-
-export interface ColumnInfo {
-  name: string;
-  type: string;
-  isNullable: boolean;
-  isPrimaryKey?: boolean;
-}
-
-export interface ParameterInfo {
-  name: string
-  type: string
-  mode: 'IN' | 'OUT' | 'INOUT'
-}
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format } from 'sql-formatter';
+import { schemaService } from '@/services/schema.service';
+import { connectionService } from '@/services/connection.service';
+import { useAppStore } from '@/store/useAppStore';
+import { tauriApi } from '@/lib/api';
+import { toast } from 'react-hot-toast';
+import type {
+  DatabaseObject,
+  QueryResult,
+  DbValue,
+  DbRow,
+} from '@/types/database';
+import {
+  DatabaseType,
+  ExecutionStatus,
+  Environment,
+  SidebarTab,
+  ExplorerTab,
+  DatabaseObjectType,
+} from '@/types/database';
 
 export function useExplorer() {
-  const { activeConnection } = useAppStore()
-  const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [selectedItem, setSelectedItem] = useState<DatabaseObject | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'tables' | 'views' | 'procedures' | 'triggers'>('tables')
-  const [activeTab, setActiveTab] = useState<'columns' | 'data' | 'ddl' | 'indexes' | 'foreign-keys' | 'constraints'>('columns')
-  const currentSchema = activeConnection?.database || ''
+  const {
+    activeConnection,
+    explorer,
+    explorerTabs,
+    setExplorerState,
+    addExplorerTab,
+    updateExplorerTab,
+    removeExplorerTab,
+  } = useAppStore();
+  const queryClient = useQueryClient();
 
-  const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(50)
-  
-  const socketRef = useRef<Socket | null>(null)
-  const [executionStatus, setExecutionStatus] = useState<'idle' | 'executing' | 'success' | 'error'>('idle')
-  const [executionError, setExecutionError] = useState<string | null>(null)
-  const [socketResults, setSocketResults] = useState<QueryResult | null>(null)
-  
-  const [editableDdl, setEditableDdl] = useState('')
-  const [paramValues, setParamsValues] = useState<Record<string, string>>({})
-  const [showParamModal, setShowParamModal] = useState(false)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  });
 
-  // Reset selection when connection or schema changes
-  useEffect(() => {
-    setSelectedItem(null)
-    setIsSidebarCollapsed(false)
-  }, [activeConnection?.id, currentSchema])
+  const { search, sidebarTab, activeExplorerTabId } = explorer;
 
-  const handleSelectItem = useCallback((item: DatabaseObject) => {
-    setSelectedItem(item)
-    setIsSidebarCollapsed(true)
-  }, [])
+  const activeTabState = activeExplorerTabId
+    ? explorerTabs[activeExplorerTabId]
+    : null;
 
-  useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ['tables', activeConnection?.id] })
-    queryClient.invalidateQueries({ queryKey: ['views', activeConnection?.id] })
-    queryClient.invalidateQueries({ queryKey: ['procedures', activeConnection?.id] })
-    queryClient.invalidateQueries({ queryKey: ['triggers', activeConnection?.id] })
-  }, [currentSchema, activeConnection?.id, queryClient])
-
-  // Reset page when pageSize changes
-  useEffect(() => {
-    setPage(0)
-  }, [pageSize])
-
-  useEffect(() => {
-    const socket = io(getApiUrl('/queries'))
-    socketRef.current = socket
-
-    socket.on('query-progress', () => {
-      setExecutionStatus('executing')
-    })
-
-    socket.on('query-result', (data: { tabId: string, columns: string[], rows: DbRow[], executionTime: number, page?: number, pageSize?: number, hasMore?: boolean }) => {
-      if (data.tabId === 'explorer') {
-        setSocketResults({
-          columns: data.columns,
-          rows: data.rows,
-          executionTime: data.executionTime,
-          page: data.page,
-          pageSize: data.pageSize,
-          hasMore: data.hasMore
-        })
-        setExecutionStatus('success')
-        setExecutionError(null)
-      }
-    })
-
-    socket.on('query-error', (data: { tabId: string, message: string }) => {
-      if (data.tabId === 'explorer') {
-        setExecutionStatus('error')
-        setExecutionError(data.message)
-      }
-    })
-
-    return () => {
-      socket.disconnect()
+  // Each explorer tab carries its own connection context (connectionId +
+  // database). All operations below resolve against the ACTIVE tab's
+  // connection, falling back to the global activeConnection only when the tab
+  // has no connection (legacy) or it can't be found.
+  const resolvedConnection = useMemo(() => {
+    const tabConnId = activeTabState?.connectionId;
+    if (tabConnId) {
+      return connections.find((c) => c.id === tabConnId) ?? activeConnection;
     }
-  }, [])
+    return activeConnection;
+  }, [activeTabState?.connectionId, connections, activeConnection]);
 
-  const { data: tables, isLoading: isLoadingTables, refetch: refetchTables } = useQuery({
-    queryKey: ['tables', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getTables(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
-  })
+  const {
+    selectedItem,
+    activeTab,
+    executionStatus,
+    executionError,
+    socketResults,
+    page,
+    pageSize,
+    editableDdl,
+    filter,
+  } = activeTabState || {
+    selectedItem: null,
+    activeTab: ExplorerTab.COLUMNS,
+    executionStatus: ExecutionStatus.IDLE,
+    executionError: null,
+    socketResults: null,
+    page: 0,
+    pageSize: 50,
+    editableDdl: '',
+    filter: '',
+  };
 
-  const { data: views, isLoading: isLoadingViews, refetch: refetchViews } = useQuery({
-    queryKey: ['views', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getViews(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
-  })
+  const setFilter = useCallback(
+    (f: string) => {
+      if (activeExplorerTabId) {
+        updateExplorerTab(activeExplorerTabId, { filter: f });
+      }
+    },
+    [activeExplorerTabId, updateExplorerTab],
+  );
 
-  const { data: procedures, isLoading: isLoadingProcedures, refetch: refetchProcedures } = useQuery({
-    queryKey: ['procedures', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getProcedures(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
-  })
+  const setSearch = useCallback(
+    (s: string) => setExplorerState({ search: s }),
+    [setExplorerState],
+  );
+  const setSidebarTab = useCallback(
+    (tab: SidebarTab) => setExplorerState({ sidebarTab: tab }),
+    [setExplorerState],
+  );
 
-  const { data: triggers, isLoading: isLoadingTriggers, refetch: refetchTriggers } = useQuery({
-    queryKey: ['triggers', activeConnection?.id, currentSchema],
-    queryFn: () => schemaService.getTriggers(activeConnection!.id, currentSchema),
-    enabled: !!activeConnection,
-  })
+  const setActiveTab = useCallback(
+    (tab: ExplorerTab) => {
+      if (activeExplorerTabId) {
+        updateExplorerTab(activeExplorerTabId, { activeTab: tab });
+      }
+    },
+    [activeExplorerTabId, updateExplorerTab],
+  );
+
+  const setExecutionStatus = useCallback(
+    (status: ExecutionStatus) => {
+      if (activeExplorerTabId) {
+        updateExplorerTab(activeExplorerTabId, { executionStatus: status });
+      }
+    },
+    [activeExplorerTabId, updateExplorerTab],
+  );
+
+  const setExecutionError = useCallback(
+    (error: string | null) => {
+      if (activeExplorerTabId) {
+        updateExplorerTab(activeExplorerTabId, { executionError: error });
+      }
+    },
+    [activeExplorerTabId, updateExplorerTab],
+  );
+
+  const setSocketResults = useCallback(
+    (
+      results:
+        | QueryResult
+        | null
+        | ((prev: QueryResult | null) => QueryResult | null),
+    ) => {
+      if (activeExplorerTabId) {
+        const newResults =
+          typeof results === 'function' ? results(socketResults) : results;
+        updateExplorerTab(activeExplorerTabId, { socketResults: newResults });
+      }
+    },
+    [activeExplorerTabId, socketResults, updateExplorerTab],
+  );
+
+  const setEditableDdl = useCallback(
+    (ddl: string) => {
+      if (activeExplorerTabId) {
+        updateExplorerTab(activeExplorerTabId, { editableDdl: ddl });
+      }
+    },
+    [activeExplorerTabId, updateExplorerTab],
+  );
+
+  const currentSchema = activeTabState?.database || activeConnection?.database;
+
+  const handleSetPageSize = useCallback(
+    (size: number) => {
+      if (activeExplorerTabId) {
+        updateExplorerTab(activeExplorerTabId, {
+          pageSize: size,
+          page: 0,
+          socketResults: null,
+          executionStatus: ExecutionStatus.IDLE,
+        });
+      }
+    },
+    [activeExplorerTabId, updateExplorerTab],
+  );
+
+  const handleSetPage = useCallback(
+    (updater: number | ((p: number) => number)) => {
+      if (activeExplorerTabId) {
+        const currentPage = explorerTabs[activeExplorerTabId]?.page || 0;
+        const newPage =
+          typeof updater === 'function' ? updater(currentPage) : updater;
+        updateExplorerTab(activeExplorerTabId, {
+          page: newPage,
+          socketResults: null,
+          executionStatus: ExecutionStatus.IDLE,
+        });
+      }
+    },
+    [activeExplorerTabId, explorerTabs, updateExplorerTab],
+  );
+
+  const [paramValues, setParamsValues] = useState<Record<string, string>>({});
+  const [showParamModal, setShowParamModal] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [transactionStatus, setTransactionStatus] = useState<
+    'idle' | 'pending' | 'success' | 'error'
+  >('idle');
+  const [transactionMessage, setTransactionMessage] = useState<string>('');
+
+  const setTransactionFeedback = useCallback(
+    (status: 'idle' | 'pending' | 'success' | 'error', message: string) => {
+      setTransactionStatus(status);
+      setTransactionMessage(message);
+      if (status === 'success' || status === 'error') {
+        window.setTimeout(() => {
+          setTransactionStatus('idle');
+          setTransactionMessage('');
+        }, 4000);
+      }
+    },
+    [],
+  );
+
+  const prevConnIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (resolvedConnection?.id && resolvedConnection.id !== prevConnIdRef.current) {
+      setIsSidebarCollapsed(false);
+      prevConnIdRef.current = resolvedConnection.id;
+    }
+  }, [resolvedConnection?.id, setExplorerState]);
+
+  const handleSelectItem = useCallback(
+    (item: DatabaseObject) => {
+      if (!resolvedConnection) return;
+
+      const tabId = `${resolvedConnection.id}:${currentSchema || 'default'}:${item.name}`;
+      const nextActiveTab =
+        item.type === DatabaseObjectType.TABLE ||
+        item.type === DatabaseObjectType.VIEW
+          ? ExplorerTab.DATA
+          : ExplorerTab.DDL;
+
+      if (explorerTabs[tabId]) {
+        updateExplorerTab(tabId, {
+          executionStatus: ExecutionStatus.IDLE,
+          socketResults: null,
+        });
+        setExplorerState({ activeExplorerTabId: tabId });
+      } else if (
+        activeExplorerTabId &&
+        explorerTabs[activeExplorerTabId] &&
+        !explorerTabs[activeExplorerTabId].selectedItem?.name
+      ) {
+        // The active tab is an empty slot left after switching databases via
+        // the connections sidebar. Reuse it (re-keyed to the new object)
+        // instead of accumulating hidden tabs.
+        removeExplorerTab(activeExplorerTabId);
+        addExplorerTab({
+          id: tabId,
+          connectionId: resolvedConnection.id,
+          database: currentSchema || '',
+          selectedItem: item,
+          activeTab: nextActiveTab,
+          executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
+          socketResults: null,
+          page: 0,
+          pageSize: 50,
+          editableDdl: '',
+          filter: '',
+        });
+      } else {
+        addExplorerTab({
+          id: tabId,
+          connectionId: resolvedConnection.id,
+          database: currentSchema || '',
+          selectedItem: item,
+          activeTab: nextActiveTab,
+          executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
+          socketResults: null,
+          page: 0,
+          pageSize: 50,
+          editableDdl: '',
+          filter: '',
+        });
+      }
+
+      setIsSidebarCollapsed(true);
+    },
+    [
+      resolvedConnection,
+      currentSchema,
+      explorerTabs,
+      activeExplorerTabId,
+      addExplorerTab,
+      updateExplorerTab,
+      removeExplorerTab,
+      setExplorerState,
+    ],
+  );
+
+  const {
+    data: tables,
+    isLoading: isLoadingTables,
+    refetch: refetchTables,
+  } = useQuery({
+    queryKey: ['tables', resolvedConnection?.id, currentSchema],
+    queryFn: () => schemaService.getTables(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.TABLES,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const {
+    data: views,
+    isLoading: isLoadingViews,
+    refetch: refetchViews,
+  } = useQuery({
+    queryKey: ['views', resolvedConnection?.id, currentSchema],
+    queryFn: () => schemaService.getViews(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.VIEWS,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const {
+    data: procedures,
+    isLoading: isLoadingProcedures,
+    refetch: refetchProcedures,
+  } = useQuery({
+    queryKey: ['procedures', resolvedConnection?.id, currentSchema],
+    queryFn: () =>
+      schemaService.getProcedures(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.PROCEDURES,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const {
+    data: triggers,
+    isLoading: isLoadingTriggers,
+    refetch: refetchTriggers,
+  } = useQuery({
+    queryKey: ['triggers', resolvedConnection?.id, currentSchema],
+    queryFn: () =>
+      schemaService.getTriggers(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.TRIGGERS,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const {
+    data: functions,
+    isLoading: isLoadingFunctions,
+    refetch: refetchFunctions,
+  } = useQuery({
+    queryKey: ['functions', resolvedConnection?.id, currentSchema],
+    queryFn: () =>
+      schemaService.getFunctions(resolvedConnection!.id, currentSchema),
+    enabled: !!resolvedConnection && sidebarTab === SidebarTab.FUNCTIONS,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const handleRefetch = useCallback(() => {
-    if (sidebarTab === 'tables') refetchTables()
-    else if (sidebarTab === 'views') refetchViews()
-    else if (sidebarTab === 'procedures') refetchProcedures()
-    else if (sidebarTab === 'triggers') refetchTriggers()
-  }, [sidebarTab, refetchTables, refetchViews, refetchProcedures, refetchTriggers])
+    if (resolvedConnection) {
+      schemaService.clearMetadataCache(resolvedConnection.id).catch(() => undefined)
+    }
+    if (sidebarTab === SidebarTab.TABLES) refetchTables();
+    else if (sidebarTab === SidebarTab.VIEWS) refetchViews();
+    else if (sidebarTab === SidebarTab.PROCEDURES) refetchProcedures();
+    else if (sidebarTab === SidebarTab.TRIGGERS) refetchTriggers();
+    else if (sidebarTab === SidebarTab.FUNCTIONS) refetchFunctions();
+
+    if (selectedItem && activeTab === ExplorerTab.DATA) {
+      setExecutionStatus(ExecutionStatus.IDLE);
+    }
+  }, [
+    resolvedConnection,
+    sidebarTab,
+    refetchTables,
+    refetchViews,
+    refetchProcedures,
+    refetchTriggers,
+    refetchFunctions,
+    selectedItem,
+    activeTab,
+    setExecutionStatus,
+  ]);
+
+  /**
+   * Refresh everything the Explorer shows for the current object after a
+   * schema mutation (add/edit/drop column, index, FK, DDL, …):
+   * - clears the backend metadata cache,
+   * - invalidates the React Query caches (columns, indexes, FKs, constraints,
+   *   DDL, parameters),
+   * - refetches the sidebar lists,
+   * - re-runs the Data tab so the grid picks up the new schema.
+   */
+  const refreshExplorerData = useCallback(() => {
+    if (resolvedConnection?.id) {
+      schemaService.clearMetadataCache(resolvedConnection.id).catch(() => undefined)
+    }
+    if (selectedItem) {
+      const base = [resolvedConnection?.id, selectedItem, currentSchema] as const
+      queryClient.invalidateQueries({ queryKey: ['columns', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['indexes', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['foreign-keys', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['constraints', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['ddl', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['parameters', ...base] })
+    }
+    handleRefetch()
+    if (selectedItem) {
+      setExecutionStatus(ExecutionStatus.IDLE)
+      setSocketResults(null)
+    }
+  }, [
+    resolvedConnection,
+    selectedItem,
+    currentSchema,
+    queryClient,
+    handleRefetch,
+    setExecutionStatus,
+    setSocketResults,
+  ]);
 
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
-    queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getColumns(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'table' || selectedItem.type === 'view'),
-  })
+    queryKey: ['columns', resolvedConnection?.id, selectedItem, currentSchema],
+    queryFn: () =>
+      schemaService.getColumns(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        currentSchema,
+      ),
+    enabled:
+      !!resolvedConnection &&
+      !!selectedItem &&
+      (selectedItem.type === DatabaseObjectType.TABLE ||
+        selectedItem.type === DatabaseObjectType.VIEW),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: indexes, isLoading: isLoadingIndexes } = useQuery({
-    queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getIndexes(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
-  })
+    queryKey: ['indexes', resolvedConnection?.id, selectedItem, currentSchema],
+    queryFn: () =>
+      schemaService.getIndexes(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        currentSchema,
+      ),
+    enabled:
+      !!resolvedConnection &&
+      !!selectedItem &&
+      selectedItem.type === DatabaseObjectType.TABLE,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: foreignKeys, isLoading: isLoadingForeignKeys } = useQuery({
-    queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getForeignKeys(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
-  })
+    queryKey: [
+      'foreign-keys',
+      resolvedConnection?.id,
+      selectedItem,
+      currentSchema,
+    ],
+    queryFn: () =>
+      schemaService.getForeignKeys(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        currentSchema,
+      ),
+    enabled:
+      !!resolvedConnection &&
+      !!selectedItem &&
+      selectedItem.type === DatabaseObjectType.TABLE,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: constraints, isLoading: isLoadingConstraints } = useQuery({
-    queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getConstraints(activeConnection!.id, selectedItem!.name, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && selectedItem.type === 'table',
-  })
+    queryKey: [
+      'constraints',
+      resolvedConnection?.id,
+      selectedItem,
+      currentSchema,
+    ],
+    queryFn: () =>
+      schemaService.getConstraints(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        currentSchema,
+      ),
+    enabled:
+      !!resolvedConnection &&
+      !!selectedItem &&
+      selectedItem.type === DatabaseObjectType.TABLE,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const { data: ddlData, isLoading: isLoadingDDL } = useQuery({
-    queryKey: ['ddl', activeConnection?.id, selectedItem, currentSchema],
+  const {
+    data: ddlData,
+    isLoading: isLoadingDDL,
+    error: errorDDL,
+  } = useQuery({
+    queryKey: ['ddl', resolvedConnection?.id, selectedItem, currentSchema],
     queryFn: async () => {
-      const ddl = await schemaService.getDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema)
-      let formatted = ddl
+      const ddl = await schemaService.getDDL(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        selectedItem!.type,
+        currentSchema,
+      );
+      let formatted = ddl;
       try {
-        formatted = format(ddl, { language: 'mysql' })
+        let lang = 'mysql';
+        switch (resolvedConnection?.type) {
+          case DatabaseType.POSTGRES:
+            lang = 'postgresql';
+            break;
+          case DatabaseType.SQLSERVER:
+            lang = 'tsql';
+            break;
+          default:
+            lang = 'mysql';
+            break;
+        }
+        formatted = format(ddl, {
+          language: lang as 'mysql' | 'postgresql' | 'tsql',
+        });
       } catch (e) {
-        // ignore format error
+        console.error('SQL Formatting error:', e);
       }
-      setEditableDdl(formatted)
-      return { ddl: formatted }
+      return { ddl: formatted };
     },
-    enabled: !!activeConnection && !!selectedItem && activeTab === 'ddl',
-  })
+    enabled:
+      !!resolvedConnection &&
+      !!selectedItem &&
+      (activeTab === ExplorerTab.DDL ||
+        selectedItem.type === DatabaseObjectType.PROCEDURE ||
+        selectedItem.type === DatabaseObjectType.FUNCTION),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const lastSyncedDdl = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (ddlData?.ddl !== undefined && ddlData.ddl !== lastSyncedDdl.current) {
+      lastSyncedDdl.current = ddlData.ddl;
+      setEditableDdl(ddlData.ddl);
+    }
+  }, [ddlData?.ddl, setEditableDdl]);
 
   const { data: parameters } = useQuery({
-    queryKey: ['parameters', activeConnection?.id, selectedItem, currentSchema],
-    queryFn: () => schemaService.getParameters(activeConnection!.id, selectedItem!.name, selectedItem!.type, currentSchema),
-    enabled: !!activeConnection && !!selectedItem && (selectedItem.type === 'procedure' || selectedItem.type === 'view'),
-  })
+    queryKey: ['parameters', resolvedConnection?.id, selectedItem, currentSchema],
+    queryFn: () =>
+      schemaService.getParameters(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        selectedItem!.type,
+        currentSchema,
+      ),
+    enabled:
+      !!resolvedConnection &&
+      !!selectedItem &&
+      (selectedItem.type === DatabaseObjectType.PROCEDURE ||
+        selectedItem.type === DatabaseObjectType.VIEW),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const updateDdlMutation = useMutation({
-    mutationFn: (sql: string) => schemaService.updateDDL(activeConnection!.id, selectedItem!.name, selectedItem!.type, sql, currentSchema),
+    mutationFn: (sql: string) =>
+      schemaService.updateDDL(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        selectedItem!.type,
+        sql,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ddl', activeConnection?.id, selectedItem] })
-      handleRefetch()
+      refreshExplorerData();
+    },
+  });
+
+  const commitTransaction = useCallback(async () => {
+    if (!resolvedConnection) return;
+    setTransactionFeedback('pending', 'Committing transaction...');
+    try {
+      await schemaService.commitTransaction(resolvedConnection.id);
+      queryClient.invalidateQueries({
+        queryKey: ['procedures', resolvedConnection.id, currentSchema],
+      });
+      refreshExplorerData();
+      setTransactionFeedback('success', 'Transaction committed successfully.');
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to commit transaction';
+      setTransactionFeedback('error', message);
     }
-  })
+  }, [
+    resolvedConnection,
+    currentSchema,
+    refreshExplorerData,
+    queryClient,
+    setTransactionFeedback,
+  ]);
+
+  const rollbackTransaction = useCallback(async () => {
+    if (!resolvedConnection) return;
+    setTransactionFeedback('pending', 'Rolling back transaction...');
+    try {
+      await schemaService.rollbackTransaction(resolvedConnection.id);
+      queryClient.invalidateQueries({
+        queryKey: ['procedures', resolvedConnection.id, currentSchema],
+      });
+      refreshExplorerData();
+      setTransactionFeedback(
+        'success',
+        'Transaction rolled back successfully.',
+      );
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to rollback transaction';
+      setTransactionFeedback('error', message);
+    }
+  }, [
+    resolvedConnection,
+    currentSchema,
+    refreshExplorerData,
+    queryClient,
+    setTransactionFeedback,
+  ]);
 
   const editColumnMutation = useMutation({
-    mutationFn: (sql: string) => schemaService.editColumn(activeConnection!.id, selectedItem!.name, sql, currentSchema),
+    mutationFn: (sql: string) =>
+      schemaService.editColumn(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        sql,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
-      handleRefetch()
-    }
-  })
+      refreshExplorerData();
+    },
+  });
 
   const dropColumnMutation = useMutation({
-    mutationFn: (columnName: string) => schemaService.dropColumn(activeConnection!.id, selectedItem!.name, columnName, currentSchema),
+    mutationFn: (columnName: string) =>
+      schemaService.dropColumn(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        columnName,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['columns', activeConnection?.id, selectedItem, currentSchema] })
-    }
-  })
+      refreshExplorerData();
+    },
+  });
 
   const dropIndexMutation = useMutation({
-    mutationFn: (indexName: string) => schemaService.dropIndex(activeConnection!.id, selectedItem!.name, indexName, currentSchema),
+    mutationFn: (indexName: string) =>
+      schemaService.dropIndex(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        indexName,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
-    }
-  })
+      refreshExplorerData();
+    },
+  });
 
   const renameIndexMutation = useMutation({
-    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) => 
-      schemaService.renameIndex(activeConnection!.id, selectedItem!.name, oldName, newName, currentSchema),
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      schemaService.renameIndex(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        oldName,
+        newName,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['indexes', activeConnection?.id, selectedItem, currentSchema] })
-    }
-  })
+      refreshExplorerData();
+    },
+  });
 
   const dropForeignKeyMutation = useMutation({
-    mutationFn: (constraintName: string) => schemaService.dropForeignKey(activeConnection!.id, selectedItem!.name, constraintName, currentSchema),
+    mutationFn: (constraintName: string) =>
+      schemaService.dropForeignKey(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        constraintName,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['foreign-keys', activeConnection?.id, selectedItem, currentSchema] })
-    }
-  })
+      refreshExplorerData();
+    },
+  });
+
+  const renameForeignKeyMutation = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      schemaService.renameForeignKey(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        oldName,
+        newName,
+        currentSchema,
+      ),
+    onSuccess: () => {
+      refreshExplorerData();
+    },
+  });
 
   const dropConstraintMutation = useMutation({
-    mutationFn: (constraintName: string) => schemaService.dropConstraint(activeConnection!.id, selectedItem!.name, constraintName, currentSchema),
+    mutationFn: (constraintName: string) =>
+      schemaService.dropConstraint(
+        resolvedConnection!.id,
+        selectedItem!.name,
+        constraintName,
+        currentSchema,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['constraints', activeConnection?.id, selectedItem, currentSchema] })
-    }
-  })
+      refreshExplorerData();
+    },
+  });
 
-  const updateCell = useCallback((row: DbRow, column: string, newValue: DbValue) => {
-    if (!selectedItem || !activeConnection || !socketRef.current) return
+  const updateCell = useCallback(
+    (row: DbRow, column: string, newValue: DbValue) => {
+      if (!selectedItem || !resolvedConnection) return;
 
-    // Try to find a primary key for a safe UPDATE
-    // If no PK, we'll use all columns in WHERE (risky but common in simple DB tools)
-    const pk = columns?.find(c => c.isPrimaryKey)?.name
-    let sql = ''
-    const params: DbValue[] = []
-
-    if (pk) {
-      sql = `UPDATE \`${selectedItem.name}\` SET \`${column}\` = ? WHERE \`${pk}\` = ?;`
-      params.push(newValue, row[pk])
-    } else {
-      const whereClauses = Object.keys(row)
-        .filter(k => row[k] !== undefined)
-        .map(k => `\`${k}\` ${row[k] === null ? 'IS NULL' : '= ?'}`)
-        .join(' AND ')
-      
-      sql = `UPDATE \`${selectedItem.name}\` SET \`${column}\` = ? WHERE ${whereClauses};`
-      params.push(newValue)
-      Object.keys(row).forEach(k => {
-        if (row[k] !== null && row[k] !== undefined) params.push(row[k])
-      })
-    }
-
-    socketRef.current.emit('execute-query', {
-      connectionId: activeConnection.id,
-      dto: { sql, params, schema: currentSchema },
-      tabId: 'explorer',
-      isSilent: true // We don't want to clear the whole table view for a single update
-    })
-
-    // Optimistic update
-    setSocketResults(prev => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        rows: prev.rows.map(r => r === row ? { ...r, [column]: newValue } : r)
-      }
-    })
-  }, [selectedItem, activeConnection, columns, currentSchema])
-
-  const handleExecute = useCallback((useParams: boolean = false) => {
-    if (selectedItem && activeConnection && socketRef.current) {
-      if (!useParams && parameters && parameters.length > 0) {
-        setShowParamModal(true)
-        return
+      if (resolvedConnection.environment === Environment.PRODUCTION) {
+        toast(
+          'Editing production data — changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
+          { icon: '⚠️', duration: 5000 },
+        );
       }
 
-      let sql = ''
-      const params: DbValue[] = []
+      const primaryKeys = columns
+        ?.filter((col) => col.isPrimaryKey)
+        .map((col) => col.name) ?? [];
 
-      if (selectedItem.type === 'view' || selectedItem.type === 'table') {
-        sql = `SELECT * FROM \`${selectedItem.name}\` LIMIT ${pageSize} OFFSET ${page * pageSize};`
-      } else if (selectedItem.type === 'procedure') {
-        const placeholders = parameters?.map(p => {
-          params.push(paramValues[p.name] || null)
-          return '?'
-        }).join(', ') || ''
-        sql = `CALL \`${selectedItem.name}\`(${placeholders});`
+      tauriApi
+        .invoke('update_cell', {
+          id: resolvedConnection.id,
+          input: {
+            schema: currentSchema,
+            table: selectedItem.name,
+            row,
+            column,
+            newValue,
+            primaryKeys,
+          },
+        })
+        .catch((err: unknown) => {
+          console.error('Failed to update cell:', err);
+          const message =
+            err instanceof Error ? err.message : 'Failed to update cell.';
+          toast.error(message, { duration: 5000 });
+        });
+
+      setSocketResults((prev: QueryResult | null) => {
+        if (!prev) return prev;
+        const prevRows = prev.rows as DbRow[];
+        const matchedIndex = primaryKeys.length > 0
+          ? prevRows.findIndex((r) => primaryKeys.every((pk) => r[pk] === row[pk]))
+          : prevRows.indexOf(row);
+        if (matchedIndex === -1) return prev;
+        const newRows = [...prevRows];
+        newRows[matchedIndex] = { ...prevRows[matchedIndex], [column]: newValue };
+        return { ...prev, rows: newRows } as QueryResult;
+      });
+    },
+    [selectedItem, resolvedConnection, columns, currentSchema, setSocketResults],
+  );
+
+  const handleExecute = useCallback(
+    async (useParams: boolean = false) => {
+      if (selectedItem && resolvedConnection) {
+        if (!useParams && parameters && parameters.length > 0) {
+          setShowParamModal(true);
+          return;
+        }
+
+        if (activeExplorerTabId) {
+          updateExplorerTab(activeExplorerTabId, {
+            executionStatus: ExecutionStatus.EXECUTING,
+            executionError: null,
+            socketResults: null,
+          });
+        }
+        setShowParamModal(false);
+
+        try {
+          const store = useAppStore.getState();
+          const tabId = activeExplorerTabId ?? store.explorer.activeExplorerTabId;
+          const currentFilter = tabId ? store.explorerTabs[tabId]?.filter ?? '' : '';
+
+          const result = await schemaService.executeExplorer({
+            connectionId: resolvedConnection.id,
+            database: currentSchema,
+            name: selectedItem.name,
+            objectType: selectedItem.type,
+            page: page + 1,
+            pageSize: pageSize,
+            params: useParams ? paramValues : undefined,
+            filter: currentFilter,
+          });
+
+          if (activeExplorerTabId) {
+            updateExplorerTab(activeExplorerTabId, {
+              socketResults: result,
+              executionStatus: ExecutionStatus.SUCCESS,
+              executionError: null,
+            });
+          }
+        } catch (err: unknown) {
+          const errorMessage =
+            err instanceof Error ? err.message : 'Failed to execute query';
+          if (activeExplorerTabId) {
+            updateExplorerTab(activeExplorerTabId, {
+              executionStatus: ExecutionStatus.ERROR,
+              executionError: errorMessage,
+              socketResults: null,
+            });
+          }
+        }
       }
+    },
+    [
+      selectedItem,
+      resolvedConnection,
+      pageSize,
+      page,
+      parameters,
+      paramValues,
+      currentSchema,
+      updateExplorerTab,
+      activeExplorerTabId,
+    ],
+  );
 
-      if (!sql) return
+  useEffect(() => {
+    const isDataTable =
+      selectedItem?.type === DatabaseObjectType.TABLE ||
+      selectedItem?.type === DatabaseObjectType.VIEW;
+    const isDataTab = activeTab === ExplorerTab.DATA;
+    const needsExecution =
+      isDataTable &&
+      isDataTab &&
+      executionStatus === ExecutionStatus.IDLE;
 
-      setExecutionStatus('executing')
-      setExecutionError(null)
-      setSocketResults(null)
-      setShowParamModal(false)
-
-      socketRef.current.emit('execute-query', {
-        connectionId: activeConnection.id,
-        dto: { sql, params, schema: currentSchema },
-        tabId: 'explorer'
-      })
+    if (needsExecution) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) handleExecute();
+      });
+      return () => { cancelled = true; };
     }
-  }, [selectedItem, activeConnection, pageSize, page, parameters, paramValues, currentSchema])
+  }, [
+    activeTab,
+    executionStatus,
+    handleExecute,
+    selectedItem?.type,
+    socketResults,
+    page,
+    pageSize,
+  ]);
 
-  const handleCancel = () => {
-    if (socketRef.current && activeConnection) {
-      socketRef.current.emit('cancel-query', { 
-        tabId: 'explorer',
-        connectionId: activeConnection.id 
-      })
-      setExecutionStatus('error')
-      setExecutionError('Query cancelled by user')
-    }
-  }
+  const handleCancel = useCallback(() => {
+    setExecutionStatus(ExecutionStatus.ERROR);
+    setExecutionError('Query cancelled by user');
+  }, [setExecutionStatus, setExecutionError]);
 
-  const isLoadingSidebar = isLoadingTables || isLoadingViews || isLoadingProcedures || isLoadingTriggers
+  const isLoadingSidebar =
+    isLoadingTables ||
+    isLoadingViews ||
+    isLoadingProcedures ||
+    isLoadingTriggers ||
+    isLoadingFunctions;
 
   const filteredItems = useMemo(() => {
-    const items =
-      sidebarTab === 'tables'
-        ? tables
-        : sidebarTab === 'views'
-          ? views
-          : sidebarTab === 'procedures'
-            ? procedures
-            : triggers;
+    let items: { name: string }[] | undefined;
+    switch (sidebarTab) {
+      case SidebarTab.TABLES:
+        items = tables;
+        break;
+      case SidebarTab.VIEWS:
+        items = views;
+        break;
+      case SidebarTab.PROCEDURES:
+        items = procedures;
+        break;
+      case SidebarTab.TRIGGERS:
+        items = triggers;
+        break;
+      case SidebarTab.FUNCTIONS:
+        items = functions;
+        break;
+    }
 
     if (!items) return [];
 
     return items.filter((t) =>
       (t.name || '').toLowerCase().includes(search.toLowerCase()),
     );
-  }, [sidebarTab, tables, views, procedures, triggers, search]);
+  }, [sidebarTab, tables, views, procedures, triggers, functions, search]);
+
+  // Resolve db type: prefer resolvedConnection.type (already stored), confirm from backend only if needed
+  const dbType: DatabaseType | undefined = (() => {
+    if (!resolvedConnection?.type) return undefined;
+    switch (resolvedConnection.type) {
+      case DatabaseType.MONGODB: return DatabaseType.MONGODB;
+      case DatabaseType.SQLSERVER: return DatabaseType.SQLSERVER;
+      case DatabaseType.POSTGRES: return DatabaseType.POSTGRES;
+      case DatabaseType.MARIADB: return DatabaseType.MARIADB;
+      default: return resolvedConnection.type as DatabaseType;
+    }
+  })();
+
+  const isMongoDB = dbType === DatabaseType.MONGODB;
 
   return {
-    activeConnection,
+    activeConnection: resolvedConnection,
     search,
     setSearch,
     selectedItem,
@@ -356,9 +910,9 @@ export function useExplorer() {
     setActiveTab,
     currentSchema,
     page,
-    setPage,
+    setPage: handleSetPage,
     pageSize,
-    setPageSize,
+    setPageSize: handleSetPageSize,
     executionStatus,
     executionError,
     socketResults,
@@ -382,17 +936,32 @@ export function useExplorer() {
     constraints,
     isLoadingConstraints,
     isLoadingDDL,
+    errorDDL,
     parameters,
+    transactionStatus,
+    transactionMessage,
+    commitTransaction,
+    rollbackTransaction,
     updateDdlMutation,
     editColumnMutation,
     dropColumnMutation,
     dropIndexMutation,
     renameIndexMutation,
     dropForeignKeyMutation,
+    renameForeignKeyMutation,
     dropConstraintMutation,
     updateCell,
     handleExecute,
     handleCancel,
-    handleRefetch
-  }
+    handleRefetch,
+    refreshExplorerData,
+    filter,
+    setFilter,
+    dbType,
+    isMongoDB,
+    explorerTabs,
+    activeExplorerTabId,
+    removeExplorerTab,
+    setExplorerState,
+  };
 }

@@ -1,67 +1,85 @@
-import axios from 'axios'
-import { useAppStore } from '@/store/useAppStore'
+import { invoke } from '@tauri-apps/api/core';
 
-const getDynamicApiUrl = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
-  
-  // Try to get port from Electron preload
-  // @ts-ignore
-  const electronPort = window.toketeoAPI?.getBackendPort()
-  if (electronPort) {
-    return `http://localhost:${electronPort}`
-  }
-  
-  return 'http://localhost:3000'
-}
+function extractError(error: unknown): string {
+  if (typeof error === 'string') return error;
 
-const API_URL = getDynamicApiUrl()
-
-export const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Request Interceptor: Add Authorization Header
-apiClient.interceptors.request.use((config) => {
-  const { accessToken } = useAppStore.getState()
-  if (accessToken && config.headers && !config.url?.includes('/auth/login')) {
-    config.headers.Authorization = `Bearer ${accessToken}`
-  }
-  return config
-})
-
-// Response Interceptor: Handle Token Refresh & Errors
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config
-    const { setAccessToken } = useAppStore.getState()
-
-    // Handle 401 Unauthorized (Avoid infinite loop on login)
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/login')) {
-      originalRequest._retry = true
-
-      try {
-        const response = await axios.post(`${API_URL}/auth/login`, { username: 'root' })
-        const { access_token } = response.data
-        
-        setAccessToken(access_token)
-        originalRequest.headers.Authorization = `Bearer ${access_token}`
-        
-        return apiClient(originalRequest)
-      } catch (refreshError) {
-        setAccessToken(null)
-        return Promise.reject(refreshError)
-      }
+  if (error && typeof error === 'object') {
+    // Tauri serialises Rust enums as { Variant: "message" }
+    const keys = Object.keys(error);
+    if (keys.length === 1) {
+      const variant = keys[0];
+      const content = (error as Record<string, unknown>)[variant];
+      if (typeof content === 'string') return content;
+      return JSON.stringify(content);
     }
 
-    const message = error.response?.data?.message || error.message || 'API Error'
-    return Promise.reject(new Error(message))
+    // Tauri v2 sometimes wraps in an Error-like object
+    if ('message' in error) {
+      const msg = (error as { message: unknown }).message;
+      if (typeof msg === 'string') return msg;
+    }
+
+    // Everything else – try toString or JSON
+    const str = String(error);
+    if (str !== '[object Object]') return str;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown error (see console for details)';
+    }
   }
-)
+
+  return 'Internal Rust Error';
+}
+
+export const tauriApi = {
+  invoke: async <T>(
+    command: string,
+    args: Record<string, unknown> = {},
+  ): Promise<T> => {
+    try {
+      const response = await invoke<T>(command, args);
+      return response;
+    } catch (error: unknown) {
+      const message = extractError(error);
+      console.error(`[Tauri Error] Command ${command} failed:`, message, error);
+      throw new Error(message, { cause: error });
+    }
+  },
+};
+
+export const apiClient = {
+  get: async <T>(url: string) => ({
+    data: await tauriApi.invoke<T>(
+      'get_' +
+        url
+          .split('/')
+          .pop()
+          ?.replace(/[^a-zA-Z0-9]/g, '_'),
+    ),
+  }),
+  post: async <T>(url: string, data?: unknown) => ({
+    data: await tauriApi.invoke<T>(
+      url
+        .split('/')
+        .pop()
+        ?.replace(/[^a-zA-Z0-9]/g, '_') || 'post',
+      data as Record<string, unknown>,
+    ),
+  }),
+  patch: async <T>(url: string, data?: unknown) => ({
+    data: await tauriApi.invoke<T>('update_' + url.split('/')[1], {
+      id: url.split('/')[2],
+      ...(data as Record<string, unknown>),
+    }),
+  }),
+  delete: async (url: string) => {
+    await tauriApi.invoke('delete_' + url.split('/')[1], {
+      id: url.split('/')[2],
+    });
+  },
+};
 
 export function getApiUrl(path: string): string {
-  return `${API_URL}${path}`
+  return `tauri://api${path}`;
 }

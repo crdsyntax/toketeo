@@ -1,9 +1,11 @@
 import { Loader2, Save } from 'lucide-react';
-import { Editor } from '@monaco-editor/react';
 import type { UseMutationResult } from '@tanstack/react-query';
+import { useAppStore } from '@/store/useAppStore';
+import { SqlCodeEditor } from '@/components/editor/SqlCodeEditor';
 
 interface DdlTabProps {
   isLoading: boolean;
+  error?: Error | null;
   editableDdl: string;
   setEditableDdl: (ddl: string) => void;
   updateDdlMutation: UseMutationResult<unknown, Error, string>;
@@ -11,20 +13,25 @@ interface DdlTabProps {
 
 export function DdlTab({
   isLoading,
+  error,
   editableDdl,
   setEditableDdl,
   updateDdlMutation,
 }: DdlTabProps) {
+  const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
+  const storeEditorFontSize = useAppStore((s) => s.uiFontSize);
+  const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
+  const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
   return (
     <div className="flex-1 flex flex-col bg-muted/30 relative">
       <div className="p-2 border-b border-border bg-background/50 flex justify-between items-center px-4">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
           Definition Editor
         </span>
         <button
           onClick={() => updateDdlMutation.mutate(editableDdl)}
           disabled={updateDdlMutation.isPending}
-          className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 py-1 rounded-md text-[10px] font-bold hover:bg-secondary/80 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 py-1 rounded-md text-[var(--ch-text-10)] font-bold hover:bg-secondary/80 transition-colors disabled:opacity-50"
         >
           {updateDdlMutation.isPending ? (
             <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -41,20 +48,24 @@ export function DdlTab({
               <div key={i} className="h-4 bg-muted animate-pulse rounded" />
             ))}
           </div>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <div className="text-destructive font-bold mb-2">Failed to load definition</div>
+            <div className="text-xs text-muted-foreground bg-destructive/10 p-4 rounded-md border border-destructive/20 inline-block text-left">
+              {error.message}
+            </div>
+          </div>
         ) : (
-          <Editor
-            height="100%"
-            defaultLanguage="sql"
-            theme="vs-dark"
+          <SqlCodeEditor
             value={editableDdl}
+            language="sql"
             onChange={(val) => setEditableDdl(val || '')}
             options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 16 },
+              fontSize: storeEditorFontSize,
+              fontFamily: storeEditorFontFamily,
+              lineHeight: storeEditorLineHeight,
+              tabSize: storeEditorTabSize,
+              paddingTop: 16,
             }}
           />
         )}

@@ -1,87 +1,171 @@
-import { Database, Edit2, Trash2, Globe, Server, Shield, Link as LinkIcon } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Download, Edit2, Trash2, Link as LinkIcon, Loader2, Zap, ChevronDown, Unplug } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Environment } from '@/types/database'
+import { DatabaseType, Environment } from '@/types/database'
 import type { Connection } from '@/types/database'
+import { useAppStore } from '@/store/useAppStore'
+import { getEngineConfig } from '@/lib/engine-icons'
 
 interface ConnectionCardProps {
   connection: Connection
   onEdit: (conn: Connection) => void
   onDelete: (id: string) => void
   onConnect: (conn: Connection) => void
+  onTest?: (conn: Connection) => void
+  onDisconnect?: (id: string) => void
+  onExport?: (conn: Connection) => void
+  isConnecting?: boolean
+  isTesting?: boolean
+  isActive?: boolean
 }
 
-export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: ConnectionCardProps) {
-  const getEnvColor = (env: Environment) => {
-    switch (env) {
-      case Environment.PRODUCTION: return 'bg-red-500/10 text-red-600 border-red-500/20'
-      case Environment.STAGING: return 'bg-orange-500/10 text-orange-600 border-orange-500/20'
-      case Environment.DEVELOPMENT: return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
-      default: return 'bg-muted text-muted-foreground border-border'
+export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest, onExport, isConnecting, isTesting, onDisconnect, isActive }: ConnectionCardProps) {
+  const miniToast = useAppStore((state) => state.miniToasts[connection.id])
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
     }
-  }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [menuOpen])
+
+  const engineConfig = getEngineConfig(connection.type as DatabaseType)
+  const EngineIcon = engineConfig.icon
 
   return (
-    <div className={cn(
-      "group relative border border-border bg-card p-5 rounded-md hover:shadow-md transition-shadow overflow-hidden text-left",
-      connection.environment === Environment.PRODUCTION && "border-l-4 border-l-red-500"
-    )}>
-      <div className="flex items-start justify-between mb-4">
-        <div className="p-2 bg-primary/10 rounded-md">
-          <Database className="w-6 h-6 text-primary" />
+    <div
+      onDoubleClick={() => onConnect(connection)}
+      className={cn(
+        'clay-card group relative w-full min-w-0 cursor-pointer overflow-hidden flex flex-col',
+        connection.environment === Environment.PRODUCTION &&
+          'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-red-500 before:rounded-l-[var(--radius-2xl)] before:rounded-r-full',
+        isActive && 'ring-2 ring-emerald-500/40 border-emerald-500/40',
+      )}
+    >
+      {miniToast && (
+        <div className={`absolute top-3 right-3 z-20 text-xs rounded-full px-2.5 py-1 font-semibold shadow-lg animate-in slide-in-from-top-1 duration-200 ${miniToast.type === 'success' ? 'bg-emerald-500 text-emerald-950 border border-emerald-400' : 'bg-red-500 text-red-950 border border-red-400'}`}>
+          {miniToast.text}
         </div>
-        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
-            onClick={() => onEdit(connection)}
-            className="text-muted-foreground hover:text-primary transition-colors"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button 
-            onClick={() => onDelete(connection.id)}
-            className="text-muted-foreground hover:text-destructive transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-2 mb-1">
-        <h3 className="font-bold text-lg truncate">{connection.name}</h3>
-        <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border", getEnvColor(connection.environment))}>
-          {connection.environment}
-        </span>
-      </div>
+      )}
 
-      <div className="space-y-1.5 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5" />
-          <span>{connection.host}:{connection.port}</span>
+      {/* Content */}
+      <div className="p-5 pb-4 flex flex-col gap-3 flex-1 min-h-0">
+        {/* Icon */}
+        <div className={cn('flex items-center justify-center w-10 h-10 rounded-[var(--radius-xl)] shrink-0', engineConfig.bgClass)}>
+          <EngineIcon className={cn('w-5 h-5', engineConfig.textClass)} />
         </div>
-        {connection.database && (
-          <div className="flex items-center gap-2">
-            <Server className="w-3.5 h-3.5" />
-            <span className="truncate">{connection.database}</span>
-          </div>
-        )}
-        <div className="flex items-center gap-2 pt-1">
-          <div className="uppercase font-semibold text-[10px] tracking-wider bg-muted px-2 py-0.5 rounded">
-            {connection.type}
-          </div>
+
+        {/* Title + subtitle */}
+        <div className="min-w-0">
+          <h3 className="font-bold text-sm tracking-tight truncate flex items-center gap-1.5">
+            {connection.name}
+            {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />}
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1 font-mono truncate">
+            {connection.host}:{connection.port}
+          </p>
+          {connection.database && (
+            <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate">
+              {connection.database}
+            </p>
+          )}
+        </div>
+
+        {/* Tags */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={cn('text-[var(--ch-text-9)] font-bold tracking-widest uppercase px-2 py-0.5 rounded-[var(--radius-2xl)] border', engineConfig.bgClass, engineConfig.textClass, engineConfig.borderClass)}>
+            {connection.type.toUpperCase()}
+          </span>
           {connection.ssh && (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-              <Shield className="w-2.5 h-2.5" /> SSH
-            </div>
+            <span className="text-[var(--ch-text-9)] font-bold text-blue-400 px-2 py-0.5 rounded-[var(--radius-2xl)] bg-blue-500/10 border border-blue-500/30">
+              SSH
+            </span>
           )}
         </div>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-border flex justify-end">
-        <button 
-          onClick={() => onConnect(connection)}
-          className="text-xs font-semibold text-primary flex items-center gap-1 hover:underline"
-        >
-          Connect <LinkIcon className="w-3 h-3" />
-        </button>
+      {/* Bottom action bar */}
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-border/50 bg-muted/20">
+        {/* Connect / Disconnect */}
+        {isActive && onDisconnect ? (
+          <button
+            onClick={() => onDisconnect(connection.id)}
+            disabled={isConnecting || isTesting}
+            className={cn('flex items-center gap-1.5 px-3.5 py-1.5 rounded-[var(--radius-2xl)] border text-xs font-bold uppercase tracking-wide transition-colors', 'border-destructive/40 text-destructive hover:bg-destructive/10', (isConnecting || isTesting) && 'opacity-60 cursor-not-allowed')}
+          >
+            <Unplug className="w-3 h-3 shrink-0" /> Disconnect
+          </button>
+        ) : (
+          <button
+            onClick={() => onConnect(connection)}
+            disabled={isConnecting || isTesting}
+            className={cn('flex items-center gap-1.5 px-3.5 py-1.5 rounded-[var(--radius-2xl)] border text-xs font-bold uppercase tracking-wide transition-colors', 'border-primary/40 text-primary bg-primary/10 hover:bg-primary/20', (isConnecting || isTesting) && 'opacity-60 cursor-not-allowed')}
+          >
+            {isConnecting ? (
+              <><Loader2 className="w-3 h-3 shrink-0 animate-spin" /> <span className="truncate">Connecting...</span></>
+            ) : (
+              <><LinkIcon className="w-3 h-3 shrink-0" /> Connect</>
+            )}
+          </button>
+        )}
+
+        {/* Test */}
+        {onTest && !isActive && (
+          <button
+            onClick={() => onTest(connection)}
+            disabled={isConnecting || isTesting}
+            className={cn('flex items-center gap-1.5 px-3.5 py-1.5 rounded-[var(--radius-2xl)] border text-xs font-bold uppercase tracking-wide transition-colors', 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30', (isConnecting || isTesting) && 'opacity-60 cursor-not-allowed')}
+          >
+            {isTesting ? (
+              <><Loader2 className="w-3 h-3 shrink-0 animate-spin" /> <span className="truncate">Testing...</span></>
+            ) : (
+              <><Zap className="w-3 h-3 shrink-0" /> Test</>
+            )}
+          </button>
+        )}
+
+        {/* Spacer + more actions */}
+        <div className="ml-auto relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            disabled={isConnecting || isTesting}
+            className={cn('p-1.5 rounded-[var(--radius-xl)] text-muted-foreground transition-colors', (!isConnecting && !isTesting) ? 'hover:text-foreground hover:bg-muted/60' : 'opacity-60 cursor-not-allowed')}
+          >
+            <ChevronDown className={cn('w-4 h-4 transition-transform', menuOpen && 'rotate-180')} />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 bottom-full mb-2 w-44 py-1.5 rounded-[var(--radius-xl)] border border-border bg-background shadow-xl z-30 animate-in fade-in slide-in-from-bottom-1 duration-150">
+              {onExport && (
+                <button
+                  onClick={() => { onExport(connection); setMenuOpen(false) }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export
+                </button>
+              )}
+              <button
+                onClick={() => { onEdit(connection); setMenuOpen(false) }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              <div className="my-1 border-t border-border/50" />
+              <button
+                onClick={() => { onDelete(connection.id); setMenuOpen(false) }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

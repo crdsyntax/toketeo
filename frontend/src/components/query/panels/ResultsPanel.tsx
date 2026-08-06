@@ -1,209 +1,166 @@
-import { ChevronUp, ChevronDown, Table2, Clock, Save, Maximize2, Download, AlertCircle, X, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
-import { cn, downloadCSV } from '@/lib/utils';
-import type { QueryTab, DbValue } from '@/store/useAppStore';
-import type { DbRow } from '@/types/database';
+import { useState } from 'react';
+import { Table2, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { QueryTab } from '@/store/useAppStore';
+import type { DbRow, DbValue } from '@/types/database';
+import { ExecutionStatus } from '@/types/database';
+
+import { ResultsPanelHeader } from './results/ResultsPanelHeader';
+import { ResultsPanelError } from './results/ResultsPanelError';
+import { ResultsPanelTable } from './results/ResultsPanelTable';
+import { ResultsPanelSkeleton } from './results/ResultsPanelSkeleton';
+import { JsonResultsView } from '@/components/ui/JsonResultsView';
+import { VisualizePanel } from './VisualizePanel';
+import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
+import type { SqlFixResult } from '@/types/assistant';
+
+const LIMIT_OPTIONS = [
+  { label: '100 rows', value: 100 },
+  { label: '500 rows', value: 500 },
+  { label: '1 000 rows', value: 1000 },
+  { label: '5 000 rows', value: 5000 },
+  { label: 'No limit', value: 0 },
+];
 
 interface ResultsPanelProps {
-  activeTab: QueryTab;
-  isVisible: boolean;
-  onToggle: () => void;
-  updateTabResults: (id: string, results: Partial<QueryTab>) => void;
-  handleSave: () => void;
-  setShowResultModal: (show: boolean) => void;
-  sortConfig: { key: string, direction: 'asc' | 'desc' } | null;
-  requestSort: (key: string) => void;
-  sortedRows: DbRow[];
+  activeTab: QueryTab | null;
+  panels: { editor: boolean; results: boolean };
+  togglePanel: (panel: 'editor' | 'results') => void;
   editingCell: { rowIndex: number; column: string; value: DbValue } | null;
   setEditingCell: (cell: { rowIndex: number; column: string; value: DbValue } | null) => void;
+  handleSave: () => void;
+  pendingEdit: { rowIndex: number; column: string; prevValue: DbValue; nextValue: DbValue } | null;
+  confirmPendingEdit: () => void;
+  discardPendingEdit: () => void;
+  setShowResultModal: (show: boolean) => void;
+  requestSort: (key: string) => void;
+  sortConfig: { key: string; direction: 'asc' | 'desc' } | null;
+  sortedRows: DbRow[];
+  updateTabResults: (tabId: string, updates: Partial<QueryTab>) => void;
   handlePageChange: (page: number) => void;
-  clearResults: () => void;
+  setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
+  queryLimit: number;
+  setQueryLimit: (limit: number) => void;
+  safeDeleteSuggestion: string | null;
+  setSafeDeleteSuggestion: (suggestion: string | null) => void;
+  sqlFixSuggestion: SqlFixResult | null;
+  setSqlFixSuggestion: (suggestion: SqlFixResult | null) => void;
+  sqlFixLoading: boolean;
 }
 
 export function ResultsPanel({
   activeTab,
-  isVisible,
-  onToggle,
-  updateTabResults,
-  handleSave,
-  setShowResultModal,
-  sortConfig,
-  requestSort,
-  sortedRows,
+  panels,
+  togglePanel,
   editingCell,
   setEditingCell,
+  handleSave,
+  pendingEdit,
+  confirmPendingEdit,
+  discardPendingEdit,
+  setShowResultModal,
+  requestSort,
+  sortConfig,
+  sortedRows,
+  updateTabResults,
   handlePageChange,
-  clearResults,
+  setContextMenuSql,
+  queryLimit,
+  setQueryLimit,
+  safeDeleteSuggestion,
+  setSafeDeleteSuggestion,
+  sqlFixSuggestion,
+  setSqlFixSuggestion,
+  sqlFixLoading,
 }: ResultsPanelProps) {
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showLimitMenu, setShowLimitMenu] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
+
+  const isResultsPanelVisible = panels?.results ?? false;
+
   return (
-    <div className={cn("border border-border rounded-none bg-card flex flex-col overflow-hidden transition-all duration-300", isVisible ? "flex-1 min-h-[150px]" : "h-10 shrink-0")}>
-      <div className="p-2 border-b border-border bg-muted/20 flex justify-between items-center px-4 text-left">
-        <div className="flex items-center gap-2">
-          <button onClick={onToggle} className="p-1 hover:bg-muted rounded">
-            {isVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-            <Table2 className="w-3 h-3" />
-            Results {activeTab.status === 'executing' && <span className="animate-pulse text-primary ml-2">Executing...</span>}
-          </h3>
-        </div>
-        {activeTab.results && isVisible && (
-          <div className="flex items-center gap-4">
-            {activeTab.results.page !== undefined && (
-              <div className="flex items-center gap-1 border-r border-border pr-4 mr-2">
-                <button 
-                  disabled={activeTab.results.page <= 1 || activeTab.status === 'executing'}
-                  onClick={() => handlePageChange(activeTab.results!.page! - 1)}
-                  className="p-1 hover:bg-muted rounded disabled:opacity-30"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-[10px] font-mono font-bold mx-1">
-                  PAGE {activeTab.results.page}
-                </span>
-                <button 
-                  disabled={!activeTab.results.hasMore || activeTab.status === 'executing'}
-                  onClick={() => handlePageChange(activeTab.results!.page! + 1)}
-                  className="p-1 hover:bg-muted rounded disabled:opacity-30"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground border-r border-border pr-4 mr-2">
-              <Clock className="w-3 h-3" />
-              {activeTab.results.executionTime}ms
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              Rows: <span className="font-bold text-foreground">{activeTab.results.rows.length}</span>
-            </div>
-            <div className="flex items-center gap-2 ml-4 border-l border-border pl-4">
-              {editingCell && (
-                <button 
-                  onClick={handleSave} 
-                  className="text-[10px] font-bold text-primary hover:text-primary/80 flex items-center gap-1 mr-2 animate-pulse"
-                >
-                  <Save className="w-3 h-3" />
-                  Save Changes
-                </button>
+    <div
+      className={cn(
+        "border border-border bg-card flex flex-col transition-all duration-200",
+        isResultsPanelVisible ? "flex-1 min-h-[100px] overflow-hidden" : "h-9 shrink-0 overflow-visible"
+      )}
+      onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}
+    >
+      <ResultsPanelHeader
+        activeTab={activeTab}
+        isResultsPanelVisible={isResultsPanelVisible}
+        togglePanel={togglePanel}
+        queryLimit={queryLimit}
+        setQueryLimit={setQueryLimit}
+        handlePageChange={handlePageChange}
+        sortedRows={sortedRows}
+        editingCell={editingCell}
+        handleSave={handleSave}
+        setShowResultModal={setShowResultModal}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        showExportMenu={showExportMenu}
+        setShowExportMenu={setShowExportMenu}
+        showLimitMenu={showLimitMenu}
+        setShowLimitMenu={setShowLimitMenu}
+        LIMIT_OPTIONS={LIMIT_OPTIONS}
+      />
+
+      {isResultsPanelVisible && (
+        <div className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-0 min-w-0">
+          <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} safeDeleteSuggestion={safeDeleteSuggestion} setSafeDeleteSuggestion={setSafeDeleteSuggestion} sqlFixSuggestion={sqlFixSuggestion} setSqlFixSuggestion={setSqlFixSuggestion} sqlFixLoading={sqlFixLoading} />
+
+          {activeTab?.results && sortedRows.length > 0 ? (
+            <>
+              {viewMode === 'json' ? (
+                <div className="flex-1 overflow-auto relative h-full">
+                  <JsonResultsView rows={sortedRows} />
+                </div>
+              ) : viewMode === 'visualize' ? (
+                <VisualizePanel sortedRows={sortedRows} />
+              ) : (
+                <ResultsPanelTable
+                  activeTab={activeTab}
+                  sortedRows={sortedRows}
+                  sortConfig={sortConfig}
+                  requestSort={requestSort}
+                  editingCell={editingCell}
+                  setEditingCell={setEditingCell}
+                  handleSave={handleSave}
+                  setContextMenuSql={setContextMenuSql}
+                  selectedRowIndex={selectedRowIndex}
+                  setSelectedRowIndex={setSelectedRowIndex}
+                  setShowExportMenu={setShowExportMenu}
+                  setShowLimitMenu={setShowLimitMenu}
+                />
               )}
-              <button 
-                onClick={() => setShowResultModal(true)} 
-                className="text-[10px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1 mr-2"
-              >
-                <Maximize2 className="w-3 h-3" />
-                Full Screen
-              </button>
-              <button 
-                onClick={clearResults}
-                className="text-[10px] font-bold text-muted-foreground hover:text-destructive flex items-center gap-1 mr-2"
-                title="Clear Results"
-              >
-                <Trash2 className="w-3 h-3" />
-                Clear
-              </button>
-              <button 
-                onClick={() => downloadCSV(sortedRows, activeTab.results!.columns, `${activeTab.name}-results.csv`)}
-                className="text-[10px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1"
-              >
-                <Download className="w-3 h-3" />
-                CSV
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      {isVisible && (
-        <div className="flex-1 overflow-auto">
-          {activeTab.status === 'error' && (
-            <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              <p className="text-xs font-mono">{activeTab.error}</p>
-              <button 
-                onClick={() => updateTabResults(activeTab.id, { status: 'idle', error: null })} 
-                className="ml-auto p-1 hover:bg-destructive/20 rounded"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-
-          {activeTab.status === 'success' && activeTab.results && activeTab.results.rows.length === 0 && (
-            <div className="p-8 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center text-green-500">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm">Query Executed Successfully</h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {activeTab.results.message || 'The command completed without returning a result set.'}
-                </p>
-                {activeTab.results.affectedRows !== undefined && (
-                  <div className="mt-4 inline-block px-3 py-1 bg-muted rounded-none border border-border text-[10px] font-mono font-bold uppercase tracking-wider">
-                    Rows Affected: {activeTab.results.affectedRows}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeTab.results && activeTab.results.rows.length > 0 ? (
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 bg-background border-b border-border z-10 shadow-sm">
-                <tr>
-                  {activeTab.results.columns.map((col: string) => (
-                    <th key={col} onClick={() => requestSort(col)} className="p-2 font-bold bg-muted/50 border-r border-border cursor-pointer hover:bg-muted transition-colors">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="truncate">{col}</span>
-                        {sortConfig?.key === col ? (
-                          sortConfig?.direction === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-primary" /> : <ArrowDown className="w-2.5 h-2.5 text-primary" />
-                        ) : (
-                          <ArrowUpDown className="w-2.5 h-2.5 opacity-20" />
-                        )}
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
-                    {activeTab.results!.columns.map((col: string) => (
-                      <td 
-                        key={col} 
-                        onDoubleClick={() => setEditingCell({ rowIndex: i, column: col, value: row[col] })} 
-                        className="p-2 border-r border-border last:border-0 truncate max-w-[250px] relative group"
-                      >
-                        {editingCell?.rowIndex === i && editingCell?.column === col ? (
-                          <input 
-                            autoFocus
-                            className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2 z-20"
-                            value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
-                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSave();
-                              if (e.key === 'Escape') setEditingCell(null);
-                            }}
-                          />
-                        ) : (
-                          row[col] === null ? <span className="text-muted-foreground italic text-[10px]">NULL</span> : String(row[col])
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              {activeTab?.status === ExecutionStatus.EXECUTING && (
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/90 border border-border shadow-sm backdrop-blur animate-in fade-in zoom-in-95 duration-150">
+                  <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground font-medium">Running...</span>
+                </div>
+              )}
+            </>
+          ) : activeTab?.status === ExecutionStatus.EXECUTING ? (
+            <ResultsPanelSkeleton activeTab={activeTab} />
           ) : (
-            activeTab.status === 'idle' && (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic text-center p-8">
-                Run a query to see results
-              </div>
-            )
-          )}
-          {activeTab.status === 'executing' && (
-            <div className="p-4 space-y-4 text-left">
-              {[1, 2, 3].map(i => <div key={i} className="h-6 bg-muted animate-pulse rounded-none" />)}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-2 select-none animate-in fade-in duration-200">
+              <Table2 className="w-8 h-8 opacity-20" />
+              <span className="text-xs italic">No data rows returned or empty dataset</span>
             </div>
+          )}
+
+          {/* Review Change panel for inline cell edits (centered fallback) */}
+          {pendingEdit && (
+            <ReviewChangePanel
+              column={pendingEdit.column}
+              prevValue={pendingEdit.prevValue}
+              nextValue={pendingEdit.nextValue}
+              onConfirm={confirmPendingEdit}
+              onDiscard={discardPendingEdit}
+            />
           )}
         </div>
       )}

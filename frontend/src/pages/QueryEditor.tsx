@@ -1,26 +1,45 @@
-import { AlertCircle } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
+import { MongoFilterBar } from '@/components/query/panels/MongoFilterBar';
 import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
-import { useQueryEditor } from '@/hooks/useQueryEditor';
+import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
+import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
+import { AssistantLayout } from '@/components/assistant/AssistantLayout';
+import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
+import { NewScriptModal } from '@/components/query/NewScriptModal';
+import { useAssistantStore } from '@/store/assistantStore';
 import { useAppStore } from '@/store/useAppStore';
-import { useEffect } from 'react';
+import { useQueryEditor } from '@/hooks/useQueryEditor';
+import { useEffect, useRef, useState } from 'react';
+import { ExecutionStatus, DatabaseType } from '@/types/database';
+import { useQuery } from '@tanstack/react-query';
+import { connectionService } from '@/services/connection.service';
+import { cn } from '@/lib/utils';
 
 export default function QueryEditor() {
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  });
+
   const {
     activeConnection,
     tabs,
     activeTabId,
     activeTab,
     addTab,
+    openTab,
     removeTab,
     updateTabQuery,
+    updateTabConnection,
     setActiveTabId,
     updateTabResults,
     panels,
+    setEditorHeight,
     togglePanel,
     showContextMenu,
     setShowContextMenu,
@@ -32,29 +51,106 @@ export default function QueryEditor() {
     requestSort,
     sortedRows,
     modalRect,
+    setModalRect,
     isMaximized,
     toggleMaximize,
     editingCell,
     setEditingCell,
+    pendingEdit,
+    confirmPendingEdit,
+    discardPendingEdit,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,
     handleSave,
     handleSaveScript,
-    handleEditorWillMount,
-    handleEditorDidMount,
+    editorRef,
     handlePageChange,
     clearTabResults,
+    isInteracting,
     draggingRef,
     resizingRef,
-    setModalRect
+    contextMenuSql,
+    setContextMenuSql,
+    sqlModal,
+    setSqlModal,
+    handleGenerateSql,
+    updateTabViewState,
+    queryLimit,
+    setQueryLimit,
+    updateTabMongoFilter,
+    updateTabEditorMode,
+    queryHistory,
+    clearQueryHistory,
+    safeDeleteSuggestion,
+    setSafeDeleteSuggestion,
+    sqlFixSuggestion,
+    setSqlFixSuggestion,
+    sqlFixLoading,
   } = useQueryEditor()
 
+  const setActiveConnection = useAppStore((s) => s.setActiveConnection)
+  const [showHistory, setShowHistory] = useState(false);
+  const [showNewScriptModal, setShowNewScriptModal] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const showAssistant = useAssistantStore((s) => s.showAssistant);
+  const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
+  const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
+  const targetConnection = (connections.find(c => c.id === currentConnectionId) || activeConnection || null);
+
   useEffect(() => {
-    const handleClick = () => setShowContextMenu(null)
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        setShowShortcuts(true)
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault()
+        setShowAssistant(!showAssistant)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [showAssistant, setShowAssistant])
+  const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
+
+  const isMongo = targetConnection?.type === DatabaseType.MONGODB
+
+  const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const splitterRef = useRef({ isDragging: false })
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (splitterRef.current.isDragging && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect()
+        const relativeY = e.clientY - rect.top
+        const newHeight = (relativeY / rect.height) * 100
+        
+        if (newHeight > 10 && newHeight < 90) {
+          setEditorHeight(newHeight)
+        }
+      }
+    }
+    const handleMouseUp = () => {
+      splitterRef.current.isDragging = false
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [setEditorHeight])
+
+  useEffect(() => {
+    const handleClick = () => {
+      setShowContextMenu(null)
+      setContextMenuSql(null)
+    }
     window.addEventListener('click', handleClick)
     return () => window.removeEventListener('click', handleClick)
-  }, [setShowContextMenu])
+  }, [setShowContextMenu, setContextMenuSql])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -73,39 +169,90 @@ export default function QueryEditor() {
   }
 
   const handleFileImport = (content: string, fileName: string) => {
-    const id = Math.random().toString(36).substring(7)
-    useAppStore.setState((state) => ({
-      tabs: [...state.tabs, { id, name: fileName.replace(/\.sql$/i, ''), query: content, status: 'idle' }],
-      activeTabId: id,
-    }))
+    openTab(fileName, content)
   };
 
-  if (!activeConnection) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-          <AlertCircle className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold">No Connection Active</h2>
-          <p className="text-muted-foreground">Select a connection first to execute queries.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-2 relative">
+    <div className="flex flex-col h-full gap-0 relative overflow-hidden" onClick={() => setContextMenuSql(null)}>
+      <SqlGeneratorModal
+        isOpen={sqlModal.isOpen}
+        onClose={() => setSqlModal({ isOpen: false, sql: '' })}
+        initialSql={sqlModal.sql}
+      />
+
+      {contextMenuSql && (
+        <div
+          className="fixed z-[200] min-w-[160px] bg-card border border-border/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
+          style={{ top: contextMenuSql.y, left: contextMenuSql.x }}
+        >
+          <div className="px-2 py-1 text-[var(--ch-text-10)] font-semibold text-muted-foreground uppercase tracking-wider select-none">
+            {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
+          </div>
+          <hr className="border-border/50 my-1" />
+          <div className="space-y-0.5">
+            {SQL_ACTIONS.map((action) => (
+              <button
+                key={action}
+                onClick={() => handleGenerateSql(action.toLowerCase())}
+                className="w-full text-left px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent-muted hover:text-accent transition-colors duration-150 flex items-center justify-between font-medium"
+              >
+                <span>Generate {action}</span>
+                <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono">
+                  ⌘{action[0]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <EditorToolbar 
-        onNew={addTab}
+        onNew={() => addTab()}
         onOpen={handleFileImport}
         onSave={handleSaveScript}
         onExecute={handleExecuteAll}
         onCancel={handleCancel}
-        isExecuting={activeTab?.status === 'executing'}
+        isExecuting={activeTab?.status === ExecutionStatus.EXECUTING}
         showLayoutMenu={showLayoutMenu}
         setShowLayoutMenu={setShowLayoutMenu}
+        connections={connections}
+        currentConnectionId={activeTab?.connectionId || activeConnection?.id}
+        onConnectionChange={(id) => {
+          updateTabConnection(activeTab.id, id)
+          if (!id) return
+          const conn = connections.find(c => c.id === id)
+          if (conn) setActiveConnection(conn)
+        }}
+        onHistoryToggle={() => setShowHistory((v) => !v)}
+        showHistory={showHistory}
+        historyCount={currentHistory.length}
+        onNewWithConnection={() => setShowNewScriptModal(true)}
       />
+
+      <NewScriptModal
+        isOpen={showNewScriptModal}
+        onClose={() => setShowNewScriptModal(false)}
+        connections={connections}
+        onCreate={(connectionId, database) => {
+          addTab(connectionId, database)
+        }}
+      />
+
+      {/* History panel floating dropdown */}
+      {showHistory && (
+        <div className="relative">
+          <QueryHistoryPanel
+            connectionId={currentConnectionId}
+            history={currentHistory}
+            onClear={clearQueryHistory}
+            onReplay={(query) => {
+              updateTabQuery(activeTab.id, query);
+              setShowHistory(false);
+            }}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
 
       <ResultsModal 
         isOpen={showResultModal}
@@ -123,8 +270,10 @@ export default function QueryEditor() {
         handleSave={handleSave}
         handlePageChange={handlePageChange}
         clearResults={() => clearTabResults(activeTab.id)}
+        isInteracting={isInteracting}
         draggingRef={draggingRef}
         resizingRef={resizingRef}
+        setContextMenuSql={setContextMenuSql}
       />
 
       <QueryMenus 
@@ -137,40 +286,107 @@ export default function QueryEditor() {
         togglePanel={togglePanel}
       />
 
+      <button
+        onClick={() => setShowAssistant(!showAssistant)}
+        className={cn(
+          "fixed bottom-4 right-4 z-50 w-9 h-9 rounded-lg flex items-center justify-center shadow-lg transition-all",
+          showAssistant
+            ? "bg-primary text-primary-foreground shadow-primary/25"
+            : "bg-background/80 backdrop-blur text-muted-foreground hover:text-foreground border border-border"
+        )}
+        title="Toggle Assistant (⌘I)"
+      >
+        <Sparkles className="w-4 h-4" />
+      </button>
+
       <EditorTabs 
         tabs={tabs}
         activeTabId={activeTabId}
         setActiveTabId={setActiveTabId}
         removeTab={removeTab}
         onContextMenu={onContextMenu}
+        connections={connections}
+        activeConnection={activeConnection}
       />
 
-      <SqlEditorPanel 
-        activeTab={activeTab}
-        isVisible={panels.editor}
-        onToggle={() => togglePanel('editor')}
-        updateTabQuery={updateTabQuery}
-        handleEditorWillMount={handleEditorWillMount}
-        handleEditorDidMount={handleEditorDidMount}
-        connectionName={activeConnection.name}
-        connectionType={activeConnection.type}
-      />
+      <div className="flex-1 flex min-h-0">
+        <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {panels.editor && (
+            <div className="min-h-[100px] flex flex-col flex-1">
+              {isMongo && activeTab && (
+                <MongoFilterBar
+                  filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
+                  onChange={(f) => updateTabMongoFilter(activeTab.id, f)}
+                  onExecute={() => handleExecuteAll()}
+                />
+              )}
+              {(() => {
+                return (
+                  <SqlEditorPanel 
+                    activeTab={activeTab}
+                    onToggle={() => togglePanel('editor')}
+                    updateTabQuery={updateTabQuery}
+                    editorRef={editorRef}
+                    executeCurrent={handleExecuteCurrent}
+                    executeAll={handleExecuteAll}
+                    connectionName={targetConnection?.name}
+                    connectionType={targetConnection?.type}
+                    updateTabViewState={updateTabViewState}
+                    updateTabEditorMode={updateTabEditorMode}
+                  />
+                );
+              })()}
+            </div>
+          )}
 
-      <ResultsPanel 
-        activeTab={activeTab}
-        isVisible={panels.results}
-        onToggle={() => togglePanel('results')}
-        updateTabResults={updateTabResults}
-        handleSave={handleSave}
-        setShowResultModal={setShowResultModal}
-        sortConfig={sortConfig}
-        requestSort={requestSort}
-        sortedRows={sortedRows}
-        editingCell={editingCell}
-        setEditingCell={setEditingCell}
-        handlePageChange={handlePageChange}
-        clearResults={() => clearTabResults(activeTab.id)}
-      />
+          {panels.editor && panels.results && (
+            <div 
+              className="h-1 w-full cursor-row-resize bg-border/60 hover:bg-primary/70 active:bg-primary transition-colors shrink-0 z-50 relative"
+              onMouseDown={() => { splitterRef.current.isDragging = true }}
+            >
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-0.5 rounded-full bg-muted-foreground/20 group-hover:bg-muted-foreground/40" />
+            </div>
+          )}
+
+          {panels.results && (
+            <div className="flex-1 min-h-[100px] flex flex-col overflow-hidden">
+              <ResultsPanel
+                activeTab={activeTab}
+                panels={panels}
+                togglePanel={togglePanel}
+                updateTabResults={updateTabResults}
+                handleSave={handleSave}
+                setShowResultModal={setShowResultModal}
+                sortConfig={sortConfig}
+                requestSort={requestSort}
+                sortedRows={sortedRows}
+                editingCell={editingCell}
+                setEditingCell={setEditingCell}
+                pendingEdit={pendingEdit}
+                confirmPendingEdit={confirmPendingEdit}
+                discardPendingEdit={discardPendingEdit}
+                handlePageChange={handlePageChange}
+                setContextMenuSql={setContextMenuSql}
+                queryLimit={queryLimit}
+                setQueryLimit={setQueryLimit}
+                safeDeleteSuggestion={safeDeleteSuggestion}
+                setSafeDeleteSuggestion={setSafeDeleteSuggestion}
+                sqlFixSuggestion={sqlFixSuggestion}
+                setSqlFixSuggestion={setSqlFixSuggestion}
+                sqlFixLoading={sqlFixLoading}
+              />
+            </div>
+          )}
+        </div>
+
+        {showAssistant && (
+          <div className="w-80 2xl:w-96 border-l border-border shrink-0 overflow-hidden">
+            <AssistantLayout />
+          </div>
+        )}
+      </div>
+
+      {showShortcuts && <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />}
     </div>
   )
 }

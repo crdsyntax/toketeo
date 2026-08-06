@@ -1,11 +1,162 @@
-import type * as monaco from 'monaco-editor'
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { io, Socket } from 'socket.io-client'
-import type { Monaco } from '@monaco-editor/react'
-import { useAppStore } from '@/store/useAppStore'
+﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import type { EditorView } from '@codemirror/view'
+import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
 import { queryService } from '@/services/query.service'
-import { getApiUrl } from '@/lib/api'
-import type { DbValue, DbRow } from '@/types/database'
+import { schemaService } from '@/services/schema.service'
+import { tauriApi } from '@/lib/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { connectionService } from '@/services/connection.service'
+import { toast } from 'react-hot-toast'
+import type { DbValue, DbRow, Connection } from '@/types/database'
+import { ExecutionStatus, Environment, DatabaseType } from '@/types/database'
+import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
+import { useGamificationStore } from '@/store/gamificationStore'
+import { usePerformanceStore } from '@/store/performanceStore'
+import { calculateQueryXp, hashQuery } from '@/lib/gamification'
+import { onRunQueryRequested } from '@/lib/queryRunEvents'
+import { assistantService } from '@/services/assistant.service'
+import type { SqlFixResult } from '@/types/assistant'
+
+const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
+
+const FK_VIOLATION_PATTERNS = [
+  /violates foreign key constraint/i,
+  /foreign key constraint fails/i,
+  /conflicted with the REFERENCE constraint/i,
+  /FOREIGN KEY constraint failed/i,
+  /foreign key constraint/i,
+]
+
+function isFKViolation(message: string): boolean {
+  return FK_VIOLATION_PATTERNS.some(p => p.test(message))
+}
+
+const SQL_SYNTAX_ERROR_PATTERNS = [
+  /you have an error in your sql syntax/i,
+  /syntax error at or near/i,
+  /incorrect syntax near/i,
+  /syntax error near/i,
+  /near "[^"]*": syntax error/i,
+  /syntax error in/i,
+]
+
+function isSqlSyntaxError(message: string): boolean {
+  return SQL_SYNTAX_ERROR_PATTERNS.some(p => p.test(message))
+}
+
+function isSchemaChangingQuery(sql: string): boolean {
+  const upper = sql.toUpperCase();
+  return (
+    upper.includes('ALTER ') ||
+    upper.includes('CREATE ') ||
+    upper.includes('DROP ') ||
+    upper.includes('TRUNCATE ') ||
+    upper.includes('RENAME ') ||
+    upper.includes('GRANT ') ||
+    upper.includes('REVOKE ')
+  );
+}
+
+function extractTableFromQuery(query: string): string | null {
+  const match = query.match(/DELETE\s+FROM\s+[`'"']?(\w+)[`'"']?/i)
+  return match ? match[1] : null
+}
+
+const tryParseJson = (v: string): unknown => {
+  if (!v.trim()) return undefined;
+  try { return JSON.parse(v); } catch { return v; }
+};
+
+/**
+ * Merge MongoFilterBar values into a parsed protocol object.
+ * Filter bar values override any values already in the protocol.
+ */
+function mergeFilterBar(
+  payload: Record<string, unknown>,
+  mongoFilter: MongoFilterState | undefined,
+): void {
+  if (!mongoFilter) return;
+  const find = tryParseJson(mongoFilter.find);
+  const project = tryParseJson(mongoFilter.project);
+  const sort = tryParseJson(mongoFilter.sort);
+  const collation = tryParseJson(mongoFilter.collation);
+  const hint = tryParseJson(mongoFilter.hint);
+  if (find !== undefined) payload['find'] = find;
+  if (project !== undefined) payload['project'] = project;
+  if (sort !== undefined) payload['sort'] = sort;
+  if (collation !== undefined) payload['collation'] = collation;
+  if (hint !== undefined) payload['hint'] = hint;
+}
+
+function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | undefined, editorMode?: EditorMode): string {
+  const cleaned = rawSql.replace(/;\s*$/, '').trim();
+  const mode = editorMode ?? 'auto';
+
+  if (mode === 'mongosh') {
+    // Shell mode â€” pure shell parsing, NO filter bar merge, NO legacy fallback
+    const parseResult = parseMongoShell(cleaned);
+    if (parseResult.success) {
+      const payload = parseResult.protocol as unknown as Record<string, unknown>;
+      // Explicitly do NOT merge filter bar â€” user's query text is authoritative
+      return JSON.stringify(payload);
+    }
+    // Parse failed â€” throw so the caller shows the error instead of sending garbage
+    throw new Error(`Failed to parse MongoDB shell syntax:\n${parseResult.error}\n\n${cleaned}`);
+  }
+
+  if (mode === 'json') {
+    // JSON mode â€” only try JSON protocol, no filter bar merge
+    try {
+      const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
+        // Do NOT merge filter bar â€” user's JSON is authoritative
+        return JSON.stringify(parsed);
+      }
+      // Valid JSON but missing 'collection' key â€” send as generic MongoDB command
+      return cleaned;
+    } catch {
+      throw new Error(`Invalid JSON for MongoDB command:\n${cleaned}`);
+    }
+  }
+
+  // 'auto' â€” try JSON first, then shell, then legacy (with filter bar)
+  try {
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
+      mergeFilterBar(parsed, mongoFilter);
+      return JSON.stringify(parsed);
+    }
+  } catch { /* not JSON â€” fall through */ }
+
+  if (isMongoShellSyntax(cleaned)) {
+    const parseResult = parseMongoShell(cleaned);
+    if (parseResult.success) {
+      const payload = parseResult.protocol as unknown as Record<string, unknown>;
+      mergeFilterBar(payload, mongoFilter);
+      return JSON.stringify(payload);
+    }
+    console.warn('[mongoShellParser] Parse failed:', parseResult.error);
+  }
+
+  // Legacy fallback (only reached in 'auto' mode)
+  const dbShellMatch = cleaned.match(/db\.(\w+)/);
+  const collectionName = dbShellMatch ? dbShellMatch[1] : 'unknown';
+
+  const payload: Record<string, unknown> = {
+    collection: collectionName,
+    find: tryParseJson(mongoFilter?.find ?? '') ?? {},
+  };
+  const project = tryParseJson(mongoFilter?.project ?? '');
+  const sort = tryParseJson(mongoFilter?.sort ?? '');
+  const collation = tryParseJson(mongoFilter?.collation ?? '');
+  const hint = tryParseJson(mongoFilter?.hint ?? '');
+  if (project !== undefined) payload['project'] = project;
+  if (sort !== undefined) payload['sort'] = sort;
+  if (collation !== undefined) payload['collation'] = collation;
+  if (hint !== undefined) payload['hint'] = hint;
+
+  return JSON.stringify(payload);
+}
 
 export function useQueryEditor() {
   const { 
@@ -13,17 +164,49 @@ export function useQueryEditor() {
     tabs, 
     activeTabId, 
     addTab, 
+    openTab,
     removeTab, 
     updateTabQuery, 
+    updateTabConnection,
     setActiveTabId, 
     updateTabResults, 
     clearTabResults,
+    updateTabViewState,
+    updateTabMongoFilter,
+    updateTabEditorMode,
     panels, 
-    togglePanel 
+    setEditorHeight,
+    togglePanel,
+    addQueryHistory,
+    queryHistory,
+    clearQueryHistory,
+    setActiveConnectionDatabase,
+    updateExplorerTab,
   } = useAppStore()
+  const queryClient = useQueryClient()
+
+  const refreshSchemaMetadata = useCallback((connectionId: string) => {
+    schemaService.clearMetadataCache(connectionId).catch(() => undefined)
+    queryClient.invalidateQueries({
+      predicate: (q) =>
+        Array.isArray(q.queryKey) && q.queryKey.includes(connectionId),
+    })
+    for (const [id, tab] of Object.entries(useAppStore.getState().explorerTabs)) {
+      if (tab.connectionId === connectionId) {
+        updateExplorerTab(id, {
+          executionStatus: ExecutionStatus.IDLE,
+          socketResults: null,
+        })
+      }
+    }
+  }, [queryClient, updateExplorerTab])
   
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
-  const socketRef = useRef<Socket | null>(null)
+  
+  const { data: connections = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => connectionService.getAll(),
+  })
   
   const [showContextMenu, setShowContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
@@ -33,6 +216,16 @@ export function useQueryEditor() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevRect, setPrevRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
+  const [pendingEdit, setPendingEdit] = useState<{ rowIndex: number; column: string; prevValue: DbValue; nextValue: DbValue } | null>(null)
+  const [isInteracting, setIsInteracting] = useState(false)
+  const lastExecutedSqlRef = useRef('')
+  const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
+  const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
+  const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({ isOpen: false, sql: '' })
+  const [queryLimit, setQueryLimit] = useState<number>(100)
+  const [safeDeleteSuggestion, setSafeDeleteSuggestion] = useState<string | null>(null)
+  const [sqlFixSuggestion, setSqlFixSuggestion] = useState<SqlFixResult | null>(null)
+  const [sqlFixLoading, setSqlFixLoading] = useState(false)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -41,6 +234,7 @@ export function useQueryEditor() {
     const handleMouseMove = (e: MouseEvent) => {
       const dragging = draggingRef.current
       if (dragging) {
+        setIsInteracting(true)
         const deltaX = ((e.clientX - dragging.startX) / window.innerWidth) * 100
         const deltaY = ((e.clientY - dragging.startY) / window.innerHeight) * 100
         setModalRect(prev => ({
@@ -51,6 +245,7 @@ export function useQueryEditor() {
       }
       const resizing = resizingRef.current
       if (resizing) {
+        setIsInteracting(true)
         const deltaX = ((e.clientX - resizing.startX) / window.innerWidth) * 100
         const deltaY = ((e.clientY - resizing.startY) / window.innerHeight) * 100
         setModalRect(prev => ({
@@ -63,6 +258,7 @@ export function useQueryEditor() {
     const handleMouseUp = () => {
       draggingRef.current = null
       resizingRef.current = null
+      setIsInteracting(false)
     }
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
@@ -72,195 +268,406 @@ export function useQueryEditor() {
     }
   }, [])
 
-  useEffect(() => {
-    const socket = io(getApiUrl('/queries'))
-    socketRef.current = socket
+  const editorRef = useRef<EditorView | null>(null)
 
-    socket.on('query-progress', (data: { tabId: string; status: string; message: string; isSilent?: boolean }) => {
-      updateTabResults(data.tabId, { status: 'executing' })
-    })
+  const checkDangerousQuery = useCallback((sql: string, isMongo: boolean, connection?: Connection | null): boolean => {
+    if (isMongo) {
+      const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
+      if (!isProduction) return false;
 
-    socket.on('query-result', (data: { 
-      tabId: string, 
-      columns: string[], 
-      rows: DbRow[], 
-      executionTime: number, 
-      isSilent?: boolean,
-      page?: number,
-      pageSize?: number,
-      hasMore?: boolean
-    }) => {
-      const { tabId, columns, rows, executionTime, isSilent, page, pageSize, hasMore } = data
-      if (isSilent) {
-        updateTabResults(tabId, { status: 'success', error: null })
-        return
+      // MongoDB destructive operations regex
+      const destructive = /\.\s*(updateMany|updateOne|deleteMany|deleteOne|findOneAndDelete|findOneAndUpdate|replaceOne|drop|remove|bulkWrite|insertMany|insertOne|save)\s*\(/i;
+      if (destructive.test(sql)) {
+        return !window.confirm(
+          'Warning: This MongoDB operation modifies data on a PRODUCTION database.\n' +
+          'Are you sure you want to proceed?'
+        );
       }
-
-      // We use a functional update to get the latest state and append rows if needed
-      useAppStore.setState((state) => {
-        const tab = state.tabs.find(t => t.id === tabId);
-        if (!tab) return state;
-
-        const isContinuation = tab.results && tab.status === 'executing' && tab.results.page !== undefined && page !== undefined && page > 1;
-        const newRows = isContinuation ? [...(tab.results?.rows || []), ...rows] : rows;
-
-        return {
-          tabs: state.tabs.map(t => t.id === tabId ? {
-            ...t,
-            status: hasMore ? 'executing' : 'success',
-            results: { columns, rows: newRows, executionTime, page, pageSize, hasMore },
-            error: null
-          } : t)
-        }
-      });
-    })
-
-    socket.on('query-error', (data: { tabId: string, message: string, isSilent?: boolean }) => {
-      const { tabId, message, isSilent } = data
-      if (isSilent) {
-        updateTabResults(tabId, { status: 'error', error: message })
-        return
-      }
-      updateTabResults(tabId, {
-        status: 'error',
-        error: message,
-        results: null
-      })
-    })
-
-    return () => {
-      socket.disconnect()
+      return false;
     }
-  }, [updateTabResults])
 
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
-
-  const checkDangerousQuery = useCallback((sql: string): boolean => {
+    // SQL danger check
     const upperSql = sql.toUpperCase()
     const hasUpdate = upperSql.includes('UPDATE')
     const hasDelete = upperSql.includes('DELETE')
     const hasWhere = upperSql.includes('WHERE')
+    const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
 
+    // In production, ANY UPDATE/DELETE requires confirmation
+    if (isProduction && (hasUpdate || hasDelete)) {
+      return !window.confirm(
+        'Warning: This query modifies data on a PRODUCTION database.\n' +
+        'Are you sure you want to proceed?'
+      )
+    }
+
+    // For any environment, UPDATE/DELETE without WHERE clause requires confirmation
     if ((hasUpdate || hasDelete) && !hasWhere) {
       return !window.confirm('Warning: This query contains an UPDATE or DELETE statement without a WHERE clause. Are you sure you want to proceed?')
     }
+
     return false
   }, [])
 
-  const handleExecuteAll = useCallback(async (page: number = 1) => {
-    if (activeTab?.query && activeConnection) {
-      if (checkDangerousQuery(activeTab.query)) return
+  const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
-      const sql = activeTab.query.trim().endsWith(';') ? activeTab.query.trim() : `${activeTab.query.trim()};`
-      
-      const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
-      const limitMatch = sql.match(/\bLIMIT\b\s+(\d+)/i);
-      const limit = limitMatch ? parseInt(limitMatch[1], 10) : 0;
-      
-      // A query is "large" if it's a SELECT with a limit > 10000 or no limit (which we default to 1000, so it's simple)
-      // Actually, if it has NO limit, we add 1000, so it's simple.
-      // If it has a limit > 10000, we consider it large and use WebSocket streaming.
-      const isLarge = isSelect && limit > 10000;
-
-      updateTabResults(activeTab.id, { status: 'executing', error: null, results: page === 1 ? null : activeTab.results })
-
-      if (isLarge && socketRef.current) {
-        socketRef.current.emit('execute-query', {
-          connectionId: activeConnection.id,
-          dto: { sql, page, pageSize: 1000 },
-          tabId: activeTab.id
-        })
-      } else {
-        try {
-          const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
-          updateTabResults(activeTab.id, {
-            status: 'success',
-            results: result,
-            error: null
-          })
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          updateTabResults(activeTab.id, {
-            status: 'error',
-            error: message
-          })
-        }
-      }
+  const fetchSqlFix = useCallback(async (connectionId: string, sql: string, errorMessage: string) => {
+    setSqlFixLoading(true)
+    setSqlFixSuggestion(null)
+    try {
+      const res = await assistantService.fixSql(connectionId, sql, errorMessage)
+      setSqlFixSuggestion(res)
+    } catch {
+      // silent — the suggestion is optional
+    } finally {
+      setSqlFixLoading(false)
     }
-  }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
+  }, [])
 
-  const handleExecuteCurrent = useCallback(async (page = 1) => {
-    if (!editorRef.current || !activeTab || !activeConnection) return
-
-    const position = editorRef.current.getPosition()
-    if (!position) return
-
-    const fullText = editorRef.current.getValue()
-    const selection = editorRef.current.getSelection()
-    let sql = ''
-    
-    if (selection && !selection.isEmpty()) {
-      sql = editorRef.current.getModel()?.getValueInRange(selection) || ''
-    } else {
-      // Improved logic: Find the SQL block bounded by semicolons or file start/end
-      const lines = fullText.split('\n')
-      const cursorLine = position.lineNumber - 1
-      
-      let startIdx = 0
-      for (let i = cursorLine; i >= 0; i--) {
-        if (lines[i].includes(';') && i < cursorLine) {
-          startIdx = i + 1
-          break
-        }
-      }
-      
-      let endIdx = lines.length - 1
-      for (let i = cursorLine; i < lines.length; i++) {
-        if (lines[i].includes(';')) {
-          endIdx = i
-          break
-        }
-      }
-      
-      sql = lines.slice(startIdx, endIdx + 1).join('\n').trim()
-    }
-
-    if (!sql) return
-    if (checkDangerousQuery(sql)) return
-    if (!sql.endsWith(';')) sql += ';'
-
-    const isSelect = /^\s*(SELECT|WITH)\b/i.test(sql);
-    const limitMatch = sql.match(/\bLIMIT\b\s+(\d+)/i);
-    const limit = limitMatch ? parseInt(limitMatch[1], 10) : 0;
-    const isLarge = isSelect && limit > 10000;
-    
-    updateTabResults(activeTab.id, { status: 'executing', error: null, results: page === 1 ? null : activeTab.results })
-    
-    if (isLarge && socketRef.current) {
-      socketRef.current.emit('execute-query', {
-        connectionId: activeConnection.id,
-        dto: { sql, page, pageSize: 1000 },
-        tabId: activeTab.id
+  const handleExecuteAll = useCallback(async (page: number = 1, limit?: number, overrideSql?: string) => {
+    const raw = overrideSql?.trim() ?? activeTab?.query
+    if (!raw) return
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) {
+      setSafeDeleteSuggestion(null)
+      setSqlFixSuggestion(null)
+      setSqlFixLoading(false)
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'No connection selected. Select a connection in the toolbar to execute this query.',
       })
-    } else {
+      return
+    }
+    setSafeDeleteSuggestion(null)
+    setSqlFixSuggestion(null)
+    const isMongo = targetConnection.type === DatabaseType.MONGODB;
+    if (checkDangerousQuery(raw, isMongo, targetConnection)) return
+
+      const effectiveLimit = limit ?? queryLimit;
+      let sql = raw;
+
+      if (isMongo) {
+        sql = buildMongoJsonQuery(sql, activeTab.mongoFilter, activeTab.editorMode);
+      } else {
+        const isSelect = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CALL)\b/i.test(sql);
+        if (page > 1 && !isSelect) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Pagination is only supported for SELECT queries.',
+          });
+          return;
+        }
+        if (isSelect && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
+          const offset = (page - 1) * effectiveLimit;
+          const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
+          if (sql.endsWith(';')) {
+            sql = sql.slice(0, -1).trim() + limitStr + ';';
+          } else {
+            sql += limitStr;
+          }
+        }
+      }
+      if (!isMongo) sql = sql.endsWith(';') ? sql : `${sql};`;
+      lastExecutedSqlRef.current = sql;
+
+      updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
+
+      const startTime = Date.now();
       try {
-        const result = await queryService.execute(activeConnection.id, sql, activeConnection.database, undefined, page, 1000);
+        // Use the connection's database/schema, falling back to the active connection's
+        // selected schema (important for PostgreSQL where the schema is set in the sidebar).
+        const schema = targetConnection.database || activeConnection?.database;
+        
+        let result;
+        try {
+          result = await queryService.execute(targetConnection.id, sql, schema, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
+        } catch (err: unknown) {
+          const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+          if (isConnNotFound) {
+            await connectionService.reconnect(targetConnection.id);
+            result = await queryService.execute(targetConnection.id, sql, schema, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
+          } else {
+            throw err;
+          }
+        }
+
+        result.page = page;
+        result.hasMore = effectiveLimit > 0 && result.rows.length >= effectiveLimit;
+        const durationMs = Date.now() - startTime;
         updateTabResults(activeTab.id, {
-          status: 'success',
+          status: ExecutionStatus.SUCCESS,
           results: result,
           error: null
-        })
+        });
+        toast.success(`Query returned successfully in ${durationMs} ms`);
+
+        // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
+        if (!isMongo && isSchemaChangingQuery(sql)) {
+          refreshSchemaMetadata(targetConnection.id);
+        }
+
+        // Handle MongoDB use <db> â€” update connection's active database
+        if (isMongo) {
+          const useMatch = raw.match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
+          if (useMatch) {
+            setActiveConnectionDatabase(useMatch[1]);
+          }
+        }
+
+        const qHash = hashQuery(sql);
+        const isFirstTime = isQueryFirstTime(qHash);
+        const xpEarned = calculateQueryXp(sql, isFirstTime);
+        addXP(xpEarned);
+        if (isFirstTime) markQueryExecuted(qHash);
+        trackAction('EXECUTE_QUERY');
+        const histEntry: QueryHistoryEntry = {
+          id: Math.random().toString(36).substring(2),
+          query: raw,
+          connectionId: targetConnection.id,
+          executedAt: Date.now(),
+          durationMs,
+          status: 'success',
+          rowCount: result.rows.length,
+        };
+        addQueryHistory(histEntry);
+        schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
+        usePerformanceStore.getState().addRecord({
+          id: histEntry.id,
+          connectionId: targetConnection.id,
+          sql: raw,
+          durationMs,
+          rowsReturned: result.rows.length,
+          executedAt: Date.now(),
+        });
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message = error instanceof Error ? error.message : String(error);
+        const durationMs = Date.now() - startTime;
         updateTabResults(activeTab.id, {
-          status: 'error',
+          status: ExecutionStatus.ERROR,
           error: message
-        })
+        });
+        const histEntry: QueryHistoryEntry = {
+          id: Math.random().toString(36).substring(2),
+          query: raw,
+          connectionId: targetConnection.id,
+          executedAt: Date.now(),
+          durationMs,
+          status: 'error',
+          error: message,
+        };
+        addQueryHistory(histEntry);
+        schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
+
+        // Auto-detect FK violation and generate safe delete suggestion
+        if (isFKViolation(message) && targetConnection) {
+          const table = extractTableFromQuery(raw)
+          if (table) {
+            try {
+              const safeSql = await schemaService.generateSafeDeleteSql(
+                targetConnection.id,
+                table,
+                targetConnection.database,
+              )
+              setSafeDeleteSuggestion(safeSql)
+            } catch {
+              // silent — suggestion is optional
+            }
+          }
+        }
+
+        // Auto-detect SQL syntax errors and ask the assistant for a corrected query
+        if (isSqlSyntaxError(message) && targetConnection) {
+          fetchSqlFix(targetConnection.id, sql, message)
+        }
+      }
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
+
+  // Run a query requested from the assistant into the active editor tab.
+  useEffect(() => {
+    return onRunQueryRequested((sql) => {
+      const tabId = useAppStore.getState().activeTabId
+      if (!tabId) return
+      updateTabQuery(tabId, sql)
+      handleExecuteAll(1, undefined, sql)
+    })
+  }, [handleExecuteAll, updateTabQuery])
+
+  const handleExecuteCurrent = useCallback(async (page = 1) => {
+    const view = editorRef.current
+    if (!view || !activeTab) return
+    setSafeDeleteSuggestion(null)
+    setSqlFixSuggestion(null)
+    setSqlFixLoading(false)
+
+    const fullText = view.state.doc.toString()
+    const mainSel = view.state.selection.main
+    const cursorPos = mainSel.head
+    let sqlSnippet: string
+
+    if (!mainSel.empty) {
+      sqlSnippet = view.state.sliceDoc(mainSel.from, mainSel.to)
+    } else {
+      const activeLine = view.state.doc.lineAt(cursorPos)
+      const lineText = activeLine.text.trim()
+      const lineSemicolonIndex = lineText.indexOf(';')
+
+      if (lineSemicolonIndex >= 0) {
+        sqlSnippet = lineText.slice(0, lineSemicolonIndex + 1).trim()
+      } else {
+        // Execute the statement at the cursor: the text bounded by the previous ';'
+        // (or start of file) and the next ';' at/after the cursor (or end of file).
+        let start = 0
+        for (let i = cursorPos - 1; i >= 0; i--) {
+          if (fullText[i] === ';') {
+            start = i + 1
+            break
+          }
+        }
+
+        let end = fullText.length - 1
+        for (let i = cursorPos; i < fullText.length; i++) {
+          if (fullText[i] === ';') {
+            end = i
+            break
+          }
+        }
+
+        sqlSnippet = fullText.slice(start, end + 1).trim()
+
+        // Cursor over blank whitespace (e.g. right after a trailing ';'): fall
+        // back to the preceding statement so Ctrl+Enter still runs the finished query.
+        if (!sqlSnippet) {
+          start = fullText.lastIndexOf(';', Math.max(0, start - 2)) + 1
+          sqlSnippet = fullText.slice(start, end + 1).trim()
+        }
       }
     }
-  }, [activeTab, activeConnection, updateTabResults, checkDangerousQuery])
 
-  // Use refs to avoid stale closures in Monaco addCommand
+    if (!sqlSnippet) return
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'No connection selected. Select a connection in the toolbar to execute this query.',
+      })
+      return
+    }
+
+    const isMongo = targetConnection.type === 'mongodb';
+    if (checkDangerousQuery(sqlSnippet, isMongo, targetConnection)) return
+
+    sqlSnippet = sqlSnippet.trim();
+    if (isMongo) {
+      sqlSnippet = buildMongoJsonQuery(sqlSnippet, activeTab.mongoFilter, activeTab.editorMode);
+    } else {
+      const isSelect = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CALL)\b/i.test(sqlSnippet);
+      if (page > 1 && !isSelect) {
+        updateTabResults(activeTab.id, {
+          status: ExecutionStatus.ERROR,
+          error: 'Pagination is only supported for SELECT queries.',
+        });
+        return;
+      }
+      if (isSelect && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
+        const offset = (page - 1) * queryLimit;
+        const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
+        if (sqlSnippet.endsWith(';')) {
+          sqlSnippet = sqlSnippet.slice(0, -1).trim() + limitStr + ';';
+        } else {
+          sqlSnippet += limitStr;
+        }
+      }
+    }
+    if (!isMongo && !sqlSnippet.endsWith(';')) sqlSnippet += ';'
+    lastExecutedSqlRef.current = sqlSnippet;
+
+    updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
+    const startTime = Date.now();
+    
+    try {
+      const schema = targetConnection.database || activeConnection?.database;
+      
+      let result;
+      try {
+        result = await queryService.execute(targetConnection.id, sqlSnippet, schema, undefined, page, queryLimit > 0 ? queryLimit : undefined);
+      } catch (err: unknown) {
+        const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+        if (isConnNotFound) {
+          await connectionService.reconnect(targetConnection.id);
+          result = await queryService.execute(targetConnection.id, sqlSnippet, schema, undefined, page, queryLimit > 0 ? queryLimit : undefined);
+        } else {
+          throw err;
+        }
+      }
+
+      result.page = page;
+      result.hasMore = queryLimit > 0 && result.rows.length >= queryLimit;
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.SUCCESS,
+        results: result,
+        error: null
+      })
+      const durationMs = Date.now() - startTime;
+      toast.success(`Query returned successfully in ${durationMs} ms`);
+
+      // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
+      if (!isMongo && isSchemaChangingQuery(sqlSnippet)) {
+        refreshSchemaMetadata(targetConnection.id);
+      }
+
+      // Handle MongoDB use <db> â€” update connection's active database
+      if (isMongo) {
+        const useMatch = (activeTab?.query ?? sqlSnippet).trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
+        if (useMatch) {
+          setActiveConnectionDatabase(useMatch[1]);
+        }
+      }
+
+      const qHash = hashQuery(sqlSnippet);
+      const isFirstTime = isQueryFirstTime(qHash);
+      const xpEarned = calculateQueryXp(sqlSnippet, isFirstTime);
+      addXP(xpEarned);
+      if (isFirstTime) markQueryExecuted(qHash);
+      trackAction('EXECUTE_QUERY');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: message
+      })
+
+      // Auto-detect FK violation and generate safe delete suggestion
+      if (isFKViolation(message) && targetConnection) {
+        const table = extractTableFromQuery(sqlSnippet)
+        if (table) {
+          try {
+            const safeSql = await schemaService.generateSafeDeleteSql(
+              targetConnection.id,
+              table,
+              targetConnection.database,
+            )
+            setSafeDeleteSuggestion(safeSql)
+          } catch {
+            // silent — suggestion is optional
+          }
+        }
+      }
+
+      // Auto-detect SQL syntax errors and ask the assistant for a corrected query
+      if (isSqlSyntaxError(message) && targetConnection) {
+        fetchSqlFix(targetConnection.id, sqlSnippet, message)
+      }
+    }
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
+
+  // Use refs to avoid stale closures in editor keybindings
   const executeCurrentRef = useRef(handleExecuteCurrent)
   const executeAllRef = useRef(handleExecuteAll)
   
@@ -269,133 +676,292 @@ export function useQueryEditor() {
     executeAllRef.current = handleExecuteAll
   }, [handleExecuteCurrent, handleExecuteAll])
 
-  const handleCancel = () => {
-    if (activeTabId && socketRef.current && activeConnection) {
+  const handleCancel = useCallback(() => {
+    if (activeTabId) {
+      const tab = tabs.find(t => t.id === activeTabId);
+      const connId = tab?.connectionId || activeConnection?.id;
+      if (!connId) return;
       updateTabResults(activeTabId, { 
-        status: 'error', 
+        status: ExecutionStatus.ERROR, 
         error: 'Query cancelled by user',
         results: null 
       })
-      socketRef.current.emit('cancel-query', { 
-        tabId: activeTabId,
-        connectionId: activeConnection.id 
-      })
+      queryService.cancel(connId)
     }
-  }
+  }, [activeTabId, tabs, activeConnection, updateTabResults])
 
-  const handleSave = useCallback(() => {
-    if (!editingCell || !activeTab?.results || !activeConnection || !socketRef.current) return
+  const updateCell = useCallback(async (rowIndex: number, column: string, newValue: DbValue, isUndoRedo: boolean = false) => {
+    if (!activeTab?.results) return
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return
 
-    const { rowIndex, column, value: newValue } = editingCell
+    if (targetConnection.environment === Environment.PRODUCTION && !isUndoRedo) {
+      toast(
+        'Editing production data â€” changes are inside an open transaction. Use Commit to persist or Rollback to discard.',
+        { icon: 'âš ï¸', duration: 5000 },
+      );
+    }
+
     const row = activeTab.results.rows[rowIndex]
-    const idColumn = activeTab.results.columns.find(c => c.toLowerCase() === 'id')
-    const idValue = idColumn ? row[idColumn] : null
+    const prevValue = row[column]
+    
+    // Use primary_keys metadata from backend if available, fallback to 'id'
+    const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0 
+      ? activeTab.results.primary_keys 
+      : activeTab.results.columns.filter(c => c.toLowerCase() === 'id')
 
-    const tableNameMatch = activeTab.query.match(/FROM\s+([a-zA-Z0-9_\.`"\[\]]+)/i)
-    const tableName = tableNameMatch ? tableNameMatch[1].replace(/[`"\[\]]/g, '') : null
-
-    if (!tableName || !idColumn || idValue === undefined || idValue === null) {
+    if (pkColumns.length === 0) {
       updateTabResults(activeTab.id, { 
-        status: 'error', 
-        error: `Cannot update: ${!tableName ? 'Table not found' : 'ID column not found/null'}.` 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Primary key (or ID column) not found in result set.' 
       })
       setEditingCell(null)
       return
     }
 
-    const updateSql = `UPDATE ${tableName} SET ${column} = ? WHERE ${idColumn} = ?;`
+    const tableNameMatch = (lastExecutedSqlRef.current || activeTab.query).match(TABLE_NAME_REGEX)
+    let tableName = tableNameMatch ? tableNameMatch[1] : null
+
+    if (!tableName) {
+      updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Table name not found in query.' 
+      })
+      setEditingCell(null)
+      return
+    }
+
+    // Ensure tableName is escaped properly if it isn't
+    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
+        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
+    }
+
+    // Build WHERE clause using all PK columns
+    const whereClauses = pkColumns.map((pk: string) => `\`${pk.replace(/`/g, "``")}\` = ?`).join(' AND ')
+    const pkValues = pkColumns.map((pk: string) => row[pk])
+
+    if (pkValues.some((v: DbValue) => v === null || v === undefined)) {
+       updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Primary key value is null or undefined.' 
+      })
+      setEditingCell(null)
+      return
+    }
+
+    const updateSqlTemplate = `UPDATE ${tableName} SET \`${column.replace(/`/g, "``")}\` = ? WHERE ${whereClauses};`
+    const params = [newValue, ...pkValues]
+
+    const finalSql = updateSqlTemplate.replace(/\?/g, () => {
+      const val = params.shift();
+      if (val === null || val === undefined) return 'NULL';
+      if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+      return String(val);
+    });
 
     const updatedRows = [...activeTab.results.rows]
     updatedRows[rowIndex] = { ...updatedRows[rowIndex], [column]: newValue }
     
     updateTabResults(activeTab.id, { 
       results: { ...activeTab.results, rows: updatedRows },
-      status: 'executing',
+      status: ExecutionStatus.EXECUTING,
       error: null
     })
 
-    socketRef.current.emit('execute-query', {
-      connectionId: activeConnection.id,
-      dto: { sql: updateSql, params: [newValue, idValue] },
-      tabId: activeTab.id,
-      isSilent: true
-    })
+    try {
+        const schema = targetConnection.database || activeConnection?.database;
+
+        const runUpdate = async () => {
+            await tauriApi.invoke('execute_query', {
+                id: targetConnection.id,
+                query: finalSql,
+                ...(schema ? { schema } : {})
+            });
+        };
+
+        try {
+            await runUpdate();
+        } catch (err: unknown) {
+            const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+            if (isConnNotFound) {
+                await connectionService.reconnect(targetConnection.id);
+                await runUpdate();
+            } else {
+                throw err;
+            }
+        }
+        
+        updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
+        addXP(10); // Base XP for edit
+        trackAction('EDIT_ROW');
+        
+        if (!isUndoRedo) {
+          setTabHistory(prev => {
+            const state = prev[activeTab.id] || { history: [], historyIndex: -1 }
+            const newHistory = state.history.slice(0, state.historyIndex + 1)
+            newHistory.push({ rowIndex, col: column, prev: prevValue, next: newValue })
+            return { ...prev, [activeTab.id]: { history: newHistory, historyIndex: newHistory.length - 1 } }
+          })
+        }
+    } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to update record'
+        updateTabResults(activeTab.id, { 
+            status: ExecutionStatus.ERROR, 
+            error: errorMessage 
+        })
+        // Revert local state on error
+        updateTabResults(activeTab.id, { 
+          results: { ...activeTab.results, rows: activeTab.results.rows },
+        })
+    }
     
     setEditingCell(null)
-  }, [editingCell, activeTab, activeConnection, updateTabResults])
+  }, [activeTab, activeConnection, connections, updateTabResults, addXP, trackAction])
 
-  const handleEditorWillMount = useCallback((monacoInstance: Monaco) => {
-    const languages = monacoInstance.languages as typeof monacoInstance.languages & { sqlProviderRegistered?: boolean };
-    if (languages.sqlProviderRegistered) return;
-    languages.sqlProviderRegistered = true;
+  const handleSave = useCallback(async () => {
+    if (!editingCell) return
+    // When the Review Change panel is disabled (Settings â†’ Query Editor â†’
+    // Inline edition), apply the edit immediately.
+    if (!useAppStore.getState().inlineEditReview) {
+      await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
+      return
+    }
+    // Stage the edit so the user can review the diff before committing.
+    const row = activeTab?.results?.rows[editingCell.rowIndex]
+    const prevValue = row ? row[editingCell.column] : null
+    setPendingEdit({
+      rowIndex: editingCell.rowIndex,
+      column: editingCell.column,
+      prevValue,
+      nextValue: editingCell.value,
+    })
+    setEditingCell(null)
+  }, [editingCell, updateCell, activeTab])
 
-    monacoInstance.languages.registerCompletionItemProvider('sql', {
-      provideCompletionItems: (model: monaco.editor.ITextModel, position: monaco.Position) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-        const suggestions: monaco.languages.CompletionItem[] = [
-          {
-            label: 'SELECT',
-            kind: 17, // CompletionItemKind.Snippet
-            insertText: 'SELECT * FROM ${1:table_name} WHERE ${2:condition};',
-            insertTextRules: 4, // CompletionItemInsertTextRule.InsertAsSnippet
-            documentation: 'Basic SELECT statement',
-            range: range,
-          },
-          {
-            label: 'INSERT',
-            kind: 17,
-            insertText: 'INSERT INTO ${1:table_name} (${2:columns}) VALUES (${3:values});',
-            insertTextRules: 4,
-            documentation: 'Basic INSERT statement',
-            range: range,
-          },
-          {
-            label: 'UPDATE',
-            kind: 17,
-            insertText: 'UPDATE ${1:table_name} SET ${2:column} = ${3:value} WHERE ${4:condition};',
-            insertTextRules: 4,
-            documentation: 'Basic UPDATE statement',
-            range: range,
-          },
-          {
-            label: 'DELETE',
-            kind: 17,
-            insertText: 'DELETE FROM ${1:table_name} WHERE ${2:condition};',
-            insertTextRules: 4,
-            documentation: 'Basic DELETE statement',
-            range: range,
-          },
-        ];
-        return { suggestions };
-      },
-    });
+  const confirmPendingEdit = useCallback(async () => {
+    if (!pendingEdit) return
+    await updateCell(pendingEdit.rowIndex, pendingEdit.column, pendingEdit.nextValue)
+    setPendingEdit(null)
+  }, [pendingEdit, updateCell])
+
+  const discardPendingEdit = useCallback(() => {
+    setPendingEdit(null)
   }, [])
 
-  const handleEditorDidMount = useCallback((editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => {
-    editorRef.current = editorInstance
+  const undo = useCallback(() => {
+    if (!activeTabId) return;
+    const { history, historyIndex } = tabHistory[activeTabId] || { history: [], historyIndex: -1 }
+    if (historyIndex >= 0) {
+      const change = history[historyIndex];
+      updateCell(change.rowIndex, change.col, change.prev, true);
+      setTabHistory(prev => ({
+        ...prev,
+        [activeTabId]: { history, historyIndex: historyIndex - 1 }
+      }))
+    }
+  }, [activeTabId, tabHistory, updateCell]);
+
+  const redo = useCallback(() => {
+    if (!activeTabId) return;
+    const { history, historyIndex } = tabHistory[activeTabId] || { history: [], historyIndex: -1 }
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const change = history[nextIndex];
+      updateCell(change.rowIndex, change.col, change.next, true);
+      setTabHistory(prev => ({
+        ...prev,
+        [activeTabId]: { history, historyIndex: nextIndex }
+      }))
+    }
+  }, [activeTabId, tabHistory, updateCell]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === 'y' || (e.key === 'z' && e.shiftKey))
+      ) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
+  const handleGenerateSql = useCallback(async (action: string) => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return;
+
+    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+    let tableName = tableNameMatch ? tableNameMatch[1] : null
     
-    // Ctrl/Cmd + Enter: Execute Current Statement (or selection)
-    editorInstance.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, () => {
-      executeCurrentRef.current()
-    })
+    if (!tableName) {
+      updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot generate SQL: Table name not found in query.' 
+      })
+      setContextMenuSql(null)
+      return
+    }
 
-    // F5: Execute All (Legacy SQL editor behavior)
-    editorInstance.addCommand(monacoInstance.KeyCode.F5, () => {
-      executeAllRef.current()
-    })
-  }, [])
+    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
+        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
+    }
+
+    const pks = activeTab.results.primary_keys || [];
+    const primary_keys = pks.reduce(
+      (acc, pk) => {
+        if (contextMenuSql.row[pk] !== undefined) acc[pk] = contextMenuSql.row[pk];
+        return acc;
+      },
+      {} as Record<string, DbValue>,
+    );
+
+    try {
+      if (action === 'json') {
+        const jsonStr = JSON.stringify(contextMenuSql.row, null, 2);
+        setSqlModal({ isOpen: true, sql: jsonStr });
+      } else {
+        const sql = await tauriApi.invoke<string>('generate_sql', {
+          id: targetConnection.id,
+          action,
+          context: {
+            table: tableName,
+            primary_keys,
+            data: contextMenuSql.row,
+          },
+        });
+        setSqlModal({ isOpen: true, sql });
+      }
+    } catch (e) {
+      console.error('Failed to generate SQL:', e);
+    } finally {
+      setContextMenuSql(null);
+    }
+  }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults]);
 
   const sortedRows = useMemo(() => {
-    if (!activeTab?.results?.rows) return []
-    if (!sortConfig) return activeTab.results.rows
+    const rows = activeTab?.results?.rows;
+    if (!rows) return []
+    if (!sortConfig) return rows
 
-    return [...activeTab.results.rows].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const aVal = a[sortConfig.key]
       const bVal = b[sortConfig.key]
       if (aVal === null || aVal === undefined) return 1
@@ -425,22 +991,23 @@ export function useQueryEditor() {
     }
   }
 
-  const handleSaveScript = useCallback(() => {
+  const handleSaveScript = useCallback(async () => {
     const state = useAppStore.getState();
     const currentTab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
-    const content = editorRef.current ? editorRef.current.getValue() : currentTab?.query;
     
-    if (content === undefined || content === null) return;
-    
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${currentTab?.name || 'query'}.sql`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    const content = editorRef.current ? editorRef.current.state.doc.toString() : currentTab?.query;
+    if (!content) return;
+
+    try {
+      await tauriApi.invoke('save_file_dialog', {
+        content,
+        defaultFileName: `${currentTab?.name || 'query'}.sql`,
+        filterName: 'SQL Files',
+        filterExt: 'sql',
+      });
+    } catch (e) {
+      console.error('Failed to save script:', e);
+    }
   }, []) // No dependencies
 
   const saveScriptRef = useRef(handleSaveScript)
@@ -458,11 +1025,14 @@ export function useQueryEditor() {
     activeTabId,
     activeTab,
     addTab,
+    openTab,
     removeTab,
     updateTabQuery,
+    updateTabConnection,
     setActiveTabId,
     updateTabResults,
     panels,
+    setEditorHeight,
     togglePanel,
     showContextMenu,
     setShowContextMenu,
@@ -480,16 +1050,38 @@ export function useQueryEditor() {
     toggleMaximize,
     editingCell,
     setEditingCell,
+    pendingEdit,
+    confirmPendingEdit,
+    discardPendingEdit,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,
     handleSave,
     handleSaveScript,
-    handleEditorWillMount,
-    handleEditorDidMount,
+    editorRef,
+    executeCurrentRef,
+    executeAllRef,
     handlePageChange,
     clearTabResults,
+    isInteracting,
     draggingRef,
-    resizingRef
+    resizingRef,
+    contextMenuSql,
+    setContextMenuSql,
+    sqlModal,
+    setSqlModal,
+    handleGenerateSql,
+    updateTabViewState,
+    updateTabMongoFilter,
+    updateTabEditorMode,
+    queryLimit,
+    setQueryLimit,
+    queryHistory,
+    clearQueryHistory,
+    safeDeleteSuggestion,
+    setSafeDeleteSuggestion,
+    sqlFixSuggestion,
+    setSqlFixSuggestion,
+    sqlFixLoading,
   }
 }

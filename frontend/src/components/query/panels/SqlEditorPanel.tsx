@@ -1,67 +1,314 @@
-import { Editor, type Monaco } from '@monaco-editor/react';
-import type * as monaco from 'monaco-editor';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import type { EditorView } from '@codemirror/view';
+import { type Extension, Prec } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
+import { ChevronUp, Terminal, Code2, Sparkles } from 'lucide-react';
+import type { QueryTab, EditorMode, EditorViewState } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { isMongoShellSyntax } from '@/lib/mongoShellParser';
+import { DatabaseType } from '@/types/database';
 import { cn } from '@/lib/utils';
-import type { QueryTab } from '@/store/useAppStore';
+import { MONGO_SHELL_LANGUAGE_ID } from '@/lib/editor/mongoShellLanguage';
+import { SqlCodeEditor } from '@/components/editor/SqlCodeEditor';
 
 interface SqlEditorPanelProps {
   activeTab: QueryTab;
-  isVisible: boolean;
   onToggle: () => void;
   updateTabQuery: (id: string, query: string) => void;
-  handleEditorWillMount: (monacoInstance: Monaco) => void;
-  handleEditorDidMount: (editorInstance: monaco.editor.IStandaloneCodeEditor, monacoInstance: Monaco) => void;
-  connectionName: string;
-  connectionType: string;
+  editorRef: React.MutableRefObject<EditorView | null>;
+  executeCurrent: () => void;
+  executeAll: () => void;
+  connectionName?: string;
+  connectionType?: string;
+  updateTabViewState: (id: string, viewState: EditorViewState | null) => void;
+  updateTabEditorMode: (id: string, mode: EditorMode) => void;
 }
 
 export function SqlEditorPanel({
   activeTab,
-  isVisible,
   onToggle,
   updateTabQuery,
-  handleEditorWillMount,
-  handleEditorDidMount,
+  editorRef,
+  executeCurrent,
+  executeAll,
   connectionName,
   connectionType,
+  updateTabViewState,
+  updateTabEditorMode,
 }: SqlEditorPanelProps) {
+  const isMongo = connectionType === DatabaseType.MONGODB;
+  const localViewRef = useRef<EditorView | null>(null);
+  const prevTabIdRef = useRef<string>(activeTab.id);
+  const viewStatesRef = useRef<Record<string, EditorViewState>>({});
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+
+  // Keep the latest tab id available to event listeners without re-creating them.
+  const activeTabIdRef = useRef<string>(activeTab.id);
+  useEffect(() => {
+    activeTabIdRef.current = activeTab.id;
+  }, [activeTab.id]);
+
+  const storeEditorFontFamily = useAppStore((s) => s.editorFontFamily);
+  const storeEditorFontSize = useAppStore((s) => s.uiFontSize);
+  const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight);
+  const storeEditorTabSize = useAppStore((s) => s.editorTabSize);
+
+  const mode = activeTab.editorMode ?? 'auto';
+
+  // When in 'auto', derive mode from query text; otherwise use the explicit mode
+  const isShellMode = isMongo && (
+    mode === 'mongosh' ? true
+    : mode === 'json' ? false
+    : isMongoShellSyntax(activeTab.query)
+  );
+
+  // Capture the live view state (selection + scroll) keyed by the current tab.
+  const captureState = useCallback((view: EditorView) => {
+    const sel = view.state.selection.main;
+    viewStatesRef.current[activeTabIdRef.current] = {
+      scrollTop: view.scrollDOM.scrollTop,
+      selection: { anchor: sel.anchor, head: sel.head },
+    };
+  }, []);
+
+  const restoreState = useCallback((view: EditorView, vs: EditorViewState) => {
+    if (vs.selection && typeof vs.selection.anchor === 'number' && typeof vs.selection.head === 'number') {
+      view.dispatch({
+        selection: { anchor: vs.selection.anchor, head: vs.selection.head },
+        scrollIntoView: false,
+      });
+    }
+    if (typeof vs.scrollTop === 'number') {
+      const scrollTop = vs.scrollTop;
+      requestAnimationFrame(() => {
+        view.scrollDOM.scrollTop = scrollTop;
+      });
+    }
+  }, []);
+
+  const handleMount = useCallback((view: EditorView) => {
+    localViewRef.current = view;
+    editorRef.current = view;
+
+    requestAnimationFrame(() => {
+      view.focus();
+    });
+
+    const handleEditorPaste = async (event: ClipboardEvent) => {
+      const clipboardText = event.clipboardData?.getData('text/plain');
+      if (clipboardText) {
+        return;
+      }
+
+      if (!window.isSecureContext || !navigator.clipboard?.readText) {
+        return;
+      }
+
+      event.preventDefault();
+      const text = await navigator.clipboard.readText().catch(() => '');
+      if (!text) return;
+
+      const mainSel = view.state.selection.main;
+      view.dispatch({
+        changes: {
+          from: mainSel.from,
+          to: mainSel.to,
+          insert: text,
+        },
+        selection: {
+          anchor: mainSel.from + text.length,
+          head: mainSel.from + text.length,
+        },
+      });
+    };
+
+    const handleEditorWheel = (event: WheelEvent) => {
+      const delta = event.deltaY;
+      if (!delta) return;
+
+      event.preventDefault();
+      view.scrollDOM.scrollTop += delta;
+      captureState(view);
+    };
+
+    const handleEditorKeyUp = () => {
+      const pos = view.state.selection.main.head;
+      const line = view.state.doc.lineAt(pos);
+      setCursorPos({ line: line.number, col: pos - line.from + 1 });
+      captureState(view);
+    };
+
+    view.dom.addEventListener('paste', handleEditorPaste);
+    view.dom.addEventListener('keyup', handleEditorKeyUp);
+    view.dom.addEventListener('click', () => captureState(view));
+    view.scrollDOM.addEventListener('wheel', handleEditorWheel, { passive: false });
+    view.scrollDOM.addEventListener('scroll', () => captureState(view));
+  }, [editorRef, captureState, executeCurrent]);
+
+  // Restore the stored view state once the editor mounts for a given tab.
+  useEffect(() => {
+    const view = localViewRef.current;
+    if (!view) return;
+    const vs = activeTab.editorViewState;
+    if (vs) restoreState(view, vs);
+  }, [activeTab.id, activeTab.editorViewState, restoreState]);
+
+  // Ctrl/Cmd + Enter: Execute Current Statement (or selection). F5: Execute All.
+  const execExtensions: Extension[] = useMemo(() => {
+    return [
+      Prec.highest(keymap.of([
+        {
+          key: 'Mod-Enter',
+          run: () => {
+            executeCurrent();
+            return true;
+          },
+        },
+        {
+          key: 'F5',
+          run: () => {
+            executeAll();
+            return true;
+          },
+        },
+      ])),
+    ];
+  }, [executeCurrent, executeAll]);
+
+  const handleChange = useCallback((val: string) => {
+    updateTabQuery(activeTab.id, val);
+  }, [activeTab.id, updateTabQuery]);
+
+  // Flush the captured view state of the previous tab when switching tabs.
+  useEffect(() => {
+    if (prevTabIdRef.current !== activeTab.id) {
+      const saved = viewStatesRef.current[prevTabIdRef.current];
+      if (saved) updateTabViewState(prevTabIdRef.current, saved);
+      prevTabIdRef.current = activeTab.id;
+    }
+  }, [activeTab.id, updateTabViewState]);
+
+  // Flush the current tab's state on unmount.
+  useEffect(() => {
+    const viewStates = viewStatesRef.current;
+    const tabId = prevTabIdRef.current;
+    return () => {
+      const saved = viewStates[tabId];
+      if (saved) updateTabViewState(tabId, saved);
+    };
+  }, [updateTabViewState]);
+
+  const editorLanguage = isShellMode
+    ? MONGO_SHELL_LANGUAGE_ID
+    : isMongo
+      ? 'json'
+      : 'sql';
+
+  const modeChips = [
+    { id: 'mongosh' as EditorMode, label: 'Shell', icon: Terminal },
+    { id: 'auto' as EditorMode, label: 'Auto', icon: Code2 },
+    { id: 'json' as EditorMode, label: 'JSON', icon: Sparkles },
+  ];
+
   return (
-    <div className={cn("border border-border rounded-none bg-card overflow-hidden flex flex-col transition-all duration-300", isVisible ? "flex-[2] min-h-[150px]" : "h-10 shrink-0")}>
-      <div className="p-2 border-b border-border bg-muted/20 flex justify-between items-center text-left">
-        <div className="flex items-center gap-2">
-          <button onClick={onToggle} className="p-1 hover:bg-muted rounded">
-            {isVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+    <div className="border border-border rounded-none bg-card overflow-hidden flex flex-col flex-1 min-h-0 w-full">
+      {/* Header */}
+      <div className="h-10 px-3 border-b border-border bg-background/80 backdrop-blur flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onToggle} className="p-1 hover:bg-muted rounded shrink-0">
+            <ChevronUp className="w-3.5 h-3.5" />
           </button>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SQL Editor</span>
-          <span className="text-[10px] text-primary/70 font-bold ml-4 border border-primary/20 px-2 py-0.5 rounded bg-primary/5 uppercase">
-            Press Ctrl/Cmd + Enter to run selection/line
+
+          <span className="text-xs font-semibold text-foreground truncate">{activeTab.name || 'Untitled'}</span>
+
+          {isMongo && (
+            <span className="px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              MongoDB
+            </span>
+          )}
+
+          {isMongo && (
+            <div className="flex items-center gap-0.5 ml-1 border border-border rounded-md overflow-hidden">
+              {modeChips.map((chip) => {
+                const isActive = mode === chip.id || (chip.id === 'auto' && mode === 'auto');
+                const activeClass = chip.id === 'mongosh' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : chip.id === 'json' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+                return (
+                  <button
+                    key={chip.id}
+                    onClick={() => updateTabEditorMode(activeTab.id, chip.id)}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-0.5 text-[var(--ch-text-9)] font-bold uppercase tracking-wider transition-colors border-r last:border-r-0 border-border',
+                      isActive ? activeClass : 'text-muted-foreground hover:text-foreground bg-transparent'
+                    )}
+                  >
+                    <chip.icon className="w-2.5 h-2.5" />
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <span className="text-[var(--ch-text-10)] text-muted-foreground/50 ml-1 hidden sm:inline">
+            {isShellMode
+              ? 'db.collection.find({…})'
+              : 'Ctrl/Cmd + Enter'}
           </span>
         </div>
-        <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest px-3 border-l border-border">
-          {connectionName} • {connectionType}
+
+        <div className="flex items-center gap-2 shrink-0">
+          {!isMongo && (
+            <span className="text-[var(--ch-text-10)] text-muted-foreground/50 hidden md:inline">
+              Ctrl/Cmd + Enter
+            </span>
+          )}
+          <span className="text-[var(--ch-text-10)] text-muted-foreground/70 font-mono">
+            {connectionName}
+          </span>
         </div>
       </div>
-      {isVisible && (
-        <div className="flex-1">
-          <Editor
-            height="100%"
-            defaultLanguage="sql"
-            theme="vs-dark"
-            value={activeTab.query}
-            onChange={(val) => updateTabQuery(activeTab.id, val || '')}
-            beforeMount={handleEditorWillMount}
-            onMount={handleEditorDidMount}
-            options={{ 
-              minimap: { enabled: false }, 
-              fontSize: 14, 
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace", 
-              scrollBeyondLastLine: false, 
-              automaticLayout: true, 
-              padding: { top: 16 } 
-            }}
-          />
+
+      {/* Editor */}
+      <div className="flex-1 min-h-0 relative">
+        <SqlCodeEditor
+          value={activeTab.query}
+          language={editorLanguage}
+          onMount={handleMount}
+          onChange={handleChange}
+          extensions={execExtensions}
+          options={{
+            fontSize: storeEditorFontSize,
+            fontFamily: storeEditorFontFamily,
+            lineHeight: storeEditorLineHeight,
+            tabSize: storeEditorTabSize,
+            wordWrap: 'on',
+            paddingTop: 16,
+          }}
+        />
+      </div>
+
+      {/* Status bar */}
+      <div className="h-6 px-3 border-t border-border bg-muted/20 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="text-[var(--ch-text-9)] text-muted-foreground/60 font-mono">
+            Ln {cursorPos.line}, Col {cursorPos.col}
+          </span>
+          <span className="text-[var(--ch-text-9)] text-muted-foreground/40">|</span>
+          <span className="text-[var(--ch-text-9)] text-muted-foreground/60 font-mono">
+            {activeTab.query.length} chars
+          </span>
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <span className={cn(
+            'text-[var(--ch-text-9)] font-mono uppercase tracking-wider',
+            isShellMode ? 'text-emerald-400/70' : isMongo ? 'text-blue-400/70' : 'text-primary/70'
+          )}>
+            {editorLanguage}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

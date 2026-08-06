@@ -37,7 +37,7 @@ export function SchemaSelector() {
 
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-border rounded-md shadow-lg z-50 py-1 max-h-64 overflow-auto">
-          <div className="px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/50 mb-1">
+          <div className="px-2 py-1.5 text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/50 mb-1">
             Available Schemas
           </div>
           {schemas.map((schema) => (

@@ -3,19 +3,20 @@ import { schemaService } from '@/services/schema.service'
 import { useAppStore } from '@/store/useAppStore'
 
 export function useSchemas() {
-  const { activeConnection, setActiveConnection } = useAppStore()
+  const { activeConnection, setActiveConnectionDatabase } = useAppStore()
   const queryClient = useQueryClient()
 
   const { data: schemas, isLoading } = useQuery({
     queryKey: ['schemas', activeConnection?.id],
     queryFn: () => schemaService.getSchemas(activeConnection!.id),
     enabled: !!activeConnection,
+    staleTime: 5 * 60 * 1000,
   })
 
   const switchSchema = useMutation({
     mutationFn: (schema: string) => schemaService.switchSchema(activeConnection!.id, schema),
-    onSuccess: (updatedConnection) => {
-      setActiveConnection(updatedConnection)
+    onSuccess: (_, schema) => {
+      setActiveConnectionDatabase(schema)
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey.includes(activeConnection?.id)
       })
@@ -25,7 +26,7 @@ export function useSchemas() {
   return {
     schemas: schemas || [],
     isLoading,
-    currentSchema: activeConnection?.database || '',
+    currentSchema: activeConnection?.database,
     switchSchema: switchSchema.mutate,
     isSwitching: switchSchema.isPending
   }

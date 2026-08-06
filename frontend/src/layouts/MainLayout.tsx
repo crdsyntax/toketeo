@@ -1,28 +1,125 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutGrid, Terminal, Activity, FileText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Outlet } from 'react-router-dom'
+import { AppHeader } from '@/components/layout/AppHeader'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
+import { ConnectionErrorModal } from '@/components/connections/ConnectionErrorModal'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import type { Connection, CreateConnectionDto } from '@/types/database'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
+import { GamificationModal } from '@/components/gamification/GamificationModal'
+import { useGamificationStore } from '@/store/gamificationStore'
+import { listen } from '@tauri-apps/api/event'
+import { toast } from 'react-hot-toast'
 
 export default function MainLayout() {
-  const location = useLocation()
   const queryClient = useQueryClient()
-  const { activeConnection, setActiveConnection, isSidebarOpen, toggleSidebar } = useAppStore()
+  const { activeConnection, setActiveConnection, isSidebarOpen } = useAppStore()
+  const setConnectedConnection = useAppStore((state) => state.setConnectedConnection)
+  const removeConnectedConnection = useAppStore((state) => state.removeConnectedConnection)
+  const setMiniToast = useAppStore((state) => state.setMiniToast)
+  const setConnectionError = useAppStore((state) => state.setConnectionError)
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
 
+  const checkStreak = useGamificationStore(state => state.checkStreak)
+  
+  useEffect(() => {
+    checkStreak()
+  }, [checkStreak])
+
+  const [connectionErrorModal, setConnectionErrorModal] = useState<{
+    connectionId: string
+    connectionName: string
+    error: string
+  } | null>(null)
+
+  useEffect(() => {
+    const unlisten = listen<{ connection_id: string; error: string }>('connection:error', (event) => {
+      const { connection_id, error } = event.payload
+      setConnectionError(connection_id, error)
+      const conn = connections.find((c) => c.id === connection_id)
+      setConnectionErrorModal({
+        connectionId: connection_id,
+        connectionName: conn?.name || connection_id,
+        error,
+      })
+    })
+    return () => { unlisten.then((f) => f()) }
+  }, [connections, setConnectionError])
+
+  const handleReconnected = useCallback(() => {
+    if (connectionErrorModal) {
+      setConnectionError(connectionErrorModal.connectionId, null)
+    }
+    queryClient.invalidateQueries({ queryKey: ['connections'] })
+  }, [connectionErrorModal, setConnectionError, queryClient])
+
+  const handleDisconnect = async (id: string) => {
+    try {
+      await connectionService.disconnect(id)
+      removeConnectedConnection(id)
+      const { setActiveConnection, removeExplorerTabsForConnection } = useAppStore.getState()
+      removeExplorerTabsForConnection(id)
+      if (activeConnection?.id === id) {
+        setActiveConnection(null)
+      }
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      setMiniToast(id, { type: 'success', text: 'Disconnected' })
+    } catch (error) {
+      console.error('Failed to disconnect:', error)
+      setMiniToast(id, { type: 'error', text: 'Failed to disconnect' })
+    }
+  }
+
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isGamificationModalOpen, setIsGamificationModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [testMessage, setTestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
+  const [isTransacting, setIsTransacting] = useState(false)
+
+  const handleCommit = async () => {
+    if (!activeConnection?.id) return
+    setIsTransacting(true)
+    try {
+      const rowsAffected = await connectionService.commit(activeConnection.id)
+      const msg = rowsAffected > 0
+        ? `Transaction committed — ${rowsAffected} row(s) affected`
+        : 'Transaction committed successfully'
+      setMiniToast('tx', { type: 'success', text: msg })
+      toast.success(msg)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Commit failed'
+      setMiniToast('tx', { type: 'error', text: message })
+      toast.error(`Commit failed: ${message}`)
+    } finally {
+      setIsTransacting(false)
+    }
+  }
+
+  const handleRollback = async () => {
+    if (!activeConnection?.id) return
+    setIsTransacting(true)
+    try {
+      await connectionService.rollback(activeConnection.id)
+      setMiniToast('tx', { type: 'success', text: 'Transaction Rolled Back' })
+      toast.success('Transaction rolled back successfully')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Rollback failed'
+      setMiniToast('tx', { type: 'error', text: message })
+      toast.error(`Rollback failed: ${message}`)
+    } finally {
+      setIsTransacting(false)
+    }
+  }
+
+  const { trackAction, addXP } = useGamificationStore();
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateConnectionDto) => {
@@ -32,6 +129,10 @@ export default function MainLayout() {
       return connectionService.create(payload)
     },
     onSuccess: () => {
+      if (!editingConnection?.id) {
+        addXP(50); // XP for connection
+        trackAction('CREATE_CONNECTION')
+      }
       queryClient.invalidateQueries({ queryKey: ['connections'] })
       setIsModalOpen(false)
       setTestMessage(null)
@@ -42,7 +143,7 @@ export default function MainLayout() {
     setIsTesting(true)
     setTestMessage(null)
     connectionService.test(payload).then(() => {
-      setTestMessage({ type: 'success', text: 'Processing completed successfully' })
+      setTestMessage({ type: 'success', text: 'Connection established successfully' })
     }).catch((err: Error) => {
       setTestMessage({ type: 'error', text: err.message || 'Operation failed' })
     }).finally(() => {
@@ -50,8 +151,17 @@ export default function MainLayout() {
     })
   }
 
-  const handleConnect = (conn: Connection) => {
-    setActiveConnection(conn)
+  const handleConnect = async (conn: Connection) => {
+    try {
+      await connectionService.connect(conn)
+      setActiveConnection({
+        ...conn,
+        database: conn.defaultDatabase || conn.database
+      })
+      setConnectedConnection(conn.id)
+    } catch (error: unknown) {
+      console.error('Failed to connect to database:', error)
+    }
   }
 
   const handleEdit = (conn: Connection) => {
@@ -59,49 +169,14 @@ export default function MainLayout() {
     setIsModalOpen(true)
   }
 
-  const navItems = [
-    { name: 'Explorer', icon: LayoutGrid, path: '/explorer' },
-    { name: 'Query Editor', icon: Terminal, path: '/query' },
-    { name: 'Logs', icon: Activity, path: '/logs' },
-    { name: 'Audit', icon: FileText, path: '/audit' },
-  ]
-
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
-      {/* ... (Error handling) ... */}
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-4">
-          <button onClick={toggleSidebar} className="p-2 hover:bg-muted rounded-md text-muted-foreground">
-            {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-          </button>
-          <div className="flex items-center gap-4">
-            <img 
-              src="./logo.svg" 
-              alt="Toketeo Logo" 
-              className="w-50 h-50 object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]" 
-            />
-          </div>
-          <nav className="flex items-center ml-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 transition-all text-sm font-medium rounded-md",
-                  location.pathname === item.path 
-                    ? "bg-primary/10 text-primary border-b-2 border-primary" 
-                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <item.icon className="w-4 h-4" />
-                <span>{item.name}</span>
-              </Link>
-            ))}
-          </nav>
-        </div>
-        
-        {/* ... (Header Right) ... */}
-      </header>
+      <AppHeader
+        onCommit={handleCommit}
+        onRollback={handleRollback}
+        isTransacting={isTransacting}
+        onOpenGamification={() => setIsGamificationModalOpen(true)}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {isSidebarOpen && (
@@ -111,14 +186,18 @@ export default function MainLayout() {
             onConnect={handleConnect} 
             onEdit={handleEdit}
             onNew={() => { setEditingConnection(null); setIsModalOpen(true); }}
+            onDisconnect={handleDisconnect}
           />
         )}
-        <main className="flex-1 overflow-auto p-2">
-          <Outlet />
+        <main className="flex-1 overflow-auto p-3">
+          <div className="h-full min-w-0 overflow-hidden rounded-lg bg-surface border border-border shadow-sm">
+            <Outlet />
+          </div>
         </main>
       </div>
 
       <ConnectionModal 
+        key={editingConnection?.id || 'new'}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={saveMutation.mutate}
@@ -128,6 +207,21 @@ export default function MainLayout() {
         isTesting={isTesting}
         testMessage={testMessage}
       />
+
+      <GamificationModal 
+        isOpen={isGamificationModalOpen} 
+        onClose={() => setIsGamificationModalOpen(false)} 
+      />
+
+      {connectionErrorModal && (
+        <ConnectionErrorModal
+          connectionId={connectionErrorModal.connectionId}
+          connectionName={connectionErrorModal.connectionName}
+          error={connectionErrorModal.error}
+          onClose={() => setConnectionErrorModal(null)}
+          onReconnected={handleReconnected}
+        />
+      )}
     </div>
   )
 }

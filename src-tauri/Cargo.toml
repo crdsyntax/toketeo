@@ -1,0 +1,69 @@
+[package]
+name = "toketeo"
+version = "0.4.1"
+description = "Toketeo Database Client and Administration Panel"
+authors = ["crdsyntax"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "toketeo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.2", features = ["devtools"] }
+tauri-plugin-shell = "2"
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.43.0", features = ["full"] }
+sqlx = { version = "0.8.3", features = [ "runtime-tokio-rustls", "mysql", "postgres", "sqlite", "chrono", "rust_decimal", "uuid" ] }
+mongodb = "3.2.1"
+fred = "9"
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tokio-util = "0.7"
+url = "2"
+russh = { version = "0.62", default-features = false, features = ["ring", "flate2", "rsa"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-log = "0.2"
+thiserror = "2.0.11"
+chrono = { version = "0.4.39", features = ["serde"] }
+rust_decimal = { version = "1.42.1", features = ["serde"] }
+validator = { version = "0.19.0", features = ["derive"] }
+uuid = { version = "1.13.1", features = ["v4", "serde"] }
+async-trait = "0.1.86"
+futures = "0.3"
+secrecy = { version = "0.10.3", features = ["serde"] }
+zeroize = "1.8.2"
+cron = "0.15"
+regex = "1"
+strsim = "0.11"
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+keyring = { version = "3.6", features = ["windows-native"] }
+base64 = "0.22"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+qrcode = { version = "0.14", features = ["svg"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+sha2 = "0.10"
+raw-window-handle = "0.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Security_Credentials_UI",
+    "Foundation",
+    "implement",
+    "Win32_System_Com",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_StationsAndDesktops",
+] }
