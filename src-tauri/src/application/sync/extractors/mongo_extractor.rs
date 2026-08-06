@@ -1,6 +1,6 @@
+use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 use crate::db::DataReader;
 use crate::error::AppResult;
-use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 
 /// Extractor para MongoDB.
 ///
@@ -35,14 +35,12 @@ impl DataExtractor for MongoExtractor<'_> {
             columns.len(),
             last_key,
         );
-        let mut rows = self.reader
+        let mut rows = self
+            .reader
             .fetch_rows(table, schema, columns, "_id", last_key, batch_size + 1)
             .await?;
 
-        tracing::info!(
-            "[MongoExtractor::extract] fetched {} rows",
-            rows.len(),
-        );
+        tracing::info!("[MongoExtractor::extract] fetched {} rows", rows.len(),);
 
         let has_more = rows.len() > batch_size;
 
@@ -50,10 +48,7 @@ impl DataExtractor for MongoExtractor<'_> {
             rows.truncate(batch_size);
         }
 
-        let next_key = rows
-            .last()
-            .and_then(|r| r.get("_id"))
-            .cloned();
+        let next_key = rows.last().and_then(|r| r.get("_id")).cloned();
 
         Ok(ExtractOutput {
             rows,

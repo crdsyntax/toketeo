@@ -5,8 +5,8 @@ use crate::models::{JobType, ScheduledJob};
 use crate::ssh::KnownHostsStore;
 use crate::storage::Storage;
 use chrono::Utc;
-use std::sync::Arc;
 use std::fs;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -32,11 +32,21 @@ impl ExecutionResult {
 }
 
 fn err(msg: String) -> ExecutionResult {
-    ExecutionResult { success: false, output_dir: None, error: Some(msg), rows_affected: None }
+    ExecutionResult {
+        success: false,
+        output_dir: None,
+        error: Some(msg),
+        rows_affected: None,
+    }
 }
 
 fn ok(dir: String) -> ExecutionResult {
-    ExecutionResult { success: true, output_dir: Some(dir), error: None, rows_affected: None }
+    ExecutionResult {
+        success: true,
+        output_dir: Some(dir),
+        error: None,
+        rows_affected: None,
+    }
 }
 
 fn quote_id(db_type: &DbType, id: &str) -> String {
@@ -52,14 +62,27 @@ fn quote_id(db_type: &DbType, id: &str) -> String {
 fn sql_value(val: &serde_json::Value) -> String {
     match val {
         serde_json::Value::Null => "NULL".into(),
-        serde_json::Value::Bool(b) => if *b { "TRUE".into() } else { "FALSE".into() },
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "TRUE".into()
+            } else {
+                "FALSE".into()
+            }
+        }
         serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''").replace('\\', "\\\\")),
+        serde_json::Value::String(s) => {
+            format!("'{}'", s.replace('\'', "''").replace('\\', "\\\\"))
+        }
         serde_json::Value::Array(a) => {
             let items: Vec<String> = a.iter().map(sql_value).collect();
             format!("ARRAY[{}]", items.join(", "))
         }
-        serde_json::Value::Object(o) => format!("'{}'", serde_json::to_string(o).unwrap_or_default().replace('\'', "''")),
+        serde_json::Value::Object(o) => format!(
+            "'{}'",
+            serde_json::to_string(o)
+                .unwrap_or_default()
+                .replace('\'', "''")
+        ),
     }
 }
 
@@ -181,13 +204,16 @@ pub struct JobAlertPayload {
 }
 
 fn emit_progress(handle: &AppHandle, job: &ScheduledJob, table: &str, index: usize, total: usize) {
-    let _ = handle.emit("scheduler:job-progress", &JobProgressPayload {
-        job_id: job.id.to_string(),
-        job_name: job.name.clone(),
-        current_table: table.to_string(),
-        table_index: index,
-        total_tables: total,
-    });
+    let _ = handle.emit(
+        "scheduler:job-progress",
+        &JobProgressPayload {
+            job_id: job.id.to_string(),
+            job_name: job.name.clone(),
+            current_table: table.to_string(),
+            table_index: index,
+            total_tables: total,
+        },
+    );
 }
 
 fn emit_job_alert(
@@ -198,14 +224,17 @@ fn emit_job_alert(
     retry_count: u32,
     next_retry_secs: Option<u64>,
 ) {
-    let _ = handle.emit("scheduler:job-alert", &JobAlertPayload {
-        job_id: job.id.to_string(),
-        job_name: job.name.clone(),
-        level: level.to_string(),
-        message: message.to_string(),
-        retry_count,
-        next_retry_secs,
-    });
+    let _ = handle.emit(
+        "scheduler:job-alert",
+        &JobAlertPayload {
+            job_id: job.id.to_string(),
+            job_name: job.name.clone(),
+            level: level.to_string(),
+            message: message.to_string(),
+            retry_count,
+            next_retry_secs,
+        },
+    );
 }
 
 fn is_connection_error(msg: &str) -> bool {
@@ -241,20 +270,44 @@ fn retry_delay(attempt: u32) -> std::time::Duration {
 pub struct JobExecutor;
 
 impl JobExecutor {
-    pub async fn execute(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    pub async fn execute(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+        app_handle: &AppHandle,
+        cancel_token: Option<CancellationToken>,
+    ) -> ExecutionResult {
         match job.job_type {
-            JobType::Backup => Self::execute_backup(job, storage, known_hosts, app_handle, cancel_token).await,
-            JobType::Report => Self::execute_report(job, storage, known_hosts, app_handle, cancel_token).await,
-            JobType::CsvExport => Self::execute_csv_export(job, storage, known_hosts, app_handle, cancel_token).await,
+            JobType::Backup => {
+                Self::execute_backup(job, storage, known_hosts, app_handle, cancel_token).await
+            }
+            JobType::Report => {
+                Self::execute_report(job, storage, known_hosts, app_handle, cancel_token).await
+            }
+            JobType::CsvExport => {
+                Self::execute_csv_export(job, storage, known_hosts, app_handle, cancel_token).await
+            }
         }
     }
 
-    async fn build_driver(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>) -> Result<JobOutput, ExecutionResult> {
+    async fn build_driver(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+    ) -> Result<JobOutput, ExecutionResult> {
         let conn_id = job.connection_id.to_string();
-        let mut conn_config = storage.get_connection(&conn_id).await.map_err(|e| err(format!("Failed to get connection: {}", e)))?;
+        let mut conn_config = storage
+            .get_connection(&conn_id)
+            .await
+            .map_err(|e| err(format!("Failed to get connection: {}", e)))?;
 
         // Use database from job config (user selection) if present, fallback to connection default
-        if let Some(db) = job.config.get("database").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(db) = job
+            .config
+            .get("database")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             conn_config.database = Some(db.to_string());
         }
         let db_name = conn_config.database.clone().unwrap_or_default();
@@ -262,16 +315,32 @@ impl JobExecutor {
         // Decrypt SSH credentials if SSH is configured
         if conn_config.ssh_tunnel.is_some() {
             if let Some(key) = storage.get_master_key() {
-                let _ = crate::application::connection_service::ConnectionService::decrypt_connection(&mut conn_config, &key);
+                let _ =
+                    crate::application::connection_service::ConnectionService::decrypt_connection(
+                        &mut conn_config,
+                        &key,
+                    );
             }
         }
 
         // Open SSH tunnel if configured
         let tunnel = if let Some(ref ssh_config) = conn_config.ssh_tunnel {
-            tracing::info!("[scheduler] Opening SSH tunnel to {}:{}", ssh_config.host, ssh_config.port);
+            tracing::info!(
+                "[scheduler] Opening SSH tunnel to {}:{}",
+                ssh_config.host,
+                ssh_config.port
+            );
             let remote_host = conn_config.host.clone();
             let remote_port = conn_config.port;
-            match crate::ssh::SshTunnel::open(ssh_config, &remote_host, remote_port, Some(conn_id), known_hosts.clone()).await {
+            match crate::ssh::SshTunnel::open(
+                ssh_config,
+                &remote_host,
+                remote_port,
+                Some(conn_id),
+                known_hosts.clone(),
+            )
+            .await
+            {
                 Ok(t) => {
                     conn_config.port = t.local_port;
                     Some(t)
@@ -285,13 +354,20 @@ impl JobExecutor {
             None
         };
 
-        let url = ConnectionStringBuilder::build(&conn_config).map_err(|e| err(format!("Failed to build connection string: {}", e)))?;
+        let url = ConnectionStringBuilder::build(&conn_config)
+            .map_err(|e| err(format!("Failed to build connection string: {}", e)))?;
         let db_type = conn_config.db_type.clone();
 
-        let driver = DriverFactory::create(db_type.clone(), &url, false, None).await
+        let driver = DriverFactory::create(db_type.clone(), &url, false, None)
+            .await
             .map_err(|e| err(format!("Failed to connect for backup: {}", e)))?;
 
-        Ok(JobOutput { driver, db_type, db_name, _tunnel: tunnel })
+        Ok(JobOutput {
+            driver,
+            db_type,
+            db_name,
+            _tunnel: tunnel,
+        })
     }
 
     /// Runs `operation` against the current driver. On a connection-related
@@ -326,7 +402,11 @@ impl JobExecutor {
                         app_handle,
                         job,
                         "warning",
-                        &format!("Conexión perdida, reintentando en {}s: {}", delay.as_secs(), e),
+                        &format!(
+                            "Conexión perdida, reintentando en {}s: {}",
+                            delay.as_secs(),
+                            e
+                        ),
                         attempt,
                         Some(delay.as_secs()),
                     );
@@ -342,7 +422,10 @@ impl JobExecutor {
                     }
                     match Self::build_driver(job, storage, known_hosts).await {
                         Ok(rebuilt) => {
-                            tracing::info!("[scheduler] Connection restored, resuming job {}", job.name);
+                            tracing::info!(
+                                "[scheduler] Connection restored, resuming job {}",
+                                job.name
+                            );
                             emit_job_alert(
                                 app_handle,
                                 job,
@@ -354,7 +437,9 @@ impl JobExecutor {
                             output = rebuilt;
                         }
                         Err(e) => {
-                            let msg = e.error.unwrap_or_else(|| "Reconexión fallida, se reintentará".into());
+                            let msg = e
+                                .error
+                                .unwrap_or_else(|| "Reconexión fallida, se reintentará".into());
                             emit_job_alert(app_handle, job, "warning", &msg, attempt, None);
                         }
                     }
@@ -363,11 +448,28 @@ impl JobExecutor {
         }
     }
 
-    async fn execute_backup(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
-        let output_dir = job.config.get("outputDir").and_then(|v| v.as_str()).unwrap_or("/tmp");
-        let filter_tables: Vec<String> = job.config.get("tables").and_then(|v| v.as_array()).map(|a| {
-            a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-        }).unwrap_or_default();
+    async fn execute_backup(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+        app_handle: &AppHandle,
+        cancel_token: Option<CancellationToken>,
+    ) -> ExecutionResult {
+        let output_dir = job
+            .config
+            .get("outputDir")
+            .and_then(|v| v.as_str())
+            .unwrap_or("/tmp");
+        let filter_tables: Vec<String> = job
+            .config
+            .get("tables")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let output = match Self::build_driver(job, storage, known_hosts).await {
             Ok(v) => v,
@@ -380,18 +482,63 @@ impl JobExecutor {
 
         let db_type = output.db_type.clone();
         match db_type {
-            DbType::Mongodb => Self::dump_mongodb(job, storage, known_hosts, output, output_dir, &filter_tables, app_handle, cancel_token).await,
-            _ => Self::dump_sql(job, storage, known_hosts, output, output_dir, &filter_tables, app_handle, cancel_token).await,
+            DbType::Mongodb => {
+                Self::dump_mongodb(
+                    job,
+                    storage,
+                    known_hosts,
+                    output,
+                    output_dir,
+                    &filter_tables,
+                    app_handle,
+                    cancel_token,
+                )
+                .await
+            }
+            _ => {
+                Self::dump_sql(
+                    job,
+                    storage,
+                    known_hosts,
+                    output,
+                    output_dir,
+                    &filter_tables,
+                    app_handle,
+                    cancel_token,
+                )
+                .await
+            }
         }
     }
 
-    async fn dump_sql(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, output: JobOutput, output_dir: &str, filter_tables: &[String], app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn dump_sql(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+        output: JobOutput,
+        output_dir: &str,
+        filter_tables: &[String],
+        app_handle: &AppHandle,
+        cancel_token: Option<CancellationToken>,
+    ) -> ExecutionResult {
         let db_type = output.db_type.clone();
         let db_name = output.db_name.clone();
 
-        let (tables, mut output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
-            driver.fetch_tables(None, None).await.map_err(|e| e.to_string())
-        }).await;
+        let (tables, mut output) = Self::retry_connect(
+            job,
+            storage,
+            known_hosts,
+            app_handle,
+            cancel_token.clone(),
+            output,
+            |driver| async move {
+                driver
+                    .fetch_tables(None, None)
+                    .await
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .await;
         let tables = match tables {
             Ok(t) => t,
             Err(e) => return err(format!("Failed to fetch tables: {}", e)),
@@ -400,7 +547,11 @@ impl JobExecutor {
         let tables: Vec<&str> = if filter_tables.is_empty() {
             tables.iter().map(|s| s.as_str()).collect()
         } else {
-            tables.iter().filter(|t| filter_tables.contains(t)).map(|s| s.as_str()).collect()
+            tables
+                .iter()
+                .filter(|t| filter_tables.contains(t))
+                .map(|s| s.as_str())
+                .collect()
         };
 
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
@@ -416,19 +567,39 @@ impl JobExecutor {
             emit_progress(app_handle, job, table, idx + 1, total);
 
             let mut sql = String::new();
-            sql.push_str(&format!("-- Toketeo native backup\n-- Engine: {:?}\n-- Table: {}\n-- Date: {}\n\n", db_type, table, Utc::now()));
+            sql.push_str(&format!(
+                "-- Toketeo native backup\n-- Engine: {:?}\n-- Table: {}\n-- Date: {}\n\n",
+                db_type,
+                table,
+                Utc::now()
+            ));
 
             let qid = |id: &str| quote_id(&db_type, id);
 
-            let (columns, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
-                driver.fetch_columns(table, None).await.map_err(|e| e.to_string())
-            }).await;
+            let (columns, out) = Self::retry_connect(
+                job,
+                storage,
+                known_hosts,
+                app_handle,
+                cancel_token.clone(),
+                output,
+                |driver| async move {
+                    driver
+                        .fetch_columns(table, None)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+            )
+            .await;
             output = out;
             let columns = match columns {
                 Ok(c) => c,
                 Err(e) => {
                     sql.push_str(&format!("-- Skipping table {}: {}\n\n", table, e));
-                    let filename = format!("{}/backup_{}_{}_{}.sql", output_dir, db_name, table, timestamp);
+                    let filename = format!(
+                        "{}/backup_{}_{}_{}.sql",
+                        output_dir, db_name, table, timestamp
+                    );
                     if let Ok(()) = ensure_parent_dir(&filename) {
                         let _ = fs::write(&filename, &sql);
                     }
@@ -436,77 +607,131 @@ impl JobExecutor {
                 }
             };
 
-            let col_names: Vec<&str> = columns.iter().filter_map(|c| c.get("name").and_then(|v| v.as_str())).collect();
+            let col_names: Vec<&str> = columns
+                .iter()
+                .filter_map(|c| c.get("name").and_then(|v| v.as_str()))
+                .collect();
             if col_names.is_empty() {
                 continue;
             }
 
             sql.push_str(&format!("CREATE TABLE IF NOT EXISTS {} (\n", qid(table)));
-            let col_defs: Vec<String> = columns.iter().filter_map(|col| {
-                let name = col.get("name").and_then(|v| v.as_str())?;
-                let data_type = col.get("type").and_then(|v| v.as_str())?;
-                let nullable = col.get("isNullable").and_then(|v| v.as_bool()).unwrap_or(true);
-                let default = col.get("defaultValue");
+            let col_defs: Vec<String> = columns
+                .iter()
+                .filter_map(|col| {
+                    let name = col.get("name").and_then(|v| v.as_str())?;
+                    let data_type = col.get("type").and_then(|v| v.as_str())?;
+                    let nullable = col
+                        .get("isNullable")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    let default = col.get("defaultValue");
 
-                let mut def = format!("  {}", qid(name));
-                def.push_str(&format!(" {}", map_type(&db_type, data_type)));
-                if !nullable {
-                    def.push_str(" NOT NULL");
-                }
-                if let Some(d) = default {
-                    if !d.is_null() {
-                        if let Some(s) = d.as_str() {
-                            if !s.is_empty() {
-                                def.push_str(&format!(" DEFAULT {}", s));
+                    let mut def = format!("  {}", qid(name));
+                    def.push_str(&format!(" {}", map_type(&db_type, data_type)));
+                    if !nullable {
+                        def.push_str(" NOT NULL");
+                    }
+                    if let Some(d) = default {
+                        if !d.is_null() {
+                            if let Some(s) = d.as_str() {
+                                if !s.is_empty() {
+                                    def.push_str(&format!(" DEFAULT {}", s));
+                                }
                             }
                         }
                     }
-                }
-                Some(def)
-            }).collect();
+                    Some(def)
+                })
+                .collect();
             sql.push_str(&col_defs.join(",\n"));
 
-            let pk_cols: Vec<&str> = columns.iter().filter_map(|c| {
-                if c.get("isPrimaryKey").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    c.get("name").and_then(|v| v.as_str())
-                } else { None }
-            }).collect();
+            let pk_cols: Vec<&str> = columns
+                .iter()
+                .filter_map(|c| {
+                    if c.get("isPrimaryKey")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
+                        c.get("name").and_then(|v| v.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             if !pk_cols.is_empty() {
-                sql.push_str(&format!(",\n  PRIMARY KEY ({})", pk_cols.iter().map(|c| qid(c)).collect::<Vec<_>>().join(", ")));
+                sql.push_str(&format!(
+                    ",\n  PRIMARY KEY ({})",
+                    pk_cols
+                        .iter()
+                        .map(|c| qid(c))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
             }
 
             sql.push_str("\n);\n\n");
 
             let query = format!("SELECT * FROM {}", qid(table));
-            let (rows, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
-                let q = query.clone();
-                move |driver| {
-                    let q = q.clone();
-                    async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
-                }
-            }).await;
+            let (rows, out) = Self::retry_connect(
+                job,
+                storage,
+                known_hosts,
+                app_handle,
+                cancel_token.clone(),
+                output,
+                {
+                    let q = query.clone();
+                    move |driver| {
+                        let q = q.clone();
+                        async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
+                    }
+                },
+            )
+            .await;
             output = out;
             match rows {
                 Ok(result) => {
                     if !result.rows.is_empty() {
                         let qcols: Vec<String> = result.columns.iter().map(|c| qid(c)).collect();
                         for chunk in result.rows.chunks(500) {
-                            let values: Vec<String> = chunk.iter().map(|row| {
-                                let vals: Vec<String> = result.columns.iter().map(|col| {
-                                    sql_value(row.get(col).unwrap_or(&serde_json::Value::Null))
-                                }).collect();
-                                format!("({})", vals.join(", "))
-                            }).collect();
-                            sql.push_str(&format!("INSERT INTO {} ({}) VALUES\n{};\n\n", qid(table), qcols.join(", "), values.join(",\n")));
+                            let values: Vec<String> = chunk
+                                .iter()
+                                .map(|row| {
+                                    let vals: Vec<String> = result
+                                        .columns
+                                        .iter()
+                                        .map(|col| {
+                                            sql_value(
+                                                row.get(col).unwrap_or(&serde_json::Value::Null),
+                                            )
+                                        })
+                                        .collect();
+                                    format!("({})", vals.join(", "))
+                                })
+                                .collect();
+                            sql.push_str(&format!(
+                                "INSERT INTO {} ({}) VALUES\n{};\n\n",
+                                qid(table),
+                                qcols.join(", "),
+                                values.join(",\n")
+                            ));
                         }
                     }
                 }
                 Err(e) => {
-                    sql.push_str(&format!("-- Error reading data for {}: {}\n\n", qid(table), e));
+                    sql.push_str(&format!(
+                        "-- Error reading data for {}: {}\n\n",
+                        qid(table),
+                        e
+                    ));
                 }
             }
 
-            let filename = format!("{}/backup_{}_{}_{}.sql", output_dir, db_name, table, timestamp);
+            let filename = format!(
+                "{}/backup_{}_{}_{}.sql",
+                output_dir, db_name, table, timestamp
+            );
             if let Err(e) = ensure_parent_dir(&filename) {
                 tracing::error!("[scheduler] Failed to create dir for {}: {}", table, e);
                 continue;
@@ -526,12 +751,33 @@ impl JobExecutor {
         ok(output_dir.to_string())
     }
 
-    async fn dump_mongodb(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, output: JobOutput, output_dir: &str, filter_collections: &[String], app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
+    async fn dump_mongodb(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+        output: JobOutput,
+        output_dir: &str,
+        filter_collections: &[String],
+        app_handle: &AppHandle,
+        cancel_token: Option<CancellationToken>,
+    ) -> ExecutionResult {
         let db_name = output.db_name.clone();
 
-        let (collections, mut output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
-            driver.fetch_tables(None, None).await.map_err(|e| e.to_string())
-        }).await;
+        let (collections, mut output) = Self::retry_connect(
+            job,
+            storage,
+            known_hosts,
+            app_handle,
+            cancel_token.clone(),
+            output,
+            |driver| async move {
+                driver
+                    .fetch_tables(None, None)
+                    .await
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .await;
         let collections = match collections {
             Ok(t) => t,
             Err(e) => return err(format!("Failed to fetch collections: {}", e)),
@@ -540,7 +786,11 @@ impl JobExecutor {
         let collections: Vec<&str> = if filter_collections.is_empty() {
             collections.iter().map(|s| s.as_str()).collect()
         } else {
-            collections.iter().filter(|t| filter_collections.contains(t)).map(|s| s.as_str()).collect()
+            collections
+                .iter()
+                .filter(|t| filter_collections.contains(t))
+                .map(|s| s.as_str())
+                .collect()
         };
 
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
@@ -555,33 +805,61 @@ impl JobExecutor {
             }
             emit_progress(app_handle, job, collection, idx + 1, total);
 
-            let query = format!("{{\"collection\":\"{}\",\"find\":{{}},\"limit\":0}}", collection);
-            let (exec, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
-                let q = query.clone();
-                move |driver| {
-                    let q = q.clone();
-                    async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
-                }
-            }).await;
+            let query = format!(
+                "{{\"collection\":\"{}\",\"find\":{{}},\"limit\":0}}",
+                collection
+            );
+            let (exec, out) = Self::retry_connect(
+                job,
+                storage,
+                known_hosts,
+                app_handle,
+                cancel_token.clone(),
+                output,
+                {
+                    let q = query.clone();
+                    move |driver| {
+                        let q = q.clone();
+                        async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
+                    }
+                },
+            )
+            .await;
             output = out;
 
             match exec {
                 Ok(result) => {
-                    let json_array = serde_json::to_string_pretty(&result.rows).unwrap_or_else(|_| "[]".into());
-                    let filename = format!("{}/backup_{}_{}_{}.json", output_dir, db_name, collection, timestamp);
+                    let json_array =
+                        serde_json::to_string_pretty(&result.rows).unwrap_or_else(|_| "[]".into());
+                    let filename = format!(
+                        "{}/backup_{}_{}_{}.json",
+                        output_dir, db_name, collection, timestamp
+                    );
                     if let Err(e) = ensure_parent_dir(&filename) {
-                        tracing::error!("[scheduler] Failed to create dir for {}: {}", collection, e);
+                        tracing::error!(
+                            "[scheduler] Failed to create dir for {}: {}",
+                            collection,
+                            e
+                        );
                         continue;
                     }
                     match fs::write(&filename, &json_array) {
                         Ok(()) => written_files.push(filename),
                         Err(e) => {
-                            tracing::error!("[scheduler] Failed to write backup for {}: {}", collection, e);
+                            tracing::error!(
+                                "[scheduler] Failed to write backup for {}: {}",
+                                collection,
+                                e
+                            );
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("[scheduler] Failed to dump collection {}: {}", collection, e);
+                    tracing::error!(
+                        "[scheduler] Failed to dump collection {}: {}",
+                        collection,
+                        e
+                    );
                 }
             }
         }
@@ -593,11 +871,28 @@ impl JobExecutor {
         ok(output_dir.to_string())
     }
 
-    async fn execute_report(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
-        let output_dir = job.config.get("outputDir").and_then(|v| v.as_str()).unwrap_or("/tmp");
-        let filter_tables: Vec<String> = job.config.get("tables").and_then(|v| v.as_array()).map(|a| {
-            a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-        }).unwrap_or_default();
+    async fn execute_report(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+        app_handle: &AppHandle,
+        cancel_token: Option<CancellationToken>,
+    ) -> ExecutionResult {
+        let output_dir = job
+            .config
+            .get("outputDir")
+            .and_then(|v| v.as_str())
+            .unwrap_or("/tmp");
+        let filter_tables: Vec<String> = job
+            .config
+            .get("tables")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let output = match Self::build_driver(job, storage, known_hosts).await {
             Ok(v) => v,
@@ -620,14 +915,27 @@ impl JobExecutor {
                 }
             }
 
-            let (exec, _output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
-                driver.execute(query).await.map_err(|e| e.to_string())
-            }).await;
+            let (exec, _output) = Self::retry_connect(
+                job,
+                storage,
+                known_hosts,
+                app_handle,
+                cancel_token.clone(),
+                output,
+                |driver| async move { driver.execute(query).await.map_err(|e| e.to_string()) },
+            )
+            .await;
             match exec {
                 Ok(result) => {
-                    let json = serde_json::to_string_pretty(&result.rows).unwrap_or_else(|_| "[]".into());
+                    let json =
+                        serde_json::to_string_pretty(&result.rows).unwrap_or_else(|_| "[]".into());
                     let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-                    let filename = format!("{}/report_{}_{}.json", output_dir, job.name.replace(' ', "_"), timestamp);
+                    let filename = format!(
+                        "{}/report_{}_{}.json",
+                        output_dir,
+                        job.name.replace(' ', "_"),
+                        timestamp
+                    );
                     if let Err(e) = ensure_parent_dir(&filename) {
                         return err(e);
                     }
@@ -644,7 +952,7 @@ impl JobExecutor {
             let mut written_files: Vec<String> = Vec::new();
             let mut output = output;
 
-            for (_idx, table) in filter_tables.iter().enumerate() {
+            for table in filter_tables.iter() {
                 if let Some(ref token) = cancel_token {
                     if token.is_cancelled() {
                         break;
@@ -652,26 +960,50 @@ impl JobExecutor {
                 }
 
                 let query = format!("SELECT * FROM {}", table);
-                let (exec, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
-                    let q = query.clone();
-                    move |driver| {
-                        let q = q.clone();
-                        async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
-                    }
-                }).await;
+                let (exec, out) = Self::retry_connect(
+                    job,
+                    storage,
+                    known_hosts,
+                    app_handle,
+                    cancel_token.clone(),
+                    output,
+                    {
+                        let q = query.clone();
+                        move |driver| {
+                            let q = q.clone();
+                            async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
+                        }
+                    },
+                )
+                .await;
                 output = out;
                 match exec {
                     Ok(result) => {
-                        let json = serde_json::to_string_pretty(&result.rows).unwrap_or_else(|_| "[]".into());
-                        let filename = format!("{}/report_{}_{}_{}.json", output_dir, job.name.replace(' ', "_"), table, timestamp);
+                        let json = serde_json::to_string_pretty(&result.rows)
+                            .unwrap_or_else(|_| "[]".into());
+                        let filename = format!(
+                            "{}/report_{}_{}_{}.json",
+                            output_dir,
+                            job.name.replace(' ', "_"),
+                            table,
+                            timestamp
+                        );
                         if let Err(e) = ensure_parent_dir(&filename) {
-                            tracing::error!("[scheduler] Failed to create dir for report {}: {}", table, e);
+                            tracing::error!(
+                                "[scheduler] Failed to create dir for report {}: {}",
+                                table,
+                                e
+                            );
                             continue;
                         }
                         match fs::write(&filename, &json) {
                             Ok(()) => written_files.push(filename),
                             Err(e) => {
-                                tracing::error!("[scheduler] Failed to write report for {}: {}", table, e);
+                                tracing::error!(
+                                    "[scheduler] Failed to write report for {}: {}",
+                                    table,
+                                    e
+                                );
                             }
                         }
                     }
@@ -689,11 +1021,28 @@ impl JobExecutor {
         }
     }
 
-    async fn execute_csv_export(job: &ScheduledJob, storage: &Storage, known_hosts: &Arc<KnownHostsStore>, app_handle: &AppHandle, cancel_token: Option<CancellationToken>) -> ExecutionResult {
-        let output_dir = job.config.get("outputDir").and_then(|v| v.as_str()).unwrap_or("/tmp");
-        let filter_tables: Vec<String> = job.config.get("tables").and_then(|v| v.as_array()).map(|a| {
-            a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-        }).unwrap_or_default();
+    async fn execute_csv_export(
+        job: &ScheduledJob,
+        storage: &Storage,
+        known_hosts: &Arc<KnownHostsStore>,
+        app_handle: &AppHandle,
+        cancel_token: Option<CancellationToken>,
+    ) -> ExecutionResult {
+        let output_dir = job
+            .config
+            .get("outputDir")
+            .and_then(|v| v.as_str())
+            .unwrap_or("/tmp");
+        let filter_tables: Vec<String> = job
+            .config
+            .get("tables")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let output = match Self::build_driver(job, storage, known_hosts).await {
             Ok(v) => v,
@@ -716,14 +1065,26 @@ impl JobExecutor {
                 }
             }
 
-            let (exec, _output) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, |driver| async move {
-                driver.execute(query).await.map_err(|e| e.to_string())
-            }).await;
+            let (exec, _output) = Self::retry_connect(
+                job,
+                storage,
+                known_hosts,
+                app_handle,
+                cancel_token.clone(),
+                output,
+                |driver| async move { driver.execute(query).await.map_err(|e| e.to_string()) },
+            )
+            .await;
             match exec {
                 Ok(result) => {
                     let csv = Self::build_csv(&result);
                     let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-                    let filename = format!("{}/export_{}_{}.csv", output_dir, job.name.replace(' ', "_"), timestamp);
+                    let filename = format!(
+                        "{}/export_{}_{}.csv",
+                        output_dir,
+                        job.name.replace(' ', "_"),
+                        timestamp
+                    );
                     if let Err(e) = ensure_parent_dir(&filename) {
                         return err(e);
                     }
@@ -740,7 +1101,7 @@ impl JobExecutor {
             let mut written_files: Vec<String> = Vec::new();
             let mut output = output;
 
-            for (_idx, table) in filter_tables.iter().enumerate() {
+            for table in filter_tables.iter() {
                 if let Some(ref token) = cancel_token {
                     if token.is_cancelled() {
                         break;
@@ -748,26 +1109,49 @@ impl JobExecutor {
                 }
 
                 let query = format!("SELECT * FROM {}", table);
-                let (exec, out) = Self::retry_connect(job, storage, known_hosts, app_handle, cancel_token.clone(), output, {
-                    let q = query.clone();
-                    move |driver| {
-                        let q = q.clone();
-                        async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
-                    }
-                }).await;
+                let (exec, out) = Self::retry_connect(
+                    job,
+                    storage,
+                    known_hosts,
+                    app_handle,
+                    cancel_token.clone(),
+                    output,
+                    {
+                        let q = query.clone();
+                        move |driver| {
+                            let q = q.clone();
+                            async move { driver.execute(&q).await.map_err(|e| e.to_string()) }
+                        }
+                    },
+                )
+                .await;
                 output = out;
                 match exec {
                     Ok(result) => {
                         let csv = Self::build_csv(&result);
-                        let filename = format!("{}/export_{}_{}_{}.csv", output_dir, job.name.replace(' ', "_"), table, timestamp);
+                        let filename = format!(
+                            "{}/export_{}_{}_{}.csv",
+                            output_dir,
+                            job.name.replace(' ', "_"),
+                            table,
+                            timestamp
+                        );
                         if let Err(e) = ensure_parent_dir(&filename) {
-                            tracing::error!("[scheduler] Failed to create dir for csv {}: {}", table, e);
+                            tracing::error!(
+                                "[scheduler] Failed to create dir for csv {}: {}",
+                                table,
+                                e
+                            );
                             continue;
                         }
                         match fs::write(&filename, &csv) {
                             Ok(()) => written_files.push(filename),
                             Err(e) => {
-                                tracing::error!("[scheduler] Failed to write csv for {}: {}", table, e);
+                                tracing::error!(
+                                    "[scheduler] Failed to write csv for {}: {}",
+                                    table,
+                                    e
+                                );
                             }
                         }
                     }
@@ -790,13 +1174,17 @@ impl JobExecutor {
         csv.push_str(&result.columns.join(","));
         csv.push('\n');
         for row in &result.rows {
-            let vals: Vec<String> = result.columns.iter().map(|col| {
-                match row.get(col).unwrap_or(&serde_json::Value::Null) {
-                    serde_json::Value::Null => String::new(),
-                    serde_json::Value::String(s) => format!("\"{}\"", s.replace('"', "\"\"")),
-                    other => other.to_string(),
-                }
-            }).collect();
+            let vals: Vec<String> = result
+                .columns
+                .iter()
+                .map(
+                    |col| match row.get(col).unwrap_or(&serde_json::Value::Null) {
+                        serde_json::Value::Null => String::new(),
+                        serde_json::Value::String(s) => format!("\"{}\"", s.replace('"', "\"\"")),
+                        other => other.to_string(),
+                    },
+                )
+                .collect();
             csv.push_str(&vals.join(","));
             csv.push('\n');
         }

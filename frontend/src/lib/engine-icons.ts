@@ -2,7 +2,6 @@ import {
   Database,
   Leaf,
   Zap,
-  Circle,
   Server,
   HardDrive,
 } from 'lucide-react'

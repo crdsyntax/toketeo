@@ -5,10 +5,7 @@ pub struct MemoryEngine;
 
 impl MemoryEngine {
     /// Convert stored AssistantMessages to ChatMessages for the AI prompt.
-    pub fn build_history(
-        stored: &[AssistantMessage],
-        max_turns: usize,
-    ) -> Vec<ChatMessage> {
+    pub fn build_history(stored: &[AssistantMessage], max_turns: usize) -> Vec<ChatMessage> {
         let mut history: Vec<ChatMessage> = stored
             .iter()
             .map(|m| ChatMessage {

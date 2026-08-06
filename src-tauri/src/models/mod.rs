@@ -301,16 +301,26 @@ impl JobConfigDto {
             map.insert("query".to_string(), serde_json::Value::String(q.clone()));
         }
         if let Some(db) = &self.database {
-            map.insert("database".to_string(), serde_json::Value::String(db.clone()));
+            map.insert(
+                "database".to_string(),
+                serde_json::Value::String(db.clone()),
+            );
         }
         if let Some(c) = &self.collections {
             map.insert(
                 "collections".to_string(),
-                serde_json::Value::Array(c.iter().map(|s| serde_json::Value::String(s.clone())).collect()),
+                serde_json::Value::Array(
+                    c.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                ),
             );
         }
         if let Some(o) = &self.output_dir {
-            map.insert("outputDir".to_string(), serde_json::Value::String(o.clone()));
+            map.insert(
+                "outputDir".to_string(),
+                serde_json::Value::String(o.clone()),
+            );
         }
         serde_json::Value::Object(map)
     }

@@ -21,7 +21,9 @@ pub fn compare_views_for_names(
         name_map.insert(v.to_lowercase(), v.clone());
     }
     for v in target_names {
-        name_map.entry(v.to_lowercase()).or_insert_with(|| v.clone());
+        name_map
+            .entry(v.to_lowercase())
+            .or_insert_with(|| v.clone());
     }
 
     let mut all_keys: BTreeSet<String> = BTreeSet::new();
@@ -39,9 +41,11 @@ pub fn compare_views_for_names(
                 results.push(ObjectDiff {
                     name: display.clone(),
                     status: CompareStatus::Missing,
-                    details: source_ddls.get(&display).map(|ddl| serde_json::json!({
-                        "source_definition": ddl,
-                    })),
+                    details: source_ddls.get(&display).map(|ddl| {
+                        serde_json::json!({
+                            "source_definition": ddl,
+                        })
+                    }),
                 });
             }
             (false, true) => {
@@ -52,10 +56,8 @@ pub fn compare_views_for_names(
                 });
             }
             (true, true) => {
-                let src_hash = source_hashes.get(&key).cloned()
-                    .unwrap_or_default();
-                let tgt_hash = target_hashes.get(&key).cloned()
-                    .unwrap_or_default();
+                let src_hash = source_hashes.get(&key).cloned().unwrap_or_default();
+                let tgt_hash = target_hashes.get(&key).cloned().unwrap_or_default();
                 let src_ddl = source_ddls.get(&display).cloned().unwrap_or_default();
                 let tgt_ddl = target_ddls.get(&display).cloned().unwrap_or_default();
                 let is_modified = src_hash != tgt_hash;
@@ -83,7 +85,7 @@ pub fn compare_views_for_names(
         }
     }
 
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    results.sort_by_key(|a| a.name.to_lowercase());
     results
 }
 
@@ -111,7 +113,10 @@ pub async fn fetch_view_ddls(
 ) -> AppResult<BTreeMap<String, String>> {
     let mut cache = BTreeMap::new();
     for name in names {
-        match driver.fetch_ddl(name, "VIEW", schema.map(str::to_string)).await {
+        match driver
+            .fetch_ddl(name, "VIEW", schema.map(str::to_string))
+            .await
+        {
             Ok(ddl) => {
                 cache.insert(name.clone(), ddl);
             }
@@ -130,8 +135,12 @@ pub async fn compare_views(
     target_schema: Option<&str>,
     view_filter: Option<&[String]>,
 ) -> AppResult<Vec<ObjectDiff>> {
-    let mut src_views = source.fetch_views(source_schema.map(str::to_string), None).await?;
-    let mut tgt_views = target.fetch_views(target_schema.map(str::to_string), None).await?;
+    let mut src_views = source
+        .fetch_views(source_schema.map(str::to_string), None)
+        .await?;
+    let mut tgt_views = target
+        .fetch_views(target_schema.map(str::to_string), None)
+        .await?;
 
     if let Some(filter) = view_filter {
         let set: BTreeSet<String> = filter.iter().map(|v| v.to_lowercase()).collect();
@@ -169,7 +178,14 @@ mod tests {
         src_h.insert("v_active".into(), "abc123".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("v_active".into(), "abc123".into());
-        let diffs = compare_views_for_names(&names, &names, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
+        let diffs = compare_views_for_names(
+            &names,
+            &names,
+            &src_h,
+            &tgt_h,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Equal);
     }
@@ -197,7 +213,14 @@ mod tests {
         let tgt: Vec<String> = vec![];
         let src_h = BTreeMap::new();
         let tgt_h = BTreeMap::new();
-        let diffs = compare_views_for_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
+        let diffs = compare_views_for_names(
+            &src,
+            &tgt,
+            &src_h,
+            &tgt_h,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Missing);
     }
@@ -208,7 +231,14 @@ mod tests {
         let tgt = vec!["v_new".into()];
         let src_h = BTreeMap::new();
         let tgt_h = BTreeMap::new();
-        let diffs = compare_views_for_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
+        let diffs = compare_views_for_names(
+            &src,
+            &tgt,
+            &src_h,
+            &tgt_h,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::New);
     }
@@ -221,7 +251,14 @@ mod tests {
         src_h.insert("v_common".into(), "hash1".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("v_common".into(), "hash1".into());
-        let diffs = compare_views_for_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
+        let diffs = compare_views_for_names(
+            &src,
+            &tgt,
+            &src_h,
+            &tgt_h,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         assert_eq!(diffs.len(), 3);
         let by_name: BTreeMap<_, _> = diffs.iter().map(|d| (d.name.as_str(), &d.status)).collect();
         assert_eq!(by_name["v_common"], &CompareStatus::Equal);
@@ -254,7 +291,14 @@ mod tests {
         src_h.insert("v_active".into(), "hash1".into());
         let mut tgt_h = BTreeMap::new();
         tgt_h.insert("v_active".into(), "hash1".into());
-        let diffs = compare_views_for_names(&src, &tgt, &src_h, &tgt_h, &BTreeMap::new(), &BTreeMap::new());
+        let diffs = compare_views_for_names(
+            &src,
+            &tgt,
+            &src_h,
+            &tgt_h,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Equal);
     }

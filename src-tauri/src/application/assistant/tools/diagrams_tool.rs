@@ -114,7 +114,9 @@ impl AssistantTool for DiagramsTool {
             "createFromTables" => self.create_from_tables(args, state).await,
             "save" => {
                 let diagram = match serde_json::from_value::<Diagram>(
-                    args.get("diagram").cloned().unwrap_or(serde_json::Value::Null),
+                    args.get("diagram")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
                 ) {
                     Ok(d) => d,
                     Err(e) => {
@@ -284,10 +286,7 @@ impl DiagramsTool {
                 });
             }
             // Keep original requested order.
-            tables = tables
-                .iter()
-                .map(|t| strip_quotes(t).to_string())
-                .collect();
+            tables = tables.iter().map(|t| strip_quotes(t).to_string()).collect();
         }
 
         if tables.is_empty() {
@@ -340,9 +339,15 @@ impl DiagramsTool {
 
             if let Some(fks) = table["foreign_keys"].as_array() {
                 for fk in fks {
-                    let Some(ref_table) = fk["referencedTable"].as_str() else { continue };
-                    let Some(col_name) = fk["columnName"].as_str() else { continue };
-                    let Some(ref_col) = fk["referencedColumn"].as_str() else { continue };
+                    let Some(ref_table) = fk["referencedTable"].as_str() else {
+                        continue;
+                    };
+                    let Some(col_name) = fk["columnName"].as_str() else {
+                        continue;
+                    };
+                    let Some(ref_col) = fk["referencedColumn"].as_str() else {
+                        continue;
+                    };
                     if !visible.contains(ref_table) {
                         continue;
                     }

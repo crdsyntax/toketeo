@@ -59,10 +59,7 @@ impl AssistantTool for IndexTool {
             }
         };
 
-        let table = args
-            .get("table")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let table = args.get("table").and_then(|v| v.as_str()).unwrap_or("");
         if table.is_empty() {
             return Ok(ToolResult {
                 ok: false,

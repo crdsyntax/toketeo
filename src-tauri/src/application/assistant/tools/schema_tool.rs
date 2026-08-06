@@ -84,10 +84,7 @@ impl AssistantTool for SchemaTool {
                 })
             }
             "columns" => {
-                let object = args
-                    .get("object")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let object = args.get("object").and_then(|v| v.as_str()).unwrap_or("");
                 if object.is_empty() {
                     return Ok(ToolResult {
                         ok: false,
@@ -105,10 +102,7 @@ impl AssistantTool for SchemaTool {
                 })
             }
             "ddl" => {
-                let object = args
-                    .get("object")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let object = args.get("object").and_then(|v| v.as_str()).unwrap_or("");
                 let object_type = args
                     .get("object_type")
                     .and_then(|v| v.as_str())
@@ -130,10 +124,7 @@ impl AssistantTool for SchemaTool {
                 })
             }
             "describe" => {
-                let object = args
-                    .get("object")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let object = args.get("object").and_then(|v| v.as_str()).unwrap_or("");
                 if object.is_empty() {
                     return Ok(ToolResult {
                         ok: false,

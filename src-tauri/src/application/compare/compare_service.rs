@@ -17,8 +17,8 @@ use super::schema::{
     compare_functions, compare_procedures, compare_table_constraints, compare_table_foreign_keys,
     compare_table_indexes, compare_tables, compare_triggers, compare_views,
 };
-use super::script_generator::generators::{mysql_generator, postgres_generator, sqlite_generator};
 use super::script_generator::data_sync;
+use super::script_generator::generators::{mysql_generator, postgres_generator, sqlite_generator};
 
 pub struct CompareService;
 
@@ -136,7 +136,13 @@ impl CompareService {
         .await?;
         step += 1;
 
-        Self::emit_progress(app_handle, compare_id, "Comparing views...", step, total_steps);
+        Self::emit_progress(
+            app_handle,
+            compare_id,
+            "Comparing views...",
+            step,
+            total_steps,
+        );
         Self::check_control(compare_id, controller).await?;
         let view_diffs = match compare_views(
             source.as_ref(),
@@ -205,7 +211,13 @@ impl CompareService {
             }
         };
 
-        Self::emit_progress(app_handle, compare_id, "Schema compare complete", total_steps, total_steps);
+        Self::emit_progress(
+            app_handle,
+            compare_id,
+            "Schema compare complete",
+            total_steps,
+            total_steps,
+        );
 
         Ok(SchemaReport {
             source_name,
@@ -262,7 +274,13 @@ impl CompareService {
             table_diffs.push(diff);
         }
 
-        Self::emit_progress(app_handle, compare_id, "Data compare complete", total, total);
+        Self::emit_progress(
+            app_handle,
+            compare_id,
+            "Data compare complete",
+            total,
+            total,
+        );
 
         Ok(DataReport {
             tables: table_diffs,
@@ -327,7 +345,10 @@ impl CompareService {
             });
         }
 
-        let tgt_cols = match target.fetch_columns(table, target_schema.map(String::from)).await {
+        let tgt_cols = match target
+            .fetch_columns(table, target_schema.map(String::from))
+            .await
+        {
             Ok(c) => c,
             Err(_) => {
                 return Ok(TableDataDiff {
@@ -400,7 +421,13 @@ impl CompareService {
         loop {
             Self::check_control(compare_id, controller).await?;
             let src_chunk = compute_table_hashes(
-                source, table, source_schema, &common_columns, &pk_col, chunk_size, offset,
+                source,
+                table,
+                source_schema,
+                &common_columns,
+                &pk_col,
+                chunk_size,
+                offset,
             )
             .await?;
             if src_chunk.is_empty() {
@@ -416,7 +443,13 @@ impl CompareService {
         loop {
             Self::check_control(compare_id, controller).await?;
             let tgt_chunk = compute_table_hashes(
-                target, table, target_schema, &common_columns, &pk_col, chunk_size, offset,
+                target,
+                table,
+                target_schema,
+                &common_columns,
+                &pk_col,
+                chunk_size,
+                offset,
             )
             .await?;
             if tgt_chunk.is_empty() {
@@ -529,8 +562,8 @@ impl CompareService {
             let data_stmts = data_sync::generate_data_sync(report, target_db_type, options);
             if !data_stmts.is_empty() {
                 statements.push(ScriptStatement {
-                    id: format!("section_data_0"),
-                    sql: format!("-- ============================================================\n-- DATA SYNCHRONIZATION\n-- ============================================================"),
+                    id: "section_data_0".to_string(),
+                    sql: "-- ============================================================\n-- DATA SYNCHRONIZATION\n-- ============================================================".to_string(),
                     description: "Data synchronization section".into(),
                     diff_type: "section".into(),
                     object_name: String::new(),
@@ -713,7 +746,9 @@ impl CompareService {
             name_map.insert(t.to_lowercase(), t.clone());
         }
         for t in target_names {
-            name_map.entry(t.to_lowercase()).or_insert_with(|| t.clone());
+            name_map
+                .entry(t.to_lowercase())
+                .or_insert_with(|| t.clone());
         }
 
         let mut all: BTreeSet<String> = BTreeSet::new();
@@ -734,7 +769,7 @@ impl CompareService {
                 details: None,
             });
         }
-        results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        results.sort_by_key(|a| a.name.to_lowercase());
         results
     }
 }

@@ -19,7 +19,6 @@ import type {
   MapDefinition,
   Particle,
   Phase,
-  Projectile,
   WeaponId,
 } from './types'
 

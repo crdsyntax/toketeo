@@ -1,16 +1,16 @@
-use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::db::UpsertResult;
+use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use futures::StreamExt;
 use mongodb::{
-    Client,
-    bson::{Bson, Document, doc},
+    bson::{doc, Bson, Document},
     options::ClientOptions,
+    Client,
 };
 use std::time::Instant;
 
@@ -58,7 +58,11 @@ fn bson_string_content_len(value: &Bson) -> usize {
         // Cap at a reasonable size to avoid pathological growth.
         other => {
             let len = bson_to_json(other).to_string().len();
-            if len > 65535 { 65535 } else { len }
+            if len > 65535 {
+                65535
+            } else {
+                len
+            }
         }
     }
 }
@@ -67,15 +71,11 @@ fn bson_to_json(value: &Bson) -> serde_json::Value {
     match value {
         Bson::Int32(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
         Bson::Int64(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
-        Bson::Double(f) => {
-            serde_json::Number::from_f64(*f)
-                .map_or(serde_json::Value::Null, serde_json::Value::Number)
-        }
+        Bson::Double(f) => serde_json::Number::from_f64(*f)
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
         Bson::Boolean(b) => serde_json::Value::Bool(*b),
         Bson::String(s) => serde_json::Value::String(s.clone()),
-        Bson::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(bson_to_json).collect())
-        }
+        Bson::Array(arr) => serde_json::Value::Array(arr.iter().map(bson_to_json).collect()),
         Bson::Document(doc) => {
             let map = doc
                 .iter()
@@ -93,15 +93,12 @@ fn bson_to_json(value: &Bson) -> serde_json::Value {
             let obj = doc! { "$oid": oid.to_hex() };
             serde_json::to_value(&obj).unwrap_or(serde_json::Value::Null)
         }
-        Bson::Binary(bin) => serde_json::Value::String(format!(
-            "<binary: {} bytes>",
-            bin.bytes.len()
-        )),
-        Bson::RegularExpression(re) => serde_json::Value::String(format!(
-            "/{}/{}",
-            re.pattern,
-            re.options
-        )),
+        Bson::Binary(bin) => {
+            serde_json::Value::String(format!("<binary: {} bytes>", bin.bytes.len()))
+        }
+        Bson::RegularExpression(re) => {
+            serde_json::Value::String(format!("/{}/{}", re.pattern, re.options))
+        }
         _ => serde_json::to_value(value).unwrap_or(serde_json::Value::Null),
     }
 }
@@ -177,7 +174,7 @@ impl MongoDbDriver {
         tracing::debug!(
             "Setting MongoDB timeouts: Connect=10s, ServerSelection=10s, Retries=Disabled"
         );
-        
+
         let default_db = client_options.default_database.clone();
 
         let client = Client::with_options(client_options).map_err(|e| {
@@ -201,13 +198,13 @@ impl MongoDbDriver {
                 let msg = e.to_string().to_uppercase();
                 let elapsed = ping_start.elapsed();
                 tracing::error!("MongoDB ping failed after {:?} for {}: {}", elapsed, sanitized_url, msg);
-                
+
                 if msg.contains("CONNECTION REFUSED") || msg.contains("OS ERROR 111") {
                     AppError::Connection("MongoDB connection refused: the server might not be running or the port is blocked".into())
                 } else if msg.contains("TIMEOUT") || msg.contains("SERVER SELECTION TIMEOUT") {
                     AppError::Connection("MongoDB connection timeout: check if the host is reachable and the port is open".into())
                 } else if msg.contains("AUTHENTICATION FAILED") || msg.contains("AUTH FAILED") {
-                    AppError::Auth(format!("MongoDB Authentication Failed: please check your credentials"))
+                    AppError::Auth("MongoDB Authentication Failed: please check your credentials".to_string())
                 } else {
                     AppError::Connection(format!("MongoDB Error (after {:?}): {}", elapsed, msg))
                 }
@@ -266,9 +263,7 @@ impl DbDriver for MongoDbDriver {
                 .get("collection")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| {
-                    AppError::Validation(
-                        "MongoDB cell update requires a 'collection' field".into(),
-                    )
+                    AppError::Validation("MongoDB cell update requires a 'collection' field".into())
                 })?;
 
             let filter_doc = match update_spec.get("filter") {
@@ -335,7 +330,10 @@ impl DbDriver for MongoDbDriver {
 
         // Simple 'find' support: { "collection": "name", "find": { ... }, "limit": 100 }
         if let Some(coll_name) = obj.get("collection").and_then(|v| v.as_str()) {
-            let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);
+            let db_name = obj
+                .get("database")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             let db = self.get_db(db_name)?;
             let coll = db.collection::<Document>(coll_name);
 
@@ -355,33 +353,30 @@ impl DbDriver for MongoDbDriver {
                 .get("project")
                 .and_then(|v| mongodb::bson::to_document(v).ok());
 
-            let collation = obj
-                .get("collation")
-                .and_then(|v| v.as_object())
-                .map(|o| {
-                    mongodb::options::Collation::builder()
-                        .locale(o.get("locale").and_then(|v| v.as_str()).unwrap_or("simple").to_string())
-                        .build()
-                });
+            let collation = obj.get("collation").and_then(|v| v.as_object()).map(|o| {
+                mongodb::options::Collation::builder()
+                    .locale(
+                        o.get("locale")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("simple")
+                            .to_string(),
+                    )
+                    .build()
+            });
 
-            let hint = obj
-                .get("hint")
-                .and_then(|v| {
-                    if let Some(s) = v.as_str() {
-                        Some(mongodb::options::Hint::Name(s.to_string()))
-                    } else if let Some(_o) = v.as_object() {
-                        let doc = mongodb::bson::to_document(v).unwrap_or_default();
-                        Some(mongodb::options::Hint::Keys(doc))
-                    } else {
-                        None
-                    }
-                });
+            let hint = obj.get("hint").and_then(|v| {
+                if let Some(s) = v.as_str() {
+                    Some(mongodb::options::Hint::Name(s.to_string()))
+                } else if let Some(_o) = v.as_object() {
+                    let doc = mongodb::bson::to_document(v).unwrap_or_default();
+                    Some(mongodb::options::Hint::Keys(doc))
+                } else {
+                    None
+                }
+            });
 
-            let mut query = coll
-                .find(filter)
-                .limit(limit)
-                .skip(skip as u64);
-                
+            let mut query = coll.find(filter).limit(limit).skip(skip as u64);
+
             if let Some(s) = sort {
                 query = query.sort(s);
             }
@@ -418,7 +413,12 @@ impl DbDriver for MongoDbDriver {
             let mut columns: Vec<String> = columns_set.into_iter().collect();
             columns.sort();
 
-            tracing::info!("[MongoDB Execute] path=collection, collection={}, rows={}, cols={:?}", coll_name, rows.len(), columns);
+            tracing::info!(
+                "[MongoDB Execute] path=collection, collection={}, rows={}, cols={:?}",
+                coll_name,
+                rows.len(),
+                columns
+            );
 
             return Ok(QueryResult {
                 columns,
@@ -430,9 +430,16 @@ impl DbDriver for MongoDbDriver {
         }
 
         // Generic command support: { "listCollections": 1 }
-        let db_name = obj.get("database").and_then(|v| v.as_str()).map(String::from);
+        let db_name = obj
+            .get("database")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let db = self.get_db(db_name.clone())?;
-        tracing::info!("[MongoDB Execute] generic command: db={:?}, raw_query={}", db_name, json_query);
+        tracing::info!(
+            "[MongoDB Execute] generic command: db={:?}, raw_query={}",
+            db_name,
+            json_query
+        );
 
         // Strip non-command fields before sending to run_command
         let mut cmd_obj = json_query.clone();
@@ -445,7 +452,11 @@ impl DbDriver for MongoDbDriver {
         let command = serde_json::from_value::<Document>(cmd_obj)
             .map_err(|e| AppError::Validation(format!("Invalid BSON document: {}", e)))?;
 
-        tracing::info!("[MongoDB Execute] run_command on db {:?}: {:?}", db_name, command);
+        tracing::info!(
+            "[MongoDB Execute] run_command on db {:?}: {:?}",
+            db_name,
+            command
+        );
 
         let result = db
             .run_command(command)
@@ -477,7 +488,11 @@ impl DbDriver for MongoDbDriver {
                     }
                     let mut columns: Vec<String> = columns_set.into_iter().collect();
                     columns.sort();
-                    tracing::info!("[MongoDB Execute] flattened cursor with {} rows, cols={:?}", rows.len(), columns);
+                    tracing::info!(
+                        "[MongoDB Execute] flattened cursor with {} rows, cols={:?}",
+                        rows.len(),
+                        columns
+                    );
                     return Ok(QueryResult {
                         columns,
                         rows,
@@ -503,7 +518,11 @@ impl DbDriver for MongoDbDriver {
                 }
                 let mut columns: Vec<String> = columns_set.into_iter().collect();
                 columns.sort();
-                tracing::info!("[MongoDB Execute] flattened databases with {} rows, cols={:?}", rows.len(), columns);
+                tracing::info!(
+                    "[MongoDB Execute] flattened databases with {} rows, cols={:?}",
+                    rows.len(),
+                    columns
+                );
                 return Ok(QueryResult {
                     columns,
                     rows,
@@ -542,10 +561,11 @@ impl DbDriver for MongoDbDriver {
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
         let db = self.get_db(schema)?;
-        let mut collections = db.list_collection_names()
+        let mut collections = db
+            .list_collection_names()
             .await
             .map_err(|e| AppError::Database(format!("Failed to list collections: {}", e)))?;
-        
+
         collections.retain(|name| !name.starts_with("system."));
         Ok(collections)
     }
@@ -587,7 +607,8 @@ impl DbDriver for MongoDbDriver {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let (db_name, collection_name) = resolve_table_names(table, schema.as_deref(), &self._default_db)?;
+        let (db_name, collection_name) =
+            resolve_table_names(table, schema.as_deref(), &self._default_db)?;
         let db = self.client.database(&db_name);
         let coll = db.collection::<Document>(collection_name);
 
@@ -636,7 +657,10 @@ impl DbDriver for MongoDbDriver {
             map.insert("type".into(), type_name.into());
             map.insert("isNullable".into(), (name != "_id").into());
             map.insert("isPrimaryKey".into(), (name == "_id").into());
-            map.insert("maxLength".into(), serde_json::Value::Number(serde_json::Number::from(max_len as u64)));
+            map.insert(
+                "maxLength".into(),
+                serde_json::Value::Number(serde_json::Number::from(max_len as u64)),
+            );
             map.insert("defaultValue".into(), serde_json::Value::Null);
             map.insert("comment".into(), serde_json::Value::Null);
             cols.push(serde_json::Value::Object(map));
@@ -747,7 +771,10 @@ impl DbDriver for MongoDbDriver {
             if let Ok(mut collections) = db.list_collection_names().await {
                 collections.retain(|name| !name.starts_with("system."));
                 for coll_name in collections {
-                    let cols = self.fetch_columns(&coll_name, Some(db_name.clone())).await.unwrap_or_default();
+                    let cols = self
+                        .fetch_columns(&coll_name, Some(db_name.clone()))
+                        .await
+                        .unwrap_or_default();
                     let mut coll_map = serde_json::Map::new();
                     coll_map.insert("name".to_string(), serde_json::Value::String(coll_name));
                     coll_map.insert("columns".to_string(), serde_json::Value::Array(cols));
@@ -757,7 +784,10 @@ impl DbDriver for MongoDbDriver {
 
             let mut db_map = serde_json::Map::new();
             db_map.insert("database".to_string(), serde_json::Value::String(db_name));
-            db_map.insert("collections".to_string(), serde_json::Value::Array(collections_info));
+            db_map.insert(
+                "collections".to_string(),
+                serde_json::Value::Array(collections_info),
+            );
             result.push(serde_json::Value::Object(db_map));
         }
 
@@ -786,9 +816,9 @@ fn resolve_table_names<'a>(
                 let collection = &table[dot + 1..];
                 Ok((db, collection))
             } else {
-                let db = default_db
-                    .clone()
-                    .ok_or_else(|| AppError::Validation("Database name is required for MongoDB operations".into()))?;
+                let db = default_db.clone().ok_or_else(|| {
+                    AppError::Validation("Database name is required for MongoDB operations".into())
+                })?;
                 Ok((db, table))
             }
         }
@@ -812,7 +842,10 @@ impl DataReader for MongoDbDriver {
             self._default_db,
             columns.len(),
         );
-        let collection = self.client.database(&db_name).collection::<Document>(collection_name);
+        let collection = self
+            .client
+            .database(&db_name)
+            .collection::<Document>(collection_name);
 
         let filter = if let Some(ref key) = last_key {
             let bson_key = json_value_to_bson(key);
@@ -831,9 +864,7 @@ impl DataReader for MongoDbDriver {
             None
         };
 
-        let mut find = collection
-            .find(filter)
-            .limit(batch_size as i64);
+        let mut find = collection.find(filter).limit(batch_size as i64);
         if let Some(proj) = projection {
             find = find.projection(proj);
         }
@@ -861,13 +892,12 @@ impl DataReader for MongoDbDriver {
         Ok(result)
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64> {
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
         let (db_name, collection_name) = resolve_table_names(table, schema, &self._default_db)?;
-        let collection = self.client.database(&db_name).collection::<Document>(collection_name);
+        let collection = self
+            .client
+            .database(&db_name)
+            .collection::<Document>(collection_name);
         let count = collection.count_documents(doc! {}).await?;
         tracing::info!(
             "[MongoDB count_rows] table={table} schema={schema:?} default_db={:?} -> db={db_name} collection={collection_name} count={count}",
@@ -891,9 +921,7 @@ fn json_value_to_bson(value: &serde_json::Value) -> Bson {
             }
         }
         serde_json::Value::String(s) => Bson::String(s.clone()),
-        serde_json::Value::Array(arr) => {
-            Bson::Array(arr.iter().map(json_value_to_bson).collect())
-        }
+        serde_json::Value::Array(arr) => Bson::Array(arr.iter().map(json_value_to_bson).collect()),
         serde_json::Value::Object(map) => {
             // Handle MongoDB Extended JSON v2 format
             if map.len() == 1 {
@@ -925,12 +953,11 @@ fn json_value_to_bson(value: &serde_json::Value) -> Bson {
                             }
                         }
                         serde_json::Value::Object(inner) => {
-                            if let Some(serde_json::Value::String(ms)) = inner.get("$numberLong")
-                            {
+                            if let Some(serde_json::Value::String(ms)) = inner.get("$numberLong") {
                                 if let Ok(ms) = ms.parse::<i64>() {
-                                    return Bson::DateTime(
-                                        mongodb::bson::DateTime::from_millis(ms),
-                                    );
+                                    return Bson::DateTime(mongodb::bson::DateTime::from_millis(
+                                        ms,
+                                    ));
                                 }
                             }
                         }
@@ -958,8 +985,6 @@ fn json_value_to_bson(value: &serde_json::Value) -> Bson {
     }
 }
 
-
-
 #[async_trait]
 impl DataWriter for MongoDbDriver {
     async fn upsert_rows(
@@ -975,7 +1000,10 @@ impl DataWriter for MongoDbDriver {
         }
 
         let (db_name, collection_name) = resolve_table_names(table, schema, &self._default_db)?;
-        let collection = self.client.database(&db_name).collection::<Document>(collection_name);
+        let collection = self
+            .client
+            .database(&db_name)
+            .collection::<Document>(collection_name);
         let pk_field = primary_keys.first().map(|s| s.as_str()).unwrap_or("_id");
 
         let mut affected = 0u64;
@@ -983,7 +1011,8 @@ impl DataWriter for MongoDbDriver {
 
         for row in rows {
             let mut filter_doc = Document::new();
-            let pk_value = json_value_to_bson(row.get(pk_field).unwrap_or(&serde_json::Value::Null));
+            let pk_value =
+                json_value_to_bson(row.get(pk_field).unwrap_or(&serde_json::Value::Null));
             filter_doc.insert(pk_field, pk_value);
 
             let mut update_doc = Document::new();
@@ -999,9 +1028,7 @@ impl DataWriter for MongoDbDriver {
 
             match collection.update_one(filter_doc, update).upsert(true).await {
                 Ok(result) => {
-                    if result.upserted_id.is_some() {
-                        affected += 1;
-                    } else if result.modified_count > 0 {
+                    if result.upserted_id.is_some() || result.modified_count > 0 {
                         affected += 1;
                     } else {
                         skipped += 1;

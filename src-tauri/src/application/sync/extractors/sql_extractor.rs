@@ -1,6 +1,6 @@
+use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 use crate::db::DataReader;
 use crate::error::AppResult;
-use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 
 /// Extractor para motores SQL (MySQL, MariaDB, PostgreSQL, SQL Server).
 ///
@@ -30,7 +30,8 @@ impl DataExtractor for SqlExtractor<'_> {
         batch_size: usize,
         batch_number: u64,
     ) -> AppResult<ExtractOutput> {
-        let mut rows = self.reader
+        let mut rows = self
+            .reader
             .fetch_rows(table, schema, columns, pk_column, last_key, batch_size + 1)
             .await?;
 
@@ -40,10 +41,7 @@ impl DataExtractor for SqlExtractor<'_> {
             rows.truncate(batch_size);
         }
 
-        let next_key = rows
-            .last()
-            .and_then(|r| r.get(pk_column))
-            .cloned();
+        let next_key = rows.last().and_then(|r| r.get(pk_column)).cloned();
 
         Ok(ExtractOutput {
             rows,

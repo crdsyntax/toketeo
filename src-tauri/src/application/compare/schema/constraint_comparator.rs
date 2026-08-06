@@ -1,4 +1,4 @@
-use crate::db::{DbType, DbDriver};
+use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
 use crate::models::compare::{CompareStatus, ConstraintDiff};
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,10 +61,14 @@ async fn fetch_check_definitions(
 
     let result = match db_type {
         DbType::Mysql | DbType::Mariadb => {
-            driver.execute(&mysql_check_definitions_query(table, schema)).await?
+            driver
+                .execute(&mysql_check_definitions_query(table, schema))
+                .await?
         }
         DbType::Postgres => {
-            driver.execute(&postgres_check_definitions_query(table)).await?
+            driver
+                .execute(&postgres_check_definitions_query(table))
+                .await?
         }
         _ => return Ok(map),
     };
@@ -171,7 +175,7 @@ pub fn compare_constraints_for_table(
         }
     }
 
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    results.sort_by_key(|a| a.name.to_lowercase());
     results
 }
 
@@ -193,11 +197,7 @@ pub async fn compare_table_constraints(
     let tgt_defs = fetch_check_definitions(target, table, target_schema).await?;
 
     Ok(compare_constraints_for_table(
-        &src_rows,
-        &tgt_rows,
-        &src_defs,
-        &tgt_defs,
-        table,
+        &src_rows, &tgt_rows, &src_defs, &tgt_defs, table,
     ))
 }
 

@@ -42,7 +42,9 @@ foreach ($platform in $artifacts.Keys) {
   Write-Host "Signing $($file.Name) for $platform ..."
   $sigOut = & node $cli signer sign -f $PrivateKey -p $Password $file.FullName 2>&1
   if ($LASTEXITCODE -ne 0) { throw "Signing failed for $($file.Name): $sigOut" }
-  $signature = ($sigOut | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
+  $signature = ($sigOut | ForEach-Object { $_.ToString() } | Where-Object { $_.Trim() -ne '' } | Select-String -Pattern '^dW50cnVzdGVk' | Select-Object -First 1)
+  if (-not $signature) { throw "Could not extract signature from signer output for $($file.Name): $sigOut" }
+  $signature = $signature.ToString().Trim()
 
   $dest = Join-Path $OutDir $file.Name
   Copy-Item $file.FullName $dest -Force

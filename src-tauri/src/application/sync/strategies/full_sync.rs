@@ -1,13 +1,15 @@
-use std::time::Instant;
-use std::sync::Arc;
-use crate::error::AppResult;
-use crate::db::DataWriter;
-use crate::models::sync::{SyncPipeline, SyncTableConfig, SyncRun, SyncBatch, SyncRowError, PipelineStatus, ColumnMapping};
 use crate::application::sync::extractors::DataExtractor;
-use crate::application::sync::strategies::{SyncStrategy, StrategyOutput, SyncEvent};
+use crate::application::sync::strategies::{StrategyOutput, SyncEvent, SyncStrategy};
 use crate::application::sync::transformers;
-use crate::state::{SyncController, SyncControl};
+use crate::db::DataWriter;
+use crate::error::AppResult;
+use crate::models::sync::{
+    ColumnMapping, PipelineStatus, SyncBatch, SyncPipeline, SyncRowError, SyncRun, SyncTableConfig,
+};
+use crate::state::{SyncControl, SyncController};
 use crate::storage::Storage;
+use std::sync::Arc;
+use std::time::Instant;
 use uuid::Uuid;
 
 /// Configuración de batch adaptivo.
@@ -16,8 +18,8 @@ const ADAPTIVE_BATCH_MEDIUM: usize = 5_000;
 const ADAPTIVE_BATCH_MAX: usize = 50_000;
 
 /// Tiempos objetivo en milisegundos para decidir escalado.
-const SCALE_UP_THRESHOLD_MS: u64 = 1_000;  // Si batch < 1s, escalar
-const SCALE_UP_AGGRESSIVE_MS: u64 = 500;   // Si batch < 0.5s, escalar más
+const SCALE_UP_THRESHOLD_MS: u64 = 1_000; // Si batch < 1s, escalar
+const SCALE_UP_AGGRESSIVE_MS: u64 = 500; // Si batch < 0.5s, escalar más
 const SCALE_DOWN_THRESHOLD_MS: u64 = 5_000; // Si batch > 5s, reducir
 
 /// MySQL prepared statement placeholder limit (65,535).
@@ -76,10 +78,7 @@ impl SyncStrategy for FullSync {
         );
 
         let mut mappings = table_config.column_mappings.clone();
-        let mut columns: Vec<String> = mappings
-            .iter()
-            .map(|m| m.source_column.clone())
-            .collect();
+        let mut columns: Vec<String> = mappings.iter().map(|m| m.source_column.clone()).collect();
 
         let mut dest_columns: Vec<String> = mappings
             .iter()
@@ -96,7 +95,10 @@ impl SyncStrategy for FullSync {
         let source_schema = pipeline.source_schema.as_deref();
         let target_schema = pipeline.target_schema.as_deref();
 
-        let total_expected = extractor.count(&table_config.source_table, source_schema).await.unwrap_or(0);
+        let total_expected = extractor
+            .count(&table_config.source_table, source_schema)
+            .await
+            .unwrap_or(0);
 
         if let Some(ref sender) = event_sender {
             let _ = sender.send(SyncEvent::Progress {
@@ -175,17 +177,17 @@ impl SyncStrategy for FullSync {
                             });
                         }
                         columns = mappings.iter().map(|m| m.source_column.clone()).collect();
-                        dest_columns = mappings.iter().map(|m| m.destination_column.clone()).collect();
+                        dest_columns = mappings
+                            .iter()
+                            .map(|m| m.destination_column.clone())
+                            .collect();
                     }
                 }
             }
 
             let batch_size = output.rows.len();
             let raw_rows = output.rows.clone();
-            let transformed = transformers::transform_rows(
-                output.rows,
-                &mappings,
-            )?;
+            let transformed = transformers::transform_rows(output.rows, &mappings)?;
 
             let mut abort_table = false;
             let upsert_result = match writer
@@ -210,24 +212,22 @@ impl SyncStrategy for FullSync {
                             table_config.source_table,
                             col,
                         );
-                        let new_dest: Vec<String> = dest_columns.iter()
-                            .filter(|c| c != &col)
-                            .cloned()
-                            .collect();
-                        let new_columns: Vec<String> = columns.iter()
+                        let new_dest: Vec<String> =
+                            dest_columns.iter().filter(|c| c != &col).cloned().collect();
+                        let new_columns: Vec<String> = columns
+                            .iter()
                             .zip(dest_columns.iter())
                             .filter(|(_, d)| d != &col)
                             .map(|(s, _)| s.clone())
                             .collect();
-                        let new_mappings: Vec<ColumnMapping> = mappings.iter()
+                        let new_mappings: Vec<ColumnMapping> = mappings
+                            .iter()
                             .filter(|m| m.destination_column != *col)
                             .cloned()
                             .collect();
 
-                        let new_transformed = transformers::transform_rows(
-                            raw_rows,
-                            &new_mappings,
-                        )?;
+                        let new_transformed =
+                            transformers::transform_rows(raw_rows, &new_mappings)?;
 
                         match writer
                             .upsert_rows(
@@ -256,7 +256,10 @@ impl SyncStrategy for FullSync {
                                     let _ = sender.send(SyncEvent::RowError {
                                         table: table_config.source_table.clone(),
                                         row_key: None,
-                                        error: format!("Batch {} upsert failed: {}", batch_number, err_str),
+                                        error: format!(
+                                            "Batch {} upsert failed: {}",
+                                            batch_number, err_str
+                                        ),
                                     });
                                 }
                                 crate::db::UpsertResult::default()
@@ -279,24 +282,23 @@ impl SyncStrategy for FullSync {
 
                         // Detect connection errors and scale down batch size
                         let err_str_lower = err_str.to_lowercase();
-                        if err_str_lower.contains("connection")
+                        if (err_str_lower.contains("connection")
                             || err_str_lower.contains("aborted")
                             || err_str_lower.contains("10053")
                             || err_str_lower.contains("broken pipe")
-                            || err_str_lower.contains("too many placeholders")
+                            || err_str_lower.contains("too many placeholders"))
+                            && current_batch_size > ADAPTIVE_BATCH_INITIAL
                         {
-                            if current_batch_size > ADAPTIVE_BATCH_INITIAL {
-                                let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
-                                tracing::warn!(
+                            let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
+                            tracing::warn!(
                                     "[full_sync] Table '{}': connection/placeholder error, reducing batch {} → {}",
                                     table_config.source_table,
                                     current_batch_size,
                                     new_size,
                                 );
-                                current_batch_size = new_size;
-                                consecutive_fast_batches = 0;
-                                consecutive_slow_batches = 0;
-                            }
+                            current_batch_size = new_size;
+                            consecutive_fast_batches = 0;
+                            consecutive_slow_batches = 0;
                         }
 
                         // Abort remaining batches when the target table is missing
@@ -334,7 +336,13 @@ impl SyncStrategy for FullSync {
                     consecutive_fast_batches += 1;
                     consecutive_slow_batches = 0;
                     // Ramp up aggressively: 1 fast batch → 4x, 2+ → 2x
-                    let multiplier = if consecutive_fast_batches == 1 && current_batch_size < ADAPTIVE_BATCH_INITIAL { 4 } else { 2 };
+                    let multiplier = if consecutive_fast_batches == 1
+                        && current_batch_size < ADAPTIVE_BATCH_INITIAL
+                    {
+                        4
+                    } else {
+                        2
+                    };
                     if consecutive_fast_batches >= 1 {
                         let new_size = (current_batch_size * multiplier).min(adaptive_max);
                         if new_size > current_batch_size {
@@ -354,7 +362,8 @@ impl SyncStrategy for FullSync {
                     consecutive_fast_batches += 1;
                     consecutive_slow_batches = 0;
                     if consecutive_fast_batches >= 2 {
-                        let new_size = (current_batch_size + ADAPTIVE_BATCH_MEDIUM).min(adaptive_max);
+                        let new_size =
+                            (current_batch_size + ADAPTIVE_BATCH_MEDIUM).min(adaptive_max);
                         if new_size > current_batch_size {
                             tracing::info!(
                                 "[full_sync] Table '{}': batch {} moderate ({}ms), scaling batch {} → {}",
@@ -368,7 +377,9 @@ impl SyncStrategy for FullSync {
                         }
                         consecutive_fast_batches = 0;
                     }
-                } else if duration > SCALE_DOWN_THRESHOLD_MS && current_batch_size > ADAPTIVE_BATCH_INITIAL {
+                } else if duration > SCALE_DOWN_THRESHOLD_MS
+                    && current_batch_size > ADAPTIVE_BATCH_INITIAL
+                {
                     consecutive_slow_batches += 1;
                     consecutive_fast_batches = 0;
                     if consecutive_slow_batches >= 2 {
@@ -414,8 +425,16 @@ impl SyncStrategy for FullSync {
                 rows_loaded: upsert_result.affected,
                 skipped_rows: upsert_result.skipped,
                 duration_ms: duration,
-                status: if batch_errors == 0 { "completed".to_string() } else { "completed_with_errors".to_string() },
-                error_message: if batch_errors > 0 { Some(format!("{batch_errors} rows failed")) } else { None },
+                status: if batch_errors == 0 {
+                    "completed".to_string()
+                } else {
+                    "completed_with_errors".to_string()
+                },
+                error_message: if batch_errors > 0 {
+                    Some(format!("{batch_errors} rows failed"))
+                } else {
+                    None
+                },
             };
             if let Err(e) = storage.save_sync_batch(&sync_batch).await {
                 tracing::error!("Failed to persist sync batch: {e}");
@@ -521,9 +540,11 @@ fn extract_unknown_column(err: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{DataReader, DataWriter};
-    use crate::models::sync::{SyncPipeline, SyncTableConfig, SyncMode, PipelineStatus, ColumnMapping};
     use crate::application::sync::extractors::sql_extractor::SqlExtractor;
+    use crate::db::{DataReader, DataWriter};
+    use crate::models::sync::{
+        ColumnMapping, PipelineStatus, SyncMode, SyncPipeline, SyncTableConfig,
+    };
     use crate::state::SyncController;
     use async_trait::async_trait;
     use std::collections::HashMap;
@@ -560,9 +581,8 @@ mod tests {
             let mut data = HashMap::new();
             for t in 0..NUM_TABLES {
                 let name = table_name(t);
-                let rows: Vec<serde_json::Value> = (0..ROWS_PER_TABLE)
-                    .map(|r| make_row(t, r))
-                    .collect();
+                let rows: Vec<serde_json::Value> =
+                    (0..ROWS_PER_TABLE).map(|r| make_row(t, r)).collect();
                 data.insert(name, rows);
             }
             Self { data }
@@ -602,7 +622,11 @@ mod tests {
             Ok(all_rows[start_idx..end].to_vec())
         }
 
-        async fn count_rows(&self, table: &str, _schema: Option<&str>) -> crate::error::AppResult<u64> {
+        async fn count_rows(
+            &self,
+            table: &str,
+            _schema: Option<&str>,
+        ) -> crate::error::AppResult<u64> {
             Ok(self.data.get(table).map(|r| r.len() as u64).unwrap_or(0))
         }
     }
@@ -644,7 +668,10 @@ mod tests {
             let mut guard = self.written.lock().await;
             let entry = guard.entry(table.to_string()).or_insert_with(Vec::new);
             entry.extend(rows.iter().cloned());
-            Ok(crate::db::UpsertResult { affected: rows.len() as u64, skipped: 0 })
+            Ok(crate::db::UpsertResult {
+                affected: rows.len() as u64,
+                skipped: 0,
+            })
         }
     }
 
@@ -672,10 +699,26 @@ mod tests {
             source_table: source.into(),
             target_table: target.into(),
             column_mappings: vec![
-                ColumnMapping { source_column: "id".into(), destination_column: "id".into(), transform: None },
-                ColumnMapping { source_column: "name".into(), destination_column: "name".into(), transform: None },
-                ColumnMapping { source_column: "value".into(), destination_column: "value".into(), transform: None },
-                ColumnMapping { source_column: "created_at".into(), destination_column: "created_at".into(), transform: None },
+                ColumnMapping {
+                    source_column: "id".into(),
+                    destination_column: "id".into(),
+                    transform: None,
+                },
+                ColumnMapping {
+                    source_column: "name".into(),
+                    destination_column: "name".into(),
+                    transform: None,
+                },
+                ColumnMapping {
+                    source_column: "value".into(),
+                    destination_column: "value".into(),
+                    transform: None,
+                },
+                ColumnMapping {
+                    source_column: "created_at".into(),
+                    destination_column: "created_at".into(),
+                    transform: None,
+                },
             ],
             filters: None,
             primary_key: Some(vec!["id".into()]),
@@ -708,7 +751,9 @@ mod tests {
         let writer = MockTargetWriter::new();
         let storage = create_test_storage().await;
         let controller = SyncController::new();
-        controller.set("test-pipeline-001", SyncControl::Running).await;
+        controller
+            .set("test-pipeline-001", SyncControl::Running)
+            .await;
 
         let pipeline = make_pipeline(make_all_table_configs(), BATCH_SIZE);
 
@@ -728,20 +773,36 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(output.error_count, 0, "Table {} should have 0 errors", table_config.source_table);
-            assert_eq!(output.total_rows, ROWS_PER_TABLE as u64, "Table {} should have {} rows", table_config.source_table, ROWS_PER_TABLE);
+            assert_eq!(
+                output.error_count, 0,
+                "Table {} should have 0 errors",
+                table_config.source_table
+            );
+            assert_eq!(
+                output.total_rows, ROWS_PER_TABLE as u64,
+                "Table {} should have {} rows",
+                table_config.source_table, ROWS_PER_TABLE
+            );
         }
 
         // Verify total rows written
         let total = writer.total_rows_written().await;
-        assert_eq!(total, (NUM_TABLES * ROWS_PER_TABLE) as u64,
-            "Total rows should be {} (70 tables × 200 rows)", NUM_TABLES * ROWS_PER_TABLE);
+        assert_eq!(
+            total,
+            (NUM_TABLES * ROWS_PER_TABLE) as u64,
+            "Total rows should be {} (70 tables × 200 rows)",
+            NUM_TABLES * ROWS_PER_TABLE
+        );
 
         // Verify each table has correct row count
         for t in 0..NUM_TABLES {
             let name = table_name(t);
             let count = writer.rows_for_table(&name).await;
-            assert_eq!(count, ROWS_PER_TABLE, "Table {} should have {} rows written", name, ROWS_PER_TABLE);
+            assert_eq!(
+                count, ROWS_PER_TABLE,
+                "Table {} should have {} rows written",
+                name, ROWS_PER_TABLE
+            );
         }
     }
 
@@ -751,12 +812,11 @@ mod tests {
         let writer = MockTargetWriter::new();
         let storage = create_test_storage().await;
         let controller = SyncController::new();
-        controller.set("test-pipeline-001", SyncControl::Running).await;
+        controller
+            .set("test-pipeline-001", SyncControl::Running)
+            .await;
 
-        let pipeline = make_pipeline(
-            vec![make_table_config("table_00", "table_00")],
-            BATCH_SIZE,
-        );
+        let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
 
@@ -784,18 +844,26 @@ mod tests {
         }
 
         // Verify we got initial Progress(0), BatchCompleted events, Progress updates, and PhaseCompleted
-        let progress_events: Vec<&SyncEvent> = events.iter()
+        let progress_events: Vec<&SyncEvent> = events
+            .iter()
             .filter(|e| matches!(e, SyncEvent::Progress { .. }))
             .collect();
-        let batch_events: Vec<&SyncEvent> = events.iter()
+        let batch_events: Vec<&SyncEvent> = events
+            .iter()
             .filter(|e| matches!(e, SyncEvent::BatchCompleted { .. }))
             .collect();
-        let phase_events: Vec<&SyncEvent> = events.iter()
+        let phase_events: Vec<&SyncEvent> = events
+            .iter()
             .filter(|e| matches!(e, SyncEvent::PhaseCompleted { .. }))
             .collect();
 
         // First progress event should show 0 processed rows
-        if let SyncEvent::Progress { processed_rows, total_rows, .. } = progress_events.first().unwrap() {
+        if let SyncEvent::Progress {
+            processed_rows,
+            total_rows,
+            ..
+        } = progress_events.first().unwrap()
+        {
             assert_eq!(*processed_rows, 0);
             assert_eq!(*total_rows, ROWS_PER_TABLE as u64);
         } else {
@@ -803,7 +871,10 @@ mod tests {
         }
 
         // With adaptive batching, batch count may vary — just verify at least 1 batch completed
-        assert!(!batch_events.is_empty(), "Should have at least 1 batch completed event");
+        assert!(
+            !batch_events.is_empty(),
+            "Should have at least 1 batch completed event"
+        );
 
         // Each batch should report rows_loaded > 0
         for batch_event in &batch_events {
@@ -814,7 +885,12 @@ mod tests {
 
         // Last progress event should show 200 processed rows
         let last_progress = progress_events.last().unwrap();
-        if let SyncEvent::Progress { processed_rows, error_count, .. } = last_progress {
+        if let SyncEvent::Progress {
+            processed_rows,
+            error_count,
+            ..
+        } = last_progress
+        {
             assert_eq!(*processed_rows, ROWS_PER_TABLE as u64);
             assert_eq!(*error_count, 0);
         }
@@ -835,10 +911,7 @@ mod tests {
         let pipeline_id = "test-pipeline-001";
         controller.set(pipeline_id, SyncControl::Running).await;
 
-        let pipeline = make_pipeline(
-            vec![make_table_config("table_00", "table_00")],
-            BATCH_SIZE,
-        );
+        let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
 
@@ -861,7 +934,10 @@ mod tests {
 
         // Should have 0 processed rows since we cancelled immediately
         assert_eq!(output.total_rows, 0, "Cancelled sync should process 0 rows");
-        assert_eq!(output.batch_count, 0, "Cancelled sync should have 0 batches");
+        assert_eq!(
+            output.batch_count, 0,
+            "Cancelled sync should have 0 batches"
+        );
 
         // Verify no rows were written
         let total = writer.total_rows_written().await;
@@ -870,13 +946,18 @@ mod tests {
         // Verify we got an Error event about cancellation
         let events: Vec<SyncEvent> = {
             let mut v = Vec::new();
-            while let Ok(e) = rx.try_recv() { v.push(e); }
+            while let Ok(e) = rx.try_recv() {
+                v.push(e);
+            }
             v
         };
-        let has_cancel_error = events.iter().any(|e| {
-            matches!(e, SyncEvent::Error { message } if message.contains("cancelled"))
-        });
-        assert!(has_cancel_error, "Should have received a cancellation error event");
+        let has_cancel_error = events
+            .iter()
+            .any(|e| matches!(e, SyncEvent::Error { message } if message.contains("cancelled")));
+        assert!(
+            has_cancel_error,
+            "Should have received a cancellation error event"
+        );
     }
 
     #[tokio::test]
@@ -885,13 +966,12 @@ mod tests {
         let writer = MockTargetWriter::new();
         let storage = create_test_storage().await;
         let controller = SyncController::new();
-        controller.set("test-pipeline-001", SyncControl::Running).await;
+        controller
+            .set("test-pipeline-001", SyncControl::Running)
+            .await;
 
         // Use a single table with small batch to ensure multiple batches
-        let pipeline = make_pipeline(
-            vec![make_table_config("table_00", "table_00")],
-            BATCH_SIZE,
-        );
+        let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
 
         let extractor = SqlExtractor::new(&source);
         let output = FullSync
@@ -909,16 +989,25 @@ mod tests {
 
         // Verify batches were persisted
         let batches = storage.list_sync_batches(&output.run.id).await.unwrap();
-        assert_eq!(batches.len() as u64, output.batch_count,
-            "Number of persisted batches should match batch_count");
+        assert_eq!(
+            batches.len() as u64,
+            output.batch_count,
+            "Number of persisted batches should match batch_count"
+        );
 
         // Verify each batch record has correct metadata
         for batch in &batches {
             assert_eq!(batch.table_name, "table_00");
-            assert!(batch.rows_extracted > 0, "Each batch should have extracted rows");
+            assert!(
+                batch.rows_extracted > 0,
+                "Each batch should have extracted rows"
+            );
             assert!(batch.rows_loaded > 0, "Each batch should have loaded rows");
             assert_eq!(batch.status, "completed", "Each batch should be completed");
-            assert!(batch.duration_ms < 5000, "Batch duration should be reasonable");
+            assert!(
+                batch.duration_ms < 5000,
+                "Batch duration should be reasonable"
+            );
         }
 
         // Verify total rows across all batches
@@ -934,7 +1023,9 @@ mod tests {
         let writer = MockTargetWriter::new();
         let storage = create_test_storage().await;
         let controller = SyncController::new();
-        controller.set("test-pipeline-001", SyncControl::Running).await;
+        controller
+            .set("test-pipeline-001", SyncControl::Running)
+            .await;
 
         let pipeline = make_pipeline(make_all_table_configs(), BATCH_SIZE);
 
@@ -961,7 +1052,11 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(output.error_count, 0, "Table {} should have 0 errors", table_config.source_table);
+            assert_eq!(
+                output.error_count, 0,
+                "Table {} should have 0 errors",
+                table_config.source_table
+            );
             assert_eq!(output.total_rows, ROWS_PER_TABLE as u64);
 
             tables_completed.push(table_config.source_table.clone());
@@ -970,7 +1065,12 @@ mod tests {
         // Drain remaining events
         while let Ok(event) = rx.try_recv() {
             match event {
-                SyncEvent::Progress { table, processed_rows, total_rows, .. } => {
+                SyncEvent::Progress {
+                    table,
+                    processed_rows,
+                    total_rows,
+                    ..
+                } => {
                     table_processed.insert(table.clone(), processed_rows);
                     table_totals.insert(table.clone(), total_rows);
                 }
@@ -982,14 +1082,21 @@ mod tests {
         }
 
         // Verify all 70 tables were synced
-        assert_eq!(tables_completed.len(), NUM_TABLES, "All 70 tables should be synced");
+        assert_eq!(
+            tables_completed.len(),
+            NUM_TABLES,
+            "All 70 tables should be synced"
+        );
 
         // Verify final progress for each table shows 200 rows
         for t in 0..NUM_TABLES {
             let name = table_name(t);
             let processed = table_processed.get(&name).copied().unwrap_or(0);
-            assert_eq!(processed, ROWS_PER_TABLE as u64,
-                "Table {} should show {} processed rows", name, ROWS_PER_TABLE);
+            assert_eq!(
+                processed, ROWS_PER_TABLE as u64,
+                "Table {} should show {} processed rows",
+                name, ROWS_PER_TABLE
+            );
         }
 
         // Verify total rows across all tables

@@ -1,13 +1,16 @@
-use std::time::Instant;
-use std::sync::Arc;
-use crate::error::AppResult;
-use crate::db::DataWriter;
-use crate::models::sync::{SyncPipeline, SyncTableConfig, SyncRun, SyncBatch, SyncRowError, SyncCheckpoint, PipelineStatus, ColumnMapping};
 use crate::application::sync::extractors::DataExtractor;
-use crate::application::sync::strategies::{SyncStrategy, StrategyOutput, SyncEvent};
+use crate::application::sync::strategies::{StrategyOutput, SyncEvent, SyncStrategy};
 use crate::application::sync::transformers;
-use crate::state::{SyncController, SyncControl};
+use crate::db::DataWriter;
+use crate::error::AppResult;
+use crate::models::sync::{
+    ColumnMapping, PipelineStatus, SyncBatch, SyncCheckpoint, SyncPipeline, SyncRowError, SyncRun,
+    SyncTableConfig,
+};
+use crate::state::{SyncControl, SyncController};
 use crate::storage::Storage;
+use std::sync::Arc;
+use std::time::Instant;
 use uuid::Uuid;
 
 /// Configuración de batch adaptivo (mismos valores que full_sync).
@@ -65,10 +68,7 @@ impl SyncStrategy for IncrementalSync {
         let adaptive_max = ADAPTIVE_BATCH_MAX.min(max_safe_batch);
 
         let mut mappings = table_config.column_mappings.clone();
-        let mut columns: Vec<String> = mappings
-            .iter()
-            .map(|m| m.source_column.clone())
-            .collect();
+        let mut columns: Vec<String> = mappings.iter().map(|m| m.source_column.clone()).collect();
 
         let mut dest_columns: Vec<String> = mappings
             .iter()
@@ -97,7 +97,10 @@ impl SyncStrategy for IncrementalSync {
         let source_schema = pipeline.source_schema.as_deref();
         let target_schema = pipeline.target_schema.as_deref();
 
-        let total_expected = extractor.count(&table_config.source_table, source_schema).await.unwrap_or(0);
+        let total_expected = extractor
+            .count(&table_config.source_table, source_schema)
+            .await
+            .unwrap_or(0);
 
         if let Some(ref sender) = event_sender {
             let _ = sender.send(SyncEvent::Progress {
@@ -184,16 +187,16 @@ impl SyncStrategy for IncrementalSync {
                             });
                         }
                         columns = mappings.iter().map(|m| m.source_column.clone()).collect();
-                        dest_columns = mappings.iter().map(|m| m.destination_column.clone()).collect();
+                        dest_columns = mappings
+                            .iter()
+                            .map(|m| m.destination_column.clone())
+                            .collect();
                     }
                 }
             }
 
             let batch_size = output.rows.len();
-            let transformed = transformers::transform_rows(
-                output.rows,
-                &mappings,
-            )?;
+            let transformed = transformers::transform_rows(output.rows, &mappings)?;
 
             let upsert_result = match writer
                 .upsert_rows(
@@ -234,7 +237,13 @@ impl SyncStrategy for IncrementalSync {
                 if duration < SCALE_UP_AGGRESSIVE_MS && current_batch_size < adaptive_max {
                     consecutive_fast_batches += 1;
                     consecutive_slow_batches = 0;
-                    let multiplier = if consecutive_fast_batches == 1 && current_batch_size < ADAPTIVE_BATCH_INITIAL { 4 } else { 2 };
+                    let multiplier = if consecutive_fast_batches == 1
+                        && current_batch_size < ADAPTIVE_BATCH_INITIAL
+                    {
+                        4
+                    } else {
+                        2
+                    };
                     if consecutive_fast_batches >= 1 {
                         let new_size = (current_batch_size * multiplier).min(adaptive_max);
                         if new_size > current_batch_size {
@@ -254,7 +263,8 @@ impl SyncStrategy for IncrementalSync {
                     consecutive_fast_batches += 1;
                     consecutive_slow_batches = 0;
                     if consecutive_fast_batches >= 2 {
-                        let new_size = (current_batch_size + ADAPTIVE_BATCH_MEDIUM).min(adaptive_max);
+                        let new_size =
+                            (current_batch_size + ADAPTIVE_BATCH_MEDIUM).min(adaptive_max);
                         if new_size > current_batch_size {
                             tracing::info!(
                                 "[incremental_sync] Table '{}': batch {} moderate ({}ms), scaling batch {} → {}",
@@ -268,7 +278,9 @@ impl SyncStrategy for IncrementalSync {
                         }
                         consecutive_fast_batches = 0;
                     }
-                } else if duration > SCALE_DOWN_THRESHOLD_MS && current_batch_size > ADAPTIVE_BATCH_INITIAL {
+                } else if duration > SCALE_DOWN_THRESHOLD_MS
+                    && current_batch_size > ADAPTIVE_BATCH_INITIAL
+                {
                     consecutive_slow_batches += 1;
                     consecutive_fast_batches = 0;
                     if consecutive_slow_batches >= 2 {
@@ -302,8 +314,16 @@ impl SyncStrategy for IncrementalSync {
                 rows_loaded: upsert_result.affected,
                 skipped_rows: upsert_result.skipped,
                 duration_ms: duration,
-                status: if batch_errors == 0 { "completed".to_string() } else { "completed_with_errors".to_string() },
-                error_message: if batch_errors > 0 { Some(format!("{batch_errors} rows failed")) } else { None },
+                status: if batch_errors == 0 {
+                    "completed".to_string()
+                } else {
+                    "completed_with_errors".to_string()
+                },
+                error_message: if batch_errors > 0 {
+                    Some(format!("{batch_errors} rows failed"))
+                } else {
+                    None
+                },
             };
             if let Err(e) = storage.save_sync_batch(&sync_batch).await {
                 tracing::error!("Failed to persist sync batch: {e}");
@@ -377,7 +397,7 @@ impl SyncStrategy for IncrementalSync {
         Ok(StrategyOutput {
             run: SyncRun {
                 id: run_id,
-                pipeline_id: pipeline_id,
+                pipeline_id,
                 status: PipelineStatus::Completed,
                 started_at: Some(started_at),
                 completed_at: Some(chrono::Utc::now().to_rfc3339()),

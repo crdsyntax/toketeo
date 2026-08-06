@@ -290,22 +290,13 @@ function drawPlayer(
   const handX = p.x + p.w / 2 + p.facing * 10
   const handY = p.y + 10
 
-  let angle = 0
-  if (attacking) {
-    const t = Math.min(1, p.attackT / weapon.attackDur)
-    // swing arc: overhead → forward slash
-    if (p.weapon === 'sword') {
-      angle = (-110 + 160 * t) * (Math.PI / 180) * p.facing
-    } else {
-      // staff thrust + slight arc
-      angle = (-40 + 50 * t) * (Math.PI / 180) * p.facing
-    }
-  } else {
-    // idle carry angle
-    angle = p.weapon === 'sword'
+  const angle = attacking
+    ? p.weapon === 'sword'
+      ? (-110 + 160 * Math.min(1, p.attackT / weapon.attackDur)) * (Math.PI / 180) * p.facing
+      : (-40 + 50 * Math.min(1, p.attackT / weapon.attackDur)) * (Math.PI / 180) * p.facing
+    : p.weapon === 'sword'
       ? (-20 * Math.PI / 180) * p.facing
       : (-70 * Math.PI / 180) * p.facing
-  }
 
   const pixels = p.weapon === 'sword' ? SWORD_PIXELS : STAFF_PIXELS
   drawWeaponPixels(ctx, pixels, handX, handY, p.facing, angle, SCALE)

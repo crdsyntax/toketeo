@@ -223,8 +223,11 @@ mod tests {
             ..Default::default()
         };
         let messages = build_messages("", &[msg]);
-        assert!(messages[0]["tool_calls"][0]["function"]["arguments"]
-            .as_str()
-            .is_some(), "arguments must be re-serialized as a string for the provider");
+        assert!(
+            messages[0]["tool_calls"][0]["function"]["arguments"]
+                .as_str()
+                .is_some(),
+            "arguments must be re-serialized as a string for the provider"
+        );
     }
 }

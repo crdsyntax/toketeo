@@ -1,8 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Minus, ChevronLeft, ChevronRight, Database, Table2, Eye, GitBranch, Activity, FileCode, Copy, CheckCircle2, AlertCircle, Loader2, Sparkles, Maximize2 } from 'lucide-react'
+import { X, Minus, ChevronLeft, Table2, Eye, GitBranch, Activity, FileCode, Copy, CheckCircle2, AlertCircle, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { connectionService } from '@/services/connection.service'
 import { compareService } from '@/services/compare.service'
 import { schemaService } from '@/services/schema.service'
 import type { Connection } from '@/types/database'
@@ -113,7 +112,17 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
       if (!objectTypes.includes('functions')) params.functions = []
       if (!objectTypes.includes('triggers')) params.triggers = []
 
-      const result = await compareService.compareSchemas(params as any)
+      const result = await compareService.compareSchemas({
+        sourceConnId: sourceId,
+        targetConnId: targetId,
+        sourceSchema: sourceSchema || undefined,
+        targetSchema: targetSchema || undefined,
+        tables: params.tables as string[] | undefined,
+        views: params.views as string[] | undefined,
+        procedures: params.procedures as string[] | undefined,
+        functions: params.functions as string[] | undefined,
+        triggers: params.triggers as string[] | undefined,
+      })
       setReport(result)
       setStep('compare')
     } catch (err) {

@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import { Minimize2, Maximize2, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface FullscreenModalProps {
   open: boolean;
   title: string;
   children: React.ReactNode;
-  onOpen: () => void;
   onClose: () => void;
 }
 
-export function FullscreenModal({ open, title, children, onOpen, onClose }: FullscreenModalProps) {
+export function FullscreenModal({ open, title, children, onClose }: FullscreenModalProps) {
   const [minimized, setMinimized] = useState(false);
 
   if (!open) return null;

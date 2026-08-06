@@ -92,7 +92,9 @@ impl AssistantTool for CompareSessionsTool {
             }
             "save" => {
                 let session = match serde_json::from_value::<CompareSession>(
-                    args.get("session").cloned().unwrap_or(serde_json::Value::Null),
+                    args.get("session")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
                 ) {
                     Ok(s) => s,
                     Err(e) => {
@@ -143,21 +145,27 @@ impl AssistantTool for CompareSessionsTool {
                     return missing("id is required for pause");
                 }
                 state.set_compare_control(id, SyncControl::Paused).await;
-                Ok(ok_result(serde_json::json!({ "id": id, "status": "paused" })))
+                Ok(ok_result(
+                    serde_json::json!({ "id": id, "status": "paused" }),
+                ))
             }
             "resume" => {
                 if id.is_empty() {
                     return missing("id is required for resume");
                 }
                 state.set_compare_control(id, SyncControl::Running).await;
-                Ok(ok_result(serde_json::json!({ "id": id, "status": "running" })))
+                Ok(ok_result(
+                    serde_json::json!({ "id": id, "status": "running" }),
+                ))
             }
             "cancel" => {
                 if id.is_empty() {
                     return missing("id is required for cancel");
                 }
                 state.set_compare_control(id, SyncControl::Cancelled).await;
-                Ok(ok_result(serde_json::json!({ "id": id, "status": "cancelled" })))
+                Ok(ok_result(
+                    serde_json::json!({ "id": id, "status": "cancelled" }),
+                ))
             }
             other => Ok(ToolResult {
                 ok: false,

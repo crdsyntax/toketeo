@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 
 use crate::error::{AppError, AppResult};
-use crate::models::assistant::{AiRequest, AiResponse, ChatMessage, ModelInfo, TokenUsage, ToolCall};
+use crate::models::assistant::{
+    AiRequest, AiResponse, ChatMessage, ModelInfo, TokenUsage, ToolCall,
+};
 
 use super::AiAdapter;
 
@@ -87,7 +89,10 @@ impl AiAdapter for OllamaAdapter {
             })
             .unwrap_or_default();
 
-        let total = data["eval_count"].as_u64().or_else(|| data["prompt_eval_count"].as_u64()).unwrap_or(0) as u32;
+        let total = data["eval_count"]
+            .as_u64()
+            .or_else(|| data["prompt_eval_count"].as_u64())
+            .unwrap_or(0) as u32;
 
         Ok(AiResponse {
             content,
@@ -110,7 +115,9 @@ impl AiAdapter for OllamaAdapter {
             .map_err(|e| AppError::Internal(format!("Ollama models request failed: {e}")))?;
 
         if !resp.status().is_success() {
-            return Err(AppError::Internal("Failed to list Ollama models".to_string()));
+            return Err(AppError::Internal(
+                "Failed to list Ollama models".to_string(),
+            ));
         }
 
         let data: serde_json::Value = resp
@@ -126,7 +133,7 @@ impl AiAdapter for OllamaAdapter {
                         let name = m["name"].as_str()?.to_string();
                         Some(ModelInfo {
                             id: name.clone(),
-                            name: name,
+                            name,
                             provider: "ollama".to_string(),
                             supports_tools: false,
                             is_free: false,

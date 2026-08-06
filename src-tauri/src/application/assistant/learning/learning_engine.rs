@@ -12,7 +12,9 @@ impl LearningEngine {
         connection_id: &str,
         engine: &str,
     ) -> AppResult<()> {
-        storage.update_assistant_feedback(message_id, "positive").await?;
+        storage
+            .update_assistant_feedback(message_id, "positive")
+            .await?;
 
         // Load the message to extract the QA pair
         let messages = storage.load_assistant_messages(connection_id).await?;
@@ -23,14 +25,11 @@ impl LearningEngine {
                 if let Some(pos) = idx {
                     if pos > 0 {
                         let question = &messages[pos - 1].content;
-                        let _ = crate::application::assistant::knowledge::KnowledgeEngine::record_case(
-                            storage,
-                            question,
-                            sql,
-                            engine,
-                            "positive",
-                        )
-                        .await;
+                        let _ =
+                            crate::application::assistant::knowledge::KnowledgeEngine::record_case(
+                                storage, question, sql, engine, "positive",
+                            )
+                            .await;
                     }
                 }
             }
@@ -48,7 +47,9 @@ impl LearningEngine {
         _rejection_reason: Option<&str>,
         accepted_sql: Option<&str>,
     ) -> AppResult<()> {
-        storage.update_assistant_feedback(message_id, "negative").await?;
+        storage
+            .update_assistant_feedback(message_id, "negative")
+            .await?;
 
         // If user accepted a corrected SQL, save it as a knowledge case
         if let Some(sql) = accepted_sql {
@@ -58,14 +59,11 @@ impl LearningEngine {
                 if let Some(pos) = idx {
                     if pos > 0 {
                         let question = &messages[pos - 1].content;
-                        let _ = crate::application::assistant::knowledge::KnowledgeEngine::record_case(
-                            storage,
-                            question,
-                            sql,
-                            engine,
-                            "negative",
-                        )
-                        .await;
+                        let _ =
+                            crate::application::assistant::knowledge::KnowledgeEngine::record_case(
+                                storage, question, sql, engine, "negative",
+                            )
+                            .await;
                     }
                 }
             }

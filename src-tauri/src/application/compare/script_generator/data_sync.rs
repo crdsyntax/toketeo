@@ -12,10 +12,7 @@ pub fn generate_data_sync(
         format!("data_{}", stmt_id)
     };
 
-    let is_mysql = matches!(
-        target_db_type.to_lowercase().as_str(),
-        "mysql" | "mariadb"
-    );
+    let is_mysql = matches!(target_db_type.to_lowercase().as_str(), "mysql" | "mariadb");
 
     for table in &data_report.tables {
         if table.status == crate::models::compare::CompareStatus::Equal {
@@ -35,18 +32,21 @@ pub fn generate_data_sync(
                 let all_cols: Vec<&str> = rows.iter().map(|r| r.column.as_str()).collect();
 
                 let col_list = if is_mysql {
-                    all_cols.iter()
+                    all_cols
+                        .iter()
                         .map(|c| format!("`{}`", c))
                         .collect::<Vec<_>>()
                         .join(", ")
                 } else {
-                    all_cols.iter()
+                    all_cols
+                        .iter()
                         .map(|c| format!("\"{}\"", c))
                         .collect::<Vec<_>>()
                         .join(", ")
                 };
 
-                let val_list = rows.iter()
+                let val_list = rows
+                    .iter()
                     .map(|v| format_value(&v.source_value, is_mysql))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -82,14 +82,21 @@ pub fn generate_data_sync(
         if !table.column_diffs.is_empty() {
             let grouped = group_by_pk(&table.column_diffs);
             for (pk_key, diffs) in &grouped {
-                let set_clauses: Vec<String> = diffs.iter().map(|d| {
-                    let quoted_col = if is_mysql {
-                        format!("`{}`", d.column)
-                    } else {
-                        format!("\"{}\"", d.column)
-                    };
-                    format!("{} = {}", quoted_col, format_value(&d.target_value, is_mysql))
-                }).collect();
+                let set_clauses: Vec<String> = diffs
+                    .iter()
+                    .map(|d| {
+                        let quoted_col = if is_mysql {
+                            format!("`{}`", d.column)
+                        } else {
+                            format!("\"{}\"", d.column)
+                        };
+                        format!(
+                            "{} = {}",
+                            quoted_col,
+                            format_value(&d.target_value, is_mysql)
+                        )
+                    })
+                    .collect();
 
                 let where_clause = build_pk_where(&table.pk_columns, pk_key, is_mysql);
                 let pk_display = if table.pk_columns.len() == 1 {
@@ -207,11 +214,16 @@ fn build_pk_where(pk_columns: &[String], pk_value: &str, is_mysql: bool) -> Stri
         format!("{} = {}", quoted, format_pk_value(pk_value, is_mysql))
     } else {
         let values: Vec<&str> = pk_value.split("||").collect();
-        pk_columns.iter().enumerate().map(|(i, col)| {
-            let quoted = quote_identifier(col, is_mysql);
-            let val = values.get(i).unwrap_or(&"");
-            format!("{} = {}", quoted, format_pk_value(val, is_mysql))
-        }).collect::<Vec<_>>().join(" AND ")
+        pk_columns
+            .iter()
+            .enumerate()
+            .map(|(i, col)| {
+                let quoted = quote_identifier(col, is_mysql);
+                let val = values.get(i).unwrap_or(&"");
+                format!("{} = {}", quoted, format_pk_value(val, is_mysql))
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ")
     }
 }
 
@@ -249,17 +261,20 @@ mod tests {
                     source_value: Some(serde_json::Value::String("Alice Updated".into())),
                     target_value: Some(serde_json::Value::String("Alice".into())),
                 }],
-                source_only_rows: vec![RowColumnDiff {
-                    pk_value: "3".into(),
-                    column: "id".into(),
-                    source_value: Some(serde_json::json!(3)),
-                    target_value: None,
-                }, RowColumnDiff {
-                    pk_value: "3".into(),
-                    column: "name".into(),
-                    source_value: Some(serde_json::Value::String("Bob".into())),
-                    target_value: None,
-                }],
+                source_only_rows: vec![
+                    RowColumnDiff {
+                        pk_value: "3".into(),
+                        column: "id".into(),
+                        source_value: Some(serde_json::json!(3)),
+                        target_value: None,
+                    },
+                    RowColumnDiff {
+                        pk_value: "3".into(),
+                        column: "name".into(),
+                        source_value: Some(serde_json::Value::String("Bob".into())),
+                        target_value: None,
+                    },
+                ],
                 target_only_rows: vec![],
             }],
         }
@@ -269,7 +284,10 @@ mod tests {
     fn generates_update_for_modified_rows() {
         let report = sample_report();
         let stmts = generate_data_sync(&report, "mysql", &ScriptOptions::default());
-        let updates: Vec<_> = stmts.iter().filter(|s| s.diff_type == "data_update").collect();
+        let updates: Vec<_> = stmts
+            .iter()
+            .filter(|s| s.diff_type == "data_update")
+            .collect();
         assert_eq!(updates.len(), 1);
         assert!(updates[0].sql.contains("UPDATE `users` SET"));
         assert!(updates[0].sql.contains("WHERE `id` = 2"));
@@ -279,7 +297,10 @@ mod tests {
     fn generates_insert_for_source_only_rows() {
         let report = sample_report();
         let stmts = generate_data_sync(&report, "mysql", &ScriptOptions::default());
-        let inserts: Vec<_> = stmts.iter().filter(|s| s.diff_type == "data_insert").collect();
+        let inserts: Vec<_> = stmts
+            .iter()
+            .filter(|s| s.diff_type == "data_insert")
+            .collect();
         assert_eq!(inserts.len(), 1);
         assert!(inserts[0].sql.contains("INSERT INTO `users`"));
     }
@@ -294,7 +315,10 @@ mod tests {
             target_value: Some(serde_json::json!(1)),
         }];
         let stmts = generate_data_sync(&report, "postgres", &ScriptOptions::default());
-        let deletes: Vec<_> = stmts.iter().filter(|s| s.diff_type == "data_delete").collect();
+        let deletes: Vec<_> = stmts
+            .iter()
+            .filter(|s| s.diff_type == "data_delete")
+            .collect();
         assert_eq!(deletes.len(), 1);
         assert!(deletes[0].sql.contains("DELETE FROM \"users\""));
         assert!(deletes[0].sql.contains("\"id\" = 1"));

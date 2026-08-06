@@ -1,12 +1,12 @@
-use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::db::DbDriver;
 use crate::db::PoolConfig;
 use crate::db::UpsertResult;
+use crate::db::{CapabilityProvider, DataReader, DataWriter};
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
-use sqlx::{Column, PgPool, Row, postgres::PgPoolOptions};
+use sqlx::{postgres::PgPoolOptions, Column, PgPool, Row};
 use std::time::{Duration, Instant};
 
 pub(crate) fn quote_pg(id: &str) -> String {
@@ -23,7 +23,11 @@ pub struct PostgresDriver {
 }
 
 impl PostgresDriver {
-    pub async fn new(url: &str, transactional: bool, pool_config: Option<PoolConfig>) -> AppResult<Self> {
+    pub async fn new(
+        url: &str,
+        transactional: bool,
+        pool_config: Option<PoolConfig>,
+    ) -> AppResult<Self> {
         let pool = if transactional {
             // Transactional sessions use a single connection to guarantee
             // that BEGIN / COMMIT / ROLLBACK operate on the same connection.
@@ -140,11 +144,13 @@ impl DbDriver for PostgresDriver {
             AppError::Connection(format!("Failed to acquire Postgres connection: {}", e))
         })?;
         use sqlx::Executor;
-        let conn: &mut sqlx::postgres::PgConnection = &mut *pool_conn;
+        let conn: &mut sqlx::postgres::PgConnection = &mut pool_conn;
 
-        conn.execute(sqlx::query(&format!("SET search_path TO \"{}\"", schema))).await.map_err(|e| {
-            AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
-        })?;
+        conn.execute(sqlx::query(&format!("SET search_path TO \"{}\"", schema)))
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
+            })?;
 
         let start = Instant::now();
         let trimmed = query.trim().to_uppercase();
@@ -712,7 +718,10 @@ impl DataReader for PostgresDriver {
             (
                 format!(
                     "SELECT {} FROM {} WHERE {} > $1 ORDER BY {} ASC LIMIT $2",
-                    select_clause, table_ref, quote_pg(pk_column), quote_pg(pk_column)
+                    select_clause,
+                    table_ref,
+                    quote_pg(pk_column),
+                    quote_pg(pk_column)
                 ),
                 true,
             )
@@ -720,7 +729,9 @@ impl DataReader for PostgresDriver {
             (
                 format!(
                     "SELECT {} FROM {} ORDER BY {} ASC LIMIT $1",
-                    select_clause, table_ref, quote_pg(pk_column)
+                    select_clause,
+                    table_ref,
+                    quote_pg(pk_column)
                 ),
                 false,
             )
@@ -772,11 +783,7 @@ impl DataReader for PostgresDriver {
         Ok(result)
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64> {
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
         let table_ref = if let Some(s) = schema {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
@@ -865,7 +872,10 @@ impl DataWriter for PostgresDriver {
         }
 
         let result = qb.execute(&self.pool).await?;
-        Ok(UpsertResult { affected: result.rows_affected() as u64, skipped: 0 })
+        Ok(UpsertResult {
+            affected: result.rows_affected() as u64,
+            skipped: 0,
+        })
     }
 }
 
@@ -900,9 +910,12 @@ impl PostgresDriver {
                 .try_get::<Option<f64>, _>(i)
                 .ok()
                 .flatten()
-                .map(|v| serde_json::Value::Number(
-                    serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0))
-                ))
+                .map(|v| {
+                    serde_json::Value::Number(
+                        serde_json::Number::from_f64(v)
+                            .unwrap_or_else(|| serde_json::Number::from(0)),
+                    )
+                })
                 .unwrap_or(serde_json::Value::Null),
             "BOOL" => row
                 .try_get::<Option<bool>, _>(i)
@@ -957,11 +970,15 @@ impl PostgresDriver {
 
     /// Query the target table's column types from information_schema.
     /// Returns a map of column_name -> data_type (lowercase).
-    async fn fetch_column_types(&self, table: &str, schema: &str) -> std::collections::HashMap<String, String> {
+    async fn fetch_column_types(
+        &self,
+        table: &str,
+        schema: &str,
+    ) -> std::collections::HashMap<String, String> {
         let rows = sqlx::query(
             r#"SELECT column_name, data_type
                FROM information_schema.columns
-               WHERE table_name = $1 AND table_schema = $2"#
+               WHERE table_name = $1 AND table_schema = $2"#,
         )
         .bind(table)
         .bind(schema)
@@ -969,11 +986,14 @@ impl PostgresDriver {
         .await;
 
         match rows {
-            Ok(rows) => rows.into_iter().filter_map(|r| {
-                let name: String = r.try_get("column_name").ok()?;
-                let ty: String = r.try_get("data_type").ok()?;
-                Some((name, ty))
-            }).collect(),
+            Ok(rows) => rows
+                .into_iter()
+                .filter_map(|r| {
+                    let name: String = r.try_get("column_name").ok()?;
+                    let ty: String = r.try_get("data_type").ok()?;
+                    Some((name, ty))
+                })
+                .collect(),
             Err(_) => std::collections::HashMap::new(),
         }
     }
@@ -1047,7 +1067,7 @@ impl PostgresDriver {
                 let raw = parts[pos + 1];
                 let table = raw
                     .split('.')
-                    .last()
+                    .next_back()
                     .unwrap_or(raw)
                     .replace(|c: char| !c.is_alphanumeric() && c != '_', "");
                 return Some(table);
@@ -1209,17 +1229,7 @@ impl PostgresDriver {
                         "text".to_string()
                     }
                 }
-                "ARRAY" => {
-                    if let Some(ref udt) = udt_name {
-                        if udt.starts_with('_') {
-                            "text[]".to_string()
-                        } else {
-                            "text[]".to_string()
-                        }
-                    } else {
-                        "text[]".to_string()
-                    }
-                }
+                "ARRAY" => "text[]".to_string(),
                 _ => data_type.clone(),
             };
 
@@ -1239,7 +1249,10 @@ impl PostgresDriver {
         }
 
         if !pk_cols.is_empty() {
-            let pkquoted: Vec<String> = pk_cols.iter().map(|c| format!("\"{}\"", c.replace('"', "\"\""))).collect();
+            let pkquoted: Vec<String> = pk_cols
+                .iter()
+                .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
+                .collect();
             col_defs.push(format!("    PRIMARY KEY ({})", pkquoted.join(", ")));
         }
 
@@ -1248,7 +1261,9 @@ impl PostgresDriver {
 
         Ok(format!(
             "CREATE TABLE IF NOT EXISTS \"{}\".\"{}\" (\n{}\n);",
-            schema_quoted, name_quoted, col_defs.join(",\n")
+            schema_quoted,
+            name_quoted,
+            col_defs.join(",\n")
         ))
     }
 }
@@ -1306,7 +1321,11 @@ fn is_safe_default(default: &str) -> bool {
         return true;
     }
     // now() and time functions
-    if lower == "now()" || lower == "current_timestamp" || lower == "current_date" || lower == "current_time" {
+    if lower == "now()"
+        || lower == "current_timestamp"
+        || lower == "current_date"
+        || lower == "current_time"
+    {
         return true;
     }
     // gen_random_uuid()

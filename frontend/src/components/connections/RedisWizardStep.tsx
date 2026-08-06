@@ -1,6 +1,4 @@
-import { useState } from 'react'
-import { Check, Zap } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Zap } from 'lucide-react'
 
 interface RedisWizardStepProps {
   onConfigChange: (config: {

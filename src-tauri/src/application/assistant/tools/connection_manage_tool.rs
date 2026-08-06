@@ -122,7 +122,9 @@ impl AssistantTool for ConnectionManageTool {
             }
             "save" => {
                 let config = match serde_json::from_value::<DbConnectionConfig>(
-                    args.get("config").cloned().unwrap_or(serde_json::Value::Null),
+                    args.get("config")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
                 ) {
                     Ok(c) => c,
                     Err(e) => {
@@ -181,7 +183,8 @@ impl AssistantTool for ConnectionManageTool {
                         data: None,
                         requires_confirmation: false,
                         message: Some(
-                            "connection_id and database are required for switchDatabase.".to_string(),
+                            "connection_id and database are required for switchDatabase."
+                                .to_string(),
                         ),
                     });
                 }

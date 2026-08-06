@@ -66,22 +66,18 @@ impl AssistantTool for TransactionTool {
         }
 
         let message = match action {
-            "begin" => {
-                state.begin_transaction(cid).await.map(|_| {
-                    "Transaction started. Write queries on this connection now run inside it.".to_string()
-                })
-            }
-            "commit" => {
-                state
-                    .commit_transaction(cid)
-                    .await
-                    .map(|rows| format!("Transaction committed ({rows} rows affected)."))
-            }
-            "rollback" => {
-                state.rollback_transaction(cid).await.map(|_| {
-                    "Transaction rolled back.".to_string()
-                })
-            }
+            "begin" => state.begin_transaction(cid).await.map(|_| {
+                "Transaction started. Write queries on this connection now run inside it."
+                    .to_string()
+            }),
+            "commit" => state
+                .commit_transaction(cid)
+                .await
+                .map(|rows| format!("Transaction committed ({rows} rows affected).")),
+            "rollback" => state
+                .rollback_transaction(cid)
+                .await
+                .map(|_| "Transaction rolled back.".to_string()),
             other => {
                 return Ok(ToolResult {
                     ok: false,

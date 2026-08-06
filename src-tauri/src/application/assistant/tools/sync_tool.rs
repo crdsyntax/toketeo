@@ -5,7 +5,7 @@ use crate::application::sync::sync_service::SyncService;
 use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::models::assistant::ToolResult;
-use crate::models::sync::{SyncMode, SyncPipeline, SyncTableConfig, PipelineStatus};
+use crate::models::sync::{PipelineStatus, SyncMode, SyncPipeline, SyncTableConfig};
 use crate::state::{AppState, SyncControl};
 
 use super::tool_engine::AssistantTool;
@@ -87,9 +87,23 @@ impl AssistantTool for SyncTool {
             "get" => self.get(args, state).await,
             "delete" => self.delete(args, state).await,
             "validate" => self.validate(args, state).await,
-            "pause" => self.control(args, state, SyncControl::Paused, PipelineStatus::Paused).await,
-            "resume" => self.control(args, state, SyncControl::Running, PipelineStatus::Running).await,
-            "cancel" => self.control(args, state, SyncControl::Cancelled, PipelineStatus::Cancelled).await,
+            "pause" => {
+                self.control(args, state, SyncControl::Paused, PipelineStatus::Paused)
+                    .await
+            }
+            "resume" => {
+                self.control(args, state, SyncControl::Running, PipelineStatus::Running)
+                    .await
+            }
+            "cancel" => {
+                self.control(
+                    args,
+                    state,
+                    SyncControl::Cancelled,
+                    PipelineStatus::Cancelled,
+                )
+                .await
+            }
             "runs" => self.runs(args, state).await,
             "batches" => self.batches(args, state).await,
             "errors" => self.errors(args, state).await,
@@ -266,7 +280,9 @@ impl SyncTool {
         }
         Ok(ToolResult {
             ok: true,
-            data: Some(serde_json::json!({ "pipeline_id": pid, "status": serde_json::to_value(&status).unwrap_or_default() })),
+            data: Some(
+                serde_json::json!({ "pipeline_id": pid, "status": serde_json::to_value(&status).unwrap_or_default() }),
+            ),
             requires_confirmation: false,
             message: None,
         })
@@ -365,7 +381,11 @@ impl SyncTool {
             .to_string()
     }
 
-    fn build_pipeline(args: &serde_json::Value, source_id: &str, target_id: &str) -> AppResult<SyncPipeline> {
+    fn build_pipeline(
+        args: &serde_json::Value,
+        source_id: &str,
+        target_id: &str,
+    ) -> AppResult<SyncPipeline> {
         if source_id.is_empty() || target_id.is_empty() {
             return Err(crate::error::AppError::Validation(
                 "Both source_connection_id and target_connection_id are required.".to_string(),

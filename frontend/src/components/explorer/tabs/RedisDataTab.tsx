@@ -4,26 +4,21 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
-  ChevronDown,
   ChevronUp,
   Zap,
   Terminal,
   Copy,
   Check,
-  X,
 } from 'lucide-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type {
   QueryResult,
   DatabaseObject,
-  DbRow,
   DbValue,
   Connection,
 } from '@/types/database';
 import { ExecutionStatus, Environment } from '@/types/database';
-import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
-import { cn } from '@/lib/utils';
 import { formatCellValue } from '@/lib/formatCellValue';
 
 interface RedisDataTabProps {

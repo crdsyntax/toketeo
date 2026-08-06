@@ -65,7 +65,7 @@ function FlameSVG({ frame, className, style }: { frame: (string | null)[][]; cla
       height={fh * P}
       viewBox={`0 0 ${fw * P} ${fh * P}`}
       className={cn('absolute pointer-events-none', className)}
-      style={{ imageRendering: 'pixelated' }}
+      style={{ imageRendering: 'pixelated', ...style }}
     >
       {frame.map((row, y) =>
         row.map((ch, x) => {
@@ -302,11 +302,7 @@ export function WizardPixelArt() {
   const svgW = cols * P
   const svgH = rows * P
 
-  const skinColor = wizardType.palette['s'] ?? '#F5D6C6'
-  const robeColor = wizardType.palette['r'] ?? wizardType.palette['a'] ?? '#6B3F8E'
-
   const frameIndex = flameFrame
-  const frames = [0, 1, 2]
 
   return (
     <div className="relative inline-flex">

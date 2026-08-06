@@ -66,17 +66,21 @@ impl AssistantTool for CompareSchemaTool {
                 ok: false,
                 data: None,
                 requires_confirmation: false,
-                message: Some("Both source_connection_id and target_connection_id are required.".to_string()),
+                message: Some(
+                    "Both source_connection_id and target_connection_id are required.".to_string(),
+                ),
             });
         }
 
         let source = state.get_connection(source_id).await?;
         let target = state.get_connection(target_id).await?;
 
-        let tables: Option<Vec<String>> = args
-            .get("tables")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect());
+        let tables: Option<Vec<String>> =
+            args.get("tables").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            });
 
         let report = CompareService::compare_schemas(
             source,

@@ -40,7 +40,10 @@ fn random_recovery_code() -> String {
     String::from_utf8(chars).unwrap_or_default()
 }
 
-fn encrypt_master_key_payload(master_key: &[u8; 32], enc_key: &[u8; 32]) -> Result<Vec<u8>, String> {
+fn encrypt_master_key_payload(
+    master_key: &[u8; 32],
+    enc_key: &[u8; 32],
+) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new_from_slice(enc_key).map_err(|e| format!("Cipher init: {}", e))?;
     let nonce = crypto::generate_nonce();
     let ciphertext = cipher
@@ -72,34 +75,33 @@ fn decrypt_master_key_payload(payload: &[u8], enc_key: &[u8; 32]) -> Result<[u8;
 }
 
 pub async fn check_master_password_exists(storage: &Arc<Storage>) -> AppResult<bool> {
-    storage.get_app_secret(SESSION_PASSWORD_HASH).await.map(|v| v.is_some())
+    storage
+        .get_app_secret(SESSION_PASSWORD_HASH)
+        .await
+        .map(|v| v.is_some())
 }
 
-pub async fn create_master_password(
-    password: &str,
-    storage: &Arc<Storage>,
-) -> AppResult<[u8; 32]> {
-    let (hash, _) = crypto::hash_password(password).map_err(|e| AppError::Auth(e))?;
+pub async fn create_master_password(password: &str, storage: &Arc<Storage>) -> AppResult<[u8; 32]> {
+    let (hash, _) = crypto::hash_password(password).map_err(AppError::Auth)?;
     let salt = crypto::generate_salt();
-    let key = crypto::derive_key(password, &salt).map_err(|e| AppError::Auth(e))?;
+    let key = crypto::derive_key(password, &salt).map_err(AppError::Auth)?;
 
-    storage.set_app_secret(SESSION_PASSWORD_HASH, hash.as_bytes()).await?;
+    storage
+        .set_app_secret(SESSION_PASSWORD_HASH, hash.as_bytes())
+        .await?;
     storage.set_app_secret(SESSION_SALT, &salt).await?;
 
     Ok(key)
 }
 
-pub async fn unlock_master_password(
-    password: &str,
-    storage: &Arc<Storage>,
-) -> AppResult<[u8; 32]> {
+pub async fn unlock_master_password(password: &str, storage: &Arc<Storage>) -> AppResult<[u8; 32]> {
     let hash_bytes = storage
         .get_app_secret(SESSION_PASSWORD_HASH)
         .await?
         .ok_or_else(|| AppError::Auth("No master password set".into()))?;
     let hash = String::from_utf8(hash_bytes).map_err(|_| AppError::Auth("Invalid hash".into()))?;
 
-    let valid = crypto::verify_password(password, &hash).map_err(|e| AppError::Auth(e))?;
+    let valid = crypto::verify_password(password, &hash).map_err(AppError::Auth)?;
     if !valid {
         return Err(AppError::Auth("Incorrect master password".into()));
     }
@@ -109,7 +111,7 @@ pub async fn unlock_master_password(
         .await?
         .ok_or_else(|| AppError::Auth("No salt found".into()))?;
 
-    let key = crypto::derive_key(password, &salt).map_err(|e| AppError::Auth(e))?;
+    let key = crypto::derive_key(password, &salt).map_err(AppError::Auth)?;
     Ok(key)
 }
 
@@ -126,27 +128,26 @@ pub async fn change_master_password(
     invalidate_recovery_code(storage).await?;
 
     let salt = crypto::generate_salt();
-    let new_key_derived = crypto::derive_key(new_password, &salt)
-        .map_err(|e| AppError::Auth(e))?;
+    let new_key_derived = crypto::derive_key(new_password, &salt).map_err(AppError::Auth)?;
     storage.set_app_secret(SESSION_SALT, &salt).await?;
 
     Ok(new_key_derived)
 }
 
-pub async fn generate_recovery_code(
-    state: &AppState,
-    storage: &Arc<Storage>,
-) -> AppResult<String> {
+pub async fn generate_recovery_code(state: &AppState, storage: &Arc<Storage>) -> AppResult<String> {
     let master_key = state.require_unlock().await?;
 
     let code = random_recovery_code();
-    let enc_key = derive_recovery_key(&code).map_err(|e| AppError::Auth(e))?;
-    let payload = encrypt_master_key_payload(&master_key, &enc_key)
-        .map_err(|e| AppError::Auth(e))?;
-    let (hash, _) = crypto::hash_password(&code).map_err(|e| AppError::Auth(e))?;
+    let enc_key = derive_recovery_key(&code).map_err(AppError::Auth)?;
+    let payload = encrypt_master_key_payload(&master_key, &enc_key).map_err(AppError::Auth)?;
+    let (hash, _) = crypto::hash_password(&code).map_err(AppError::Auth)?;
 
-    storage.set_app_secret(RECOVERY_CODE_HASH, hash.as_bytes()).await?;
-    storage.set_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY, &payload).await?;
+    storage
+        .set_app_secret(RECOVERY_CODE_HASH, hash.as_bytes())
+        .await?;
+    storage
+        .set_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY, &payload)
+        .await?;
 
     Ok(code)
 }
@@ -160,7 +161,9 @@ pub async fn is_recovery_code_set(storage: &Arc<Storage>) -> AppResult<bool> {
 
 async fn invalidate_recovery_code(storage: &Arc<Storage>) -> AppResult<()> {
     storage.set_app_secret(RECOVERY_CODE_HASH, b"").await?;
-    storage.set_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY, b"").await?;
+    storage
+        .set_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY, b"")
+        .await?;
     Ok(())
 }
 
@@ -177,8 +180,7 @@ pub async fn recover_master_password(
     let hash = String::from_utf8(hash_bytes)
         .map_err(|_| AppError::Auth("Invalid recovery hash".into()))?;
 
-    let valid = crypto::verify_password(recovery_code, &hash)
-        .map_err(|e| AppError::Auth(e))?;
+    let valid = crypto::verify_password(recovery_code, &hash).map_err(AppError::Auth)?;
     if !valid {
         return Err(AppError::Auth("Invalid recovery code".into()));
     }
@@ -187,21 +189,20 @@ pub async fn recover_master_password(
         .get_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY)
         .await?
         .ok_or_else(|| AppError::Auth("Recovery key not found".into()))?;
-    let enc_key = derive_recovery_key(recovery_code).map_err(|e| AppError::Auth(e))?;
-    let old_key = decrypt_master_key_payload(&payload, &enc_key)
-        .map_err(|e| AppError::Auth(e))?;
+    let enc_key = derive_recovery_key(recovery_code).map_err(AppError::Auth)?;
+    let old_key = decrypt_master_key_payload(&payload, &enc_key).map_err(AppError::Auth)?;
 
     let new_key = create_master_password(new_password, storage).await?;
     reencrypt_all_connections(storage, &old_key, &new_key).await?;
     totp_service::update_encrypted_master_key(storage, &new_key).await?;
 
-    let payload = encrypt_master_key_payload(&new_key, &enc_key)
-        .map_err(|e| AppError::Auth(e))?;
-    storage.set_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY, &payload).await?;
+    let payload = encrypt_master_key_payload(&new_key, &enc_key).map_err(AppError::Auth)?;
+    storage
+        .set_app_secret(RECOVERY_ENCRYPTED_MASTER_KEY, &payload)
+        .await?;
 
     let salt = crypto::generate_salt();
-    let new_key_derived = crypto::derive_key(new_password, &salt)
-        .map_err(|e| AppError::Auth(e))?;
+    let new_key_derived = crypto::derive_key(new_password, &salt).map_err(AppError::Auth)?;
     storage.set_app_secret(SESSION_SALT, &salt).await?;
 
     Ok(new_key_derived)
@@ -216,22 +217,26 @@ async fn reencrypt_all_connections(
     for mut conn in connections {
         if let Some(enc) = &conn.password_enc {
             if let Some(nonce_vec) = &conn.password_nonce {
-                let nonce: [u8; 12] = nonce_vec.clone().try_into().map_err(|_| AppError::Auth("Invalid nonce".into()))?;
-                let plaintext = crypto::decrypt(enc, &nonce, old_key)
-                    .map_err(|e| AppError::Auth(e))?;
-                let (new_enc, new_nonce) = crypto::encrypt(&plaintext, new_key)
-                    .map_err(|e| AppError::Auth(e))?;
+                let nonce: [u8; 12] = nonce_vec
+                    .clone()
+                    .try_into()
+                    .map_err(|_| AppError::Auth("Invalid nonce".into()))?;
+                let plaintext = crypto::decrypt(enc, &nonce, old_key).map_err(AppError::Auth)?;
+                let (new_enc, new_nonce) =
+                    crypto::encrypt(&plaintext, new_key).map_err(AppError::Auth)?;
                 conn.password_enc = Some(new_enc);
                 conn.password_nonce = Some(new_nonce.to_vec());
             }
         }
         if let Some(enc) = &conn.ssh_enc {
             if let Some(nonce_vec) = &conn.ssh_nonce {
-                let nonce: [u8; 12] = nonce_vec.clone().try_into().map_err(|_| AppError::Auth("Invalid nonce".into()))?;
-                let plaintext = crypto::decrypt(enc, &nonce, old_key)
-                    .map_err(|e| AppError::Auth(e))?;
-                let (new_enc, new_nonce) = crypto::encrypt(&plaintext, new_key)
-                    .map_err(|e| AppError::Auth(e))?;
+                let nonce: [u8; 12] = nonce_vec
+                    .clone()
+                    .try_into()
+                    .map_err(|_| AppError::Auth("Invalid nonce".into()))?;
+                let plaintext = crypto::decrypt(enc, &nonce, old_key).map_err(AppError::Auth)?;
+                let (new_enc, new_nonce) =
+                    crypto::encrypt(&plaintext, new_key).map_err(AppError::Auth)?;
                 conn.ssh_enc = Some(new_enc);
                 conn.ssh_nonce = Some(new_nonce.to_vec());
             }

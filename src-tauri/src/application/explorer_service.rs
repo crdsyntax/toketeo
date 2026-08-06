@@ -14,25 +14,32 @@ impl ExplorerService {
     fn is_destructive_query(query: &str) -> bool {
         let upper = query.to_uppercase();
         // A simple heuristic for destructive queries. For a robust solution, a proper SQL parser is needed.
-        upper.contains("INSERT ") ||
-        upper.contains("UPDATE ") ||
-        upper.contains("DELETE ") ||
-        upper.contains("DROP ") ||
-        upper.contains("ALTER ") ||
-        upper.contains("CREATE ") ||
-        upper.contains("TRUNCATE ") ||
-        upper.contains("REPLACE ") ||
-        upper.contains("GRANT ") ||
-        upper.contains("REVOKE ") ||
-        upper.contains(".INSERT") ||
-        upper.contains(".UPDATE") ||
-        upper.contains(".DELETE") ||
-        upper.contains(".DROP")
+        upper.contains("INSERT ")
+            || upper.contains("UPDATE ")
+            || upper.contains("DELETE ")
+            || upper.contains("DROP ")
+            || upper.contains("ALTER ")
+            || upper.contains("CREATE ")
+            || upper.contains("TRUNCATE ")
+            || upper.contains("REPLACE ")
+            || upper.contains("GRANT ")
+            || upper.contains("REVOKE ")
+            || upper.contains(".INSERT")
+            || upper.contains(".UPDATE")
+            || upper.contains(".DELETE")
+            || upper.contains(".DROP")
     }
-    pub async fn execute_query(state: &AppState, id: &str, query: &str, schema: Option<String>) -> AppResult<QueryResult> {
+    pub async fn execute_query(
+        state: &AppState,
+        id: &str,
+        query: &str,
+        schema: Option<String>,
+    ) -> AppResult<QueryResult> {
         let is_read_only = state.is_read_only(id).await.unwrap_or(false);
         if is_read_only && Self::is_destructive_query(query) {
-            return Err(AppError::Validation("Connection is in read-only mode. Destructive queries are disabled.".to_string()));
+            return Err(AppError::Validation(
+                "Connection is in read-only mode. Destructive queries are disabled.".to_string(),
+            ));
         }
 
         let driver = state.get_connection(id).await?;
@@ -45,7 +52,9 @@ impl ExplorerService {
                 query.to_string()
             } else {
                 match db_type {
-                    crate::db::DbType::Mysql | crate::db::DbType::Mariadb | crate::db::DbType::Postgres => {
+                    crate::db::DbType::Mysql
+                    | crate::db::DbType::Mariadb
+                    | crate::db::DbType::Postgres => {
                         use_schema_context = true;
                         query.to_string()
                     }
@@ -55,8 +64,12 @@ impl ExplorerService {
                             if let Some(obj) = json_val.as_object_mut() {
                                 if !obj.contains_key("database") {
                                     let clean_db = s.trim_end_matches(';').trim().to_string();
-                                    obj.insert("database".to_string(), serde_json::Value::String(clean_db));
-                                    serde_json::to_string(&json_val).unwrap_or_else(|_| query.to_string())
+                                    obj.insert(
+                                        "database".to_string(),
+                                        serde_json::Value::String(clean_db),
+                                    );
+                                    serde_json::to_string(&json_val)
+                                        .unwrap_or_else(|_| query.to_string())
                                 } else {
                                     query.to_string()
                                 }
@@ -73,18 +86,32 @@ impl ExplorerService {
         } else {
             query.to_string()
         };
-        
-        tracing::info!("[ExplorerService] execute_query: db_type={:?}, schema={:?}, initial_query={}", db_type, schema, query);
-        
+
+        tracing::info!(
+            "[ExplorerService] execute_query: db_type={:?}, schema={:?}, initial_query={}",
+            db_type,
+            schema,
+            query
+        );
+
         // Handle MongoDB use <db> command — switch the connection's database
         if db_type == crate::db::DbType::Mongodb {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&final_query) {
                 if let Some(obj) = json_val.as_object() {
-                    if let Some(use_db) = obj.get("use").and_then(|v| v.as_str()).map(|s| s.trim_end_matches(';').trim().to_string()) {
-                        crate::application::connection_service::ConnectionService::switch_database(state, id, &use_db).await?;
+                    if let Some(use_db) = obj
+                        .get("use")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim_end_matches(';').trim().to_string())
+                    {
+                        crate::application::connection_service::ConnectionService::switch_database(
+                            state, id, &use_db,
+                        )
+                        .await?;
                         return Ok(QueryResult {
                             columns: vec!["message".to_string()],
-                            rows: vec![serde_json::json!({"message": format!("Switched to db {}", use_db), "db": use_db})],
+                            rows: vec![
+                                serde_json::json!({"message": format!("Switched to db {}", use_db), "db": use_db}),
+                            ],
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
                             rows_affected: 0,
@@ -93,7 +120,7 @@ impl ExplorerService {
                 }
             }
         }
-        
+
         let result = if use_schema_context {
             if let Some(ref s) = schema {
                 driver.execute_with_schema(&final_query, s).await
@@ -103,7 +130,7 @@ impl ExplorerService {
         } else {
             driver.execute(&final_query).await
         };
-        
+
         match result {
             Ok(result) => {
                 let _ = AuditService::log_query(
@@ -142,12 +169,20 @@ impl ExplorerService {
     }
 
     pub async fn get_schemas(state: &AppState, id: &str) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: None, filter: None, kind: MetadataKind::Schemas };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: None,
+            filter: None,
+            kind: MetadataKind::Schemas,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -157,19 +192,32 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
     }
 
     pub async fn get_databases(state: &AppState, id: &str) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: None, filter: None, kind: MetadataKind::Databases };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: None,
+            filter: None,
+            kind: MetadataKind::Databases,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -179,7 +227,12 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
@@ -191,12 +244,20 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Tables };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: schema.clone(),
+            filter: filter.clone(),
+            kind: MetadataKind::Tables,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -206,7 +267,12 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
@@ -218,12 +284,20 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Views };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: schema.clone(),
+            filter: filter.clone(),
+            kind: MetadataKind::Views,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -233,7 +307,12 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
@@ -245,12 +324,20 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Procedures };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: schema.clone(),
+            filter: filter.clone(),
+            kind: MetadataKind::Procedures,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -260,7 +347,12 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
@@ -272,12 +364,20 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Triggers };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: schema.clone(),
+            filter: filter.clone(),
+            kind: MetadataKind::Triggers,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -287,7 +387,12 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
@@ -299,12 +404,20 @@ impl ExplorerService {
         schema: Option<String>,
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let cache_key = MetadataCacheKey { object: "*".into(), schema: schema.clone(), filter: filter.clone(), kind: MetadataKind::Functions };
+        let cache_key = MetadataCacheKey {
+            object: "*".into(),
+            schema: schema.clone(),
+            filter: filter.clone(),
+            kind: MetadataKind::Functions,
+        };
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
                 if let Some(cached) = session.metadata_cache.get(&cache_key) {
-                    return Ok(cached.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    return Ok(cached
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect());
                 }
             }
         }
@@ -314,7 +427,12 @@ impl ExplorerService {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
                 session.touch();
-                session.metadata_cache.set(cache_key, data.iter().map(|s| serde_json::Value::String(s.clone())).collect());
+                session.metadata_cache.set(
+                    cache_key,
+                    data.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                );
             }
         }
         Ok(data)
@@ -576,7 +694,7 @@ impl ExplorerService {
             )));
         }
 
-        let effective_page_size = page_size.max(1).min(MAX_PAGE_SIZE);
+        let effective_page_size = page_size.clamp(1, MAX_PAGE_SIZE);
         let effective_page = page.max(1);
         let offset = (effective_page - 1) * effective_page_size;
 
@@ -592,7 +710,10 @@ impl ExplorerService {
         // Handle MongoDB separately
         if matches!(db_type, crate::db::DbType::Mongodb) {
             let mut mongo_query_map = serde_json::Map::new();
-            mongo_query_map.insert("collection".to_string(), serde_json::Value::String(name.to_string()));
+            mongo_query_map.insert(
+                "collection".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
 
             fn fix_mongo_shell_json(s: &str) -> String {
                 let s = s.trim();
@@ -606,12 +727,17 @@ impl ExplorerService {
             }
 
             fn fix_mongo_shell_types(s: &str) -> String {
-                let re_oid = regex::Regex::new(r#"ObjectId\(\s*["']([0-9a-fA-F]{24})["']\s*\)"#).unwrap();
-                let re_numlong = regex::Regex::new(r#"NumberLong\(\s*["']?(\d+)["']?\s*\)"#).unwrap();
-                let re_numint = regex::Regex::new(r#"NumberInt\(\s*["']?(-?\d+)["']?\s*\)"#).unwrap();
-                let re_numdec = regex::Regex::new(r#"NumberDecimal\(\s*["']([0-9.]+)["']\s*\)"#).unwrap();
+                let re_oid =
+                    regex::Regex::new(r#"ObjectId\(\s*["']([0-9a-fA-F]{24})["']\s*\)"#).unwrap();
+                let re_numlong =
+                    regex::Regex::new(r#"NumberLong\(\s*["']?(\d+)["']?\s*\)"#).unwrap();
+                let re_numint =
+                    regex::Regex::new(r#"NumberInt\(\s*["']?(-?\d+)["']?\s*\)"#).unwrap();
+                let re_numdec =
+                    regex::Regex::new(r#"NumberDecimal\(\s*["']([0-9.]+)["']\s*\)"#).unwrap();
                 let re_isodate = regex::Regex::new(r#"ISODate\(\s*["']([^"']+)["']\s*\)"#).unwrap();
-                let re_timestamp = regex::Regex::new(r#"Timestamp\(\s*(\d+)\s*,\s*(\d+)\s*\)"#).unwrap();
+                let re_timestamp =
+                    regex::Regex::new(r#"Timestamp\(\s*(\d+)\s*,\s*(\d+)\s*\)"#).unwrap();
                 let s = re_oid.replace_all(s, r#"{"$oid":"$1"}"#);
                 let s = re_numlong.replace_all(&s, r#"{"$numberLong":"$1"}"#);
                 let s = re_numint.replace_all(&s, r#"{"$numberInt":"$1"}"#);
@@ -646,7 +772,10 @@ impl ExplorerService {
                 s.len() == 24 && s.chars().all(|c| c.is_ascii_hexdigit())
             }
 
-            fn parse_mongo_field(value: serde_json::Value, label: &str) -> AppResult<serde_json::Value> {
+            fn parse_mongo_field(
+                value: serde_json::Value,
+                label: &str,
+            ) -> AppResult<serde_json::Value> {
                 let raw = match &value {
                     serde_json::Value::String(s) => s.clone(),
                     other => return Ok(other.clone()),
@@ -654,7 +783,10 @@ impl ExplorerService {
                 if raw.trim().is_empty() {
                     return match label {
                         "find" => Ok(serde_json::json!({})),
-                        _ => Err(AppError::Validation(format!("${} value cannot be empty", label))),
+                        _ => Err(AppError::Validation(format!(
+                            "${} value cannot be empty",
+                            label
+                        ))),
                     };
                 }
                 let raw = fix_mongo_shell_types(&raw);
@@ -674,22 +806,20 @@ impl ExplorerService {
 
             fn collect_field_keys(value: &serde_json::Value) -> Vec<String> {
                 let mut keys = Vec::new();
-                match value {
-                    serde_json::Value::Object(map) => {
-                        for k in map.keys() {
-                            if !k.starts_with('$') {
-                                keys.push(k.clone());
-                            }
+                if let serde_json::Value::Object(map) = value {
+                    for k in map.keys() {
+                        if !k.starts_with('$') {
+                            keys.push(k.clone());
                         }
                     }
-                    _ => {}
                 }
                 keys
             }
 
             fn find_closest<'a>(name: &str, known: &[&'a str]) -> Option<&'a str> {
                 let name_lower = name.to_lowercase();
-                known.iter()
+                known
+                    .iter()
                     .map(|k| (k, strsim::levenshtein(&name_lower, &k.to_lowercase())))
                     .filter(|(_, d)| *d <= 3)
                     .min_by_key(|(_, d)| *d)
@@ -702,20 +832,49 @@ impl ExplorerService {
                 match serde_json::from_str::<serde_json::Value>(&fixed) {
                     Ok(mut parsed) => {
                         if let Some(o) = parsed.as_object_mut() {
-                            if o.contains_key("$find") || o.contains_key("$project") || o.contains_key("$sort") || o.contains_key("$collation") || o.contains_key("$hint") {
-                                find_filter = parse_mongo_field(o.remove("$find").unwrap_or(serde_json::json!({})), "find")?;
-                                if let Some(p) = o.remove("$project") { mongo_query_map.insert("project".to_string(), parse_mongo_field(p, "project")?); }
-                                if let Some(s) = o.remove("$sort") { mongo_query_map.insert("sort".to_string(), parse_mongo_field(s, "sort")?); }
-                                if let Some(c) = o.remove("$collation") { mongo_query_map.insert("collation".to_string(), parse_mongo_field(c, "collation")?); }
-                                if let Some(h) = o.remove("$hint") { mongo_query_map.insert("hint".to_string(), parse_mongo_field(h, "hint")?); }
+                            if o.contains_key("$find")
+                                || o.contains_key("$project")
+                                || o.contains_key("$sort")
+                                || o.contains_key("$collation")
+                                || o.contains_key("$hint")
+                            {
+                                find_filter = parse_mongo_field(
+                                    o.remove("$find").unwrap_or(serde_json::json!({})),
+                                    "find",
+                                )?;
+                                if let Some(p) = o.remove("$project") {
+                                    mongo_query_map.insert(
+                                        "project".to_string(),
+                                        parse_mongo_field(p, "project")?,
+                                    );
+                                }
+                                if let Some(s) = o.remove("$sort") {
+                                    mongo_query_map
+                                        .insert("sort".to_string(), parse_mongo_field(s, "sort")?);
+                                }
+                                if let Some(c) = o.remove("$collation") {
+                                    mongo_query_map.insert(
+                                        "collation".to_string(),
+                                        parse_mongo_field(c, "collation")?,
+                                    );
+                                }
+                                if let Some(h) = o.remove("$hint") {
+                                    mongo_query_map
+                                        .insert("hint".to_string(), parse_mongo_field(h, "hint")?);
+                                }
                             } else {
                                 find_filter = parsed;
                             }
                         } else {
                             find_filter = parsed;
                         }
-                    },
-                    Err(e) => return Err(AppError::Validation(format!("MongoDB filter must be valid JSON: {}", e))),
+                    }
+                    Err(e) => {
+                        return Err(AppError::Validation(format!(
+                            "MongoDB filter must be valid JSON: {}",
+                            e
+                        )))
+                    }
                 }
             }
 
@@ -723,20 +882,38 @@ impl ExplorerService {
 
             // Validate field names against known columns
             let find_keys = collect_field_keys(&find_filter);
-            let project_keys = mongo_query_map.get("project").map(collect_field_keys).unwrap_or_default();
-            let sort_keys = mongo_query_map.get("sort").map(collect_field_keys).unwrap_or_default();
-            let all_keys: std::collections::BTreeSet<&str> = find_keys.iter().chain(project_keys.iter()).chain(sort_keys.iter()).map(|s| s.as_str()).collect();
+            let project_keys = mongo_query_map
+                .get("project")
+                .map(collect_field_keys)
+                .unwrap_or_default();
+            let sort_keys = mongo_query_map
+                .get("sort")
+                .map(collect_field_keys)
+                .unwrap_or_default();
+            let all_keys: std::collections::BTreeSet<&str> = find_keys
+                .iter()
+                .chain(project_keys.iter())
+                .chain(sort_keys.iter())
+                .map(|s| s.as_str())
+                .collect();
 
             if !all_keys.is_empty() {
                 let columns = driver.fetch_columns(name, database.clone()).await?;
-                let known: Vec<&str> = columns.iter().filter_map(|c| c.get("name").and_then(|n| n.as_str())).collect();
+                let known: Vec<&str> = columns
+                    .iter()
+                    .filter_map(|c| c.get("name").and_then(|n| n.as_str()))
+                    .collect();
 
                 for key in all_keys {
                     if !known.contains(&key) {
                         let suggestion = find_closest(key, &known);
                         let msg = match suggestion {
                             Some(s) => format!("Unknown field '{}'. Did you mean '{}'?", key, s),
-                            None => format!("Unknown field '{}'. Available fields: {}", key, known.join(", ")),
+                            None => format!(
+                                "Unknown field '{}'. Available fields: {}",
+                                key,
+                                known.join(", ")
+                            ),
                         };
                         return Err(AppError::Validation(msg));
                     }
@@ -744,7 +921,10 @@ impl ExplorerService {
             }
 
             mongo_query_map.insert("find".to_string(), find_filter);
-            mongo_query_map.insert("limit".to_string(), serde_json::json!(effective_page_size as i64));
+            mongo_query_map.insert(
+                "limit".to_string(),
+                serde_json::json!(effective_page_size as i64),
+            );
             mongo_query_map.insert("skip".to_string(), serde_json::json!(offset as i64));
 
             if let Some(db_name) = database {
@@ -757,11 +937,15 @@ impl ExplorerService {
 
         // Handle Redis separately
         if matches!(db_type, crate::db::DbType::Redis) {
-            let query_str = if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
-                f.to_string()
-            } else {
-                format!("SCAN {} MATCH {}:* COUNT {}", offset, name, effective_page_size)
-            };
+            let query_str =
+                if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+                    f.to_string()
+                } else {
+                    format!(
+                        "SCAN {} MATCH {}:* COUNT {}",
+                        offset, name, effective_page_size
+                    )
+                };
             return driver.execute(&query_str).await;
         }
 
@@ -876,7 +1060,10 @@ impl ExplorerService {
         let schema_quoted = format!("{}{}{}", q_open, schema.replace(q_close, q_esc), q_close);
         let mut output = String::new();
 
-        output.push_str(&format!("-- Toketeo dump of schema {}\n--\n\n", schema_quoted));
+        output.push_str(&format!(
+            "-- Toketeo dump of schema {}\n--\n\n",
+            schema_quoted
+        ));
 
         if matches!(db_type, crate::db::DbType::Postgres) {
             output.push_str(&format!("SET search_path TO {};\n\n", schema_quoted));
@@ -896,13 +1083,22 @@ impl ExplorerService {
             let tbl_quoted = format!("{}{}{}", q_open, table.replace(q_close, q_esc), q_close);
             let full_name = format!("{}.{}", schema_quoted, tbl_quoted);
 
-            let ddl_ok = match driver.fetch_ddl(&table, "table", Some(schema.to_string())).await {
+            let ddl_ok = match driver
+                .fetch_ddl(&table, "table", Some(schema.to_string()))
+                .await
+            {
                 Ok(ddl) => {
-                    output.push_str(&format!("--\n-- DDL for table {}\n--\n\n{}\n\n", full_name, ddl));
+                    output.push_str(&format!(
+                        "--\n-- DDL for table {}\n--\n\n{}\n\n",
+                        full_name, ddl
+                    ));
                     true
                 }
                 Err(e) => {
-                    output.push_str(&format!("-- Error getting DDL for {}: {} — skipping data\n\n", full_name, e));
+                    output.push_str(&format!(
+                        "-- Error getting DDL for {}: {} — skipping data\n\n",
+                        full_name, e
+                    ));
                     false
                 }
             };
@@ -910,30 +1106,61 @@ impl ExplorerService {
             if ddl_ok {
                 let query = format!("SELECT * FROM {}", full_name);
                 match driver.execute(&query).await {
-                    Ok(result) => if !result.rows.is_empty() {
-                        let columns: Vec<String> = result.columns.iter().map(|c| {
-                            format!("{}{}{}", q_open, c.replace(q_close, q_esc), q_close)
-                        }).collect();
-                        let col_list = columns.join(", ");
-                        output.push_str(&format!("--\n-- Data for table {}\n--\n\n", full_name));
-                        for row in &result.rows {
-                            if let Some(obj) = row.as_object() {
-                                let values: Vec<String> = result.columns.iter().map(|col| {
-                                    let v = obj.get(col).unwrap_or(&serde_json::Value::Null);
-                                    match v {
-                                        serde_json::Value::Null => "NULL".to_string(),
-                                        serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-                                        serde_json::Value::Number(n) => n.to_string(),
-                                        serde_json::Value::Bool(b) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
-                                        other => format!("'{}'", other.to_string().replace('\'', "''")),
-                                    }
-                                }).collect();
-                                output.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_name, col_list, values.join(", ")));
+                    Ok(result) => {
+                        if !result.rows.is_empty() {
+                            let columns: Vec<String> = result
+                                .columns
+                                .iter()
+                                .map(|c| {
+                                    format!("{}{}{}", q_open, c.replace(q_close, q_esc), q_close)
+                                })
+                                .collect();
+                            let col_list = columns.join(", ");
+                            output
+                                .push_str(&format!("--\n-- Data for table {}\n--\n\n", full_name));
+                            for row in &result.rows {
+                                if let Some(obj) = row.as_object() {
+                                    let values: Vec<String> = result
+                                        .columns
+                                        .iter()
+                                        .map(|col| {
+                                            let v =
+                                                obj.get(col).unwrap_or(&serde_json::Value::Null);
+                                            match v {
+                                                serde_json::Value::Null => "NULL".to_string(),
+                                                serde_json::Value::String(s) => {
+                                                    format!("'{}'", s.replace('\'', "''"))
+                                                }
+                                                serde_json::Value::Number(n) => n.to_string(),
+                                                serde_json::Value::Bool(b) => {
+                                                    if *b {
+                                                        "TRUE".to_string()
+                                                    } else {
+                                                        "FALSE".to_string()
+                                                    }
+                                                }
+                                                other => format!(
+                                                    "'{}'",
+                                                    other.to_string().replace('\'', "''")
+                                                ),
+                                            }
+                                        })
+                                        .collect();
+                                    output.push_str(&format!(
+                                        "INSERT INTO {} ({}) VALUES ({});\n",
+                                        full_name,
+                                        col_list,
+                                        values.join(", ")
+                                    ));
+                                }
                             }
+                            output.push('\n');
                         }
-                        output.push('\n');
-                    },
-                    Err(e) => output.push_str(&format!("-- Error getting data for {}: {}\n\n", full_name, e)),
+                    }
+                    Err(e) => output.push_str(&format!(
+                        "-- Error getting data for {}: {}\n\n",
+                        full_name, e
+                    )),
                 }
             }
         }
@@ -944,18 +1171,49 @@ impl ExplorerService {
                 for name in filter_names(all_objs, $selected) {
                     let q = format!("{}{}{}", q_open, name.replace(q_close, q_esc), q_close);
                     let full = format!("{}.{}", schema_quoted, q);
-                    match driver.fetch_ddl(&name, $obj_type, Some(schema.to_string())).await {
-                        Ok(ddl) => output.push_str(&format!("--\n-- DDL for {} {}\n--\n\n{}\n\n", $obj_type, full, ddl)),
-                        Err(e) => output.push_str(&format!("-- Error getting DDL for {} {}: {}\n\n", $obj_type, full, e)),
+                    match driver
+                        .fetch_ddl(&name, $obj_type, Some(schema.to_string()))
+                        .await
+                    {
+                        Ok(ddl) => output.push_str(&format!(
+                            "--\n-- DDL for {} {}\n--\n\n{}\n\n",
+                            $obj_type, full, ddl
+                        )),
+                        Err(e) => output.push_str(&format!(
+                            "-- Error getting DDL for {} {}: {}\n\n",
+                            $obj_type, full, e
+                        )),
                     }
                 }
             };
         }
 
-        dump_ddl!("view", driver.fetch_views(Some(schema.to_string()), None).await?, &selection.views);
-        dump_ddl!("trigger", driver.fetch_triggers(Some(schema.to_string()), None).await?, &selection.triggers);
-        dump_ddl!("procedure", driver.fetch_procedures(Some(schema.to_string()), None).await?, &selection.procedures);
-        dump_ddl!("function", driver.fetch_functions(Some(schema.to_string()), None).await?, &selection.functions);
+        dump_ddl!(
+            "view",
+            driver.fetch_views(Some(schema.to_string()), None).await?,
+            &selection.views
+        );
+        dump_ddl!(
+            "trigger",
+            driver
+                .fetch_triggers(Some(schema.to_string()), None)
+                .await?,
+            &selection.triggers
+        );
+        dump_ddl!(
+            "procedure",
+            driver
+                .fetch_procedures(Some(schema.to_string()), None)
+                .await?,
+            &selection.procedures
+        );
+        dump_ddl!(
+            "function",
+            driver
+                .fetch_functions(Some(schema.to_string()), None)
+                .await?,
+            &selection.functions
+        );
 
         let mut file = tokio::fs::File::create(file_path)
             .await
@@ -996,7 +1254,11 @@ impl ExplorerService {
             current_query.push_str(&line);
             if trimmed.ends_with(';') {
                 if let Err(e) = driver.execute(&current_query).await {
-                    errors.push(format!("Error in statement near '{}': {}", &trimmed[..trimmed.len().min(80)], e));
+                    errors.push(format!(
+                        "Error in statement near '{}': {}",
+                        &trimmed[..trimmed.len().min(80)],
+                        e
+                    ));
                 }
                 current_query.clear();
             }
@@ -1039,7 +1301,10 @@ impl ExplorerService {
         match driver.db_type() {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
                 drop(driver);
-                crate::application::connection_service::ConnectionService::switch_database(state, id, &schema).await?;
+                crate::application::connection_service::ConnectionService::switch_database(
+                    state, id, &schema,
+                )
+                .await?;
             }
             _ => {}
         }
@@ -1099,12 +1364,16 @@ impl ExplorerService {
                         schema.replace('\'', "''")
                     ))
                     .await?;
-                let sizes = result.rows.iter().filter_map(|row| {
-                    let arr = row.as_array()?;
-                    let name = arr.first()?.as_str()?.to_string();
-                    let size = arr.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
-                    Some((name, size))
-                }).collect();
+                let sizes = result
+                    .rows
+                    .iter()
+                    .filter_map(|row| {
+                        let arr = row.as_array()?;
+                        let name = arr.first()?.as_str()?.to_string();
+                        let size = arr.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
+                        Some((name, size))
+                    })
+                    .collect();
                 Ok(sizes)
             }
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
@@ -1117,12 +1386,16 @@ impl ExplorerService {
                         schema.replace('\'', "''")
                     ))
                     .await?;
-                let sizes = result.rows.iter().filter_map(|row| {
-                    let arr = row.as_array()?;
-                    let name = arr.first()?.as_str()?.to_string();
-                    let size = arr.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
-                    Some((name, size))
-                }).collect();
+                let sizes = result
+                    .rows
+                    .iter()
+                    .filter_map(|row| {
+                        let arr = row.as_array()?;
+                        let name = arr.first()?.as_str()?.to_string();
+                        let size = arr.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
+                        Some((name, size))
+                    })
+                    .collect();
                 Ok(sizes)
             }
             _ => Ok(Vec::new()),
@@ -1130,14 +1403,15 @@ impl ExplorerService {
     }
 
     /// Verify dump file integrity: count statements vs expected tables.
-    pub fn verify_dump_integrity(file_path: &str, expected_tables: usize) -> AppResult<serde_json::Value> {
+    pub fn verify_dump_integrity(
+        file_path: &str,
+        expected_tables: usize,
+    ) -> AppResult<serde_json::Value> {
         let bytes = std::fs::read(file_path)
             .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
         let content = String::from_utf8_lossy(&bytes);
 
-        let file_size = std::fs::metadata(file_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let file_size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
 
         let create_count = content.matches("CREATE TABLE").count()
             + content.matches("CREATE VIEW").count()
@@ -1173,8 +1447,10 @@ impl ExplorerService {
                 let after = &content[start..];
                 let name = after
                     .trim_start()
-                    .trim_start_matches(|c: char| c == '"' || c == '`')
-                    .split(|c: char| c == '"' || c == '`' || c == '.' || c == '(' || c.is_whitespace())
+                    .trim_start_matches(['"', '`'])
+                    .split(|c: char| {
+                        c == '"' || c == '`' || c == '.' || c == '(' || c.is_whitespace()
+                    })
                     .next()
                     .unwrap_or("")
                     .to_string();
@@ -1241,7 +1517,9 @@ impl ExplorerService {
                 // so INSERT data does not fail on duplicate keys.
                 if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
                     if let Some(table_name) = extract_table_name_from_create(trimmed) {
-                        if tables.is_empty() || tables.iter().any(|t| t.eq_ignore_ascii_case(&table_name)) {
+                        if tables.is_empty()
+                            || tables.iter().any(|t| t.eq_ignore_ascii_case(&table_name))
+                        {
                             let drop_sql = format!(
                                 "DROP TABLE IF EXISTS \"{}\".\"{}\" CASCADE",
                                 schema.replace('"', "\"\""),
@@ -1297,8 +1575,12 @@ fn split_sql_statements(content: &str) -> Vec<String> {
 
     while i < len {
         // Block comment: /* ... */
-        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment
-            && i + 1 < len && chars[i] == '/' && chars[i + 1] == '*'
+        if !in_single_quote
+            && in_dollar_tag.is_none()
+            && !in_block_comment
+            && i + 1 < len
+            && chars[i] == '/'
+            && chars[i + 1] == '*'
         {
             in_block_comment = true;
             i += 2;
@@ -1315,14 +1597,20 @@ fn split_sql_statements(content: &str) -> Vec<String> {
         }
 
         // Single-line comment: -- ...
-        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment
-            && i + 1 < len && chars[i] == '-' && chars[i + 1] == '-'
+        if !in_single_quote
+            && in_dollar_tag.is_none()
+            && !in_block_comment
+            && i + 1 < len
+            && chars[i] == '-'
+            && chars[i + 1] == '-'
         {
             // Skip to end of line
             while i < len && chars[i] != '\n' {
                 i += 1;
             }
-            if i < len { i += 1; } // skip the newline
+            if i < len {
+                i += 1;
+            } // skip the newline
             continue;
         }
 
@@ -1403,7 +1691,11 @@ fn find_dollar_tag_end(chars: &[char], start: usize, len: usize) -> Option<usize
     while j < len && chars[j] != '$' {
         j += 1;
     }
-    if j < len && j > start { Some(j - 1) } else { None }
+    if j < len && j > start {
+        Some(j - 1)
+    } else {
+        None
+    }
 }
 
 /// Extracts the unquoted table name from a CREATE TABLE statement.
@@ -1420,17 +1712,21 @@ fn extract_table_name_from_create(stmt: &str) -> Option<String> {
     };
 
     let name_part = if after.starts_with('"') {
-        let after_first = after.splitn(2, '.').nth(1).unwrap_or(after);
+        let after_first = after.split_once('.').map(|x| x.1).unwrap_or(after);
         after_first.trim().trim_start_matches('"')
     } else {
-        after.splitn(2, '.').nth(1).unwrap_or(after)
+        after.split_once('.').map(|x| x.1).unwrap_or(after)
     };
 
     let name = name_part
         .trim_start()
         .trim_end_matches('"')
-        .split(|c: char| c == ' ' || c == '(' || c == '\n' || c == '\r')
+        .split([' ', '(', '\n', '\r'])
         .next()?;
 
-    if name.is_empty() { None } else { Some(name.to_string()) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }

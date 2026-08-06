@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import ReactEChartsCore from 'echarts-for-react'
 import * as echarts from 'echarts'
-import type { ChartConfig, ChartType } from '@/store/visualizerStore'
+import type { ChartConfig } from '@/store/visualizerStore'
 import type { DbRow } from '@/types/database'
 
 interface ChartRendererProps {
@@ -62,7 +62,7 @@ function buildOption(rows: DbRow[], config: ChartConfig, theme: string) {
         : undefined,
       tooltip: {
         trigger: 'item',
-        formatter: (p: any) => {
+        formatter: (p: { name: string; value: number | string; percent?: number }) => {
           const pct = p.percent ? ` (${p.percent.toFixed(1)}%)` : ''
           return `<strong>${p.name}</strong><br/>${p.value}${pct}`
         },
@@ -105,7 +105,7 @@ function buildOption(rows: DbRow[], config: ChartConfig, theme: string) {
     const values = rows.map((r) => Number(r[col] ?? 0))
     const seriesType = chartType === 'area' ? 'line' : chartType
 
-    const item: any = {
+    const item: Record<string, unknown> = {
       name: col,
       type: seriesType,
       data: values,
@@ -137,12 +137,12 @@ function buildOption(rows: DbRow[], config: ChartConfig, theme: string) {
         position: chartType === 'bar' ? (isHorizontal ? 'right' : 'top') : 'top',
         color: labelColor,
         fontSize: 10,
-        formatter: (p: any) => p.value,
+        formatter: (p: { name: string; value: number | string }) => p.value,
       }
     }
 
     return item
-  })
+  }) as unknown as echarts.SeriesOption[]
 
   return {
     color: COLORS,

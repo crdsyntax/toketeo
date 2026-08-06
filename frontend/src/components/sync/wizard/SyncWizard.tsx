@@ -8,7 +8,7 @@ import { Step1Connections } from './Step1Connections'
 import { Step2Tables } from './Step2Tables'
 import { Step3Preview } from './Step3Preview'
 import { Step4Schedule } from './Step4Schedule'
-import type { SyncPipeline, SyncTableConfig } from '@/types/sync'
+import type { SyncPipeline, SyncTableConfig, CreateSyncPipelineDto } from '@/types/sync'
 import { SyncMode } from '@/types/sync'
 
 interface SyncWizardProps {
@@ -28,7 +28,7 @@ const STEPS: { key: WizardStep; label: string; number: number }[] = [
   { key: 'schedule', label: 'Programación', number: 4 },
 ]
 
-export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore }: SyncWizardProps) {
+export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWizardProps) {
   const savePipeline = useSyncStore((s) => s.savePipeline)
 
   const [step, setStep] = useState<WizardStep>('connections')
@@ -152,7 +152,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize, onRestore
         tables,
         batch_size: 0,
         ...(pipeline?.id ? { id: pipeline.id } : {}),
-      } as any
+      } as CreateSyncPipelineDto
       await savePipeline(dto)
       onClose()
     } catch (e) {

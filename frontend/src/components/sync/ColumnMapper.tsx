@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { Plus, X, ArrowRight } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { TransformEditor } from './TransformEditor'
-import type { ColumnMapping, ColumnTransform } from '@/types/sync'
+import type { ColumnMapping } from '@/types/sync'
 
 interface ColumnMapperProps {
   sourceColumns: string[]

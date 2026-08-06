@@ -1,5 +1,5 @@
-use crate::db::{CapabilityProvider, DataReader, DataWriter, PoolConfig, UpsertResult};
 use crate::db::DbDriver;
+use crate::db::{CapabilityProvider, DataReader, DataWriter, PoolConfig, UpsertResult};
 use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
@@ -16,18 +16,38 @@ pub struct RedisDriver {
 }
 
 impl RedisDriver {
-    pub async fn new(url: &str, _transactional: bool, pool_config: Option<PoolConfig>) -> AppResult<Self> {
+    pub async fn new(
+        url: &str,
+        _transactional: bool,
+        pool_config: Option<PoolConfig>,
+    ) -> AppResult<Self> {
         let sanitized_url = if let Some(idx) = url.find('@') {
-            format!("{}@{}", &url[..idx.min(url.find("://").unwrap_or(0) + 3)], &url[idx + 1..])
+            format!(
+                "{}@{}",
+                &url[..idx.min(url.find("://").unwrap_or(0) + 3)],
+                &url[idx + 1..]
+            )
         } else {
             url.to_string()
         };
 
-        let has_password = url.find('@').map(|at| {
-            let after_scheme = &url[url.find("://").unwrap_or(0) + 3..at];
-            after_scheme.contains(':') && after_scheme.split(':').last().map(|p| !p.is_empty()).unwrap_or(false)
-        }).unwrap_or(false);
-        tracing::debug!("Initializing Redis driver with URL: {} (password_present: {})", sanitized_url, has_password);
+        let has_password = url
+            .find('@')
+            .map(|at| {
+                let after_scheme = &url[url.find("://").unwrap_or(0) + 3..at];
+                after_scheme.contains(':')
+                    && after_scheme
+                        .split(':')
+                        .next_back()
+                        .map(|p| !p.is_empty())
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        tracing::debug!(
+            "Initializing Redis driver with URL: {} (password_present: {})",
+            sanitized_url,
+            has_password
+        );
 
         let config = fred::types::RedisConfig::from_url(url).map_err(|e| {
             tracing::error!("Failed to parse Redis URL: {}. Error: {}", sanitized_url, e);
@@ -47,7 +67,7 @@ impl RedisDriver {
 
         let connect_start = Instant::now();
 
-        let _ = client.init().await.map_err(|e| {
+        client.init().await.map_err(|e| {
             let msg = e.to_string().to_uppercase();
             tracing::error!("Redis init failed after {:?} for {}: {}", connect_start.elapsed(), sanitized_url, msg);
 
@@ -63,9 +83,10 @@ impl RedisDriver {
         })?;
 
         // Verify with PING
-        let ping_result: RedisValue = client.ping().await.map_err(|e| {
-            AppError::Connection(format!("Redis PING failed: {}", e))
-        })?;
+        let ping_result: RedisValue = client
+            .ping()
+            .await
+            .map_err(|e| AppError::Connection(format!("Redis PING failed: {}", e)))?;
 
         tracing::info!(
             "Redis connection to {} verified in {:?} (PING: {:?})",
@@ -79,9 +100,10 @@ impl RedisDriver {
 
         // SELECT database if not 0
         if db > 0 {
-            client.select(db).await.map_err(|e| {
-                AppError::Connection(format!("Redis SELECT {} failed: {}", db, e))
-            })?;
+            client
+                .select(db)
+                .await
+                .map_err(|e| AppError::Connection(format!("Redis SELECT {} failed: {}", db, e)))?;
             tracing::debug!("Redis SELECT {} completed", db);
         }
 
@@ -170,13 +192,11 @@ impl RedisDriver {
                 }
             }
             RedisValue::Integer(n) => serde_json::Value::Number((*n).into()),
-            RedisValue::Double(f) => {
-                serde_json::Number::from_f64(*f)
-                    .map_or(serde_json::Value::Null, serde_json::Value::Number)
-            }
+            RedisValue::Double(f) => serde_json::Number::from_f64(*f)
+                .map_or(serde_json::Value::Null, serde_json::Value::Number),
             RedisValue::Boolean(b) => serde_json::Value::Bool(*b),
             RedisValue::Array(arr) => {
-                serde_json::Value::Array(arr.iter().map(|v| Self::redis_value_to_json(v)).collect())
+                serde_json::Value::Array(arr.iter().map(Self::redis_value_to_json).collect())
             }
             RedisValue::Null | RedisValue::Queued => serde_json::Value::Null,
             RedisValue::Bytes(b) => {
@@ -210,7 +230,10 @@ impl RedisDriver {
     fn build_key_row(key: &str, namespace: &str) -> serde_json::Value {
         let mut map = serde_json::Map::new();
         map.insert("key".into(), serde_json::Value::String(key.to_string()));
-        map.insert("namespace".into(), serde_json::Value::String(namespace.to_string()));
+        map.insert(
+            "namespace".into(),
+            serde_json::Value::String(namespace.to_string()),
+        );
         serde_json::Value::Object(map)
     }
 
@@ -222,16 +245,17 @@ impl RedisDriver {
         }
     }
 
-    async fn scan_keys(
-        &self,
-        pattern: &str,
-        count: i64,
-    ) -> AppResult<Vec<String>> {
+    async fn scan_keys(&self, pattern: &str, count: i64) -> AppResult<Vec<String>> {
         use futures::StreamExt;
 
         let batch_size = count.max(100) as u32;
 
-        tracing::debug!("scan_keys: pattern='{}', batch_size={}, db={}", pattern, batch_size, self.db);
+        tracing::debug!(
+            "scan_keys: pattern='{}', batch_size={}, db={}",
+            pattern,
+            batch_size,
+            self.db
+        );
 
         // First check how many keys exist
         let dbsize: i64 = self.client.dbsize().await.unwrap_or(-1);
@@ -259,12 +283,19 @@ impl RedisDriver {
             }
         }
 
-        tracing::debug!("scan_keys complete: pattern='{}', total_keys={}", pattern, all_keys.len());
+        tracing::debug!(
+            "scan_keys complete: pattern='{}', total_keys={}",
+            pattern,
+            all_keys.len()
+        );
         Ok(all_keys)
     }
 
     async fn get_key_type(&self, key: &str) -> AppResult<String> {
-        let key_type: String = self.client.r#type(key).await
+        let key_type: String = self
+            .client
+            .r#type(key)
+            .await
             .map_err(|e| AppError::Database(format!("TYPE {} failed: {}", key, e)))?;
         Ok(key_type.to_lowercase())
     }
@@ -272,31 +303,45 @@ impl RedisDriver {
     async fn read_key_value(&self, key: &str, key_type: &str) -> AppResult<serde_json::Value> {
         match key_type {
             "string" => {
-                let val: RedisValue = self.client.get(key).await
+                let val: RedisValue = self
+                    .client
+                    .get(key)
+                    .await
                     .map_err(|e| AppError::Database(format!("GET {} failed: {}", key, e)))?;
                 Ok(Self::redis_value_to_json(&val))
             }
             "list" => {
-                let len: i64 = self.client.llen(key).await
+                let len: i64 = self
+                    .client
+                    .llen(key)
+                    .await
                     .map_err(|e| AppError::Database(format!("LLEN {} failed: {}", key, e)))?;
                 if len == 0 {
                     return Ok(serde_json::Value::Array(vec![]));
                 }
-                let vals: Vec<RedisValue> = self.client.lrange(key, 0, len - 1).await
+                let vals: Vec<RedisValue> = self
+                    .client
+                    .lrange(key, 0, len - 1)
+                    .await
                     .map_err(|e| AppError::Database(format!("LRANGE {} failed: {}", key, e)))?;
                 Ok(serde_json::Value::Array(
-                    vals.iter().map(|v| Self::redis_value_to_json(v)).collect(),
+                    vals.iter().map(Self::redis_value_to_json).collect(),
                 ))
             }
             "set" => {
-                let vals: Vec<RedisValue> = self.client.smembers(key).await
-                    .map_err(|e| AppError::Database(format!("SMEMBERS {} failed: {}", key, e)))?;
+                let vals: Vec<RedisValue> =
+                    self.client.smembers(key).await.map_err(|e| {
+                        AppError::Database(format!("SMEMBERS {} failed: {}", key, e))
+                    })?;
                 Ok(serde_json::Value::Array(
-                    vals.iter().map(|v| Self::redis_value_to_json(v)).collect(),
+                    vals.iter().map(Self::redis_value_to_json).collect(),
                 ))
             }
             "zset" => {
-                let vals: Vec<RedisValue> = self.client.zrange(key, 0, -1, None, false, None, true).await
+                let vals: Vec<RedisValue> = self
+                    .client
+                    .zrange(key, 0, -1, None, false, None, true)
+                    .await
                     .map_err(|e| AppError::Database(format!("ZRANGE {} failed: {}", key, e)))?;
                 let mut arr = Vec::new();
                 let mut i = 0;
@@ -313,8 +358,10 @@ impl RedisDriver {
                 Ok(serde_json::Value::Array(arr))
             }
             "hash" => {
-                let entries: Vec<(RedisValue, RedisValue)> = self.client.hgetall(key).await
-                    .map_err(|e| AppError::Database(format!("HGETALL {} failed: {}", key, e)))?;
+                let entries: Vec<(RedisValue, RedisValue)> =
+                    self.client.hgetall(key).await.map_err(|e| {
+                        AppError::Database(format!("HGETALL {} failed: {}", key, e))
+                    })?;
                 let mut map = serde_json::Map::new();
                 for (field, val) in entries {
                     let field_str = Self::redis_value_to_string(&field);
@@ -326,10 +373,7 @@ impl RedisDriver {
         }
     }
 
-    async fn execute_redis_command(
-        &self,
-        tokens: &[String],
-    ) -> AppResult<QueryResult> {
+    async fn execute_redis_command(&self, tokens: &[String]) -> AppResult<QueryResult> {
         let start = Instant::now();
         let cmd = tokens[0].to_uppercase();
 
@@ -1129,7 +1173,10 @@ impl DbDriver for RedisDriver {
     }
 
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {
-        let info_value: RedisValue = self.client.info(Some(InfoKind::Keyspace)).await
+        let info_value: RedisValue = self
+            .client
+            .info(Some(InfoKind::Keyspace))
+            .await
             .map_err(|e| AppError::Database(format!("INFO keyspace failed: {}", e)))?;
 
         let info_str = Self::redis_value_to_string(&info_value);
@@ -1162,17 +1209,27 @@ impl DbDriver for RedisDriver {
         filter: Option<String>,
     ) -> AppResult<Vec<String>> {
         let pattern = filter.unwrap_or_else(|| "*".to_string());
-        tracing::debug!("Redis fetch_tables: pattern='{}', schema={:?}", pattern, _schema);
+        tracing::debug!(
+            "Redis fetch_tables: pattern='{}', schema={:?}",
+            pattern,
+            _schema
+        );
         let keys = self.scan_keys(&pattern, 500).await?;
 
-        let mut namespaces: Vec<String> = keys.iter()
+        let mut namespaces: Vec<String> = keys
+            .iter()
             .map(|k| Self::extract_namespace(k))
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
         namespaces.sort();
 
-        tracing::debug!("Redis fetch_tables: found {} keys, {} namespaces: {:?}", keys.len(), namespaces.len(), namespaces);
+        tracing::debug!(
+            "Redis fetch_tables: found {} keys, {} namespaces: {:?}",
+            keys.len(),
+            namespaces.len(),
+            namespaces
+        );
         Ok(namespaces)
     }
 
@@ -1239,7 +1296,8 @@ impl DbDriver for RedisDriver {
         }
 
         // Determine dominant type
-        let dominant_type = type_counts.iter()
+        let dominant_type = type_counts
+            .iter()
             .max_by_key(|(_, count)| *count)
             .map(|(t, _)| t.as_str())
             .unwrap_or("string");
@@ -1359,7 +1417,16 @@ impl DbDriver for RedisDriver {
         let ttl: i64 = self.client.ttl(name).await.unwrap_or(-1);
         let val = self.read_key_value(name, &key_type).await?;
 
-        let mut ddl = format!("Key: {}\nType: {}\nTTL: {}\n\n", name, key_type, if ttl >= 0 { format!("{}s", ttl) } else { "none".to_string() });
+        let mut ddl = format!(
+            "Key: {}\nType: {}\nTTL: {}\n\n",
+            name,
+            key_type,
+            if ttl >= 0 {
+                format!("{}s", ttl)
+            } else {
+                "none".to_string()
+            }
+        );
 
         match key_type.as_str() {
             "string" => {
@@ -1394,7 +1461,8 @@ impl DbDriver for RedisDriver {
                 if let Some(arr) = val.as_array() {
                     for item in arr {
                         if let Some(obj) = item.as_object() {
-                            let member = obj.get("member").map(|v| v.to_string()).unwrap_or_default();
+                            let member =
+                                obj.get("member").map(|v| v.to_string()).unwrap_or_default();
                             let score = obj.get("score").map(|v| v.to_string()).unwrap_or_default();
                             ddl.push_str(&format!("  {} (score: {})\n", member, score));
                         }
@@ -1441,7 +1509,10 @@ impl DataReader for RedisDriver {
         let mut rows = Vec::new();
         for key in &keys {
             let key_type = self.get_key_type(key).await.unwrap_or_default();
-            let val = self.read_key_value(key, &key_type).await.unwrap_or(serde_json::Value::Null);
+            let val = self
+                .read_key_value(key, &key_type)
+                .await
+                .unwrap_or(serde_json::Value::Null);
 
             let mut row = serde_json::Map::new();
             row.insert("key".into(), serde_json::Value::String(key.clone()));
@@ -1453,11 +1524,7 @@ impl DataReader for RedisDriver {
         Ok(rows)
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        _schema: Option<&str>,
-    ) -> AppResult<u64> {
+    async fn count_rows(&self, table: &str, _schema: Option<&str>) -> AppResult<u64> {
         let pattern = format!("{}:*", table);
         let keys = self.scan_keys(&pattern, 10000).await?;
         Ok(keys.len() as u64)
@@ -1482,9 +1549,7 @@ impl DataWriter for RedisDriver {
 
         for row in rows {
             // For Redis upsert, 'key' column is required, and 'value' is the value to set
-            let key = row.get("key")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let key = row.get("key").and_then(|v| v.as_str()).unwrap_or("");
 
             if key.is_empty() {
                 continue;
@@ -1498,7 +1563,10 @@ impl DataWriter for RedisDriver {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
-                let _: RedisValue = self.client.set(&full_key, &val_str, None, None, false).await
+                let _: RedisValue = self
+                    .client
+                    .set(&full_key, &val_str, None, None, false)
+                    .await
                     .map_err(|e| AppError::Database(format!("SET {} failed: {}", full_key, e)))?;
                 affected += 1;
             }
@@ -1509,7 +1577,10 @@ impl DataWriter for RedisDriver {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
-                let _: RedisValue = self.client.hset(&full_key, (field_str, &val_str)).await
+                let _: RedisValue = self
+                    .client
+                    .hset(&full_key, (field_str, &val_str))
+                    .await
                     .map_err(|e| AppError::Database(format!("HSET {} failed: {}", full_key, e)))?;
                 affected += 1;
             }

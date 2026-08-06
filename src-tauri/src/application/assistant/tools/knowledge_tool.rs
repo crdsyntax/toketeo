@@ -69,10 +69,7 @@ impl AssistantTool for KnowledgeTool {
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("search");
-        let engine = args
-            .get("engine")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let engine = args.get("engine").and_then(|v| v.as_str()).unwrap_or("");
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as i64;
 
         match action {
@@ -129,9 +126,7 @@ impl AssistantTool for KnowledgeTool {
                         ok: false,
                         data: None,
                         requires_confirmation: false,
-                        message: Some(
-                            "'query' and 'sql_text' are required for record".to_string(),
-                        ),
+                        message: Some("'query' and 'sql_text' are required for record".to_string()),
                     });
                 }
                 let id = KnowledgeEngine::record_case(

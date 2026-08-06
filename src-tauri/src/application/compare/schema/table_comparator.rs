@@ -225,7 +225,9 @@ pub async fn compare_tables(
         name_map.insert(t.to_lowercase(), t.clone());
     }
     for t in &tgt_tables {
-        name_map.entry(t.to_lowercase()).or_insert_with(|| t.clone());
+        name_map
+            .entry(t.to_lowercase())
+            .or_insert_with(|| t.clone());
     }
 
     let mut all_names: BTreeSet<String> = BTreeSet::new();
@@ -248,7 +250,7 @@ pub async fn compare_tables(
         results.push(diff);
     }
 
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    results.sort_by_key(|a| a.name.to_lowercase());
     Ok(results)
 }
 
@@ -268,11 +270,20 @@ mod tests {
 
     #[test]
     fn equal_columns() {
-        let src = vec![col("id", "INT", false, None), col("name", "VARCHAR(50)", true, None)];
-        let tgt = vec![col("id", "int", false, None), col("name", "varchar(50)", true, None)];
+        let src = vec![
+            col("id", "INT", false, None),
+            col("name", "VARCHAR(50)", true, None),
+        ];
+        let tgt = vec![
+            col("id", "int", false, None),
+            col("name", "varchar(50)", true, None),
+        ];
         let diff = compare_columns(&src, &tgt);
         assert_eq!(diff.status, CompareStatus::Equal);
-        assert!(diff.columns.iter().all(|c| c.status == CompareStatus::Equal));
+        assert!(diff
+            .columns
+            .iter()
+            .all(|c| c.status == CompareStatus::Equal));
     }
 
     #[test]
@@ -292,7 +303,11 @@ mod tests {
         let tgt = vec![col("a", "INT", false, None), col("c", "TEXT", true, None)];
         let diff = compare_columns(&src, &tgt);
         assert_eq!(diff.status, CompareStatus::Modified);
-        let by_name: BTreeMap<_, _> = diff.columns.iter().map(|c| (c.name.as_str(), c.status.clone())).collect();
+        let by_name: BTreeMap<_, _> = diff
+            .columns
+            .iter()
+            .map(|c| (c.name.as_str(), c.status.clone()))
+            .collect();
         assert_eq!(by_name["a"], CompareStatus::Equal);
         assert_eq!(by_name["b"], CompareStatus::Missing);
         assert_eq!(by_name["c"], CompareStatus::New);

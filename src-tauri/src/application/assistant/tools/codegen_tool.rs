@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::application::model_generator_service::ModelGeneratorService;
 use crate::application::sql_generator_service::SqlGeneratorService;
-use crate::db::{DbDriver};
+use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::models::assistant::ToolResult;
 use crate::state::AppState;
@@ -66,14 +66,8 @@ impl AssistantTool for CodegenTool {
             }
         };
 
-        let action = args
-            .get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let table = args
-            .get("table")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
+        let table = args.get("table").and_then(|v| v.as_str()).unwrap_or("");
 
         if table.is_empty() {
             return Ok(ToolResult {
@@ -103,14 +97,22 @@ impl CodegenTool {
         let columns_raw = driver.fetch_columns(table, None).await?;
         let pk_column = columns_raw
             .iter()
-            .find(|c| c.get("isPrimaryKey").and_then(|v| v.as_bool()).unwrap_or(false))
+            .find(|c| {
+                c.get("isPrimaryKey")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
             .and_then(|c| c.get("name").and_then(|v| v.as_str()))
             .unwrap_or("id");
 
         let columns: Vec<String> = args
             .get("columns")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_else(|| {
                 columns_raw
                     .iter()

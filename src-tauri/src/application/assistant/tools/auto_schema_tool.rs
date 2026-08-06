@@ -59,10 +59,7 @@ impl AssistantTool for AutoSchemaTool {
             }
         };
 
-        let table = args
-            .get("table")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let table = args.get("table").and_then(|v| v.as_str()).unwrap_or("");
         let target = args
             .get("target_dialect")
             .and_then(|v| v.as_str())
@@ -84,14 +81,8 @@ impl AssistantTool for AutoSchemaTool {
 
         let source_type = driver.db_type();
 
-        let create_stmt = generate_create_table(
-            table,
-            &columns,
-            &indexes,
-            &fks,
-            &source_type,
-            target,
-        );
+        let create_stmt =
+            generate_create_table(table, &columns, &indexes, &fks, &source_type, target);
 
         Ok(ToolResult {
             ok: true,
@@ -194,7 +185,7 @@ fn generate_create_table(
         }
     }
 
-    stmt.push_str(&format!("\n);"));
+    stmt.push_str("\n);");
 
     stmt
 }
@@ -203,24 +194,40 @@ fn map_type(sql_type: &str, target: &str) -> String {
     let upper = sql_type.to_uppercase();
     match target {
         "postgres" => match upper.as_str() {
-            t if t.contains("INT") && !t.contains("BIG") && !t.contains("SMALL") && !t.contains("TINY") => "INTEGER".to_string(),
+            t if t.contains("INT")
+                && !t.contains("BIG")
+                && !t.contains("SMALL")
+                && !t.contains("TINY") =>
+            {
+                "INTEGER".to_string()
+            }
             t if t.contains("TINYINT") || t.contains("BOOL") => "BOOLEAN".to_string(),
             t if t.contains("BIGINT") => "BIGINT".to_string(),
             t if t.contains("SMALLINT") => "SMALLINT".to_string(),
             t if t.contains("VARCHAR") => {
-                let len = t.trim_start_matches("VARCHAR(").trim_end_matches(')').parse::<u32>().unwrap_or(255);
+                let len = t
+                    .trim_start_matches("VARCHAR(")
+                    .trim_end_matches(')')
+                    .parse::<u32>()
+                    .unwrap_or(255);
                 if len > 8000 {
                     "TEXT".to_string()
                 } else {
                     format!("VARCHAR({len})")
                 }
             }
-            t if t.contains("TEXT") || t.contains("LONGTEXT") || t.contains("MEDIUMTEXT") => "TEXT".to_string(),
+            t if t.contains("TEXT") || t.contains("LONGTEXT") || t.contains("MEDIUMTEXT") => {
+                "TEXT".to_string()
+            }
             t if t.contains("DATETIME") || t.contains("TIMESTAMP") => "TIMESTAMP".to_string(),
-            t if t.contains("BLOB") || t.contains("LONGBLOB") || t.contains("MEDIUMBLOB") => "BYTEA".to_string(),
+            t if t.contains("BLOB") || t.contains("LONGBLOB") || t.contains("MEDIUMBLOB") => {
+                "BYTEA".to_string()
+            }
             t if t.contains("FLOAT") || t.contains("DOUBLE") => "DOUBLE PRECISION".to_string(),
             t if t.contains("DECIMAL") || t.contains("NUMERIC") => {
-                let inner = t.trim_start_matches("DECIMAL(").trim_start_matches("NUMERIC(");
+                let inner = t
+                    .trim_start_matches("DECIMAL(")
+                    .trim_start_matches("NUMERIC(");
                 if inner.contains(')') {
                     let parts = inner.trim_end_matches(')').split(',').collect::<Vec<_>>();
                     if parts.len() == 2 {
@@ -236,9 +243,15 @@ fn map_type(sql_type: &str, target: &str) -> String {
         },
         "sqlite" => match upper.as_str() {
             t if t.contains("INT") => "INTEGER".to_string(),
-            t if t.contains("VARCHAR") || t.contains("TEXT") || t.contains("CHAR") => "TEXT".to_string(),
-            t if t.contains("BLOB") || t.contains("LONGBLOB") || t.contains("MEDIUMBLOB") => "BLOB".to_string(),
-            t if t.contains("FLOAT") || t.contains("DOUBLE") || t.contains("DECIMAL") => "REAL".to_string(),
+            t if t.contains("VARCHAR") || t.contains("TEXT") || t.contains("CHAR") => {
+                "TEXT".to_string()
+            }
+            t if t.contains("BLOB") || t.contains("LONGBLOB") || t.contains("MEDIUMBLOB") => {
+                "BLOB".to_string()
+            }
+            t if t.contains("FLOAT") || t.contains("DOUBLE") || t.contains("DECIMAL") => {
+                "REAL".to_string()
+            }
             t if t.contains("DATETIME") || t.contains("TIMESTAMP") => "TEXT".to_string(),
             _ => sql_type.to_string(),
         },
@@ -248,7 +261,9 @@ fn map_type(sql_type: &str, target: &str) -> String {
             t if t.contains("SMALLINT") => "SMALLINT".to_string(),
             t if t.contains("INT") => "INT".to_string(),
             t if t.contains("VARCHAR") => sql_type.to_string(),
-            t if t.contains("TEXT") || t.contains("LONGTEXT") || t.contains("MEDIUMTEXT") => "NVARCHAR(MAX)".to_string(),
+            t if t.contains("TEXT") || t.contains("LONGTEXT") || t.contains("MEDIUMTEXT") => {
+                "NVARCHAR(MAX)".to_string()
+            }
             t if t.contains("DATETIME") || t.contains("TIMESTAMP") => "DATETIME2".to_string(),
             t if t.contains("BLOB") || t.contains("LONGBLOB") => "VARBINARY(MAX)".to_string(),
             t if t.contains("FLOAT") || t.contains("DOUBLE") => "FLOAT".to_string(),

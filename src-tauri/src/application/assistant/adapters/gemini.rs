@@ -16,9 +16,8 @@ impl GeminiAdapter {
     pub fn new(api_key: String, model: Option<String>, base_url: Option<String>) -> Self {
         Self {
             api_key,
-            base_url: base_url.unwrap_or_else(|| {
-                "https://generativelanguage.googleapis.com".to_string()
-            }),
+            base_url: base_url
+                .unwrap_or_else(|| "https://generativelanguage.googleapis.com".to_string()),
             model: model.unwrap_or_else(|| "gemini-2.5-pro".to_string()),
             client: reqwest::Client::new(),
         }
@@ -151,7 +150,7 @@ impl AiAdapter for GeminiAdapter {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m["name"].as_str()?.to_string();
-                        let short = id.split('/').last().unwrap_or(&id).to_string();
+                        let short = id.split('/').next_back().unwrap_or(&id).to_string();
                         if short.starts_with("gemini") {
                             Some(ModelInfo {
                                 id: short.clone(),

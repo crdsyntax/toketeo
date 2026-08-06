@@ -185,7 +185,9 @@ impl AssistantTool for DdlTool {
                         ok: false,
                         data: None,
                         requires_confirmation: false,
-                        message: Some(format!("createSchema is only supported for Postgres (got {db_type})")),
+                        message: Some(format!(
+                            "createSchema is only supported for Postgres (got {db_type})"
+                        )),
                     });
                 }
                 format!("CREATE SCHEMA {}", quote_identifier(&db_type, obj))
@@ -196,7 +198,9 @@ impl AssistantTool for DdlTool {
                         ok: false,
                         data: None,
                         requires_confirmation: false,
-                        message: Some(format!("dropSchema is only supported for Postgres (got {db_type})")),
+                        message: Some(format!(
+                            "dropSchema is only supported for Postgres (got {db_type})"
+                        )),
                     });
                 }
                 format!("DROP SCHEMA {}", quote_identifier(&db_type, obj))
@@ -207,7 +211,9 @@ impl AssistantTool for DdlTool {
                         ok: false,
                         data: None,
                         requires_confirmation: false,
-                        message: Some(format!("createCollection is only supported for MongoDB (got {db_type})")),
+                        message: Some(format!(
+                            "createCollection is only supported for MongoDB (got {db_type})"
+                        )),
                     });
                 }
                 serde_json::json!({ "create": obj }).to_string()

@@ -14,4 +14,6 @@ pub use normalizer::{hash_sql, normalize_sql};
 pub use routine_comparator::{compare_functions, compare_procedures};
 pub use table_comparator::{compare_columns, compare_table, compare_tables};
 pub use trigger_comparator::compare_triggers;
-pub use view_comparator::{compare_views, compare_views_for_names, compute_hashes, fetch_view_ddls};
+pub use view_comparator::{
+    compare_views, compare_views_for_names, compute_hashes, fetch_view_ddls,
+};

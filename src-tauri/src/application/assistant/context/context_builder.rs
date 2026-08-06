@@ -16,9 +16,7 @@ impl ContextBuilder {
             .or_else(|| Self::detect_database(&db_type));
         let user = Self::fetch_user(driver, &db_type).await?;
 
-        let tables = driver
-            .fetch_tables(database.clone(), None)
-            .await?;
+        let tables = driver.fetch_tables(database.clone(), None).await?;
 
         let mut table_contexts = Vec::with_capacity(tables.len());
         for table_name in &tables {
@@ -26,15 +24,9 @@ impl ContextBuilder {
             table_contexts.push(ctx);
         }
 
-        let views = driver
-            .fetch_views(database.clone(), None)
-            .await?;
-        let procedures = driver
-            .fetch_procedures(database.clone(), None)
-            .await?;
-        let triggers = driver
-            .fetch_triggers(database.clone(), None)
-            .await?;
+        let views = driver.fetch_views(database.clone(), None).await?;
+        let procedures = driver.fetch_procedures(database.clone(), None).await?;
+        let triggers = driver.fetch_triggers(database.clone(), None).await?;
 
         Ok(SchemaContext {
             db_type: db_type.to_string(),
@@ -207,14 +199,16 @@ impl ContextBuilder {
                 .to_string();
 
             let entry =
-                grouped.entry(constraint_name.clone()).or_insert_with(|| ForeignKeyContext {
-                    constraint_name,
-                    columns: Vec::new(),
-                    referenced_table: referenced_table.clone(),
-                    referenced_columns: Vec::new(),
-                    on_delete: None,
-                    on_update: None,
-                });
+                grouped
+                    .entry(constraint_name.clone())
+                    .or_insert_with(|| ForeignKeyContext {
+                        constraint_name,
+                        columns: Vec::new(),
+                        referenced_table: referenced_table.clone(),
+                        referenced_columns: Vec::new(),
+                        on_delete: None,
+                        on_update: None,
+                    });
             entry.columns.push(column);
             entry.referenced_columns.push(referenced_column);
         }

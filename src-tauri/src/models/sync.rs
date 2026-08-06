@@ -27,11 +27,11 @@ pub enum PipelineStatus {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum UpsertStrategy {
-    OnConflict,      // PostgreSQL
-    OnDuplicateKey,  // MySQL / MariaDB
-    Merge,           // SQL Server
-    UpsertDoc,       // MongoDB
-    Hset,            // Redis
+    OnConflict,     // PostgreSQL
+    OnDuplicateKey, // MySQL / MariaDB
+    Merge,          // SQL Server
+    UpsertDoc,      // MongoDB
+    Hset,           // Redis
 }
 
 /// Capacidades expuestas por cada driver.
@@ -102,11 +102,22 @@ pub enum ColumnTransform {
     Trim,
     Uppercase,
     Lowercase,
-    DefaultValue { value: String },
-    Regex { pattern: String, replacement: String },
-    Concat { parts: Vec<String> },
-    Cast { target_type: String },
-    DateFormat { format: String },
+    DefaultValue {
+        value: String,
+    },
+    Regex {
+        pattern: String,
+        replacement: String,
+    },
+    Concat {
+        parts: Vec<String>,
+    },
+    Cast {
+        target_type: String,
+    },
+    DateFormat {
+        format: String,
+    },
 }
 
 /// Ejecución de un pipeline.

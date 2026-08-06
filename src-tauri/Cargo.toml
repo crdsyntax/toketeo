@@ -1,10 +1,13 @@
 [package]
 name = "toketeo"
-version = "0.4.1"
+version = "0.4.2"
 description = "Toketeo Database Client and Administration Panel"
 authors = ["crdsyntax"]
 edition = "2021"
 rust-version = "1.77.2"
+
+[lints.clippy]
+too_many_arguments = "allow"
 
 [lib]
 name = "toketeo_lib"

@@ -91,7 +91,8 @@ impl AssistantTool for ConnectionsTool {
                             data: None,
                             requires_confirmation: false,
                             message: Some(
-                                "No database connection available. Provide connection_id.".to_string(),
+                                "No database connection available. Provide connection_id."
+                                    .to_string(),
                             ),
                         })
                     }

@@ -75,10 +75,7 @@ impl AssistantTool for QueryEditTool {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let table = args.get("table").and_then(|v| v.as_str()).unwrap_or("");
-        let column = args
-            .get("column")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let column = args.get("column").and_then(|v| v.as_str()).unwrap_or("");
 
         if cid.is_empty() || table.is_empty() || column.is_empty() {
             return Ok(ToolResult {
@@ -90,10 +87,7 @@ impl AssistantTool for QueryEditTool {
         }
 
         let row = match args.get("row").and_then(|v| v.as_object()) {
-            Some(r) => r
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect(),
+            Some(r) => r.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             None => {
                 return Ok(ToolResult {
                     ok: false,
@@ -130,7 +124,10 @@ impl AssistantTool for QueryEditTool {
             table: table.to_string(),
             row,
             column: column.to_string(),
-            new_value: args.get("new_value").cloned().unwrap_or(serde_json::Value::Null),
+            new_value: args
+                .get("new_value")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
             primary_keys,
         };
 

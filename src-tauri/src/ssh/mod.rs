@@ -38,9 +38,9 @@ impl KnownHostsStore {
             return;
         }
         if let Ok(Some(raw)) = self.storage.get_app_secret("ssh_known_hosts").await {
-            if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(
-                &String::from_utf8_lossy(&raw),
-            ) {
+            if let Ok(map) =
+                serde_json::from_str::<HashMap<String, String>>(&String::from_utf8_lossy(&raw))
+            {
                 if let Ok(mut cache) = self.cache.lock() {
                     *cache = map;
                 }
@@ -51,7 +51,12 @@ impl KnownHostsStore {
 
     /// Returns `Ok(true)` if the host key is trusted, `Ok(false)` if the
     /// fingerprint changed (reject), `Err` on storage failure.
-    pub async fn verify_or_record(&self, host: &str, port: u16, fingerprint: &str) -> AppResult<bool> {
+    pub async fn verify_or_record(
+        &self,
+        host: &str,
+        port: u16,
+        fingerprint: &str,
+    ) -> AppResult<bool> {
         self.load().await;
         let key = format!("{}:{}", host, port);
         let known = self.cache.lock().ok().and_then(|c| c.get(&key).cloned());
@@ -74,7 +79,10 @@ impl KnownHostsStore {
             .ok()
             .and_then(|c| serde_json::to_string(&*c).ok());
         if let Some(raw) = raw {
-            let _ = self.storage.set_app_secret("ssh_known_hosts", raw.as_bytes()).await;
+            let _ = self
+                .storage
+                .set_app_secret("ssh_known_hosts", raw.as_bytes())
+                .await;
         }
     }
 }
@@ -240,21 +248,12 @@ impl SshTunnel {
                     .map(|k| k.expose_secret().to_owned())
                     .filter(|k| !k.trim().is_empty());
 
-                let key_pair = load_private_key(
-                    key_path.as_deref(),
-                    private_key.as_deref(),
-                    passphrase.as_deref(),
-                )?;
+                let key_pair =
+                    load_private_key(key_path, private_key.as_deref(), passphrase.as_deref())?;
 
-                let best_hash = session
-                    .best_supported_rsa_hash()
-                    .await
-                    .map_err(|e| {
-                        crate::error::AppError::Ssh(format!(
-                            "SSH RSA hash negotiation failed: {}",
-                            e
-                        ))
-                    })?;
+                let best_hash = session.best_supported_rsa_hash().await.map_err(|e| {
+                    crate::error::AppError::Ssh(format!("SSH RSA hash negotiation failed: {}", e))
+                })?;
 
                 let auth = session
                     .authenticate_publickey(
@@ -365,8 +364,8 @@ async fn tunnel_connection(
         Ok(channel) => {
             let mut channel_stream = channel.into_stream();
             let mut local_stream = local_stream;
-            if let Err(e) = tokio::io::copy_bidirectional(&mut channel_stream, &mut local_stream)
-                .await
+            if let Err(e) =
+                tokio::io::copy_bidirectional(&mut channel_stream, &mut local_stream).await
             {
                 tracing::debug!("[SSH] tunnel connection closed: {}", e);
             }

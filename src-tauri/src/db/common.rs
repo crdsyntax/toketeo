@@ -1,24 +1,36 @@
-use chrono::{ DateTime, NaiveDate, NaiveTime, Utc };
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use serde_json::Value;
-use sqlx::{ mysql::MySqlRow, Row };
+use sqlx::{mysql::MySqlRow, Row};
 
 pub type Decoder = fn(&MySqlRow, usize) -> Option<Value>;
 
 pub fn decode_i64(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<i64>, _>(index).ok().flatten().map(Value::from)
+    row.try_get::<Option<i64>, _>(index)
+        .ok()
+        .flatten()
+        .map(Value::from)
 }
 
 pub fn decode_u8(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<u8>, _>(index).ok().flatten().map(|v| Value::from(v as i64))
+    row.try_get::<Option<u8>, _>(index)
+        .ok()
+        .flatten()
+        .map(|v| Value::from(v as i64))
 }
 
 pub fn decode_u16(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<u16>, _>(index).ok().flatten().map(|v| Value::from(v as i64))
+    row.try_get::<Option<u16>, _>(index)
+        .ok()
+        .flatten()
+        .map(|v| Value::from(v as i64))
 }
 
 pub fn decode_u32(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<u32>, _>(index).ok().flatten().map(|v| Value::from(v as i64))
+    row.try_get::<Option<u32>, _>(index)
+        .ok()
+        .flatten()
+        .map(|v| Value::from(v as i64))
 }
 
 pub fn decode_u64(row: &MySqlRow, index: usize) -> Option<Value> {
@@ -42,11 +54,17 @@ pub fn decode_decimal(row: &MySqlRow, index: usize) -> Option<Value> {
 }
 
 pub fn decode_f64(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<f64>, _>(index).ok().flatten().map(Value::from)
+    row.try_get::<Option<f64>, _>(index)
+        .ok()
+        .flatten()
+        .map(Value::from)
 }
 
 pub fn decode_bool(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<bool>, _>(index).ok().flatten().map(Value::from)
+    row.try_get::<Option<bool>, _>(index)
+        .ok()
+        .flatten()
+        .map(Value::from)
 }
 
 pub fn decode_datetime_utc(row: &MySqlRow, index: usize) -> Option<Value> {
@@ -96,16 +114,12 @@ pub fn decode_time(row: &MySqlRow, index: usize) -> Option<Value> {
 }
 
 pub fn decode_string(row: &MySqlRow, index: usize) -> Option<Value> {
-    if let Ok(v) = row.try_get::<Option<String>, _>(index) {
-        if let Some(s) = v {
-            return Some(Value::from(s));
-        }
+    if let Ok(Some(s)) = row.try_get::<Option<String>, _>(index) {
+        return Some(Value::from(s));
     }
 
-    if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(index) {
-        if let Some(bytes) = v {
-            return Some(Value::from(String::from_utf8_lossy(&bytes).to_string()));
-        }
+    if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(index) {
+        return Some(Value::from(String::from_utf8_lossy(&bytes).to_string()));
     }
 
     None

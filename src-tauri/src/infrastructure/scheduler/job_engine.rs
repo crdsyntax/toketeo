@@ -129,7 +129,14 @@ impl JobEngine {
             if should_run_now(&job, &now) {
                 let token = CancellationToken::new();
                 engine.register_token(&job.id.to_string(), token.clone());
-                let result = execute_job(&engine.storage, &engine.known_hosts, &mut job, &engine.app_handle, Some(token.clone())).await;
+                let result = execute_job(
+                    &engine.storage,
+                    &engine.known_hosts,
+                    &mut job,
+                    &engine.app_handle,
+                    Some(token.clone()),
+                )
+                .await;
                 engine.remove_token(&job.id.to_string());
                 match result {
                     Ok(payload) => {
@@ -184,7 +191,7 @@ fn should_run_now(job: &ScheduledJob, now: &chrono::DateTime<Utc>) -> bool {
         Err(_) => return false,
     };
 
-    if let Some(next) = schedule.after(&now).next() {
+    if let Some(next) = schedule.after(now).next() {
         if let Some(last_run) = job.last_run {
             let since_last = *now - last_run;
             let since_next = next - last_run;
@@ -235,10 +242,13 @@ async fn execute_job(
     let started_at = Utc::now();
 
     if let Some(ref handle) = app_handle {
-        let _ = handle.emit("scheduler:job-started", &JobStartedPayload {
-            job_id: job_id.to_string(),
-            job_name: job.name.clone(),
-        });
+        let _ = handle.emit(
+            "scheduler:job-started",
+            &JobStartedPayload {
+                job_id: job_id.to_string(),
+                job_name: job.name.clone(),
+            },
+        );
     }
 
     if let Some(ref token) = cancel_token {
@@ -250,7 +260,9 @@ async fn execute_job(
     let result = if let Some(ref handle) = app_handle {
         JobExecutor::execute(job, storage, known_hosts, handle, cancel_token).await
     } else {
-        return Err(crate::error::AppError::Internal("No app handle available".into()));
+        return Err(crate::error::AppError::Internal(
+            "No app handle available".into(),
+        ));
     };
 
     let finished_at = Utc::now();
@@ -260,7 +272,11 @@ async fn execute_job(
         job_id,
         started_at,
         finished_at,
-        status: if result.is_success() { "success".into() } else { "error".into() },
+        status: if result.is_success() {
+            "success".into()
+        } else {
+            "error".into()
+        },
         output_path: result.output_dir.clone(),
         error: result.error.clone(),
         rows_affected: result.rows_affected,
@@ -271,7 +287,11 @@ async fn execute_job(
     let payload = JobCompletedPayload {
         job_id: job_id.to_string(),
         job_name: job.name.clone(),
-        status: if result.is_success() { "success".into() } else { "error".into() },
+        status: if result.is_success() {
+            "success".into()
+        } else {
+            "error".into()
+        },
         output_dir: result.output_dir,
         error: result.error,
         rows_affected: result.rows_affected,

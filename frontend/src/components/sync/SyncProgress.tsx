@@ -4,27 +4,7 @@ import { Loader2, CheckCircle2, AlertTriangle, Database, ArrowRightFromLine } fr
 import { cn } from '@/lib/utils'
 import type { SyncEvent, SyncRun } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
-
-export interface ProgressState {
-  completedBatches: number
-  processedRows: number
-  totalRows: number
-  errors: number
-  skipped: number
-  currentTable: string
-  tableIndex: number
-  totalTables: number
-  phase: 'extracting' | 'loading' | 'done' | 'idle'
-  elapsedMs: number
-  estimatedMs: number
-}
-
-export interface MiniLog {
-  type: 'batch' | 'error' | 'phase'
-  table: string
-  message: string
-  time: Date
-}
+import type { ProgressState, MiniLog } from '@/lib/sync-progress'
 
 interface SyncProgressProps {
   run: SyncRun
@@ -34,20 +14,6 @@ interface SyncProgressProps {
   onLogsChange: (logs: MiniLog[] | ((prev: MiniLog[]) => MiniLog[])) => void
   onEvent?: (event: SyncEvent) => void
 }
-
-export const createInitialProgress = (run: SyncRun): ProgressState => ({
-  completedBatches: 0,
-  processedRows: run.processed_rows,
-  totalRows: run.total_rows,
-  errors: run.error_count,
-  skipped: 0,
-  currentTable: '',
-  tableIndex: 0,
-  totalTables: 0,
-  phase: run.status === PipelineStatus.Completed ? 'done' : 'idle',
-  elapsedMs: 0,
-  estimatedMs: 0,
-})
 
 export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChange, onEvent }: SyncProgressProps) {
   const startTime = useRef(Date.now())

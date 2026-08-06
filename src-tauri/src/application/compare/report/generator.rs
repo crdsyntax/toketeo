@@ -47,14 +47,54 @@ pub fn count_schema_differences(report: &SchemaReport) -> serde_json::Value {
 /// Filtra un SchemaReport para incluir solo las diferencias (sin Equal).
 pub fn filter_differences_only(report: &SchemaReport) -> SchemaReport {
     SchemaReport {
-        tables: report.tables.iter().filter(|t| t.status != CompareStatus::Equal).cloned().collect(),
-        views: report.views.iter().filter(|v| v.status != CompareStatus::Equal).cloned().collect(),
-        procedures: report.procedures.iter().filter(|p| p.status != CompareStatus::Equal).cloned().collect(),
-        functions: report.functions.iter().filter(|f| f.status != CompareStatus::Equal).cloned().collect(),
-        triggers: report.triggers.iter().filter(|t| t.status != CompareStatus::Equal).cloned().collect(),
-        indexes: report.indexes.iter().filter(|i| i.status != CompareStatus::Equal).cloned().collect(),
-        foreign_keys: report.foreign_keys.iter().filter(|f| f.status != CompareStatus::Equal).cloned().collect(),
-        constraints: report.constraints.iter().filter(|c| c.status != CompareStatus::Equal).cloned().collect(),
+        tables: report
+            .tables
+            .iter()
+            .filter(|t| t.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        views: report
+            .views
+            .iter()
+            .filter(|v| v.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        procedures: report
+            .procedures
+            .iter()
+            .filter(|p| p.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        functions: report
+            .functions
+            .iter()
+            .filter(|f| f.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        triggers: report
+            .triggers
+            .iter()
+            .filter(|t| t.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        indexes: report
+            .indexes
+            .iter()
+            .filter(|i| i.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        foreign_keys: report
+            .foreign_keys
+            .iter()
+            .filter(|f| f.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
+        constraints: report
+            .constraints
+            .iter()
+            .filter(|c| c.status != CompareStatus::Equal)
+            .cloned()
+            .collect(),
         source_name: report.source_name.clone(),
         target_name: report.target_name.clone(),
         compared_at: report.compared_at.clone(),
@@ -74,8 +114,16 @@ mod tests {
             target_name: "tgt".into(),
             compared_at: "2024-01-01T00:00:00Z".into(),
             tables: vec![
-                ObjectDiff { name: "ok".into(), status: CompareStatus::Equal, details: None },
-                ObjectDiff { name: "changed".into(), status: CompareStatus::Modified, details: None },
+                ObjectDiff {
+                    name: "ok".into(),
+                    status: CompareStatus::Equal,
+                    details: None,
+                },
+                ObjectDiff {
+                    name: "changed".into(),
+                    status: CompareStatus::Modified,
+                    details: None,
+                },
             ],
             views: vec![],
             procedures: vec![],

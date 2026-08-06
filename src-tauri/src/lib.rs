@@ -65,12 +65,15 @@ pub fn run() {
             app.manage(state);
 
             let mut engine = Arc::new(JobEngine::new(storage_arc.clone(), known_hosts));
-            Arc::get_mut(&mut engine).unwrap().set_app_handle(app.handle().clone());
+            Arc::get_mut(&mut engine)
+                .unwrap()
+                .set_app_handle(app.handle().clone());
 
             // Store job engine in AppState
             {
                 let state_handle = app.state::<AppState>();
-                let mut job_engine_guard = tauri::async_runtime::block_on(state_handle.job_engine.write());
+                let mut job_engine_guard =
+                    tauri::async_runtime::block_on(state_handle.job_engine.write());
                 *job_engine_guard = Some(engine.clone());
             }
 

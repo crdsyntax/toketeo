@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { ArrowRight, ArrowDown, Loader2, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { ArrowRight, Loader2, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { useSyncStore } from '@/store/syncStore'
 import type { Connection } from '@/types/database'
-import type { SyncTableConfig } from '@/types/sync'
+import type { SyncTableConfig, CreateSyncPipelineDto } from '@/types/sync'
 import { SyncMode } from '@/types/sync'
 
 interface Step3PreviewProps {
@@ -39,7 +39,7 @@ export function Step3Preview({
         mode,
         tables,
         batch_size: 0,
-      } as any
+      } as CreateSyncPipelineDto
       await validatePipeline(dto)
     } catch {
       // ignore

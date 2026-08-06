@@ -1,6 +1,6 @@
 use crate::error::AppResult;
-use crate::models::QueryResult;
 use crate::models::sync::DriverCapabilities;
+use crate::models::QueryResult;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -45,11 +45,7 @@ pub trait DataReader: Send + Sync {
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>>;
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64>;
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64>;
 }
 
 /// Escritura de datos con upsert.
@@ -146,7 +142,9 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>>;
     async fn fetch_mongo_structure(&self) -> AppResult<serde_json::Value> {
-        Err(crate::error::AppError::Validation("Not supported for this database type".to_string()))
+        Err(crate::error::AppError::Validation(
+            "Not supported for this database type".to_string(),
+        ))
     }
     async fn close(&self) -> AppResult<()>;
 }
@@ -156,8 +154,8 @@ pub trait CapabilityProvider: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
 }
 
-pub mod mongodb;
 pub mod common;
+pub mod mongodb;
 pub mod mysql;
 pub mod postgres;
 pub mod redis;
@@ -211,14 +209,12 @@ impl DataReader for std::sync::Arc<dyn DbDriver> {
         last_key: Option<serde_json::Value>,
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>> {
-        (**self).fetch_rows(table, schema, columns, pk_column, last_key, batch_size).await
+        (**self)
+            .fetch_rows(table, schema, columns, pk_column, last_key, batch_size)
+            .await
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64> {
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
         (**self).count_rows(table, schema).await
     }
 }
@@ -233,7 +229,9 @@ impl DataWriter for std::sync::Arc<dyn DbDriver> {
         primary_keys: &[String],
         rows: &[serde_json::Value],
     ) -> AppResult<UpsertResult> {
-        (**self).upsert_rows(table, schema, columns, primary_keys, rows).await
+        (**self)
+            .upsert_rows(table, schema, columns, primary_keys, rows)
+            .await
     }
 }
 
@@ -251,11 +249,26 @@ impl From<&crate::models::DbConnectionConfig> for Option<PoolConfig> {
 
         Some(PoolConfig {
             max_connections: if max > 0 { max as u32 } else { 5 },
-            idle_timeout: if idle > 0 { Some(Duration::from_secs(idle as u64)) } else { None },
-            acquire_timeout: if acq > 0 { Duration::from_secs(acq as u64) } else { Duration::from_secs(30) },
-            max_lifetime: if life > 0 { Some(Duration::from_secs(life as u64)) } else { None },
-            keep_alive: if ka > 0 { Some(Duration::from_secs(ka as u64)) } else { None },
+            idle_timeout: if idle > 0 {
+                Some(Duration::from_secs(idle as u64))
+            } else {
+                None
+            },
+            acquire_timeout: if acq > 0 {
+                Duration::from_secs(acq as u64)
+            } else {
+                Duration::from_secs(30)
+            },
+            max_lifetime: if life > 0 {
+                Some(Duration::from_secs(life as u64))
+            } else {
+                None
+            },
+            keep_alive: if ka > 0 {
+                Some(Duration::from_secs(ka as u64))
+            } else {
+                None
+            },
         })
     }
 }
-

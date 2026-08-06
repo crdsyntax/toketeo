@@ -1,11 +1,11 @@
-﻿{
-    "platforms": {
-        "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaURBaXZDQjR1NjhqU0wxNmh4WVpiQldTYWhvc3h6dExDcnNPOU84YzF2NUdZTFZVKysrZ1dMVG9HZjI0VjA4cWd5N21RNnRHbkExa3ZaVktZSkZDRmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTgzNTI2CWZpbGU6VG9rZXRlb18wLjQuMV94NjRfZW4tVVMubXNpCmZhVzhXSDE4cU8wYnloa01id3Nxb29vMmdMSXBMbnBKWFlpU2dyZmpFZXVoTkRQWWFaSlEveGJ4b0U3WXl1aXZBdTFzalY4RnhkMTNEWnBGZlRZN0N3PT0K",
-            "url": "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.1_x64_en-US.msi"
-        }
-    },
-    "pub_date": "2026-08-06T02:32:22Z",
-    "version": "0.4.1",
-    "notes": "v0.4.1 — Rotated updater signing key and added error logging to the update check."
+{
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.2_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUNudWRrV3cydnFGeEtvNzQvQjZIUWhTZnJrdkdwallwREkyNzV2RXpYTFZLRFdjTXpkU2pwZzJUdkZ5anQxQlRwVjhsdTZlcEVxWDZRSmx2Y00vSEFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MDI2NTA4CWZpbGU6VG9rZXRlb18wLjQuMl94NjRfZW4tVVMubXNpCmZlanFTWmVFdmUxMFVPeW5xSE5NTkFzN3VXdE1vZmczdEpzZnhpNWVZSWgvcTBwVjRVQUpaSVBSN0JIcHJHSGUrZm1DVVlqbzNWRHdWem53bVA0WEFRPT0K"
+                                         }
+                  },
+    "pub_date":  "2026-08-06T14:29:14Z",
+    "version":  "0.4.2",
+    "notes":  "v0.4.2 - Patch release."
 }

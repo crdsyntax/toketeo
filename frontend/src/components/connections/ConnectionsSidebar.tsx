@@ -236,7 +236,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     const newDefault = conn.defaultDatabase === schema ? undefined : schema;
     try {
       const full = await connectionService.getOne(conn.id);
-      await connectionService.update(conn.id, { ...full, defaultDatabase: newDefault } as any);
+      await connectionService.update(conn.id, { ...full, defaultDatabase: newDefault });
       queryClient.invalidateQueries({ queryKey: ['connections'] });
       toast.success(newDefault ? `"${schema}" set as default` : 'Default removed');
     } catch (e) {

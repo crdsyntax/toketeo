@@ -1,7 +1,7 @@
+use crate::application::sync::validators::schema_diff::SchemaDiff;
 use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::models::sync::{SyncPipeline, SyncTableConfig, ValidationReport};
-use crate::application::sync::validators::schema_diff::SchemaDiff;
 
 /// Valida un pipeline antes de ejecutarlo.
 pub struct PipelineValidator;
@@ -21,46 +21,38 @@ impl PipelineValidator {
 
         // Verificar conexión source (ejecutando un query simple)
         match source.db_type() {
-            crate::db::DbType::Mongodb => {
-                match source.fetch_mongo_structure().await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        source_connection_ok = false;
-                        errors.push(format!("Source connection failed: {e}"));
-                    }
+            crate::db::DbType::Mongodb => match source.fetch_mongo_structure().await {
+                Ok(_) => {}
+                Err(e) => {
+                    source_connection_ok = false;
+                    errors.push(format!("Source connection failed: {e}"));
                 }
-            }
-            _ => {
-                match source.fetch_databases().await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        source_connection_ok = false;
-                        errors.push(format!("Source connection failed: {e}"));
-                    }
+            },
+            _ => match source.fetch_databases().await {
+                Ok(_) => {}
+                Err(e) => {
+                    source_connection_ok = false;
+                    errors.push(format!("Source connection failed: {e}"));
                 }
-            }
+            },
         }
 
         // Verificar conexión target
         match target.db_type() {
-            crate::db::DbType::Mongodb => {
-                match target.fetch_mongo_structure().await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        target_connection_ok = false;
-                        errors.push(format!("Target connection failed: {e}"));
-                    }
+            crate::db::DbType::Mongodb => match target.fetch_mongo_structure().await {
+                Ok(_) => {}
+                Err(e) => {
+                    target_connection_ok = false;
+                    errors.push(format!("Target connection failed: {e}"));
                 }
-            }
-            _ => {
-                match target.fetch_databases().await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        target_connection_ok = false;
-                        errors.push(format!("Target connection failed: {e}"));
-                    }
+            },
+            _ => match target.fetch_databases().await {
+                Ok(_) => {}
+                Err(e) => {
+                    target_connection_ok = false;
+                    errors.push(format!("Target connection failed: {e}"));
                 }
-            }
+            },
         }
 
         // Si alguna conexión falla, no podemos validar tablas
@@ -77,12 +69,7 @@ impl PipelineValidator {
 
         // Validar cada tabla configurada
         for table_config in &pipeline.tables {
-            let check = Self::validate_table(
-                source,
-                target,
-                table_config,
-                pipeline,
-            ).await?;
+            let check = Self::validate_table(source, target, table_config, pipeline).await?;
             table_checks.push(check);
         }
 
@@ -137,17 +124,13 @@ impl PipelineValidator {
         let source_tables = source
             .fetch_tables(source_schema.map(String::from), None)
             .await?;
-        let exists_on_source = source_tables
-            .iter()
-            .any(|t| t == source_name);
+        let exists_on_source = source_tables.iter().any(|t| t == source_name);
 
         // Verificar que la tabla existe en target
         let target_tables = target
             .fetch_tables(target_schema.map(String::from), None)
             .await?;
-        let exists_on_target = target_tables
-            .iter()
-            .any(|t| t == target_name);
+        let exists_on_target = target_tables.iter().any(|t| t == target_name);
 
         if !exists_on_source || !exists_on_target {
             return Ok(crate::models::sync::TableValidation {
@@ -251,7 +234,11 @@ mod tests {
                 ) -> crate::error::AppResult<Vec<serde_json::Value>> {
                     unimplemented!()
                 }
-                async fn count_rows(&self, _: &str, _: Option<&str>) -> crate::error::AppResult<u64> {
+                async fn count_rows(
+                    &self,
+                    _: &str,
+                    _: Option<&str>,
+                ) -> crate::error::AppResult<u64> {
                     unimplemented!()
                 }
             }
@@ -282,7 +269,9 @@ mod tests {
 
     #[async_trait]
     impl DbDriver for MockSourceDriver {
-        fn db_type(&self) -> DbType { DbType::Postgres }
+        fn db_type(&self) -> DbType {
+            DbType::Postgres
+        }
 
         async fn execute(&self, _: &str) -> crate::error::AppResult<crate::models::QueryResult> {
             unimplemented!()
@@ -296,27 +285,51 @@ mod tests {
             Ok(vec!["public".into()])
         }
 
-        async fn fetch_tables(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_tables(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec!["users".into(), "orders".into(), "products".into()])
         }
 
-        async fn fetch_views(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_views(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_procedures(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_procedures(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_triggers(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_triggers(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_functions(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_functions(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_columns(&self, table: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_columns(
+            &self,
+            table: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             match table {
                 "users" => Ok(vec![
                     make_column("id", "uuid", false, true),
@@ -339,27 +352,51 @@ mod tests {
             }
         }
 
-        async fn fetch_indexes(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_indexes(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_foreign_keys(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_constraints(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_constraints(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<String> {
+        async fn fetch_ddl(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<String> {
             Ok(String::new())
         }
 
-        async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_parameters(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn close(&self) -> crate::error::AppResult<()> { Ok(()) }
+        async fn close(&self) -> crate::error::AppResult<()> {
+            Ok(())
+        }
     }
 
     /// Simulates a healthy MySQL target database with the same schema as source.
@@ -367,7 +404,9 @@ mod tests {
 
     #[async_trait]
     impl DbDriver for MockMatchingTargetDriver {
-        fn db_type(&self) -> DbType { DbType::Mysql }
+        fn db_type(&self) -> DbType {
+            DbType::Mysql
+        }
 
         async fn execute(&self, _: &str) -> crate::error::AppResult<crate::models::QueryResult> {
             unimplemented!()
@@ -381,27 +420,51 @@ mod tests {
             Ok(vec!["public".into()])
         }
 
-        async fn fetch_tables(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_tables(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec!["users".into(), "orders".into(), "products".into()])
         }
 
-        async fn fetch_views(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_views(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_procedures(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_procedures(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_triggers(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_triggers(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_functions(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_functions(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_columns(&self, table: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_columns(
+            &self,
+            table: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             match table {
                 "users" => Ok(vec![
                     make_column("id", "char(36)", false, true),
@@ -424,27 +487,51 @@ mod tests {
             }
         }
 
-        async fn fetch_indexes(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_indexes(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_foreign_keys(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_constraints(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_constraints(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<String> {
+        async fn fetch_ddl(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<String> {
             Ok(String::new())
         }
 
-        async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_parameters(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn close(&self) -> crate::error::AppResult<()> { Ok(()) }
+        async fn close(&self) -> crate::error::AppResult<()> {
+            Ok(())
+        }
     }
 
     /// Simulates a target with a DIFFERENT schema (type mismatches, missing columns).
@@ -452,7 +539,9 @@ mod tests {
 
     #[async_trait]
     impl DbDriver for MockMismatchedTargetDriver {
-        fn db_type(&self) -> DbType { DbType::Mysql }
+        fn db_type(&self) -> DbType {
+            DbType::Mysql
+        }
 
         async fn execute(&self, _: &str) -> crate::error::AppResult<crate::models::QueryResult> {
             unimplemented!()
@@ -466,27 +555,51 @@ mod tests {
             Ok(vec!["public".into()])
         }
 
-        async fn fetch_tables(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
-            Ok(vec!["users".into(), "orders".into()])  // products is MISSING on target
+        async fn fetch_tables(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
+            Ok(vec!["users".into(), "orders".into()]) // products is MISSING on target
         }
 
-        async fn fetch_views(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_views(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_procedures(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_procedures(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_triggers(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_triggers(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_functions(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_functions(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_columns(&self, table: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_columns(
+            &self,
+            table: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             match table {
                 "users" => Ok(vec![
                     // id type differs: char(36) vs uuid → TypeMismatch
@@ -509,27 +622,51 @@ mod tests {
             }
         }
 
-        async fn fetch_indexes(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_indexes(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_foreign_keys(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_constraints(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_constraints(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<String> {
+        async fn fetch_ddl(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<String> {
             Ok(String::new())
         }
 
-        async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_parameters(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn close(&self) -> crate::error::AppResult<()> { Ok(()) }
+        async fn close(&self) -> crate::error::AppResult<()> {
+            Ok(())
+        }
     }
 
     /// Simulates a connection that FAILS on fetch_databases.
@@ -537,65 +674,141 @@ mod tests {
 
     #[async_trait]
     impl DbDriver for MockFailingDriver {
-        fn db_type(&self) -> DbType { DbType::Postgres }
+        fn db_type(&self) -> DbType {
+            DbType::Postgres
+        }
 
         async fn execute(&self, _: &str) -> crate::error::AppResult<crate::models::QueryResult> {
             unimplemented!()
         }
 
         async fn fetch_databases(&self) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
         async fn fetch_schemas(&self) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_tables(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_tables(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_views(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_views(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_procedures(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_procedures(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_triggers(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_triggers(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_functions(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_functions(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_columns(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_columns(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_indexes(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_indexes(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_foreign_keys(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_constraints(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_constraints(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<String> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_ddl(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<String> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
-            Err(crate::error::AppError::Database("Connection refused".into()))
+        async fn fetch_parameters(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+            Err(crate::error::AppError::Database(
+                "Connection refused".into(),
+            ))
         }
 
-        async fn close(&self) -> crate::error::AppResult<()> { Ok(()) }
+        async fn close(&self) -> crate::error::AppResult<()> {
+            Ok(())
+        }
     }
 
     /// Simulates a MongoDB source driver.
@@ -603,7 +816,9 @@ mod tests {
 
     #[async_trait]
     impl DbDriver for MockMongoSourceDriver {
-        fn db_type(&self) -> DbType { DbType::Mongodb }
+        fn db_type(&self) -> DbType {
+            DbType::Mongodb
+        }
 
         async fn execute(&self, _: &str) -> crate::error::AppResult<crate::models::QueryResult> {
             unimplemented!()
@@ -617,27 +832,51 @@ mod tests {
             Ok(vec!["shop".into()])
         }
 
-        async fn fetch_tables(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_tables(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec!["users".into(), "orders".into()])
         }
 
-        async fn fetch_views(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_views(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_procedures(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_procedures(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_triggers(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_triggers(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_functions(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> {
+        async fn fetch_functions(
+            &self,
+            _: Option<String>,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<String>> {
             Ok(vec![])
         }
 
-        async fn fetch_columns(&self, table: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_columns(
+            &self,
+            table: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             match table {
                 "users" => Ok(vec![
                     make_column("_id", "ObjectId", false, true),
@@ -653,31 +892,57 @@ mod tests {
             }
         }
 
-        async fn fetch_indexes(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_indexes(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_foreign_keys(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_constraints(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_constraints(
+            &self,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
-        async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<String> {
+        async fn fetch_ddl(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<String> {
             Ok(String::new())
         }
 
-        async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> {
+        async fn fetch_parameters(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             Ok(vec![])
         }
 
         async fn fetch_mongo_structure(&self) -> crate::error::AppResult<serde_json::Value> {
-            Ok(json!({"shop": {"users": ["_id","email","name"], "orders": ["_id","user_id","total"]}}))
+            Ok(
+                json!({"shop": {"users": ["_id","email","name"], "orders": ["_id","user_id","total"]}}),
+            )
         }
 
-        async fn close(&self) -> crate::error::AppResult<()> { Ok(()) }
+        async fn close(&self) -> crate::error::AppResult<()> {
+            Ok(())
+        }
     }
 
     // ── Tests ──
@@ -691,9 +956,14 @@ mod tests {
         let source = MockSourceDriver;
         let target = MockMatchingTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
-        assert!(report.is_valid, "Expected valid report with matching schemas");
+        assert!(
+            report.is_valid,
+            "Expected valid report with matching schemas"
+        );
         assert!(report.source_connection_ok);
         assert!(report.target_connection_ok);
         assert_eq!(report.table_checks.len(), 2);
@@ -707,13 +977,18 @@ mod tests {
         let source = MockFailingDriver;
         let target = MockMatchingTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
         assert!(!report.is_valid);
         assert!(!report.source_connection_ok);
         assert!(report.target_connection_ok);
         assert!(report.table_checks.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("Source connection failed")));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| e.contains("Source connection failed")));
     }
 
     #[tokio::test]
@@ -722,30 +997,44 @@ mod tests {
         let source = MockSourceDriver;
         let target = MockFailingDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
         assert!(!report.is_valid);
         assert!(report.source_connection_ok);
         assert!(!report.target_connection_ok);
         assert!(report.table_checks.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("Target connection failed")));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| e.contains("Target connection failed")));
     }
 
     #[tokio::test]
     async fn test_table_missing_on_target() {
         let pipeline = make_pipeline(vec![
             make_table("users", "users"),
-            make_table("products", "products"),  // products is missing on MockMismatchedTargetDriver
+            make_table("products", "products"), // products is missing on MockMismatchedTargetDriver
         ]);
         let source = MockSourceDriver;
         let target = MockMismatchedTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
         assert!(!report.is_valid);
-        assert!(report.errors.iter().any(|e| e.contains("Source table 'products' not found") || e.contains("Target table 'products' not found")));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| e.contains("Source table 'products' not found")
+                || e.contains("Target table 'products' not found")));
 
-        let products_check = report.table_checks.iter().find(|c| c.table_name == "products");
+        let products_check = report
+            .table_checks
+            .iter()
+            .find(|c| c.table_name == "products");
         assert!(products_check.is_some());
         // products exists on source but not on mismatched target
         assert!(!products_check.unwrap().exists_on_target);
@@ -757,18 +1046,35 @@ mod tests {
         let source = MockSourceDriver;
         let target = MockMismatchedTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
         // Schema mismatches produce warnings, not errors (pipeline is still valid)
         assert!(report.is_valid);
         assert!(report.errors.is_empty());
-        assert!(report.warnings.iter().any(|w| w.contains("Schema mismatch")));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.contains("Schema mismatch")));
         // id type differs: uuid vs char(36)
-        assert!(report.table_checks[0].column_diffs.iter().any(|d| d.column_name == "id" && d.diff_type == crate::models::sync::DiffType::TypeMismatch));
+        assert!(report.table_checks[0]
+            .column_diffs
+            .iter()
+            .any(|d| d.column_name == "id"
+                && d.diff_type == crate::models::sync::DiffType::TypeMismatch));
         // name → full_name → MissingInTarget for name
-        assert!(report.table_checks[0].column_diffs.iter().any(|d| d.column_name == "name" && d.diff_type == crate::models::sync::DiffType::MissingInTarget));
+        assert!(report.table_checks[0]
+            .column_diffs
+            .iter()
+            .any(|d| d.column_name == "name"
+                && d.diff_type == crate::models::sync::DiffType::MissingInTarget));
         // phone is extra on target → MissingInSource
-        assert!(report.table_checks[0].column_diffs.iter().any(|d| d.column_name == "phone" && d.diff_type == crate::models::sync::DiffType::MissingInSource));
+        assert!(report.table_checks[0]
+            .column_diffs
+            .iter()
+            .any(|d| d.column_name == "phone"
+                && d.diff_type == crate::models::sync::DiffType::MissingInSource));
     }
 
     #[tokio::test]
@@ -777,7 +1083,9 @@ mod tests {
         let source = MockSourceDriver;
         let target = MockMatchingTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
         assert!(report.is_valid);
         assert!(report.source_connection_ok);
@@ -794,9 +1102,14 @@ mod tests {
         let source = MockMongoSourceDriver;
         let target = MockMatchingTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
-        assert!(report.is_valid, "Expected valid MongoDB → SQL cross-DB sync");
+        assert!(
+            report.is_valid,
+            "Expected valid MongoDB → SQL cross-DB sync"
+        );
         assert!(report.source_connection_ok);
         assert!(report.target_connection_ok);
     }
@@ -806,42 +1119,153 @@ mod tests {
         struct FailingMongo;
         #[async_trait]
         impl DataReader for FailingMongo {
-            async fn fetch_rows(&self, _: &str, _: Option<&str>, _: &[String], _: &str, _: Option<serde_json::Value>, _: usize) -> crate::error::AppResult<Vec<serde_json::Value>> { unimplemented!() }
-            async fn count_rows(&self, _: &str, _: Option<&str>) -> crate::error::AppResult<u64> { unimplemented!() }
+            async fn fetch_rows(
+                &self,
+                _: &str,
+                _: Option<&str>,
+                _: &[String],
+                _: &str,
+                _: Option<serde_json::Value>,
+                _: usize,
+            ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+                unimplemented!()
+            }
+            async fn count_rows(&self, _: &str, _: Option<&str>) -> crate::error::AppResult<u64> {
+                unimplemented!()
+            }
         }
         #[async_trait]
         impl DataWriter for FailingMongo {
-            async fn upsert_rows(&self, _: &str, _: Option<&str>, _: &[String], _: &[String], _: &[serde_json::Value]) -> crate::error::AppResult<crate::db::UpsertResult> { unimplemented!() }
+            async fn upsert_rows(
+                &self,
+                _: &str,
+                _: Option<&str>,
+                _: &[String],
+                _: &[String],
+                _: &[serde_json::Value],
+            ) -> crate::error::AppResult<crate::db::UpsertResult> {
+                unimplemented!()
+            }
         }
         #[async_trait]
         impl DbDriver for FailingMongo {
-            fn db_type(&self) -> DbType { DbType::Mongodb }
-            async fn execute(&self, _: &str) -> crate::error::AppResult<crate::models::QueryResult> { unimplemented!() }
-            async fn fetch_databases(&self) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_schemas(&self) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_tables(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_views(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_procedures(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_triggers(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_functions(&self, _: Option<String>, _: Option<String>) -> crate::error::AppResult<Vec<String>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_columns(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_indexes(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_foreign_keys(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_constraints(&self, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_ddl(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<String> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_parameters(&self, _: &str, _: &str, _: Option<String>) -> crate::error::AppResult<Vec<serde_json::Value>> { Err(crate::error::AppError::Database("no".into())) }
-            async fn fetch_mongo_structure(&self) -> crate::error::AppResult<serde_json::Value> { Err(crate::error::AppError::Database("Mongo connection failed".into())) }
-            async fn close(&self) -> crate::error::AppResult<()> { Ok(()) }
+            fn db_type(&self) -> DbType {
+                DbType::Mongodb
+            }
+            async fn execute(
+                &self,
+                _: &str,
+            ) -> crate::error::AppResult<crate::models::QueryResult> {
+                unimplemented!()
+            }
+            async fn fetch_databases(&self) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_schemas(&self) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_tables(
+                &self,
+                _: Option<String>,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_views(
+                &self,
+                _: Option<String>,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_procedures(
+                &self,
+                _: Option<String>,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_triggers(
+                &self,
+                _: Option<String>,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_functions(
+                &self,
+                _: Option<String>,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<String>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_columns(
+                &self,
+                _: &str,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_indexes(
+                &self,
+                _: &str,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_foreign_keys(
+                &self,
+                _: &str,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_constraints(
+                &self,
+                _: &str,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_ddl(
+                &self,
+                _: &str,
+                _: &str,
+                _: Option<String>,
+            ) -> crate::error::AppResult<String> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_parameters(
+                &self,
+                _: &str,
+                _: &str,
+                _: Option<String>,
+            ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+                Err(crate::error::AppError::Database("no".into()))
+            }
+            async fn fetch_mongo_structure(&self) -> crate::error::AppResult<serde_json::Value> {
+                Err(crate::error::AppError::Database(
+                    "Mongo connection failed".into(),
+                ))
+            }
+            async fn close(&self) -> crate::error::AppResult<()> {
+                Ok(())
+            }
         }
 
         let pipeline = make_pipeline(vec![make_table("users", "users")]);
         let source = FailingMongo;
         let target = MockMatchingTargetDriver;
 
-        let report = PipelineValidator::validate(&pipeline, &source, &target).await.unwrap();
+        let report = PipelineValidator::validate(&pipeline, &source, &target)
+            .await
+            .unwrap();
 
         assert!(!report.is_valid);
         assert!(!report.source_connection_ok);
-        assert!(report.errors.iter().any(|e| e.contains("Source connection failed")));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| e.contains("Source connection failed")));
     }
 }

@@ -4,7 +4,12 @@ fn backup_table_name(table: &str) -> String {
     format!("{}_bak", table)
 }
 
-fn source_comment(source_name: &str, table: &str, property: &str, source_type: Option<&str>) -> String {
+fn source_comment(
+    source_name: &str,
+    table: &str,
+    property: &str,
+    source_type: Option<&str>,
+) -> String {
     match source_type {
         Some(t) => format!(
             "-- ====\n-- On db source {} this property `{}.{}` is a {}\n-- ====",
@@ -33,7 +38,10 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                     let comment = source_comment(&report.source_name, &obj.name, "", None);
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\n-- TODO: CREATE TABLE `{}` (requires DDL from source)", comment, obj.name),
+                        sql: format!(
+                            "{}\n-- TODO: CREATE TABLE `{}` (requires DDL from source)",
+                            comment, obj.name
+                        ),
                         description: format!("Create table {}", obj.name),
                         diff_type: "create".into(),
                         object_name: obj.name.clone(),
@@ -54,12 +62,23 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                             Some(format!("-- Backup of `{}` stored as `{}`", obj.name, backup_name)),
                         )
                     } else {
-                        (format!("{}\nDROP TABLE IF EXISTS `{}`;", comment, obj.name), None)
+                        (
+                            format!("{}\nDROP TABLE IF EXISTS `{}`;", comment, obj.name),
+                            None,
+                        )
                     };
                     stmts.push(ScriptStatement {
                         id: next_id(),
                         sql,
-                        description: format!("Drop table {}{}", obj.name, if options.data_preservation { " (with backup)" } else { "" }),
+                        description: format!(
+                            "Drop table {}{}",
+                            obj.name,
+                            if options.data_preservation {
+                                " (with backup)"
+                            } else {
+                                ""
+                            }
+                        ),
                         diff_type: "drop".into(),
                         object_name: obj.name.clone(),
                         object_type: "table".into(),
@@ -69,88 +88,141 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                     });
                 }
             }
-            CompareStatus::Modified => {
-                if options.include_alters {
-                    if let Some(details) = &obj.details {
-                        if let Some(cols) = details.get("columns").and_then(|c| c.as_array()) {
-                            for col in cols {
-                                let col_name = col.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                                let col_status = col.get("status").and_then(|s| s.as_str()).unwrap_or("");
-                                match col_status {
-                                    "modified" => {
-                                        if let Some(t_type) = col.get("target_type").and_then(|t| t.as_str()) {
-                                            let source_type = col.get("source_type").and_then(|t| t.as_str());
-                                            let nullable = col.get("target_nullable").and_then(|n| n.as_bool()).unwrap_or(true);
-                                            let not_null = if !nullable { " NOT NULL" } else { "" };
-                                            let backup_name = backup_table_name(&obj.name);
-                                            let comment = source_comment(&report.source_name, &obj.name, col_name, source_type);
-                                            let (sql, backup_sql) = if options.data_preservation {
-                                                (
+            CompareStatus::Modified if options.include_alters => {
+                if let Some(details) = &obj.details {
+                    if let Some(cols) = details.get("columns").and_then(|c| c.as_array()) {
+                        for col in cols {
+                            let col_name = col.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                            let col_status =
+                                col.get("status").and_then(|s| s.as_str()).unwrap_or("");
+                            match col_status {
+                                "modified" => {
+                                    if let Some(t_type) =
+                                        col.get("target_type").and_then(|t| t.as_str())
+                                    {
+                                        let source_type =
+                                            col.get("source_type").and_then(|t| t.as_str());
+                                        let nullable = col
+                                            .get("target_nullable")
+                                            .and_then(|n| n.as_bool())
+                                            .unwrap_or(true);
+                                        let not_null = if !nullable { " NOT NULL" } else { "" };
+                                        let backup_name = backup_table_name(&obj.name);
+                                        let comment = source_comment(
+                                            &report.source_name,
+                                            &obj.name,
+                                            col_name,
+                                            source_type,
+                                        );
+                                        let (sql, backup_sql) = if options.data_preservation {
+                                            (
                                                     format!("{}\nCREATE TABLE `{}` AS SELECT * FROM `{}`;\nALTER TABLE `{}` MODIFY COLUMN `{}` {}{};", comment, backup_name, obj.name, obj.name, col_name, t_type, not_null),
                                                     Some(format!("-- Backup of `{}` before column modification stored as `{}`", obj.name, backup_name)),
                                                 )
-                                            } else {
-                                                (
-                                                    format!("{}\nALTER TABLE `{}` MODIFY COLUMN `{}` {}{};", comment, obj.name, col_name, t_type, not_null),
-                                                    None,
-                                                )
-                                            };
-                                            stmts.push(ScriptStatement {
-                                                id: next_id(),
-                                                sql,
-                                                description: format!("Modify column {}.{}{}", obj.name, col_name, if options.data_preservation { " (with backup)" } else { "" }),
-                                                diff_type: "alter".into(),
-                                                object_name: col_name.to_string(),
-                                                object_type: "column".into(),
-                                                selected: true,
-                                                preserve_data: options.data_preservation,
-                                                backup_sql,
-                                            });
-                                        }
+                                        } else {
+                                            (
+                                                format!(
+                                                    "{}\nALTER TABLE `{}` MODIFY COLUMN `{}` {}{};",
+                                                    comment, obj.name, col_name, t_type, not_null
+                                                ),
+                                                None,
+                                            )
+                                        };
+                                        stmts.push(ScriptStatement {
+                                            id: next_id(),
+                                            sql,
+                                            description: format!(
+                                                "Modify column {}.{}{}",
+                                                obj.name,
+                                                col_name,
+                                                if options.data_preservation {
+                                                    " (with backup)"
+                                                } else {
+                                                    ""
+                                                }
+                                            ),
+                                            diff_type: "alter".into(),
+                                            object_name: col_name.to_string(),
+                                            object_type: "column".into(),
+                                            selected: true,
+                                            preserve_data: options.data_preservation,
+                                            backup_sql,
+                                        });
                                     }
-                                    "missing" => {
-                                        if let Some(t_type) = col.get("source_type").and_then(|t| t.as_str()) {
-                                            let comment = source_comment(&report.source_name, &obj.name, col_name, Some(t_type));
-                                            stmts.push(ScriptStatement {
-                                                id: next_id(),
-                                                sql: format!("{}\nALTER TABLE `{}` ADD COLUMN `{}` {};", comment, obj.name, col_name, t_type),
-                                                description: format!("Add column {}.{}", obj.name, col_name),
-                                                diff_type: "alter_add".into(),
-                                                object_name: col_name.to_string(),
-                                                object_type: "column".into(),
-                                                selected: true,
-                                                preserve_data: false,
-                                                backup_sql: None,
-                                            });
-                                        }
+                                }
+                                "missing" => {
+                                    if let Some(t_type) =
+                                        col.get("source_type").and_then(|t| t.as_str())
+                                    {
+                                        let comment = source_comment(
+                                            &report.source_name,
+                                            &obj.name,
+                                            col_name,
+                                            Some(t_type),
+                                        );
+                                        stmts.push(ScriptStatement {
+                                            id: next_id(),
+                                            sql: format!(
+                                                "{}\nALTER TABLE `{}` ADD COLUMN `{}` {};",
+                                                comment, obj.name, col_name, t_type
+                                            ),
+                                            description: format!(
+                                                "Add column {}.{}",
+                                                obj.name, col_name
+                                            ),
+                                            diff_type: "alter_add".into(),
+                                            object_name: col_name.to_string(),
+                                            object_type: "column".into(),
+                                            selected: true,
+                                            preserve_data: false,
+                                            backup_sql: None,
+                                        });
                                     }
-                                    "new" => {
-                                        if options.drop_target_extras {
-                                            let backup_name = backup_table_name(&obj.name);
-                                            let comment = source_comment(&report.source_name, &obj.name, col_name, None);
-                                            let (sql, backup_sql) = if options.data_preservation {
-                                                (
+                                }
+                                "new" if options.drop_target_extras => {
+                                    let backup_name = backup_table_name(&obj.name);
+                                    let comment = source_comment(
+                                        &report.source_name,
+                                        &obj.name,
+                                        col_name,
+                                        None,
+                                    );
+                                    let (sql, backup_sql) = if options.data_preservation {
+                                        (
                                                     format!("{}\nCREATE TABLE `{}` AS SELECT * FROM `{}`;\nALTER TABLE `{}` DROP COLUMN `{}`;", comment, backup_name, obj.name, obj.name, col_name),
                                                     Some(format!("-- Backup of `{}` before dropping column `{}` stored as `{}`", obj.name, col_name, backup_name)),
                                                 )
+                                    } else {
+                                        (
+                                            format!(
+                                                "{}\nALTER TABLE `{}` DROP COLUMN `{}`;",
+                                                comment, obj.name, col_name
+                                            ),
+                                            None,
+                                        )
+                                    };
+                                    stmts.push(ScriptStatement {
+                                        id: next_id(),
+                                        sql,
+                                        description: format!(
+                                            "Drop column {}.{}{}",
+                                            obj.name,
+                                            col_name,
+                                            if options.data_preservation {
+                                                " (with backup)"
                                             } else {
-                                                (format!("{}\nALTER TABLE `{}` DROP COLUMN `{}`;", comment, obj.name, col_name), None)
-                                            };
-                                            stmts.push(ScriptStatement {
-                                                id: next_id(),
-                                                sql,
-                                                description: format!("Drop column {}.{}{}", obj.name, col_name, if options.data_preservation { " (with backup)" } else { "" }),
-                                                diff_type: "alter_drop".into(),
-                                                object_name: col_name.to_string(),
-                                                object_type: "column".into(),
-                                                selected: true,
-                                                preserve_data: options.data_preservation,
-                                                backup_sql,
-                                            });
-                                        }
-                                    }
-                                    _ => {}
+                                                ""
+                                            }
+                                        ),
+                                        diff_type: "alter_drop".into(),
+                                        object_name: col_name.to_string(),
+                                        object_type: "column".into(),
+                                        selected: true,
+                                        preserve_data: options.data_preservation,
+                                        backup_sql,
+                                    });
                                 }
+                                _ => {}
                             }
                         }
                     }
@@ -164,12 +236,29 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for idx in &report.indexes {
             match idx.status {
                 CompareStatus::Missing => {
-                    let cols = idx.columns_changed.as_ref().map(|c| &c.1).cloned().unwrap_or_default();
-                    let unique = if idx.unique_changed.as_ref().map(|u| u.1).unwrap_or(false) { "UNIQUE " } else { "" };
-                    let comment = source_comment(&report.source_name, &idx.table, &idx.name, Some("index"));
+                    let cols = idx
+                        .columns_changed
+                        .as_ref()
+                        .map(|c| &c.1)
+                        .cloned()
+                        .unwrap_or_default();
+                    let unique = if idx.unique_changed.as_ref().map(|u| u.1).unwrap_or(false) {
+                        "UNIQUE "
+                    } else {
+                        ""
+                    };
+                    let comment =
+                        source_comment(&report.source_name, &idx.table, &idx.name, Some("index"));
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\nCREATE {}INDEX `{}` ON `{}` (`{}`);", comment, unique, idx.name, idx.table, cols.join("`, `")),
+                        sql: format!(
+                            "{}\nCREATE {}INDEX `{}` ON `{}` (`{}`);",
+                            comment,
+                            unique,
+                            idx.name,
+                            idx.table,
+                            cols.join("`, `")
+                        ),
                         description: format!("Create index {}", idx.name),
                         diff_type: "create_index".into(),
                         object_name: idx.name.clone(),
@@ -181,10 +270,18 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                 }
                 CompareStatus::New => {
                     if options.drop_target_extras {
-                        let comment = source_comment(&report.source_name, &idx.table, &idx.name, Some("index"));
+                        let comment = source_comment(
+                            &report.source_name,
+                            &idx.table,
+                            &idx.name,
+                            Some("index"),
+                        );
                         stmts.push(ScriptStatement {
                             id: next_id(),
-                            sql: format!("{}\nDROP INDEX `{}` ON `{}`;", comment, idx.name, idx.table),
+                            sql: format!(
+                                "{}\nDROP INDEX `{}` ON `{}`;",
+                                comment, idx.name, idx.table
+                            ),
                             description: format!("Drop index {}", idx.name),
                             diff_type: "drop_index".into(),
                             object_name: idx.name.clone(),
@@ -196,15 +293,29 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                     }
                 }
                 CompareStatus::Modified => {
-                    let cols = idx.columns_changed.as_ref()
-                        .map(|c| &c.1).or_else(|| idx.columns_changed.as_ref().map(|c| &c.0))
-                        .cloned().unwrap_or_default();
+                    let cols = idx
+                        .columns_changed
+                        .as_ref()
+                        .map(|c| &c.1)
+                        .or_else(|| idx.columns_changed.as_ref().map(|c| &c.0))
+                        .cloned()
+                        .unwrap_or_default();
                     let unique = idx.unique_changed.as_ref().map(|u| u.1).unwrap_or(false);
                     let unique_kw = if unique { "UNIQUE " } else { "" };
-                    let comment = source_comment(&report.source_name, &idx.table, &idx.name, Some("index"));
+                    let comment =
+                        source_comment(&report.source_name, &idx.table, &idx.name, Some("index"));
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{}\nDROP INDEX `{}` ON `{}`;\nCREATE {}INDEX `{}` ON `{}` (`{}`);", comment, idx.name, idx.table, unique_kw, idx.name, idx.table, cols.join("`, `")),
+                        sql: format!(
+                            "{}\nDROP INDEX `{}` ON `{}`;\nCREATE {}INDEX `{}` ON `{}` (`{}`);",
+                            comment,
+                            idx.name,
+                            idx.table,
+                            unique_kw,
+                            idx.name,
+                            idx.table,
+                            cols.join("`, `")
+                        ),
                         description: format!("Recreate index {}", idx.name),
                         diff_type: "recreate_index".into(),
                         object_name: idx.name.clone(),
@@ -223,11 +334,34 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for fk in &report.foreign_keys {
             match fk.status {
                 CompareStatus::Missing => {
-                    let cols = fk.columns.as_ref().map(|c| &c.0).cloned().unwrap_or_default();
-                    let ref_table = fk.referenced_table.as_ref().map(|r| &r.0).cloned().unwrap_or_default();
-                    let on_delete = fk.on_delete.as_ref().map(|d| format!("ON DELETE {}", d.0)).unwrap_or_default();
-                    let on_update = fk.on_update.as_ref().map(|u| format!("ON UPDATE {}", u.0)).unwrap_or_default();
-                    let comment = source_comment(&report.source_name, &fk.table, &fk.name, Some("foreign key"));
+                    let cols = fk
+                        .columns
+                        .as_ref()
+                        .map(|c| &c.0)
+                        .cloned()
+                        .unwrap_or_default();
+                    let ref_table = fk
+                        .referenced_table
+                        .as_ref()
+                        .map(|r| &r.0)
+                        .cloned()
+                        .unwrap_or_default();
+                    let on_delete = fk
+                        .on_delete
+                        .as_ref()
+                        .map(|d| format!("ON DELETE {}", d.0))
+                        .unwrap_or_default();
+                    let on_update = fk
+                        .on_update
+                        .as_ref()
+                        .map(|u| format!("ON UPDATE {}", u.0))
+                        .unwrap_or_default();
+                    let comment = source_comment(
+                        &report.source_name,
+                        &fk.table,
+                        &fk.name,
+                        Some("foreign key"),
+                    );
                     stmts.push(ScriptStatement {
                         id: next_id(),
                         sql: format!("{}\nALTER TABLE `{}` ADD CONSTRAINT `{}` FOREIGN KEY (`{}`) REFERENCES `{}`(`{}`) {} {};", comment, fk.table, fk.name, cols.join("`, `"), ref_table, cols.first().cloned().unwrap_or_default(), on_delete, on_update),
@@ -242,10 +376,18 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                 }
                 CompareStatus::New => {
                     if options.drop_target_extras {
-                        let comment = source_comment(&report.source_name, &fk.table, &fk.name, Some("foreign key"));
+                        let comment = source_comment(
+                            &report.source_name,
+                            &fk.table,
+                            &fk.name,
+                            Some("foreign key"),
+                        );
                         stmts.push(ScriptStatement {
                             id: next_id(),
-                            sql: format!("{}\nALTER TABLE `{}` DROP FOREIGN KEY `{}`;", comment, fk.table, fk.name),
+                            sql: format!(
+                                "{}\nALTER TABLE `{}` DROP FOREIGN KEY `{}`;",
+                                comment, fk.table, fk.name
+                            ),
                             description: format!("Drop foreign key {}", fk.name),
                             diff_type: "drop_fk".into(),
                             object_name: fk.name.clone(),
@@ -257,7 +399,12 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                     }
                 }
                 CompareStatus::Modified => {
-                    let comment = source_comment(&report.source_name, &fk.table, &fk.name, Some("foreign key"));
+                    let comment = source_comment(
+                        &report.source_name,
+                        &fk.table,
+                        &fk.name,
+                        Some("foreign key"),
+                    );
                     stmts.push(ScriptStatement {
                         id: next_id(),
                         sql: format!("{}\nALTER TABLE `{}` DROP FOREIGN KEY `{}`;\n-- Re-add with new definition", comment, fk.table, fk.name),
@@ -279,13 +426,18 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for view in &report.views {
             match view.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
-                    let ddl = view.details.as_ref()
+                    let ddl = view
+                        .details
+                        .as_ref()
                         .and_then(|d| d.get("source_definition"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     let comment = source_comment(&report.source_name, "", &view.name, Some("view"));
                     let sql = if ddl.is_empty() {
-                        format!("{}\n-- TODO: Recreate view `{}` (requires DDL from source)", comment, view.name)
+                        format!(
+                            "{}\n-- TODO: Recreate view `{}` (requires DDL from source)",
+                            comment, view.name
+                        )
                     } else {
                         format!("{}\n{}", comment, ddl)
                     };
@@ -301,21 +453,19 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         backup_sql: None,
                     });
                 }
-                CompareStatus::New => {
-                    if options.drop_target_extras {
-                        let comment = source_comment(&report.source_name, "", &view.name, Some("view"));
-                        stmts.push(ScriptStatement {
-                            id: next_id(),
-                            sql: format!("{}\nDROP VIEW IF EXISTS `{}`;", comment, view.name),
-                            description: format!("Drop view {}", view.name),
-                            diff_type: "drop_view".into(),
-                            object_name: view.name.clone(),
-                            object_type: "view".into(),
-                            selected: true,
-                            preserve_data: false,
-                            backup_sql: None,
-                        });
-                    }
+                CompareStatus::New if options.drop_target_extras => {
+                    let comment = source_comment(&report.source_name, "", &view.name, Some("view"));
+                    stmts.push(ScriptStatement {
+                        id: next_id(),
+                        sql: format!("{}\nDROP VIEW IF EXISTS `{}`;", comment, view.name),
+                        description: format!("Drop view {}", view.name),
+                        diff_type: "drop_view".into(),
+                        object_name: view.name.clone(),
+                        object_type: "view".into(),
+                        selected: true,
+                        preserve_data: false,
+                        backup_sql: None,
+                    });
                 }
                 _ => {}
             }
@@ -326,13 +476,19 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for proc in &report.procedures {
             match proc.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
-                    let ddl = proc.details.as_ref()
+                    let ddl = proc
+                        .details
+                        .as_ref()
                         .and_then(|d| d.get("source_definition"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let comment = source_comment(&report.source_name, "", &proc.name, Some("procedure"));
+                    let comment =
+                        source_comment(&report.source_name, "", &proc.name, Some("procedure"));
                     let sql = if ddl.is_empty() {
-                        format!("{}\n-- TODO: Recreate procedure `{}` (requires DDL from source)", comment, proc.name)
+                        format!(
+                            "{}\n-- TODO: Recreate procedure `{}` (requires DDL from source)",
+                            comment, proc.name
+                        )
                     } else {
                         let clean = ddl.trim_end_matches(';');
                         format!("{}\n{}", comment, clean)
@@ -349,21 +505,20 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         backup_sql: None,
                     });
                 }
-                CompareStatus::New => {
-                    if options.drop_target_extras {
-                        let comment = source_comment(&report.source_name, "", &proc.name, Some("procedure"));
-                        stmts.push(ScriptStatement {
-                            id: next_id(),
-                            sql: format!("{}\nDROP PROCEDURE IF EXISTS `{}`;", comment, proc.name),
-                            description: format!("Drop procedure {}", proc.name),
-                            diff_type: "drop_procedure".into(),
-                            object_name: proc.name.clone(),
-                            object_type: "procedure".into(),
-                            selected: true,
-                            preserve_data: false,
-                            backup_sql: None,
-                        });
-                    }
+                CompareStatus::New if options.drop_target_extras => {
+                    let comment =
+                        source_comment(&report.source_name, "", &proc.name, Some("procedure"));
+                    stmts.push(ScriptStatement {
+                        id: next_id(),
+                        sql: format!("{}\nDROP PROCEDURE IF EXISTS `{}`;", comment, proc.name),
+                        description: format!("Drop procedure {}", proc.name),
+                        diff_type: "drop_procedure".into(),
+                        object_name: proc.name.clone(),
+                        object_type: "procedure".into(),
+                        selected: true,
+                        preserve_data: false,
+                        backup_sql: None,
+                    });
                 }
                 _ => {}
             }
@@ -371,13 +526,19 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for func in &report.functions {
             match func.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
-                    let ddl = func.details.as_ref()
+                    let ddl = func
+                        .details
+                        .as_ref()
                         .and_then(|d| d.get("source_definition"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let comment = source_comment(&report.source_name, "", &func.name, Some("function"));
+                    let comment =
+                        source_comment(&report.source_name, "", &func.name, Some("function"));
                     let sql = if ddl.is_empty() {
-                        format!("{}\n-- TODO: Recreate function `{}` (requires DDL from source)", comment, func.name)
+                        format!(
+                            "{}\n-- TODO: Recreate function `{}` (requires DDL from source)",
+                            comment, func.name
+                        )
                     } else {
                         let clean = ddl.trim_end_matches(';');
                         format!("{}\n{}", comment, clean)
@@ -394,21 +555,20 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         backup_sql: None,
                     });
                 }
-                CompareStatus::New => {
-                    if options.drop_target_extras {
-                        let comment = source_comment(&report.source_name, "", &func.name, Some("function"));
-                        stmts.push(ScriptStatement {
-                            id: next_id(),
-                            sql: format!("{}\nDROP FUNCTION IF EXISTS `{}`;", comment, func.name),
-                            description: format!("Drop function {}", func.name),
-                            diff_type: "drop_function".into(),
-                            object_name: func.name.clone(),
-                            object_type: "function".into(),
-                            selected: true,
-                            preserve_data: false,
-                            backup_sql: None,
-                        });
-                    }
+                CompareStatus::New if options.drop_target_extras => {
+                    let comment =
+                        source_comment(&report.source_name, "", &func.name, Some("function"));
+                    stmts.push(ScriptStatement {
+                        id: next_id(),
+                        sql: format!("{}\nDROP FUNCTION IF EXISTS `{}`;", comment, func.name),
+                        description: format!("Drop function {}", func.name),
+                        diff_type: "drop_function".into(),
+                        object_name: func.name.clone(),
+                        object_type: "function".into(),
+                        selected: true,
+                        preserve_data: false,
+                        backup_sql: None,
+                    });
                 }
                 _ => {}
             }
@@ -419,13 +579,19 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
         for trigger in &report.triggers {
             match trigger.status {
                 CompareStatus::Missing | CompareStatus::Modified => {
-                    let ddl = trigger.details.as_ref()
+                    let ddl = trigger
+                        .details
+                        .as_ref()
                         .and_then(|d| d.get("source_definition"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let comment = source_comment(&report.source_name, "", &trigger.name, Some("trigger"));
+                    let comment =
+                        source_comment(&report.source_name, "", &trigger.name, Some("trigger"));
                     let sql = if ddl.is_empty() {
-                        format!("{}\n-- TODO: Recreate trigger `{}` (requires DDL from source)", comment, trigger.name)
+                        format!(
+                            "{}\n-- TODO: Recreate trigger `{}` (requires DDL from source)",
+                            comment, trigger.name
+                        )
                     } else {
                         let clean = ddl.trim_end_matches(';');
                         format!("{}\n{}", comment, clean)
@@ -442,21 +608,20 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         backup_sql: None,
                     });
                 }
-                CompareStatus::New => {
-                    if options.drop_target_extras {
-                        let comment = source_comment(&report.source_name, "", &trigger.name, Some("trigger"));
-                        stmts.push(ScriptStatement {
-                            id: next_id(),
-                            sql: format!("{}\nDROP TRIGGER IF EXISTS `{}`;", comment, trigger.name),
-                            description: format!("Drop trigger {}", trigger.name),
-                            diff_type: "drop_trigger".into(),
-                            object_name: trigger.name.clone(),
-                            object_type: "trigger".into(),
-                            selected: true,
-                            preserve_data: false,
-                            backup_sql: None,
-                        });
-                    }
+                CompareStatus::New if options.drop_target_extras => {
+                    let comment =
+                        source_comment(&report.source_name, "", &trigger.name, Some("trigger"));
+                    stmts.push(ScriptStatement {
+                        id: next_id(),
+                        sql: format!("{}\nDROP TRIGGER IF EXISTS `{}`;", comment, trigger.name),
+                        description: format!("Drop trigger {}", trigger.name),
+                        diff_type: "drop_trigger".into(),
+                        object_name: trigger.name.clone(),
+                        object_type: "trigger".into(),
+                        selected: true,
+                        preserve_data: false,
+                        backup_sql: None,
+                    });
                 }
                 _ => {}
             }
@@ -507,7 +672,9 @@ mod tests {
         });
         let opts = ScriptOptions::default();
         let stmts = generate(&report, &opts);
-        assert!(stmts.iter().any(|s| s.sql.contains("CREATE TABLE") || s.sql.contains("TODO: CREATE TABLE")));
+        assert!(stmts
+            .iter()
+            .any(|s| s.sql.contains("CREATE TABLE") || s.sql.contains("TODO: CREATE TABLE")));
         assert!(!stmts.iter().any(|s| s.sql.contains("DROP TABLE")));
     }
 
@@ -532,7 +699,11 @@ mod tests {
             status: CompareStatus::New,
             details: None,
         });
-        let opts = ScriptOptions { drop_target_extras: true, data_preservation: false, ..Default::default() };
+        let opts = ScriptOptions {
+            drop_target_extras: true,
+            data_preservation: false,
+            ..Default::default()
+        };
         let stmts = generate(&report, &opts);
         assert!(stmts.iter().any(|s| s.sql.contains("DROP TABLE")));
         assert!(!stmts.iter().any(|s| s.preserve_data));
@@ -546,7 +717,11 @@ mod tests {
             status: CompareStatus::New,
             details: None,
         });
-        let opts = ScriptOptions { drop_target_extras: true, data_preservation: true, ..Default::default() };
+        let opts = ScriptOptions {
+            drop_target_extras: true,
+            data_preservation: true,
+            ..Default::default()
+        };
         let stmts = generate(&report, &opts);
         assert!(stmts.iter().any(|s| s.sql.contains("AS SELECT * FROM")));
         assert!(stmts.iter().any(|s| s.preserve_data));
@@ -583,11 +758,18 @@ mod tests {
                 ]
             })),
         });
-        let opts = ScriptOptions { drop_target_extras: false, ..Default::default() };
+        let opts = ScriptOptions {
+            drop_target_extras: false,
+            ..Default::default()
+        };
         let stmts = generate(&report, &opts);
         assert!(!stmts.iter().any(|s| s.sql.contains("DROP COLUMN")));
 
-        let opts = ScriptOptions { drop_target_extras: true, data_preservation: false, ..Default::default() };
+        let opts = ScriptOptions {
+            drop_target_extras: true,
+            data_preservation: false,
+            ..Default::default()
+        };
         let stmts = generate(&report, &opts);
         assert!(stmts.iter().any(|s| s.sql.contains("DROP COLUMN")));
     }
@@ -600,7 +782,10 @@ mod tests {
             status: CompareStatus::Missing,
             details: None,
         });
-        let opts = ScriptOptions { include_creates: false, ..Default::default() };
+        let opts = ScriptOptions {
+            include_creates: false,
+            ..Default::default()
+        };
         let stmts = generate(&report, &opts);
         assert!(!stmts.iter().any(|s| s.sql.contains("CREATE TABLE")));
     }

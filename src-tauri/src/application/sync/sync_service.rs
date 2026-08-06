@@ -1,9 +1,9 @@
+use crate::application::sync::extractors::{DataExtractor, MongoExtractor, SqlExtractor};
+use crate::application::sync::strategies::{FullSync, IncrementalSync, SyncEvent, SyncStrategy};
+use crate::application::sync::validators::PipelineValidator;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
-use crate::models::sync::{SyncPipeline, SyncMode, ValidationReport};
-use crate::application::sync::extractors::{DataExtractor, SqlExtractor, MongoExtractor};
-use crate::application::sync::strategies::{SyncStrategy, SyncEvent, FullSync, IncrementalSync};
-use crate::application::sync::validators::PipelineValidator;
+use crate::models::sync::{SyncMode, SyncPipeline, ValidationReport};
 use crate::state::SyncController;
 use crate::storage::Storage;
 use regex::Regex;
@@ -31,13 +31,22 @@ impl SyncService {
         if source_db_type == DbType::Postgres {
             if let Some(first_table) = pipeline.tables.first() {
                 // Try the configured schema first
-                let test_schema = effective_source_schema.clone().unwrap_or_else(|| "public".to_string());
-                let found = check_pg_table_exists(source, &first_table.source_table, &test_schema).await.unwrap_or(false);
+                let test_schema = effective_source_schema
+                    .clone()
+                    .unwrap_or_else(|| "public".to_string());
+                let found = check_pg_table_exists(source, &first_table.source_table, &test_schema)
+                    .await
+                    .unwrap_or(false);
                 if found {
-                    tracing::info!("[sync] Schema '{}' is correct for table '{}'", test_schema, first_table.source_table);
+                    tracing::info!(
+                        "[sync] Schema '{}' is correct for table '{}'",
+                        test_schema,
+                        first_table.source_table
+                    );
                 } else {
                     // Search through all schemas to find which one has this table
-                    let detected = find_pg_schema_for_table(source, &first_table.source_table).await;
+                    let detected =
+                        find_pg_schema_for_table(source, &first_table.source_table).await;
                     if let Some(ref real_schema) = detected {
                         tracing::info!(
                             "[sync] Auto-detected source schema '{}' (was configured as '{}') for table '{}'",
@@ -51,11 +60,15 @@ impl SyncService {
                         );
                         if let Some(ref sender) = event_sender {
                             let _ = sender.send(SyncEvent::Error {
-                                message: format!("Table '{}' not found in any schema on source database", first_table.source_table),
+                                message: format!(
+                                    "Table '{}' not found in any schema on source database",
+                                    first_table.source_table
+                                ),
                             });
                         }
                         return Err(crate::error::AppError::Validation(format!(
-                            "Table '{}' not found in any schema on source database", first_table.source_table
+                            "Table '{}' not found in any schema on source database",
+                            first_table.source_table
                         )));
                     }
                 }
@@ -64,9 +77,20 @@ impl SyncService {
 
         // Verify source connection before starting
         if let Some(first_table) = pipeline.tables.first() {
-            match source.fetch_ddl(&first_table.source_table, "table", effective_source_schema.clone()).await {
+            match source
+                .fetch_ddl(
+                    &first_table.source_table,
+                    "table",
+                    effective_source_schema.clone(),
+                )
+                .await
+            {
                 Ok(ref ddl) => {
-                    tracing::info!("[sync] Source connection verified for table '{}', DDL preview: {:?}", first_table.source_table, &ddl[..ddl.len().min(80)]);
+                    tracing::info!(
+                        "[sync] Source connection verified for table '{}', DDL preview: {:?}",
+                        first_table.source_table,
+                        &ddl[..ddl.len().min(80)]
+                    );
                 }
                 Err(e) => {
                     tracing::error!("[sync] Source connection failed: {} — aborting pipeline", e);
@@ -115,10 +139,15 @@ impl SyncService {
 
         // Pre-check controller before starting
         if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
-            tracing::info!("[sync] Pipeline '{}' cancelled before starting", pipeline_clone.name);
+            tracing::info!(
+                "[sync] Pipeline '{}' cancelled before starting",
+                pipeline_clone.name
+            );
             controller.remove(&pipeline_id).await;
             if let Some(ref sender) = event_sender {
-                let _ = sender.send(SyncEvent::Error { message: "Pipeline cancelled".to_string() });
+                let _ = sender.send(SyncEvent::Error {
+                    message: "Pipeline cancelled".to_string(),
+                });
             }
             return Ok(());
         }
@@ -126,7 +155,10 @@ impl SyncService {
         for (idx, table_config) in pipeline_clone.tables.iter().enumerate() {
             // Check for cancellation before each table
             if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
-                tracing::info!("[sync] Pipeline cancelled before table {}", table_config.source_table);
+                tracing::info!(
+                    "[sync] Pipeline cancelled before table {}",
+                    table_config.source_table
+                );
                 break;
             }
 
@@ -147,8 +179,13 @@ impl SyncService {
             );
 
             // Ensure target table exists — auto-create if missing
-            let target_tables = target.fetch_tables(pipeline_clone.target_schema.clone(), None).await.unwrap_or_default();
-            let table_exists = target_tables.iter().any(|t| t.eq_ignore_ascii_case(&table_config.target_table));
+            let target_tables = target
+                .fetch_tables(pipeline_clone.target_schema.clone(), None)
+                .await
+                .unwrap_or_default();
+            let table_exists = target_tables
+                .iter()
+                .any(|t| t.eq_ignore_ascii_case(&table_config.target_table));
 
             if !table_exists {
                 tracing::info!(
@@ -157,11 +194,13 @@ impl SyncService {
                 );
 
                 // Step 1: Try to get DDL from source (CREATE TABLE statement)
-                let source_ddl = source.fetch_ddl(
-                    &table_config.source_table,
-                    "table",
-                    pipeline_clone.source_schema.clone(),
-                ).await;
+                let source_ddl = source
+                    .fetch_ddl(
+                        &table_config.source_table,
+                        "table",
+                        pipeline_clone.source_schema.clone(),
+                    )
+                    .await;
 
                 // MongoDB fetch_ddl returns JSON metadata, not CREATE TABLE — skip DDL path
                 let create_sql = if source_db_type == DbType::Mongodb {
@@ -170,19 +209,32 @@ impl SyncService {
                     match source_ddl {
                         Ok(ref ddl) if ddl.contains("CREATE") && ddl.contains('(') => {
                             let target_ref = match pipeline_clone.target_schema.as_deref() {
-                                Some(s) => format!("{}.{}", quote_for_target(&target_db_type, s), quote_for_target(&target_db_type, &table_config.target_table)),
-                                None => quote_for_target(&target_db_type, &table_config.target_table),
+                                Some(s) => format!(
+                                    "{}.{}",
+                                    quote_for_target(&target_db_type, s),
+                                    quote_for_target(&target_db_type, &table_config.target_table)
+                                ),
+                                None => {
+                                    quote_for_target(&target_db_type, &table_config.target_table)
+                                }
                             };
                             let ddl_body = &ddl[ddl.find('(').unwrap()..];
                             let sanitized_body = sanitize_ddl_for_target(ddl_body);
-                            Some(format!("CREATE TABLE IF NOT EXISTS {}{}", target_ref, sanitized_body))
+                            Some(format!(
+                                "CREATE TABLE IF NOT EXISTS {}{}",
+                                target_ref, sanitized_body
+                            ))
                         }
                         Ok(ref ddl) => {
                             tracing::warn!("[sync] DDL for '{}' is not valid, falling back to column metadata: {:?}", table_config.source_table, &ddl[..ddl.len().min(80)]);
                             None
                         }
                         Err(e) => {
-                            tracing::warn!("[sync] Could not read DDL for source table '{}': {}", table_config.source_table, e);
+                            tracing::warn!(
+                                "[sync] Could not read DDL for source table '{}': {}",
+                                table_config.source_table,
+                                e
+                            );
                             None
                         }
                     }
@@ -193,21 +245,29 @@ impl SyncService {
                     Some(sql) => Some(sql),
                     None => {
                         let col_info = if source_db_type == DbType::Postgres {
-                            fetch_pg_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
+                            fetch_pg_columns(
+                                source,
+                                &table_config.source_table,
+                                pipeline_clone.source_schema.as_deref(),
+                            )
+                            .await
                         } else {
-                            fetch_generic_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
+                            fetch_generic_columns(
+                                source,
+                                &table_config.source_table,
+                                pipeline_clone.source_schema.as_deref(),
+                            )
+                            .await
                         };
 
                         match col_info {
-                            Ok(columns) if !columns.is_empty() => {
-                                Some(build_create_table_sql(
-                                    &target_db_type,
-                                    &source_db_type,
-                                    pipeline_clone.target_schema.as_deref(),
-                                    &table_config.target_table,
-                                    &columns,
-                                ))
-                            }
+                            Ok(columns) if !columns.is_empty() => Some(build_create_table_sql(
+                                &target_db_type,
+                                &source_db_type,
+                                pipeline_clone.target_schema.as_deref(),
+                                &table_config.target_table,
+                                &columns,
+                            )),
                             _ => {
                                 tracing::warn!("[sync] Could not read columns for source table '{}', skipping creation", table_config.source_table);
                                 None
@@ -221,16 +281,29 @@ impl SyncService {
                     tracing::info!("[sync] Creating target table SQL: {}", create_sql);
                     match target.execute(create_sql).await {
                         Ok(_) => {
-                            tracing::info!("[sync] Created target table '{}'", table_config.target_table);
+                            tracing::info!(
+                                "[sync] Created target table '{}'",
+                                table_config.target_table
+                            );
                             table_created = true;
                         }
                         Err(e) => {
                             tracing::error!("[sync] Failed to create target table '{}': {} — trying column metadata fallback", table_config.target_table, e);
 
                             let col_info = if source_db_type == DbType::Postgres {
-                                fetch_pg_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
+                                fetch_pg_columns(
+                                    source,
+                                    &table_config.source_table,
+                                    pipeline_clone.source_schema.as_deref(),
+                                )
+                                .await
                             } else {
-                                fetch_generic_columns(source, &table_config.source_table, pipeline_clone.source_schema.as_deref()).await
+                                fetch_generic_columns(
+                                    source,
+                                    &table_config.source_table,
+                                    pipeline_clone.source_schema.as_deref(),
+                                )
+                                .await
                             };
 
                             if let Ok(columns) = col_info {
@@ -242,13 +315,20 @@ impl SyncService {
                                         &table_config.target_table,
                                         &columns,
                                     );
-                                    tracing::info!("[sync] Fallback CREATE TABLE SQL: {}", fallback_sql);
+                                    tracing::info!(
+                                        "[sync] Fallback CREATE TABLE SQL: {}",
+                                        fallback_sql
+                                    );
                                     match target.execute(&fallback_sql).await {
                                         Ok(_) => {
                                             tracing::info!("[sync] Created target table '{}' from column metadata", table_config.target_table);
                                             table_created = true;
                                         }
-                                        Err(e2) => tracing::error!("[sync] Fallback also failed for '{}': {}", table_config.target_table, e2),
+                                        Err(e2) => tracing::error!(
+                                            "[sync] Fallback also failed for '{}': {}",
+                                            table_config.target_table,
+                                            e2
+                                        ),
                                     }
                                 }
                             }
@@ -266,7 +346,10 @@ impl SyncService {
                         let _ = sender.send(SyncEvent::RowError {
                             table: table_config.source_table.clone(),
                             row_key: None,
-                            error: format!("Target table '{}' could not be created", table_config.target_table),
+                            error: format!(
+                                "Target table '{}' could not be created",
+                                table_config.target_table
+                            ),
                         });
                     }
                     continue;
@@ -329,7 +412,7 @@ impl SyncService {
         tracing::info!(
             "[sync] Pipeline '{}' finished: {}/{} tables completed, {} table errors",
             pipeline_clone.name,
-            total_tables.saturating_sub(pipeline_errors as u32),
+            total_tables.saturating_sub(pipeline_errors),
             total_tables,
             pipeline_errors,
         );
@@ -365,11 +448,7 @@ type ColInfo = (String, String, bool, bool, Option<usize>);
 /// Map BSON / MongoDB element type names to equivalent SQL column types for
 /// the target RDBMS. `max_len` is the longest observed string value (in chars)
 /// for `String` fields; used to choose between VARCHAR(n) and TEXT.
-fn bson_type_to_sql(
-    bson_type: &str,
-    max_len: Option<usize>,
-    target_db_type: &DbType,
-) -> String {
+fn bson_type_to_sql(bson_type: &str, max_len: Option<usize>, target_db_type: &DbType) -> String {
     let t = bson_type.trim().trim_matches('"');
     let pg = matches!(target_db_type, DbType::Postgres);
     match t {
@@ -400,7 +479,7 @@ fn bson_type_to_sql(
             if pg { "JSONB" } else { "JSON" }.into()
         }
         "Decimal128" | "Decimal" => "DECIMAL(38,18)".into(),
-        "Null" | "Undefined" => if pg { "TEXT" } else { "TEXT" }.into(),
+        "Null" | "Undefined" => "TEXT".into(),
         "RegularExpression" | "Regex" => "TEXT".into(),
         "JavaScript" | "JavaScriptWithScope" | "Symbol" | "Code" => "TEXT".into(),
         "MinKey" | "MaxKey" | "DbPointer" => "TEXT".into(),
@@ -482,7 +561,10 @@ fn build_create_table_sql(
         target_ref,
         col_defs.join(",\n")
     );
-    tracing::info!("[sync] Built CREATE TABLE from columns for '{}'", target_table);
+    tracing::info!(
+        "[sync] Built CREATE TABLE from columns for '{}'",
+        target_table
+    );
     sql
 }
 
@@ -517,9 +599,20 @@ async fn fetch_pg_columns(
     let mut columns = Vec::new();
 
     for row in &result.rows {
-        let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-        let col_type = row.get("type").and_then(|v| v.as_str()).unwrap_or("text").to_string();
-        let not_null = row.get("not_null").and_then(|v| v.as_bool()).unwrap_or(false);
+        let name = row
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let col_type = row
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("text")
+            .to_string();
+        let not_null = row
+            .get("not_null")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let is_pk = row.get("is_pk").and_then(|v| v.as_bool()).unwrap_or(false);
 
         columns.push((name, col_type, !not_null, is_pk, None));
@@ -534,15 +627,35 @@ async fn fetch_generic_columns(
     table: &str,
     schema: Option<&str>,
 ) -> AppResult<Vec<ColInfo>> {
-    let cols = source.fetch_columns(table, schema.map(|s| s.to_string())).await?;
+    let cols = source
+        .fetch_columns(table, schema.map(|s| s.to_string()))
+        .await?;
     let mut columns = Vec::new();
 
     for col in &cols {
-        let name = col.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-        let col_type = col.get("type").and_then(|v| v.as_str()).unwrap_or("text").to_string();
-        let is_nullable = col.get("isNullable").and_then(|v| v.as_bool()).unwrap_or(true);
-        let is_pk = col.get("isPrimaryKey").or_else(|| col.get("isPrimary")).and_then(|v| v.as_bool()).unwrap_or(false);
-        let max_len = col.get("maxLength").and_then(|v| v.as_u64()).map(|n| n as usize);
+        let name = col
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let col_type = col
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("text")
+            .to_string();
+        let is_nullable = col
+            .get("isNullable")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let is_pk = col
+            .get("isPrimaryKey")
+            .or_else(|| col.get("isPrimary"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let max_len = col
+            .get("maxLength")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize);
 
         columns.push((name, col_type, is_nullable, is_pk, max_len));
     }
@@ -556,9 +669,9 @@ async fn fetch_generic_columns(
 /// target database.
 fn sanitize_ddl_for_target(ddl: &str) -> String {
     // 1) Sequence functions: nextval(...), currval(...), setval(...)
-    let re_seq = Regex::new(
-        "(?i)\\s+DEFAULT\\s+(?:nextval|currval|setval)\\s*\\([^)]*\\)(?:::\\w+)?"
-    ).unwrap();
+    let re_seq =
+        Regex::new("(?i)\\s+DEFAULT\\s+(?:nextval|currval|setval)\\s*\\([^)]*\\)(?:::\\w+)?")
+            .unwrap();
     let result = re_seq.replace_all(ddl, "").to_string();
 
     // 2) Reserved-keyword expressions: USER, current_user, session_user, current_schema, etc.
@@ -573,35 +686,96 @@ fn sanitize_ddl_for_target(ddl: &str) -> String {
     //    If the cast type is NOT a PostgreSQL built-in, strip the DEFAULT since
     //    the type won't exist on the target database.
     let re_custom_default = Regex::new(
-        "(?i)\\s+DEFAULT\\s+(?:'[^']*'|\"[^\"]*\"|\\w+(?:\\([^)]*\\))?|\\d+)\\s*::\\s*(\\w+)"
-    ).unwrap();
-    re_custom_default.replace_all(&result, |caps: &regex::Captures| {
-        let cast_type = caps.get(1).map(|m| m.as_str().to_lowercase()).unwrap_or_default();
-        let is_builtin = PG_BUILTIN_TYPES.iter().any(|&bt| bt == cast_type)
-            || cast_type.ends_with("[]")
-            || cast_type.starts_with('_');
-        if is_builtin {
-            caps.get(0).unwrap().as_str().to_string()
-        } else {
-            String::new()
-        }
-    }).to_string()
+        "(?i)\\s+DEFAULT\\s+(?:'[^']*'|\"[^\"]*\"|\\w+(?:\\([^)]*\\))?|\\d+)\\s*::\\s*(\\w+)",
+    )
+    .unwrap();
+    re_custom_default
+        .replace_all(&result, |caps: &regex::Captures| {
+            let cast_type = caps
+                .get(1)
+                .map(|m| m.as_str().to_lowercase())
+                .unwrap_or_default();
+            let is_builtin = PG_BUILTIN_TYPES.iter().any(|&bt| bt == cast_type)
+                || cast_type.ends_with("[]")
+                || cast_type.starts_with('_');
+            if is_builtin {
+                caps.get(0).unwrap().as_str().to_string()
+            } else {
+                String::new()
+            }
+        })
+        .to_string()
 }
 
 /// PostgreSQL built-in type names that should never be quoted in DDL.
 const PG_BUILTIN_TYPES: &[&str] = &[
-    "smallint", "integer", "bigint", "decimal", "numeric", "real",
-    "double precision", "smallserial", "serial", "bigserial", "money",
-    "char", "character", "varchar", "character varying", "text", "bytea",
-    "boolean", "bool", "date", "time", "time with time zone",
-    "time without time zone", "timestamp", "timestamp with time zone",
-    "timestamp without time zone", "interval", "cidr", "inet", "macaddr",
-    "macaddr8", "bit", "bit varying", "varbit", "uuid", "xml", "json",
-    "jsonb", "point", "line", "lseg", "box", "path", "polygon", "circle",
-    "tsquery", "tsvector", "oid", "regclass", "regtype", "regproc",
-    "regprocedure", "xid", "cid", "tid", "record", "void", "anyelement",
-    "anyarray", "anynonarray", "anyenum", "anyrange", "cstring", "internal",
-    "trigger", "language_handler", "jsonpath",
+    "smallint",
+    "integer",
+    "bigint",
+    "decimal",
+    "numeric",
+    "real",
+    "double precision",
+    "smallserial",
+    "serial",
+    "bigserial",
+    "money",
+    "char",
+    "character",
+    "varchar",
+    "character varying",
+    "text",
+    "bytea",
+    "boolean",
+    "bool",
+    "date",
+    "time",
+    "time with time zone",
+    "time without time zone",
+    "timestamp",
+    "timestamp with time zone",
+    "timestamp without time zone",
+    "interval",
+    "cidr",
+    "inet",
+    "macaddr",
+    "macaddr8",
+    "bit",
+    "bit varying",
+    "varbit",
+    "uuid",
+    "xml",
+    "json",
+    "jsonb",
+    "point",
+    "line",
+    "lseg",
+    "box",
+    "path",
+    "polygon",
+    "circle",
+    "tsquery",
+    "tsvector",
+    "oid",
+    "regclass",
+    "regtype",
+    "regproc",
+    "regprocedure",
+    "xid",
+    "cid",
+    "tid",
+    "record",
+    "void",
+    "anyelement",
+    "anyarray",
+    "anynonarray",
+    "anyenum",
+    "anyrange",
+    "cstring",
+    "internal",
+    "trigger",
+    "language_handler",
+    "jsonpath",
 ];
 
 /// Quote a PostgreSQL type name if it could be a reserved keyword or user-defined type.
@@ -609,7 +783,8 @@ const PG_BUILTIN_TYPES: &[&str] = &[
 /// since they won't exist on the target database.
 fn quote_pg_type(ty: &str) -> String {
     let lower = ty.to_lowercase();
-    if PG_BUILTIN_TYPES.contains(&lower.as_str()) || lower.ends_with("[]") || lower.starts_with('_') {
+    if PG_BUILTIN_TYPES.contains(&lower.as_str()) || lower.ends_with("[]") || lower.starts_with('_')
+    {
         ty.to_string()
     } else {
         // User-defined types (enums, composite types, etc.) — map to text
@@ -646,10 +821,7 @@ async fn check_pg_table_exists(
 }
 
 /// Find which PostgreSQL schema contains a given table (searches all schemas).
-async fn find_pg_schema_for_table(
-    source: &dyn DbDriver,
-    table: &str,
-) -> Option<String> {
+async fn find_pg_schema_for_table(source: &dyn DbDriver, table: &str) -> Option<String> {
     let table_clean = table.replace('\'', "''");
 
     let query = format!(
@@ -672,7 +844,11 @@ async fn find_pg_schema_for_table(
             None
         }
         Err(e) => {
-            tracing::warn!("[sync] Error searching for schema of table '{}': {}", table, e);
+            tracing::warn!(
+                "[sync] Error searching for schema of table '{}': {}",
+                table,
+                e
+            );
             None
         }
     }

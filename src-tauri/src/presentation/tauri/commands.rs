@@ -1,27 +1,32 @@
 use crate::application::audit_service::AuditService;
 use crate::application::auth_service;
+use crate::application::compare::compare_service::CompareService;
 use crate::application::connection_service::ConnectionService;
 use crate::application::explorer_service::ExplorerService;
 use crate::application::keyring_service;
-use crate::application::totp_service;
-use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::model_generator_service::ModelGeneratorService;
-use crate::application::compare::compare_service::CompareService;
+use crate::application::sql_generator_service::SqlGeneratorService;
 use crate::application::sync::sync_service::SyncService;
+use crate::application::totp_service;
 use crate::db::quote_identifier;
 
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::scheduler::job_engine;
 use crate::models::compare::{DataReport, SchemaReport, ScriptOptions, SyncScript};
-use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, PipelineStatus};
-use crate::models::{CellUpdateInput, DbConnectionConfig, QueryResult, RowContext, JobConfigDto, JobType, ScheduledJob};
-use secrecy::ExposeSecret;
+use crate::models::sync::{
+    PipelineStatus, SyncBatch, SyncCheckpoint, SyncPipeline, SyncRowError, SyncRun,
+};
+use crate::models::{
+    CellUpdateInput, DbConnectionConfig, JobConfigDto, JobType, QueryResult, RowContext,
+    ScheduledJob,
+};
 use crate::state::AppState;
+use secrecy::ExposeSecret;
 use serde::Serialize;
-use std::sync::Arc;
-use tauri::Manager;
 use std::process::Command;
 use std::str::FromStr;
+use std::sync::Arc;
+use tauri::Manager;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
@@ -76,9 +81,7 @@ pub async fn get_table_sizes(
 }
 
 #[tauri::command]
-pub async fn open_in_file_manager(
-    path: String,
-) -> AppResult<()> {
+pub async fn open_in_file_manager(path: String) -> AppResult<()> {
     let parent = std::path::Path::new(&path)
         .parent()
         .ok_or_else(|| AppError::Internal("Invalid file path".into()))?;
@@ -98,7 +101,10 @@ pub async fn open_in_file_manager(
         }
         #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         {
-            Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "unsupported platform"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "unsupported platform",
+            ))
         }
     };
 
@@ -109,10 +115,7 @@ pub async fn open_in_file_manager(
 }
 
 #[tauri::command]
-pub async fn get_db_type(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<crate::db::DbType> {
+pub async fn get_db_type(id: String, state: State<'_, AppState>) -> AppResult<crate::db::DbType> {
     let driver = state.get_connection(&id).await?;
     Ok(driver.db_type())
 }
@@ -276,13 +279,9 @@ pub async fn change_master_password(
     new_password: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let key = auth_service::change_master_password(
-        &old_password,
-        &new_password,
-        &state,
-        &state.storage,
-    )
-    .await?;
+    let key =
+        auth_service::change_master_password(&old_password, &new_password, &state, &state.storage)
+            .await?;
     state.set_master_key(key, 3600).await;
     Ok(())
 }
@@ -308,12 +307,8 @@ pub async fn recover_master_password(
     new_password: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let key = auth_service::recover_master_password(
-        &recovery_code,
-        &new_password,
-        &state.storage,
-    )
-    .await?;
+    let key = auth_service::recover_master_password(&recovery_code, &new_password, &state.storage)
+        .await?;
     state.set_master_key(key, 3600).await;
     Ok(())
 }
@@ -341,9 +336,13 @@ pub async fn remove_master_from_keyring() -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn unlock_with_windows_hello(state: State<'_, AppState>, app_handle: AppHandle) -> AppResult<bool> {
+pub async fn unlock_with_windows_hello(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<bool> {
     use raw_window_handle::HasWindowHandle;
-    let hwnd = app_handle.get_webview_window("main")
+    let hwnd = app_handle
+        .get_webview_window("main")
         .map(|w| {
             if let Ok(handle) = w.window_handle() {
                 if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
@@ -361,7 +360,8 @@ pub async fn unlock_with_windows_hello(state: State<'_, AppState>, app_handle: A
     let password = keyring_service::get_password()?
         .ok_or_else(|| AppError::Auth("No Windows Hello credential stored".into()))?;
 
-    match crate::application::auth_service::unlock_master_password(&password, &state.storage).await {
+    match crate::application::auth_service::unlock_master_password(&password, &state.storage).await
+    {
         Ok(key) => {
             state.set_master_key(key, 3600).await;
             Ok(true)
@@ -377,7 +377,9 @@ pub async fn is_totp_available() -> AppResult<bool> {
 }
 
 #[tauri::command]
-pub async fn generate_totp_setup(state: State<'_, AppState>) -> AppResult<totp_service::TotpSetupResult> {
+pub async fn generate_totp_setup(
+    state: State<'_, AppState>,
+) -> AppResult<totp_service::TotpSetupResult> {
     totp_service::generate_totp_setup(&state, &state.storage).await
 }
 
@@ -488,10 +490,7 @@ pub async fn open_file_dialog(
     filter_ext: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<Option<String>> {
-    let mut dialog = app_handle
-        .dialog()
-        .file()
-        .set_title("Open File");
+    let mut dialog = app_handle.dialog().file().set_title("Open File");
 
     if let (Some(name), Some(ext)) = (filter_name, filter_ext) {
         dialog = dialog.add_filter(name, &[&ext]);
@@ -527,11 +526,11 @@ pub async fn save_file_dialog(
         .file()
         .set_title("Save File")
         .set_file_name(default_file_name);
-        
+
     if let (Some(name), Some(ext)) = (filter_name, filter_ext) {
         dialog = dialog.add_filter(name, &[&ext]);
     }
-    
+
     dialog = dialog.add_filter("All Files", &["*"]);
 
     let file_path = dialog.blocking_save_file();
@@ -682,8 +681,10 @@ pub async fn monitor_slow_queries(
     min_time: u64,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<serde_json::Value>> {
-    crate::application::monitoring_service::MonitoringService::get_slow_queries(&state, &id, min_time)
-        .await
+    crate::application::monitoring_service::MonitoringService::get_slow_queries(
+        &state, &id, min_time,
+    )
+    .await
 }
 
 /// InnoDB engine status with the TRANSACTIONS section extracted (MySQL/MariaDB).
@@ -702,8 +703,12 @@ pub async fn monitor_kill_process(
     process_id: String,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    crate::application::monitoring_service::MonitoringService::kill_process(&state, &id, &process_id)
-        .await
+    crate::application::monitoring_service::MonitoringService::kill_process(
+        &state,
+        &id,
+        &process_id,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -814,10 +819,7 @@ pub async fn get_foreign_keys(
 }
 
 #[tauri::command]
-pub async fn clear_metadata_cache(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn clear_metadata_cache(id: String, state: State<'_, AppState>) -> AppResult<()> {
     ExplorerService::clear_metadata_cache(&state, &id).await;
     Ok(())
 }
@@ -840,7 +842,9 @@ pub async fn generate_safe_delete_sql(
 ) -> AppResult<String> {
     let driver = state.get_connection(&id).await?;
     let db_type = driver.db_type();
-    let referenced_by = driver.fetch_referenced_by_keys(&input.table, input.schema.clone()).await?;
+    let referenced_by = driver
+        .fetch_referenced_by_keys(&input.table, input.schema.clone())
+        .await?;
     Ok(SqlGeneratorService::generate_safe_delete(
         db_type,
         &input.table,
@@ -901,7 +905,10 @@ pub async fn update_ddl(
             }
             crate::db::DbType::Postgres => {
                 driver
-                    .execute(&format!("SET search_path TO {};", quote_identifier(&db_type, s)))
+                    .execute(&format!(
+                        "SET search_path TO {};",
+                        quote_identifier(&db_type, s)
+                    ))
                     .await?;
                 sql
             }
@@ -968,9 +975,11 @@ pub async fn drop_column(
     let driver = state.get_connection(&id).await?;
     let db_type = driver.db_type();
     drop(driver);
-    let sql = format!("ALTER TABLE {} DROP COLUMN {}",
+    let sql = format!(
+        "ALTER TABLE {} DROP COLUMN {}",
         quote_identifier(&db_type, &table),
-        quote_identifier(&db_type, &column));
+        quote_identifier(&db_type, &column)
+    );
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
@@ -989,9 +998,11 @@ pub async fn drop_index(
     drop(driver);
     let sql = match db_type {
         crate::db::DbType::Postgres => format!("DROP INDEX {}", quote_identifier(&db_type, &index)),
-        _ => format!("ALTER TABLE {} DROP INDEX {}",
+        _ => format!(
+            "ALTER TABLE {} DROP INDEX {}",
             quote_identifier(&db_type, &table),
-            quote_identifier(&db_type, &index)),
+            quote_identifier(&db_type, &index)
+        ),
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -1011,14 +1022,23 @@ pub async fn rename_index(
     let db_type = driver.db_type();
     drop(driver);
     let sql = match db_type {
-        crate::db::DbType::Postgres => format!("ALTER INDEX {} RENAME TO {}",
+        crate::db::DbType::Postgres => format!(
+            "ALTER INDEX {} RENAME TO {}",
             quote_identifier(&db_type, &old_name),
-            quote_identifier(&db_type, &new_name)),
-        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => format!("ALTER TABLE {} RENAME INDEX {} TO {}",
+            quote_identifier(&db_type, &new_name)
+        ),
+        crate::db::DbType::Mysql | crate::db::DbType::Mariadb => format!(
+            "ALTER TABLE {} RENAME INDEX {} TO {}",
             quote_identifier(&db_type, &table),
             quote_identifier(&db_type, &old_name),
-            quote_identifier(&db_type, &new_name)),
-        _ => return Err(crate::error::AppError::Validation(format!("Rename index not supported for {:?}", db_type))),
+            quote_identifier(&db_type, &new_name)
+        ),
+        _ => {
+            return Err(crate::error::AppError::Validation(format!(
+                "Rename index not supported for {:?}",
+                db_type
+            )))
+        }
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -1037,12 +1057,16 @@ pub async fn drop_foreign_key(
     let db_type = driver.db_type();
     drop(driver);
     let sql = match db_type {
-        crate::db::DbType::Postgres => format!("ALTER TABLE {} DROP CONSTRAINT {}",
+        crate::db::DbType::Postgres => format!(
+            "ALTER TABLE {} DROP CONSTRAINT {}",
             quote_identifier(&db_type, &table),
-            quote_identifier(&db_type, &constraint)),
-        _ => format!("ALTER TABLE {} DROP FOREIGN KEY {}",
+            quote_identifier(&db_type, &constraint)
+        ),
+        _ => format!(
+            "ALTER TABLE {} DROP FOREIGN KEY {}",
             quote_identifier(&db_type, &table),
-            quote_identifier(&db_type, &constraint)),
+            quote_identifier(&db_type, &constraint)
+        ),
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -1060,9 +1084,11 @@ pub async fn drop_constraint(
     let driver = state.get_connection(&id).await?;
     let db_type = driver.db_type();
     drop(driver);
-    let sql = format!("ALTER TABLE {} DROP CONSTRAINT {}",
+    let sql = format!(
+        "ALTER TABLE {} DROP CONSTRAINT {}",
         quote_identifier(&db_type, &table),
-        quote_identifier(&db_type, &constraint));
+        quote_identifier(&db_type, &constraint)
+    );
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
@@ -1081,11 +1107,18 @@ pub async fn rename_foreign_key(
     let db_type = driver.db_type();
     drop(driver);
     let sql = match db_type {
-        crate::db::DbType::Postgres => format!("ALTER TABLE {} RENAME CONSTRAINT {} TO {}",
+        crate::db::DbType::Postgres => format!(
+            "ALTER TABLE {} RENAME CONSTRAINT {} TO {}",
             quote_identifier(&db_type, &table),
             quote_identifier(&db_type, &old_name),
-            quote_identifier(&db_type, &new_name)),
-        _ => return Err(crate::error::AppError::Validation(format!("Rename constraint not supported for {:?}", db_type))),
+            quote_identifier(&db_type, &new_name)
+        ),
+        _ => {
+            return Err(crate::error::AppError::Validation(format!(
+                "Rename constraint not supported for {:?}",
+                db_type
+            )))
+        }
     };
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
@@ -1244,7 +1277,10 @@ pub async fn restore_database_selected(
 
 fn normalize_cron(expr: &str) -> String {
     let trimmed = expr.trim();
-    let parts: Vec<&str> = trimmed.split_whitespace().filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = trimmed
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .collect();
     if parts.len() == 5 {
         format!("0 {}", trimmed)
     } else {
@@ -1253,7 +1289,10 @@ fn normalize_cron(expr: &str) -> String {
 }
 
 #[tauri::command]
-pub async fn scheduler_get_databases(connection_id: String, state: State<'_, AppState>) -> AppResult<Vec<String>> {
+pub async fn scheduler_get_databases(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
     // Only reuse an active session — never open a new connection implicitly
     // (a dead endpoint would hang for the driver timeout before failing).
     let driver = state.get_connection(&connection_id).await.map_err(|_| {
@@ -1338,12 +1377,18 @@ async fn inject_backup_connection_details(
     let cfg = config
         .as_object_mut()
         .ok_or_else(|| AppError::Internal("Job config must be an object".into()))?;
-    cfg.insert("dbType".into(), serde_json::Value::String(conn.db_type.to_string()));
+    cfg.insert(
+        "dbType".into(),
+        serde_json::Value::String(conn.db_type.to_string()),
+    );
     cfg.insert("host".into(), serde_json::Value::String(conn.host));
     cfg.insert("port".into(), serde_json::Value::Number(conn.port.into()));
     cfg.insert("user".into(), serde_json::Value::String(conn.user));
     if let Some(pw) = &conn.password {
-        cfg.insert("password".into(), serde_json::Value::String(pw.expose_secret().to_string()));
+        cfg.insert(
+            "password".into(),
+            serde_json::Value::String(pw.expose_secret().to_string()),
+        );
     }
     // Only set database from connection if frontend didn't send one
     let has_db = cfg
@@ -1391,7 +1436,9 @@ pub async fn update_scheduled_job(
                 let _ = cron::Schedule::from_str(&normalized)
                     .map_err(|e| AppError::Validation(format!("Invalid cron expression: {}", e)))?;
                 job.cron_expression = Some(normalized);
-                job.next_run = job.cron_expression.as_deref()
+                job.next_run = job
+                    .cron_expression
+                    .as_deref()
                     .and_then(|s| cron::Schedule::from_str(s).ok())
                     .and_then(|s| s.after(&chrono::Utc::now()).next());
             }
@@ -1432,7 +1479,11 @@ pub async fn get_scheduled_jobs(state: State<'_, AppState>) -> AppResult<Vec<Sch
 }
 
 #[tauri::command]
-pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: AppHandle) -> AppResult<()> {
+pub async fn run_job_now(
+    id: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> AppResult<()> {
     let storage = state.storage.clone();
     let known_hosts = state.known_hosts.clone();
     let app_handle = Some(app_handle);
@@ -1448,7 +1499,10 @@ pub async fn run_job_now(id: String, state: State<'_, AppState>, app_handle: App
     }
 
     tokio::spawn(async move {
-        if let Err(e) = job_engine::execute_job_now(&storage, &known_hosts, &app_handle, &id, Some(token_clone)).await {
+        if let Err(e) =
+            job_engine::execute_job_now(&storage, &known_hosts, &app_handle, &id, Some(token_clone))
+                .await
+        {
             eprintln!("[run_job_now] Error: {}", e);
         }
     });
@@ -1501,12 +1555,17 @@ pub async fn save_diagram(
 }
 
 #[tauri::command]
-pub async fn get_diagram(id: String, state: State<'_, AppState>) -> AppResult<crate::models::diagram::Diagram> {
+pub async fn get_diagram(
+    id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::diagram::Diagram> {
     state.storage.get_diagram(&id).await
 }
 
 #[tauri::command]
-pub async fn list_diagrams(state: State<'_, AppState>) -> AppResult<Vec<crate::models::diagram::Diagram>> {
+pub async fn list_diagrams(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::models::diagram::Diagram>> {
     state.storage.list_diagrams().await
 }
 
@@ -1559,7 +1618,10 @@ pub async fn validate_sync_config(
 }
 
 /// Get a driver from the runtime HashMap; if not found or the connection is dead, reconnect.
-async fn get_or_connect_driver(state: &AppState, conn_id: &str) -> AppResult<Arc<dyn crate::db::DbDriver>> {
+async fn get_or_connect_driver(
+    state: &AppState,
+    conn_id: &str,
+) -> AppResult<Arc<dyn crate::db::DbDriver>> {
     state.get_or_connect_driver(conn_id).await
 }
 
@@ -1614,8 +1676,14 @@ pub async fn get_checkpoint(
 
 #[tauri::command]
 pub async fn pause_sync(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    state.set_sync_control(&id, crate::state::SyncControl::Paused).await;
-    if let Err(e) = state.storage.update_sync_pipeline_status(&id, PipelineStatus::Paused).await {
+    state
+        .set_sync_control(&id, crate::state::SyncControl::Paused)
+        .await;
+    if let Err(e) = state
+        .storage
+        .update_sync_pipeline_status(&id, PipelineStatus::Paused)
+        .await
+    {
         tracing::error!("Failed to update pipeline status to Paused: {e}");
     }
     Ok(())
@@ -1623,8 +1691,14 @@ pub async fn pause_sync(id: String, state: State<'_, AppState>) -> AppResult<()>
 
 #[tauri::command]
 pub async fn resume_sync(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    state.set_sync_control(&id, crate::state::SyncControl::Running).await;
-    if let Err(e) = state.storage.update_sync_pipeline_status(&id, PipelineStatus::Running).await {
+    state
+        .set_sync_control(&id, crate::state::SyncControl::Running)
+        .await;
+    if let Err(e) = state
+        .storage
+        .update_sync_pipeline_status(&id, PipelineStatus::Running)
+        .await
+    {
         tracing::error!("Failed to update pipeline status to Running: {e}");
     }
     Ok(())
@@ -1632,8 +1706,14 @@ pub async fn resume_sync(id: String, state: State<'_, AppState>) -> AppResult<()
 
 #[tauri::command]
 pub async fn cancel_sync(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    state.set_sync_control(&id, crate::state::SyncControl::Cancelled).await;
-    if let Err(e) = state.storage.update_sync_pipeline_status(&id, PipelineStatus::Cancelled).await {
+    state
+        .set_sync_control(&id, crate::state::SyncControl::Cancelled)
+        .await;
+    if let Err(e) = state
+        .storage
+        .update_sync_pipeline_status(&id, PipelineStatus::Cancelled)
+        .await
+    {
         tracing::error!("Failed to update pipeline status to Cancelled: {e}");
     }
     Ok(())
@@ -1695,17 +1775,27 @@ pub async fn create_database(
             let query = serde_json::json!({
                 "create": "_init_",
                 "database": db_name,
-            }).to_string();
+            })
+            .to_string();
             driver.execute(&query).await?;
         }
         crate::db::DbType::Postgres => {
-            driver.execute(&format!("CREATE DATABASE {}", quote_identifier(&db_type, &db_name))).await?;
+            driver
+                .execute(&format!(
+                    "CREATE DATABASE {}",
+                    quote_identifier(&db_type, &db_name)
+                ))
+                .await?;
         }
         crate::db::DbType::Sqlserver => {
-            driver.execute(&format!("CREATE DATABASE [{}]", db_name.replace(']', "]]"))).await?;
+            driver
+                .execute(&format!("CREATE DATABASE [{}]", db_name.replace(']', "]]")))
+                .await?;
         }
         _ => {
-            driver.execute(&format!("CREATE DATABASE `{}`", db_name.replace('`', "``"))).await?;
+            driver
+                .execute(&format!("CREATE DATABASE `{}`", db_name.replace('`', "``")))
+                .await?;
         }
     }
     Ok(())
@@ -1724,17 +1814,27 @@ pub async fn drop_database(
         crate::db::DbType::Mongodb => {
             let query = serde_json::json!({
                 "dropDatabase": 1,
-            }).to_string();
+            })
+            .to_string();
             driver.execute(&query).await?;
         }
         crate::db::DbType::Postgres => {
-            driver.execute(&format!("DROP DATABASE {}", quote_identifier(&db_type, &db_name))).await?;
+            driver
+                .execute(&format!(
+                    "DROP DATABASE {}",
+                    quote_identifier(&db_type, &db_name)
+                ))
+                .await?;
         }
         crate::db::DbType::Sqlserver => {
-            driver.execute(&format!("DROP DATABASE [{}]", db_name.replace(']', "]]"))).await?;
+            driver
+                .execute(&format!("DROP DATABASE [{}]", db_name.replace(']', "]]")))
+                .await?;
         }
         _ => {
-            driver.execute(&format!("DROP DATABASE `{}`", db_name.replace('`', "``"))).await?;
+            driver
+                .execute(&format!("DROP DATABASE `{}`", db_name.replace('`', "``")))
+                .await?;
         }
     }
     Ok(())
@@ -1757,7 +1857,10 @@ pub async fn create_schema(
             let quoted = quote_identifier(&db_type, &schema);
             let create_sql = if let Some(ref owner) = owner {
                 let owner_quoted = quote_identifier(&db_type, owner);
-                format!("CREATE SCHEMA IF NOT EXISTS {} AUTHORIZATION {}", quoted, owner_quoted)
+                format!(
+                    "CREATE SCHEMA IF NOT EXISTS {} AUTHORIZATION {}",
+                    quoted, owner_quoted
+                )
             } else {
                 format!("CREATE SCHEMA IF NOT EXISTS {}", quoted)
             };
@@ -1812,11 +1915,7 @@ pub async fn create_schema(
 }
 
 #[tauri::command]
-pub async fn drop_schema(
-    id: String,
-    schema: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn drop_schema(id: String, schema: String, state: State<'_, AppState>) -> AppResult<()> {
     let driver = get_or_connect_driver(&state, &id).await?;
     let db_type = driver.db_type();
 
@@ -1835,7 +1934,10 @@ pub async fn drop_schema(
         }
         crate::db::DbType::Sqlserver => {
             driver
-                .execute(&format!("DROP DATABASE IF EXISTS [{}]", schema.replace(']', "]]")))
+                .execute(&format!(
+                    "DROP DATABASE IF EXISTS [{}]",
+                    schema.replace(']', "]]")
+                ))
                 .await?;
         }
         crate::db::DbType::Sqlite => {
@@ -1867,7 +1969,8 @@ pub async fn create_collection(
             let query = serde_json::json!({
                 "create": collection_name,
                 "database": db_name,
-            }).to_string();
+            })
+            .to_string();
             driver.execute(&query).await?;
         }
         crate::db::DbType::Postgres => {
@@ -1914,7 +2017,9 @@ pub async fn mongo_backup_database(
         .blocking_save_file();
 
     let path = match file_path {
-        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
         None => return Ok(None),
     };
 
@@ -1924,8 +2029,14 @@ pub async fn mongo_backup_database(
     let collections = driver.fetch_tables(Some(db_name.clone()), None).await?;
 
     let mut output = serde_json::Map::new();
-    output.insert("database".into(), serde_json::Value::String(db_name.clone()));
-    output.insert("exportedAt".into(), serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+    output.insert(
+        "database".into(),
+        serde_json::Value::String(db_name.clone()),
+    );
+    output.insert(
+        "exportedAt".into(),
+        serde_json::Value::String(chrono::Utc::now().to_rfc3339()),
+    );
 
     let mut colls = serde_json::Map::new();
     for collection in &collections {
@@ -1934,13 +2045,17 @@ pub async fn mongo_backup_database(
             "database": db_name,
             "find": {},
             "limit": 0,
-        }).to_string();
+        })
+        .to_string();
         match driver.execute(&query).await {
             Ok(result) => {
                 colls.insert(collection.clone(), serde_json::Value::Array(result.rows));
             }
             Err(e) => {
-                colls.insert(collection.clone(), serde_json::Value::String(format!("__error__: {}", e)));
+                colls.insert(
+                    collection.clone(),
+                    serde_json::Value::String(format!("__error__: {}", e)),
+                );
             }
         }
     }
@@ -1969,7 +2084,9 @@ pub async fn mongo_restore_database(
         .blocking_pick_file();
 
     let path = match file_path {
-        Some(path) => path.into_path().map_err(|e| AppError::Internal(e.to_string()))?,
+        Some(path) => path
+            .into_path()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
         None => return Ok(None),
     };
 
@@ -1979,9 +2096,12 @@ pub async fn mongo_restore_database(
     let backup: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| AppError::Validation(format!("Invalid backup JSON: {}", e)))?;
 
-    let collections = backup.get("collections")
+    let collections = backup
+        .get("collections")
         .and_then(|c| c.as_object())
-        .ok_or_else(|| AppError::Validation("Invalid backup format: missing 'collections'".into()))?;
+        .ok_or_else(|| {
+            AppError::Validation("Invalid backup format: missing 'collections'".into())
+        })?;
 
     let driver = state.get_connection(&id).await?;
     let mut total = 0u64;
@@ -2001,14 +2121,19 @@ pub async fn mongo_restore_database(
             "database": db_name,
             "documents": docs_arr,
             "ordered": false,
-        }).to_string();
+        })
+        .to_string();
         match driver.execute(&insert_cmd).await {
             Ok(_) => total += docs_arr.len() as u64,
             Err(e) => eprintln!("[mongo_restore] Error inserting into {}: {}", coll_name, e),
         }
     }
 
-    Ok(Some(format!("Restored {} documents into {} collections", total, collections.len())))
+    Ok(Some(format!(
+        "Restored {} documents into {} collections",
+        total,
+        collections.len()
+    )))
 }
 
 // ── Character Commands ──
@@ -2174,10 +2299,7 @@ pub async fn load_compare_session(
 }
 
 #[tauri::command]
-pub async fn delete_compare_session(
-    id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn delete_compare_session(id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.storage.delete_compare_session(&id).await
 }
 
@@ -2213,7 +2335,10 @@ pub async fn update_assistant_feedback(
     feedback: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    state.storage.update_assistant_feedback(&message_id, &feedback).await
+    state
+        .storage
+        .update_assistant_feedback(&message_id, &feedback)
+        .await
 }
 
 #[tauri::command]
@@ -2230,7 +2355,10 @@ pub async fn load_query_history(
     limit: i64,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
-    state.storage.load_query_history(&connection_id, limit).await
+    state
+        .storage
+        .load_query_history(&connection_id, limit)
+        .await
 }
 
 #[tauri::command]
@@ -2248,5 +2376,8 @@ pub async fn search_similar_queries(
     limit: i64,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
-    state.storage.search_similar_queries(&connection_id, &search, limit).await
+    state
+        .storage
+        .search_similar_queries(&connection_id, &search, limit)
+        .await
 }
