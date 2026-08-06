@@ -12,6 +12,7 @@ import { ResultsPanelSkeleton } from './results/ResultsPanelSkeleton';
 import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { VisualizePanel } from './VisualizePanel';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
+import type { SqlFixResult } from '@/types/assistant';
 
 const LIMIT_OPTIONS = [
   { label: '100 rows', value: 100 },
@@ -42,6 +43,9 @@ interface ResultsPanelProps {
   setQueryLimit: (limit: number) => void;
   safeDeleteSuggestion: string | null;
   setSafeDeleteSuggestion: (suggestion: string | null) => void;
+  sqlFixSuggestion: SqlFixResult | null;
+  setSqlFixSuggestion: (suggestion: SqlFixResult | null) => void;
+  sqlFixLoading: boolean;
 }
 
 export function ResultsPanel({
@@ -65,6 +69,9 @@ export function ResultsPanel({
   setQueryLimit,
   safeDeleteSuggestion,
   setSafeDeleteSuggestion,
+  sqlFixSuggestion,
+  setSqlFixSuggestion,
+  sqlFixLoading,
 }: ResultsPanelProps) {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -102,8 +109,8 @@ export function ResultsPanel({
       />
 
       {isResultsPanelVisible && (
-        <div className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-0">
-          <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} safeDeleteSuggestion={safeDeleteSuggestion} setSafeDeleteSuggestion={setSafeDeleteSuggestion} />
+        <div className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-0 min-w-0">
+          <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} safeDeleteSuggestion={safeDeleteSuggestion} setSafeDeleteSuggestion={setSafeDeleteSuggestion} sqlFixSuggestion={sqlFixSuggestion} setSqlFixSuggestion={setSqlFixSuggestion} sqlFixLoading={sqlFixLoading} />
 
           {activeTab?.results && sortedRows.length > 0 ? (
             <>

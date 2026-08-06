@@ -24,7 +24,6 @@ import { ModelExportModal } from './ModelExportModal';
 import type { ExplorerTabState } from '@/store/useAppStore';
 import { useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
-import { schemaService } from '@/services/schema.service';
 import { AddColumnModal } from './AddColumnModal';
 import { AddIndexModal } from './AddIndexModal';
 import { AddForeignKeyModal } from './AddForeignKeyModal';
@@ -57,6 +56,7 @@ interface ObjectDetailProps {
   handleExecute: () => void;
   handleCancel: () => void;
   updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
+  refreshExplorerData: () => void;
   isLoadingDDL: boolean;
   errorDDL: Error | null;
   editableDdl: string;
@@ -105,6 +105,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
     handleExecute,
     handleCancel,
     updateCell,
+    refreshExplorerData,
     isLoadingDDL,
     errorDDL,
     editableDdl,
@@ -491,7 +492,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
           isMongoDB={isMongoDB}
           onCreated={() => {
             setAddColumnOpen(false)
-            schemaService.clearMetadataCache(activeConnection.id).catch(() => {})
+            refreshExplorerData()
           }}
         />
       )}
@@ -506,7 +507,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
           availableColumns={columns?.map(c => c.name) || []}
           onCreated={() => {
             setAddIndexOpen(false)
-            schemaService.clearMetadataCache(activeConnection.id).catch(() => {})
+            refreshExplorerData()
           }}
         />
       )}
@@ -521,7 +522,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
           availableColumns={columns?.map(c => c.name) || []}
           onCreated={() => {
             setAddFKOpen(false)
-            schemaService.clearMetadataCache(activeConnection.id).catch(() => {})
+            refreshExplorerData()
           }}
         />
       )}

@@ -1,7 +1,9 @@
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [string]$Notes = '',
-  [string]$PrivateKey = "$env:USERPROFILE\.tauri\toketeo-update.key",
+  [string]$PrivateKey = 'D:\Desktop\toketeo-signing\toketeo-signing.key',
+  [string]$PasswordFile = 'D:\Desktop\toketeo-signing\signing_pass.txt',
+  [string]$BaseUrl = 'https://toketeo-updates.crdsyntax.workers.dev',
   [string]$OutDir = 'update-dist'
 )
 
@@ -11,7 +13,10 @@ $cli = Join-Path $root 'node_modules/@tauri-apps/cli/tauri.js'
 
 if (-not (Test-Path $cli)) { throw "Tauri CLI not found: $cli" }
 if (-not (Test-Path $PrivateKey)) { throw "Private key not found: $PrivateKey" }
+if (-not (Test-Path $PasswordFile)) { throw "Signing password file not found: $PasswordFile" }
 if ($Notes -eq '') { throw 'Provide -Notes with the changelog for the manifest.' }
+
+$Password = (Get-Content $PasswordFile -Raw).Trim()
 
 Write-Host "Building bundles for version $Version ..."
 & node $cli build
@@ -35,14 +40,14 @@ $platforms = @{}
 foreach ($platform in $artifacts.Keys) {
   $file = $artifacts[$platform]
   Write-Host "Signing $($file.Name) for $platform ..."
-  $sigOut = & node $cli signer sign -k $PrivateKey $file.FullName 2>&1
+  $sigOut = & node $cli signer sign -f $PrivateKey -p $Password $file.FullName 2>&1
   if ($LASTEXITCODE -ne 0) { throw "Signing failed for $($file.Name): $sigOut" }
   $signature = ($sigOut | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 1).Trim()
 
   $dest = Join-Path $OutDir $file.Name
   Copy-Item $file.FullName $dest -Force
   $platforms[$platform] = @{
-    url = "https://updates.toketeo.app/$($file.Name)"
+    url = "$BaseUrl/$($file.Name)"
     signature = $signature
   }
 }
@@ -56,4 +61,4 @@ $manifest = @{
 
 $manifestPath = Join-Path $OutDir 'latest.json'
 [System.IO.File]::WriteAllText($manifestPath, $manifest, (New-Object System.Text.UTF8Encoding $false))
-Write-Host "Done. Upload the contents of '$OutDir' to https://updates.toketeo.app/"
+Write-Host "Done. Upload the contents of '$OutDir' to $BaseUrl (e.g. toketeo-updates/scripts/upload.mjs --dir ..\toketeo\update-dist --url $BaseUrl --token <ADMIN_TOKEN>)"

@@ -55,7 +55,7 @@ export function ResultsPanelTable({
     : 0;
 
   return (
-    <div ref={parentRef} className="flex-1 overflow-auto relative h-full" onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}>
+    <div ref={parentRef} className="flex-1 min-h-0 overflow-auto relative h-full" onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}>
       <table className="w-max min-w-full border-collapse table-fixed" style={{ fontFamily: editorFontFamily, fontSize: resultsFontSize }}>
         <thead className="sticky top-0 z-20 bg-muted shadow-[0_1px_0_0_hsl(var(--border))]" style={{ fontFamily: editorFontFamily }}>
           <tr>

@@ -67,3 +67,12 @@ export interface Preference {
   key: string
   value: string
 }
+
+export interface SqlFixResult {
+  sql?: string | null
+  /** Additional alternative queries suggested by the assistant. */
+  alternatives?: string[]
+  explanation: string
+  /** 'ok' | 'unconfigured' | 'failed' */
+  status: string
+}

@@ -1,11 +1,11 @@
 ﻿{
     "platforms": {
         "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSMXo5ejU0K3pMay9lRDBidDlPbzJuZWYreE5LSWFmbEZ2V2tlSDFoTFA1bmtubzh3UDJrWlpqTjRSMGQ1dnJDdHlBY04zanRhRzNjcjVMWEpVOW5DRUVLcTJYL2lKaWdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTA5NDM2CWZpbGU6VG9rZXRlb18wLjQuMF94NjRfZW4tVVMubXNpCkJ0eGtmd3hOQTdQTzY5eG9oamt3NGRLV09aSHgwYjZpSkpnUnR6aUc5Smt2djlPL2I4Wk15NlN5TWVKc1BNbUV6ZFRBcmVyMnB1OWlXWVVUUFpnS0RRPT0K",
-            "url": "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.0_x64_en-US.msi"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaURBaXZDQjR1NjhqU0wxNmh4WVpiQldTYWhvc3h6dExDcnNPOU84YzF2NUdZTFZVKysrZ1dMVG9HZjI0VjA4cWd5N21RNnRHbkExa3ZaVktZSkZDRmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTgzNTI2CWZpbGU6VG9rZXRlb18wLjQuMV94NjRfZW4tVVMubXNpCmZhVzhXSDE4cU8wYnloa01id3Nxb29vMmdMSXBMbnBKWFlpU2dyZmpFZXVoTkRQWWFaSlEveGJ4b0U3WXl1aXZBdTFzalY4RnhkMTNEWnBGZlRZN0N3PT0K",
+            "url": "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.1_x64_en-US.msi"
         }
     },
-    "pub_date": "2026-08-05T05:57:25Z",
-    "version": "0.4.0",
-    "notes": "v0.4.0 — SSH host key verification (TOFU), master password protection on sensitive commands, masked secrets in the frontend, secure reveal/copy of stored credentials with auto clipboard-clear, and fixes."
+    "pub_date": "2026-08-06T02:32:22Z",
+    "version": "0.4.1",
+    "notes": "v0.4.1 — Rotated updater signing key and added error logging to the update check."
 }

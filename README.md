@@ -2,7 +2,7 @@
 
 **Toketeo** is a cross-platform database client built with **Rust + Tauri** and **React**. It turns everyday database administration into an RPG-like progression system — execute queries, earn XP, level up, unlock perks, and complete quests while managing your databases.
 
-![Toketeo Logo](./frontend/public/logo2.svg)
+![Toketeo Logo](./frontend/public/principal.png)
 
 ---
 
@@ -71,12 +71,14 @@ Level up to unlock features permanently:
 - **Real-time Logs** — WebSocket-powered server event streaming
 - **Audit Trail** — Automatic logging of user actions and query execution
 - **Smart Assistant Hub** — AI query generation, performance insights, schema analysis, app tips, and connection help — all in one place
+- **AI SQL Fixer** — when a query fails to execute, the assistant analyzes the database error against the current connection's schema (tables, columns, foreign keys) and suggests a corrected query plus safer alternatives — e.g. avoiding cartesian products from wrong joins — with one-click replace in the editor
 - **Onboarding Tour** — Guided 7-step walkthrough on first launch with XP rewards
 - **Connection Wizard** — Step-by-step guided connection setup
 - **Performance Dashboard** — Track query duration, slow queries, and execution trends
 - **Keyboard Shortcuts** — Full shortcut reference (`?` to open)
-- **Cross-platform** — Native installers for Linux (.deb, .AppImage) and Windows (.zip portable)
+- **Cross-platform** — Native installers for Linux (.deb, .AppImage) and Windows (.msi, .zip portable)
 - **DB Compare** — Schema and data comparison across connections with sync script generation
+- **Cross-DB Sync** — Pipeline-based data synchronization between engines (full or incremental)
 
 ---
 
@@ -88,54 +90,69 @@ The desktop backend runs as a **Tauri** application written in Rust.
 
 ```
 src-tauri/src/
-├── application/
-│   ├── explorer_service.rs       # Dump, restore, table sizes, integrity, SQL parsing
-│   └── compare/                  # DB Compare module
-│       ├── compare_service.rs    # Orchestrator: schema compare, data compare, script gen
-│       ├── schema/               # Schema comparator, hash builder
-│       ├── data/                 # Row comparator, hash generator, diff builder, PK resolver
-│       └── script_generator/     # Sync SQL generators (MySQL, PostgreSQL, SQLite)
-├── infrastructure/scheduler/     # Job engine, executors (backup, report, CSV)
-│   ├── job_engine.rs             # Polling loop, cron calculation, event emission
-│   └── executors.rs              # BackupExecutor, ReportExecutor, CsvExportExecutor
-├── presentation/tauri/commands.rs    # Tauri IPC commands (incl. scheduler + compare)
-├── models/                       # Shared structs (ScheduledJob, DumpSelection, CompareResult, etc.)
-├── db/                           # Database driver trait + implementations per engine
-├── storage.rs                    # SQLite persistence (connections, jobs, logs)
-├── lib.rs                        # Plugin registration, invoke_handler
-└── main.rs                       # Entry point
+├── application/                    # Business logic
+│   ├── assistant/                  # Smart Assistant Hub
+│   │   ├── adapters/               # AI providers (OpenAI, Claude, Gemini, DeepSeek, Ollama, OpenCode)
+│   │   ├── context/                # Schema engine + relevance filtering
+│   │   ├── history/ knowledge/ learning/   # Memory, knowledge base, learning engine
+│   │   ├── orchestrator.rs         # Chat orchestration + SQL block extraction
+│   │   ├── prompt/                 # Prompt builder
+│   │   ├── sql_fixer.rs            # AI-powered SQL fix suggestions
+│   │   └── tools/                  # Tool engine (query, DDL, compare, sync, backup, export, …)
+│   ├── audit_service.rs            # Action & query audit logging
+│   ├── auth_service.rs             # Authentication, TOTP, keyring
+│   ├── compare/                    # Schema + data comparison & sync script generators
+│   ├── connection_service.rs       # Connection lifecycle, database switching
+│   ├── explorer_service.rs         # Explorer, dump/restore, table sizes, integrity
+│   ├── model_generator_service.rs  # ORM model generation
+│   ├── monitoring_service.rs       # Performance monitoring
+│   ├── session_service.rs          # Metadata cache
+│   ├── sql_generator_service.rs    # Safe SQL generation
+│   └── sync/                       # Cross-DB sync engine (extractors, strategies, validators)
+├── infrastructure/
+│   ├── crypto.rs                   # Keyring-backed encryption
+│   ├── database/                   # Connection string builder
+│   ├── drivers/                    # Driver factory
+│   └── scheduler/                  # Job engine + executors (backup, report, CSV)
+├── db/                             # Driver trait + MySQL, PostgreSQL, SQL Server, MongoDB, SQLite, Redis
+├── presentation/tauri/             # Tauri IPC commands (commands.rs, assistant_commands.rs)
+├── models/                         # Shared structs (assistant, compare, sync, diagram)
+├── ssh/                            # SSH tunnel support
+├── state.rs                        # Shared application state
+├── storage.rs                      # SQLite persistence (connections, jobs, logs)
+├── lib.rs                          # Plugin registration, invoke_handler
+└── main.rs                         # Entry point
 ```
 
-The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgres` / `mysql` / `sqlx` for database connectivity. Dump operations generate full DDL + data for tables and DDL-only for views, triggers, procedures, and functions.
+The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgres` / `mysql` / `sqlx` for database connectivity, plus dedicated drivers for MongoDB, SQL Server and Redis. Dump operations generate full DDL + data for tables and DDL-only for views, triggers, procedures, and functions. Connections are kept in an `AppState` registry with a metadata cache and per-connection session state.
 
 ### Frontend (React + TypeScript)
 
 ```
 frontend/src/
 ├── components/
-│   ├── assistant/      # Smart Assistant Hub (panels, wizard, tour, shortcuts)
+│   ├── assistant/      # Smart Assistant Hub (panels, SQL fixer popup, wizard, tour)
 │   ├── compare/        # DB Compare module
-│   │   ├── SchemaCompareForm.tsx      # Connection/schema selectors, compare trigger
-│   │   ├── SchemaDiffTree.tsx         # Expandable diff tree with descriptions
-│   │   ├── DataCompareForm.tsx        # Data comparison config + progress
-│   │   ├── DataDiffTable.tsx          # Expandable data diff with row details
-│   │   ├── ScriptPreview.tsx          # Sync script editor (copy, download, toggle statements)
-│   │   ├── SyncProgressModal.tsx      # Pause/resume/cancel sync with real-time progress
-│   │   └── FullscreenModal.tsx        # Fullscreen overlay with minimize-to-pill
 │   ├── connections/    # Connection tree, DumpRestoreModal
+│   ├── editor/         # SQL editor components
+│   ├── explorer/       # Object explorer (sidebar, object detail, DDL, add column/index/FK)
 │   ├── gamification/   # LevelBadge, GamificationModal, FeatureGate, ThemeProvider
+│   ├── layout/         # App header, splash screen
+│   ├── query/          # SQL editor panel, results grid, error popups
 │   ├── scheduler/      # JobCard, JobFormModal
-│   └── query/          # SQL editor, results grid
-├── pages/
-│   └── ComparePage.tsx # Full compare page with tabs (Schema, Data, Script)
+│   ├── security/       # Security settings UI
+│   ├── sync/           # Cross-DB sync pipelines UI
+│   ├── ui/             # Shared UI primitives
+│   └── update/         # Update modal
+├── pages/              # QueryEditor, Explorer, Assistant, Compare, Scheduler, Monitor, …
 ├── store/              # Zustand stores (app, gamification, assistant, performance, scheduler, compare)
-├── hooks/              # Custom hooks (useQueryEditor, etc.)
+├── hooks/              # useQueryEditor, useExplorer, …
 ├── services/           # Tauri IPC service wrappers
-├── lib/                # Gamification core (config, missions, unlocks)
+├── lib/                # Gamification core, mongo shell parser, engine icons
 └── types/              # TypeScript type definitions
 ```
 
-State management uses **Zustand** with persistence (localStorage). The gamification store saves XP, level, quest progress, unlocked perks, and query hashes across sessions.
+State management uses **Zustand** with persistence (localStorage). The gamification store saves XP, level, quest progress, unlocked perks, and query hashes across sessions. Editor state (tabs, explorer tabs, view state) is also persisted per connection.
 
 ---
 
@@ -184,6 +201,8 @@ Artifacts are generated in `src-tauri/target/release/bundle/`.
 bun run tauri:build -- --target x86_64-pc-windows-msvc
 ```
 
+Produces an **MSI installer** (and portable `.zip`) in `src-tauri/target/release/bundle/`. Signed releases are published via `scripts/publish-update.ps1`, which signs the MSI with the project signing key and uploads it with `latest.json` to the update endpoint.
+
 ---
 
 ## 📁 Project Structure
@@ -192,24 +211,26 @@ bun run tauri:build -- --target x86_64-pc-windows-msvc
 toketeo/
 ├── src-tauri/              # Rust/Tauri backend
 │   └── src/
-│       ├── application/    # Business logic (dump, restore, compare, integrity)
-│       │   ├── compare/    # Schema + data comparison, diff builder, script generators
-│       │   └── explorer_service.rs
-│       ├── db/             # Database drivers (MySQL, PostgreSQL, SQL Server, MongoDB, SQLite)
-│       ├── infrastructure/ # Scheduler engine, executors
-│       ├── presentation/   # Tauri commands
+│       ├── application/    # Business logic (assistant, compare, explorer, sync, audit)
+│       │   ├── assistant/  # Smart Assistant Hub (adapters, tools, sql_fixer)
+│       │   └── compare/    # Schema + data comparison, diff builder, script generators
+│       ├── db/             # Database drivers (MySQL, PostgreSQL, SQL Server, MongoDB, SQLite, Redis)
+│       ├── infrastructure/ # Scheduler engine, executors, crypto, drivers
+│       ├── presentation/   # Tauri IPC commands
 │       ├── models/         # Data structures
+│       ├── ssh/            # SSH tunnel support
 │       ├── storage.rs      # SQLite persistence
 │       ├── lib.rs          # Plugin & command registration
 │       └── main.rs         # App entry point
 ├── frontend/               # React + Vite app
 │   └── src/
-│       ├── components/     # React components (compare/, scheduler/, assistant/, query/)
-│       ├── pages/          # Route-level pages (ComparePage, AssistantPage, etc.)
+│       ├── components/     # React components (assistant/, compare/, explorer/, query/, …)
+│       ├── pages/          # Route-level pages (QueryEditor, Explorer, AssistantPage, …)
 │       ├── store/          # Zustand state stores
 │       ├── hooks/          # Custom React hooks
 │       ├── services/       # Tauri IPC wrappers
-│       └── lib/            # Gamification engine
+│       └── lib/            # Gamification engine, utilities
+├── scripts/                # Release helpers (publish-update.ps1)
 ├── package.json            # Root scripts
 └── README.md               # You are here
 ```

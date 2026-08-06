@@ -236,6 +236,7 @@ pub fn run() {
             commands::clear_assistant_messages,
             commands::update_assistant_feedback,
             commands::assistant_chat,
+            commands::assistant_fix_sql,
             commands::assistant_get_providers,
             commands::assistant_get_models,
             commands::assistant_test_provider,

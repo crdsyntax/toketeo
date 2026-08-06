@@ -5,4 +5,5 @@ pub mod knowledge;
 pub mod learning;
 pub mod orchestrator;
 pub mod prompt;
+pub mod sql_fixer;
 pub mod tools;

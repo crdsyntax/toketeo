@@ -1,11 +1,12 @@
 use crate::application::assistant::adapters::create_adapter;
 use crate::application::assistant::knowledge::KnowledgeEngine;
 use crate::application::assistant::orchestrator::ChatOrchestrator;
+use crate::application::assistant::sql_fixer::SqlFixer;
 use crate::application::assistant::tools::recommendation_engine::RecommendationEngine;
 use crate::error::AppResult;
 use crate::models::assistant::{
-    AssistantTurn, KnowledgeCase, ModelInfo, Preference, ProviderConfig, ProviderInfo, TestResult,
-    ToolDescriptor, ToolResult,
+    AssistantTurn, KnowledgeCase, ModelInfo, Preference, ProviderConfig, ProviderInfo, SqlFixResult,
+    TestResult, ToolDescriptor, ToolResult,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -140,6 +141,33 @@ pub async fn assistant_chat(
     };
 
     ChatOrchestrator::new(&state, &connection_id, &question, &config, confirm_destructive)
+        .run()
+        .await
+}
+
+/// Ask the assistant to fix a failing SQL query using the DB error message.
+#[tauri::command]
+pub async fn assistant_fix_sql(
+    connection_id: String,
+    sql: String,
+    error: String,
+    state: State<'_, AppState>,
+) -> AppResult<SqlFixResult> {
+    let configs = state.storage.load_provider_configs().await?;
+    let config = match configs.first() {
+        Some(c) => c.clone(),
+        None => {
+            return Ok(SqlFixResult {
+                sql: None,
+                alternatives: vec![],
+                explanation: "No AI provider configured. Go to Settings → AI Providers to set one up."
+                    .to_string(),
+                status: "unconfigured".to_string(),
+            })
+        }
+    };
+
+    SqlFixer::new(&state, &connection_id, &sql, &error, &config)
         .run()
         .await
 }

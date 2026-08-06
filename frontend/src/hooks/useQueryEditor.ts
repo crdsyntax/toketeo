@@ -4,7 +4,7 @@ import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type Editor
 import { queryService } from '@/services/query.service'
 import { schemaService } from '@/services/schema.service'
 import { tauriApi } from '@/lib/api'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import { toast } from 'react-hot-toast'
 import type { DbValue, DbRow, Connection } from '@/types/database'
@@ -14,6 +14,8 @@ import { useGamificationStore } from '@/store/gamificationStore'
 import { usePerformanceStore } from '@/store/performanceStore'
 import { calculateQueryXp, hashQuery } from '@/lib/gamification'
 import { onRunQueryRequested } from '@/lib/queryRunEvents'
+import { assistantService } from '@/services/assistant.service'
+import type { SqlFixResult } from '@/types/assistant'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -27,6 +29,32 @@ const FK_VIOLATION_PATTERNS = [
 
 function isFKViolation(message: string): boolean {
   return FK_VIOLATION_PATTERNS.some(p => p.test(message))
+}
+
+const SQL_SYNTAX_ERROR_PATTERNS = [
+  /you have an error in your sql syntax/i,
+  /syntax error at or near/i,
+  /incorrect syntax near/i,
+  /syntax error near/i,
+  /near "[^"]*": syntax error/i,
+  /syntax error in/i,
+]
+
+function isSqlSyntaxError(message: string): boolean {
+  return SQL_SYNTAX_ERROR_PATTERNS.some(p => p.test(message))
+}
+
+function isSchemaChangingQuery(sql: string): boolean {
+  const upper = sql.toUpperCase();
+  return (
+    upper.includes('ALTER ') ||
+    upper.includes('CREATE ') ||
+    upper.includes('DROP ') ||
+    upper.includes('TRUNCATE ') ||
+    upper.includes('RENAME ') ||
+    upper.includes('GRANT ') ||
+    upper.includes('REVOKE ')
+  );
 }
 
 function extractTableFromQuery(query: string): string | null {
@@ -153,7 +181,25 @@ export function useQueryEditor() {
     queryHistory,
     clearQueryHistory,
     setActiveConnectionDatabase,
+    updateExplorerTab,
   } = useAppStore()
+  const queryClient = useQueryClient()
+
+  const refreshSchemaMetadata = useCallback((connectionId: string) => {
+    schemaService.clearMetadataCache(connectionId).catch(() => undefined)
+    queryClient.invalidateQueries({
+      predicate: (q) =>
+        Array.isArray(q.queryKey) && q.queryKey.includes(connectionId),
+    })
+    for (const [id, tab] of Object.entries(useAppStore.getState().explorerTabs)) {
+      if (tab.connectionId === connectionId) {
+        updateExplorerTab(id, {
+          executionStatus: ExecutionStatus.IDLE,
+          socketResults: null,
+        })
+      }
+    }
+  }, [queryClient, updateExplorerTab])
   
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
   
@@ -178,6 +224,8 @@ export function useQueryEditor() {
   const [sqlModal, setSqlModal] = useState<{ isOpen: boolean; sql: string }>({ isOpen: false, sql: '' })
   const [queryLimit, setQueryLimit] = useState<number>(100)
   const [safeDeleteSuggestion, setSafeDeleteSuggestion] = useState<string | null>(null)
+  const [sqlFixSuggestion, setSqlFixSuggestion] = useState<SqlFixResult | null>(null)
+  const [sqlFixLoading, setSqlFixLoading] = useState(false)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -263,6 +311,19 @@ export function useQueryEditor() {
 
   const { trackAction, addXP, isQueryFirstTime, markQueryExecuted } = useGamificationStore()
 
+  const fetchSqlFix = useCallback(async (connectionId: string, sql: string, errorMessage: string) => {
+    setSqlFixLoading(true)
+    setSqlFixSuggestion(null)
+    try {
+      const res = await assistantService.fixSql(connectionId, sql, errorMessage)
+      setSqlFixSuggestion(res)
+    } catch {
+      // silent — the suggestion is optional
+    } finally {
+      setSqlFixLoading(false)
+    }
+  }, [])
+
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number, overrideSql?: string) => {
     const raw = overrideSql?.trim() ?? activeTab?.query
     if (!raw) return
@@ -272,6 +333,8 @@ export function useQueryEditor() {
       : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
     if (!targetConnection) {
       setSafeDeleteSuggestion(null)
+      setSqlFixSuggestion(null)
+      setSqlFixLoading(false)
       updateTabResults(activeTab.id, {
         status: ExecutionStatus.ERROR,
         error: 'No connection selected. Select a connection in the toolbar to execute this query.',
@@ -279,6 +342,7 @@ export function useQueryEditor() {
       return
     }
     setSafeDeleteSuggestion(null)
+    setSqlFixSuggestion(null)
     const isMongo = targetConnection.type === DatabaseType.MONGODB;
     if (checkDangerousQuery(raw, isMongo, targetConnection)) return
 
@@ -339,6 +403,11 @@ export function useQueryEditor() {
           error: null
         });
         toast.success(`Query returned successfully in ${durationMs} ms`);
+
+        // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
+        if (!isMongo && isSchemaChangingQuery(sql)) {
+          refreshSchemaMetadata(targetConnection.id);
+        }
 
         // Handle MongoDB use <db> â€” update connection's active database
         if (isMongo) {
@@ -404,12 +473,17 @@ export function useQueryEditor() {
               )
               setSafeDeleteSuggestion(safeSql)
             } catch {
-              // silent â€” suggestion is optional
+              // silent — suggestion is optional
             }
           }
         }
+
+        // Auto-detect SQL syntax errors and ask the assistant for a corrected query
+        if (isSqlSyntaxError(message) && targetConnection) {
+          fetchSqlFix(targetConnection.id, sql, message)
+        }
       }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
 
   // Run a query requested from the assistant into the active editor tab.
   useEffect(() => {
@@ -425,6 +499,8 @@ export function useQueryEditor() {
     const view = editorRef.current
     if (!view || !activeTab) return
     setSafeDeleteSuggestion(null)
+    setSqlFixSuggestion(null)
+    setSqlFixLoading(false)
 
     const fullText = view.state.doc.toString()
     const mainSel = view.state.selection.main
@@ -434,31 +510,39 @@ export function useQueryEditor() {
     if (!mainSel.empty) {
       sqlSnippet = view.state.sliceDoc(mainSel.from, mainSel.to)
     } else {
-      // Execute the statement at the cursor: the text bounded by the previous ';'
-      // (or start of file) and the next ';' at/after the cursor (or end of file).
-      let start = 0
-      for (let i = cursorPos - 1; i >= 0; i--) {
-        if (fullText[i] === ';') {
-          start = i + 1
-          break
+      const activeLine = view.state.doc.lineAt(cursorPos)
+      const lineText = activeLine.text.trim()
+      const lineSemicolonIndex = lineText.indexOf(';')
+
+      if (lineSemicolonIndex >= 0) {
+        sqlSnippet = lineText.slice(0, lineSemicolonIndex + 1).trim()
+      } else {
+        // Execute the statement at the cursor: the text bounded by the previous ';'
+        // (or start of file) and the next ';' at/after the cursor (or end of file).
+        let start = 0
+        for (let i = cursorPos - 1; i >= 0; i--) {
+          if (fullText[i] === ';') {
+            start = i + 1
+            break
+          }
         }
-      }
 
-      let end = fullText.length - 1
-      for (let i = cursorPos; i < fullText.length; i++) {
-        if (fullText[i] === ';') {
-          end = i
-          break
+        let end = fullText.length - 1
+        for (let i = cursorPos; i < fullText.length; i++) {
+          if (fullText[i] === ';') {
+            end = i
+            break
+          }
         }
-      }
 
-      sqlSnippet = fullText.slice(start, end + 1).trim()
-
-      // Cursor over blank whitespace (e.g. right after a trailing ';'): fall
-      // back to the preceding statement so Ctrl+Enter still runs the finished query.
-      if (!sqlSnippet) {
-        start = fullText.lastIndexOf(';', Math.max(0, start - 2)) + 1
         sqlSnippet = fullText.slice(start, end + 1).trim()
+
+        // Cursor over blank whitespace (e.g. right after a trailing ';'): fall
+        // back to the preceding statement so Ctrl+Enter still runs the finished query.
+        if (!sqlSnippet) {
+          start = fullText.lastIndexOf(';', Math.max(0, start - 2)) + 1
+          sqlSnippet = fullText.slice(start, end + 1).trim()
+        }
       }
     }
 
@@ -533,6 +617,11 @@ export function useQueryEditor() {
       const durationMs = Date.now() - startTime;
       toast.success(`Query returned successfully in ${durationMs} ms`);
 
+      // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
+      if (!isMongo && isSchemaChangingQuery(sqlSnippet)) {
+        refreshSchemaMetadata(targetConnection.id);
+      }
+
       // Handle MongoDB use <db> â€” update connection's active database
       if (isMongo) {
         const useMatch = (activeTab?.query ?? sqlSnippet).trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
@@ -566,12 +655,17 @@ export function useQueryEditor() {
             )
             setSafeDeleteSuggestion(safeSql)
           } catch {
-            // silent â€” suggestion is optional
+            // silent — suggestion is optional
           }
         }
       }
+
+      // Auto-detect SQL syntax errors and ask the assistant for a corrected query
+      if (isSqlSyntaxError(message) && targetConnection) {
+        fetchSqlFix(targetConnection.id, sqlSnippet, message)
+      }
     }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
 
   // Use refs to avoid stale closures in editor keybindings
   const executeCurrentRef = useRef(handleExecuteCurrent)
@@ -986,5 +1080,8 @@ export function useQueryEditor() {
     clearQueryHistory,
     safeDeleteSuggestion,
     setSafeDeleteSuggestion,
+    sqlFixSuggestion,
+    setSqlFixSuggestion,
+    sqlFixLoading,
   }
 }

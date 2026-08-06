@@ -220,3 +220,17 @@ pub struct Preference {
     pub key: String,
     pub value: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlFixResult {
+    /// The corrected SQL query (None when the model could not produce a fix).
+    pub sql: Option<String>,
+    /// Additional alternative queries suggested by the assistant.
+    pub alternatives: Vec<String>,
+    /// Short explanation of what was wrong and what changed.
+    pub explanation: String,
+    /// "ok" when a fixed query was produced, "unconfigured" when no AI
+    /// provider is set up, "failed" when the model returned no usable SQL.
+    pub status: String,
+}

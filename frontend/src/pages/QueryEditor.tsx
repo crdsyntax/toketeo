@@ -84,6 +84,9 @@ export default function QueryEditor() {
     clearQueryHistory,
     safeDeleteSuggestion,
     setSafeDeleteSuggestion,
+    sqlFixSuggestion,
+    setSqlFixSuggestion,
+    sqlFixLoading,
   } = useQueryEditor()
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
@@ -368,6 +371,9 @@ export default function QueryEditor() {
                 setQueryLimit={setQueryLimit}
                 safeDeleteSuggestion={safeDeleteSuggestion}
                 setSafeDeleteSuggestion={setSafeDeleteSuggestion}
+                sqlFixSuggestion={sqlFixSuggestion}
+                setSqlFixSuggestion={setSqlFixSuggestion}
+                sqlFixLoading={sqlFixLoading}
               />
             </div>
           )}

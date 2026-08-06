@@ -59,6 +59,7 @@ export default function Explorer() {
     handleExecute,
     handleCancel,
     handleRefetch,
+    refreshExplorerData,
     filter,
     setFilter,
     dbType,
@@ -184,6 +185,7 @@ export default function Explorer() {
             handleExecute={handleExecute}
             handleCancel={handleCancel}
             updateCell={updateCell}
+            refreshExplorerData={refreshExplorerData}
             isLoadingDDL={isLoadingDDL}
             errorDDL={errorDDL}
             editableDdl={editableDdl}

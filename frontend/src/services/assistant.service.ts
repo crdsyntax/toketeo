@@ -1,5 +1,5 @@
 import { tauriApi } from '@/lib/api'
-import type { ProviderConfig, ProviderInfo, ModelInfo, TestResult, AssistantTurn, KnowledgeCase, Preference } from '@/types/assistant'
+import type { ProviderConfig, ProviderInfo, ModelInfo, TestResult, AssistantTurn, KnowledgeCase, Preference, SqlFixResult } from '@/types/assistant'
 
 export const assistantService = {
   getProviders: () =>
@@ -25,6 +25,9 @@ export const assistantService = {
 
   chat: (connectionId: string, question: string, confirmDestructive = false) =>
     tauriApi.invoke<AssistantTurn>('assistant_chat', { connectionId, question, confirmDestructive }),
+
+  fixSql: (connectionId: string, sql: string, error: string) =>
+    tauriApi.invoke<SqlFixResult>('assistant_fix_sql', { connectionId, sql, error }),
 
   searchKnowledge: (query: string, engine: string, limit?: number) =>
     tauriApi.invoke<KnowledgeCase[]>('assistant_search_knowledge', { query, engine, limit }),

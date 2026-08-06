@@ -62,13 +62,26 @@ export function SqlCodeEditor({ value, onChange, language, height, options = {},
         '&': {
           fontSize: `${options.fontSize ?? 13}px`,
           height: '100%',
+          minHeight: '0',
           backgroundColor: 'transparent',
         },
+        '.cm-editor': {
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          minHeight: '0',
+        },
         '.cm-scroller': {
+          overflow: 'auto !important',
+          minHeight: '0',
+          flex: '1 1 auto',
+          position: 'relative',
+          overscrollBehavior: 'contain',
           fontFamily: options.fontFamily || 'var(--font-mono, Consolas, monospace)',
           lineHeight: options.lineHeight ? `${options.lineHeight}` : '1.6',
         },
         '.cm-content': {
+          minHeight: '100%',
           paddingTop: options.paddingTop ? `${options.paddingTop}px` : '0px',
         },
       }),
@@ -94,7 +107,7 @@ export function SqlCodeEditor({ value, onChange, language, height, options = {},
   );
 
   return (
-    <div className="h-full w-full overflow-hidden">
+    <div className="h-full w-full min-h-0 overflow-hidden">
       <CodeMirror
         value={value}
         height={String(height ?? '100%')}

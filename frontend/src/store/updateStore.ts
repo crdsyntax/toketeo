@@ -50,7 +50,8 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
         modalOpen: force || !withinReminder,
         checking: false,
       })
-    } catch {
+    } catch (e) {
+      console.error('[update] check failed:', e)
       set({ checking: false })
     }
   },

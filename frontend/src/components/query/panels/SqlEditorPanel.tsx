@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import type { Extension } from '@codemirror/state';
+import { type Extension, Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { ChevronUp, Terminal, Code2, Sparkles } from 'lucide-react';
 import type { QueryTab, EditorMode, EditorViewState } from '@/store/useAppStore';
@@ -122,6 +122,15 @@ export function SqlEditorPanel({
       });
     };
 
+    const handleEditorWheel = (event: WheelEvent) => {
+      const delta = event.deltaY;
+      if (!delta) return;
+
+      event.preventDefault();
+      view.scrollDOM.scrollTop += delta;
+      captureState(view);
+    };
+
     const handleEditorKeyUp = () => {
       const pos = view.state.selection.main.head;
       const line = view.state.doc.lineAt(pos);
@@ -132,8 +141,9 @@ export function SqlEditorPanel({
     view.dom.addEventListener('paste', handleEditorPaste);
     view.dom.addEventListener('keyup', handleEditorKeyUp);
     view.dom.addEventListener('click', () => captureState(view));
+    view.scrollDOM.addEventListener('wheel', handleEditorWheel, { passive: false });
     view.scrollDOM.addEventListener('scroll', () => captureState(view));
-  }, [editorRef, captureState]);
+  }, [editorRef, captureState, executeCurrent]);
 
   // Restore the stored view state once the editor mounts for a given tab.
   useEffect(() => {
@@ -146,7 +156,7 @@ export function SqlEditorPanel({
   // Ctrl/Cmd + Enter: Execute Current Statement (or selection). F5: Execute All.
   const execExtensions: Extension[] = useMemo(() => {
     return [
-      keymap.of([
+      Prec.highest(keymap.of([
         {
           key: 'Mod-Enter',
           run: () => {
@@ -161,7 +171,7 @@ export function SqlEditorPanel({
             return true;
           },
         },
-      ]),
+      ])),
     ];
   }, [executeCurrent, executeAll]);
 

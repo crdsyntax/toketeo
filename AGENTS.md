@@ -34,3 +34,7 @@ Process:
 6 Stop
 
 Never load unrelated agent files.
+
+Signing / Releases:
+- Use the signing key at `D:\Desktop\toketeo-signing\toketeo-signing.key` and its password file `D:\Desktop\toketeo-signing\signing_pass.txt` (same password always; do not rotate).
+- Prefer `scripts/publish-update.ps1` for release signing.

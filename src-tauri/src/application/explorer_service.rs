@@ -74,7 +74,7 @@ impl ExplorerService {
             query.to_string()
         };
         
-        tracing::info!("[ExplorerService] MongoDB execute_query: schema={:?}, initial_query={}", schema, query);
+        tracing::info!("[ExplorerService] execute_query: db_type={:?}, schema={:?}, initial_query={}", db_type, schema, query);
         
         // Handle MongoDB use <db> command — switch the connection's database
         if db_type == crate::db::DbType::Mongodb {

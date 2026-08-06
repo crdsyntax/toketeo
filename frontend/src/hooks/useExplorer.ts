@@ -366,6 +366,43 @@ export function useExplorer() {
     setExecutionStatus,
   ]);
 
+  /**
+   * Refresh everything the Explorer shows for the current object after a
+   * schema mutation (add/edit/drop column, index, FK, DDL, …):
+   * - clears the backend metadata cache,
+   * - invalidates the React Query caches (columns, indexes, FKs, constraints,
+   *   DDL, parameters),
+   * - refetches the sidebar lists,
+   * - re-runs the Data tab so the grid picks up the new schema.
+   */
+  const refreshExplorerData = useCallback(() => {
+    if (resolvedConnection?.id) {
+      schemaService.clearMetadataCache(resolvedConnection.id).catch(() => undefined)
+    }
+    if (selectedItem) {
+      const base = [resolvedConnection?.id, selectedItem, currentSchema] as const
+      queryClient.invalidateQueries({ queryKey: ['columns', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['indexes', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['foreign-keys', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['constraints', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['ddl', ...base] })
+      queryClient.invalidateQueries({ queryKey: ['parameters', ...base] })
+    }
+    handleRefetch()
+    if (selectedItem) {
+      setExecutionStatus(ExecutionStatus.IDLE)
+      setSocketResults(null)
+    }
+  }, [
+    resolvedConnection,
+    selectedItem,
+    currentSchema,
+    queryClient,
+    handleRefetch,
+    setExecutionStatus,
+    setSocketResults,
+  ]);
+
   const { data: columns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['columns', resolvedConnection?.id, selectedItem, currentSchema],
     queryFn: () =>
@@ -516,10 +553,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['ddl', resolvedConnection?.id, selectedItem],
-      });
-      handleRefetch();
+      refreshExplorerData();
     },
   });
 
@@ -529,12 +563,9 @@ export function useExplorer() {
     try {
       await schemaService.commitTransaction(resolvedConnection.id);
       queryClient.invalidateQueries({
-        queryKey: ['ddl', resolvedConnection.id, selectedItem],
-      });
-      queryClient.invalidateQueries({
         queryKey: ['procedures', resolvedConnection.id, currentSchema],
       });
-      handleRefetch();
+      refreshExplorerData();
       setTransactionFeedback('success', 'Transaction committed successfully.');
     } catch (error: unknown) {
       const message =
@@ -544,9 +575,8 @@ export function useExplorer() {
   }, [
     resolvedConnection,
     currentSchema,
-    handleRefetch,
+    refreshExplorerData,
     queryClient,
-    selectedItem,
     setTransactionFeedback,
   ]);
 
@@ -556,12 +586,9 @@ export function useExplorer() {
     try {
       await schemaService.rollbackTransaction(resolvedConnection.id);
       queryClient.invalidateQueries({
-        queryKey: ['ddl', resolvedConnection.id, selectedItem],
-      });
-      queryClient.invalidateQueries({
         queryKey: ['procedures', resolvedConnection.id, currentSchema],
       });
-      handleRefetch();
+      refreshExplorerData();
       setTransactionFeedback(
         'success',
         'Transaction rolled back successfully.',
@@ -576,9 +603,8 @@ export function useExplorer() {
   }, [
     resolvedConnection,
     currentSchema,
-    handleRefetch,
+    refreshExplorerData,
     queryClient,
-    selectedItem,
     setTransactionFeedback,
   ]);
 
@@ -591,15 +617,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'columns',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
-      handleRefetch();
+      refreshExplorerData();
     },
   });
 
@@ -612,14 +630,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'columns',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
+      refreshExplorerData();
     },
   });
 
@@ -632,14 +643,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'indexes',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
+      refreshExplorerData();
     },
   });
 
@@ -653,14 +657,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'indexes',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
+      refreshExplorerData();
     },
   });
 
@@ -673,14 +670,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'foreign-keys',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
+      refreshExplorerData();
     },
   });
 
@@ -694,14 +684,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'foreign-keys',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
+      refreshExplorerData();
     },
   });
 
@@ -714,14 +697,7 @@ export function useExplorer() {
         currentSchema,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          'constraints',
-          resolvedConnection?.id,
-          selectedItem,
-          currentSchema,
-        ],
-      });
+      refreshExplorerData();
     },
   });
 
@@ -978,6 +954,7 @@ export function useExplorer() {
     handleExecute,
     handleCancel,
     handleRefetch,
+    refreshExplorerData,
     filter,
     setFilter,
     dbType,

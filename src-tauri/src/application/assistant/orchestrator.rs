@@ -440,26 +440,31 @@ impl<'a> ChatOrchestrator<'a> {
     }
 }
 
+/// Extract every ```sql fenced block from a markdown answer, returning the raw
+/// SQL of each (without the fences). Empty blocks are skipped.
+pub fn extract_sql_blocks(answer: &str) -> Vec<String> {
+    let re = regex::Regex::new(r"(?i)```sql\s*([\s\S]*?)```").unwrap();
+    re.captures_iter(answer)
+        .filter_map(|c| {
+            let sql = c.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+            if sql.is_empty() {
+                None
+            } else {
+                Some(sql.to_string())
+            }
+        })
+        .collect()
+}
+
 /// Extract the first ```sql fenced block from a markdown answer, returning the
 /// raw SQL (without the fences). Returns `None` if no such block is found.
 pub fn extract_sql_block(answer: &str) -> Option<String> {
-    let opener = "```sql";
-    let close = "```";
-    let start = answer.to_lowercase().find(opener)?;
-    let after_open = start + opener.len();
-    let rest = &answer[after_open..];
-    let end = rest.find(close)?;
-    let sql = rest[..end].trim();
-    if sql.is_empty() {
-        None
-    } else {
-        Some(sql.to_string())
-    }
+    extract_sql_blocks(answer).into_iter().next()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::extract_sql_block;
+    use super::{extract_sql_block, extract_sql_blocks};
 
     #[test]
     fn extracts_simple_sql_block() {
@@ -494,5 +499,20 @@ mod tests {
     fn trims_whitespace() {
         let answer = "```sql\n  SELECT 1;  \n```";
         assert_eq!(extract_sql_block(answer), Some("SELECT 1;".to_string()));
+    }
+
+    #[test]
+    fn extracts_all_blocks_in_order() {
+        let answer = "1. Direct:\n```sql\nSELECT 1;\n```\n2. Subquery:\n```sql\nSELECT 2;\n```\n3. Left join:\n```sql\nSELECT 3;\n```";
+        assert_eq!(
+            extract_sql_blocks(&answer),
+            vec!["SELECT 1;".to_string(), "SELECT 2;".to_string(), "SELECT 3;".to_string()]
+        );
+    }
+
+    #[test]
+    fn skips_empty_blocks() {
+        let answer = "```sql\n\n```\ntext\n```sql\nSELECT 2;\n```";
+        assert_eq!(extract_sql_blocks(&answer), vec!["SELECT 2;".to_string()]);
     }
 }

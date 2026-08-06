@@ -31,7 +31,7 @@ toketeo-website/
 ├── public/
 │   ├── favicon.ico
 │   └── images/
-│       ├── logo.svg                 # Logo principal (copia de logo2.svg)
+│       ├── logo.svg                 # Logo principal (copia de principal.png)
 │       ├── logo-original.svg
 │       ├── hero-preview.png
 │       ├── screenshots/
@@ -160,7 +160,7 @@ toketeo-website/
 - **Código**: `ui-monospace, Consolas, monospace`
 
 ### 4.3 Elementos Visuales Clave
-- **Logo**: SVG del tridente (copiado de `frontend/public/logo2.svg`), con filtro invertido en dark mode
+- **Logo**: Logo actual (`frontend/public/principal.png`), con filtro invertido en dark mode
 - **Anillos decorativos**: Tomados del splash screen (`splash-ring-expand`, `splash-glow-pulse`)
 - **Pixel Art Wizards**: Los 6 tiers de wizards renderizados como SVG pixel art (Novice → Deity)
 - **Scrollbar estilizada**: Misma que la app (`#1a1a1a` track, `#404040` thumb)
@@ -488,7 +488,7 @@ function useApi<T>(fetcher: () => Promise<T>): {
 
 | Archivo                  | Origen                                        | Destino                        |
 |--------------------------|-----------------------------------------------|--------------------------------|
-| `logo.svg`               | `frontend/public/logo2.svg`                   | `public/images/logo.svg`       |
+| `logo.svg`               | `frontend/public/principal.png`               | `public/images/logo.svg`       |
 | `logo-original.svg`      | `frontend/public/logoOriginal.svg`            | `public/images/logo-original.svg` |
 | `favicon`                | `frontend/public/fav-ico.ico`                | `public/favicon.ico`           |
 | `wizards.ts`             | `frontend/src/lib/gamification/wizards.ts`   | `src/assets/wizard-pixel-art.ts` |
