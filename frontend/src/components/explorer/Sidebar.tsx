@@ -134,7 +134,7 @@ export function Sidebar({
               </div>
             </h3>
             <div className="flex items-center gap-0.5">
-              {!isMongoDB && !isRedis && (
+              {!isMongoDB && (
                 <button
                   onClick={() => setCreateModalType(sidebarTabToObjectType(sidebarTab))}
                   className="p-1.5 hover:bg-muted rounded-none transition-colors shrink-0"

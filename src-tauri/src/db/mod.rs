@@ -1,4 +1,4 @@
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::sync::DriverCapabilities;
 use crate::models::QueryResult;
 use async_trait::async_trait;
@@ -68,10 +68,43 @@ pub struct UpsertResult {
     pub skipped: u64,
 }
 
+/// Resultado de un statement dentro de una sesión de script: filas afectadas
+/// (DML) o número de filas devueltas (SELECT). Los datos de SELECT no viajan
+/// por IPC: solo el conteo.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StatementOutcome {
+    pub rows_affected: Option<u64>,
+    pub row_count: Option<usize>,
+}
+
+/// Sesión transaccional para ejecutar un script statement a statement sobre
+/// UNA conexión: BEGIN al crearla, COMMIT/ROLLBACK al finalizar.
+/// Las implementaciones con sqlx usan `Transaction` (rollback automático en
+/// drop si nunca se llama commit/rollback).
+#[async_trait]
+pub trait ScriptTransaction: Send + Sync {
+    async fn execute_statement(&mut self, sql: &str) -> AppResult<StatementOutcome>;
+    async fn commit(self: Box<Self>) -> AppResult<()>;
+    async fn rollback(self: Box<Self>) -> AppResult<()>;
+}
+
+pub type BoxScriptTransaction = Box<dyn ScriptTransaction>;
+
 #[async_trait]
 pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     fn db_type(&self) -> DbType;
     async fn execute(&self, query: &str) -> AppResult<QueryResult>;
+    /// Ejecuta una query con parámetros bindeados (identificadores/valores
+    /// sanitizados por el driver). Fallback por defecto: no soportado.
+    async fn execute_with_params(
+        &self,
+        _query: &str,
+        _params: &[Option<String>],
+    ) -> AppResult<QueryResult> {
+        Err(AppError::Validation(
+            "execute_with_params is not supported for this database type".into(),
+        ))
+    }
     async fn execute_with_schema(&self, query: &str, _schema: &str) -> AppResult<QueryResult> {
         self.execute(query).await
     }
@@ -144,6 +177,13 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     async fn fetch_mongo_structure(&self) -> AppResult<serde_json::Value> {
         Err(crate::error::AppError::Validation(
             "Not supported for this database type".to_string(),
+        ))
+    }
+    /// Abre una sesión transaccional para ejecutar un script statement a
+    /// statement (BEGIN + conexión única). Soporte por defecto: no soportado.
+    async fn begin_script(&self, _schema: Option<&str>) -> AppResult<Box<dyn ScriptTransaction>> {
+        Err(AppError::Validation(
+            "Script execution is not supported for this database type".into(),
         ))
     }
     async fn close(&self) -> AppResult<()>;

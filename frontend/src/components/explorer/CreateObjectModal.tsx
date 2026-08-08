@@ -41,7 +41,8 @@ const defaultColumn = (): ColumnDef => ({
   name: '', type: 'INT', isNullable: false, isPrimaryKey: false, defaultValue: '', comment: '',
 })
 
-function getTitle(type: DatabaseObjectType): string {
+function getTitle(type: DatabaseObjectType, isRedis: boolean): string {
+  if (isRedis) return 'Create Key'
   switch (type) {
     case DatabaseObjectType.TABLE: return 'Create Table'
     case DatabaseObjectType.VIEW: return 'Create View'
@@ -51,7 +52,8 @@ function getTitle(type: DatabaseObjectType): string {
   }
 }
 
-function typeLabel(type: DatabaseObjectType): string {
+function typeLabel(type: DatabaseObjectType, isRedis: boolean): string {
+  if (isRedis) return 'key'
   switch (type) {
     case DatabaseObjectType.TABLE: return 'table'
     case DatabaseObjectType.VIEW: return 'view'
@@ -79,11 +81,13 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
   const storeEditorFontSize = useAppStore((s) => s.uiFontSize)
   const storeEditorLineHeight = useAppStore((s) => s.editorLineHeight)
   const storeEditorTabSize = useAppStore((s) => s.editorTabSize)
+  const isRedis = dbType === DatabaseType.REDIS
 
   const prefix = schema ? `${schema}.` : ''
 
   const buildTableSql = useCallback((tblName: string, cols: ColumnDef[]): string => {
     if (!tblName.trim() || cols.every(c => !c.name.trim())) return ''
+    if (isRedis) return `SET ${tblName.trim()} ""`
     const colDefs = cols.filter(c => c.name.trim()).map(col => {
       const nullable = col.isNullable ? '' : 'NOT NULL'
       const pk = col.isPrimaryKey ? 'PRIMARY KEY' : ''
@@ -92,7 +96,7 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
       return `  \`${col.name}\` ${col.type} ${nullable} ${pk} ${def} ${comment}`.replace(/\s+/g, ' ').trim()
     })
     return `CREATE TABLE ${prefix}${tblName} (\n${colDefs.join(',\n')}\n);`
-  }, [prefix])
+  }, [prefix, isRedis])
 
   const buildViewSql = useCallback((viewName: string, query: string): string => {
     if (!viewName.trim() || !query.trim()) return ''
@@ -158,7 +162,7 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
         query: currentSql.trim(),
         schema: schema || null,
       })
-      toast.success(`${typeLabel(objectType)} "${name}" created successfully`)
+      toast.success(`${typeLabel(objectType, isRedis)} "${name}" created successfully`)
       onCreated()
       onClose()
     } catch (err) {
@@ -166,9 +170,9 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
     } finally {
       setExecuting(false)
     }
-  }, [targetConnectionId, currentSql, schema, name, objectType, onCreated, onClose])
+  }, [targetConnectionId, currentSql, schema, name, objectType, isRedis, onCreated, onClose])
 
-  const title = getTitle(objectType)
+  const title = getTitle(objectType, isRedis)
 
   const language = useMemo(() => {
     if (dbType === DatabaseType.POSTGRES) return 'pgsql'
@@ -212,12 +216,12 @@ export function CreateObjectModal({ open, onClose, objectType, schema, dbType, c
               <input
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder={`Enter ${typeLabel(objectType)} name...`}
+                placeholder={isRedis ? `Enter ${typeLabel(objectType, isRedis)} name...` : `Enter ${typeLabel(objectType, isRedis)} name...`}
                 className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
             </div>
 
-            {isTable && (
+            {isTable && !isRedis && (
               <div className="space-y-2">
                 <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground">Columns</label>
                 <div className="max-h-[400px] overflow-y-auto space-y-2">

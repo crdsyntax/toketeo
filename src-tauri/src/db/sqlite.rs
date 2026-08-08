@@ -93,6 +93,19 @@ impl DbDriver for SqliteDriver {
         DbType::Sqlite
     }
 
+    async fn begin_script(
+        &self,
+        _schema: Option<&str>,
+    ) -> crate::db::AppResult<crate::db::BoxScriptTransaction> {
+        let conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire SQLite connection: {}", e))
+        })?;
+        let tx = sqlx::Transaction::begin(conn, None).await.map_err(|e| {
+            AppError::Database(format!("Failed to begin script transaction: {}", e))
+        })?;
+        Ok(Box::new(SqliteScriptTransaction { tx }))
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let rows = self.run_query(query).await?;
@@ -111,6 +124,8 @@ impl DbDriver for SqliteDriver {
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
             rows_affected: 0,
+
+            next_cursor: None,
         })
     }
 
@@ -456,4 +471,54 @@ impl CapabilityProvider for SqliteDriver {
             max_batch_size: 500,
         }
     }
+}
+
+#[async_trait]
+impl crate::db::ScriptTransaction for SqliteScriptTransaction {
+    async fn execute_statement(
+        &mut self,
+        sql: &str,
+    ) -> crate::db::AppResult<crate::db::StatementOutcome> {
+        use sqlx::Executor;
+        let trimmed = sql.trim().to_uppercase();
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("PRAGMA")
+            || trimmed.starts_with("EXPLAIN")
+            || trimmed.starts_with("WITH");
+        if is_select {
+            let rows = sqlx::query(sql).fetch_all(&mut *self.tx).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: None,
+                row_count: Some(rows.len()),
+            })
+        } else {
+            let result = self.tx.execute(sqlx::query(sql)).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: Some(result.rows_affected()),
+                row_count: None,
+            })
+        }
+    }
+
+    async fn commit(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.commit().await.map_err(|e| {
+            crate::error::AppError::Database(format!("Failed to commit script transaction: {}", e))
+        })
+    }
+
+    async fn rollback(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.rollback().await.map_err(|e| {
+            crate::error::AppError::Database(format!(
+                "Failed to rollback script transaction: {}",
+                e
+            ))
+        })
+    }
+}
+
+/// Sesión transaccional de script sobre SQLite.
+/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
+pub struct SqliteScriptTransaction {
+    tx: sqlx::Transaction<'static, sqlx::Sqlite>,
 }

@@ -182,6 +182,12 @@ pub struct QueryResult {
     pub primary_keys: Option<Vec<String>>,
     #[serde(rename = "rowsAffected")]
     pub rows_affected: u64,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "nextCursor"
+    )]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

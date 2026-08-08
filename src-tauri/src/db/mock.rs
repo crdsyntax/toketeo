@@ -155,6 +155,8 @@ impl DbDriver for MockDriver {
                 execution_time_ms: 1,
                 primary_keys: Some(vec!["id".to_string()]),
                 rows_affected: 0,
+
+                next_cursor: None,
             });
         }
         Ok(QueryResult {
@@ -163,6 +165,8 @@ impl DbDriver for MockDriver {
             execution_time_ms: 0,
             primary_keys: None,
             rows_affected: 1,
+
+            next_cursor: None,
         })
     }
 

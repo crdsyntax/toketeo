@@ -132,6 +132,30 @@ impl DbDriver for MySqlDriver {
         crate::db::DbType::Mysql
     }
 
+    async fn begin_script(
+        &self,
+        schema: Option<&str>,
+    ) -> crate::db::AppResult<crate::db::BoxScriptTransaction> {
+        let conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire MySQL connection: {}", e))
+        })?;
+        let mut tx = sqlx::Transaction::begin(conn, None).await.map_err(|e| {
+            AppError::Database(format!("Failed to begin script transaction: {}", e))
+        })?;
+        if let Some(schema) = schema.filter(|s| !s.is_empty()) {
+            use sqlx::Executor;
+            tx.execute(sqlx::raw_sql(&format!(
+                "USE `{}`",
+                schema.replace('`', "``")
+            )))
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to select database '{}': {}", schema, e))
+            })?;
+        }
+        Ok(Box::new(MySqlScriptTransaction { tx }))
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let trimmed_query = query.trim();
@@ -151,6 +175,8 @@ impl DbDriver for MySqlDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+
+                    next_cursor: None,
                 });
             }
 
@@ -176,6 +202,8 @@ impl DbDriver for MySqlDriver {
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
                 rows_affected: 0,
+
+                next_cursor: None,
             })
         } else {
             let result = if trimmed_query.contains(';') {
@@ -193,6 +221,7 @@ impl DbDriver for MySqlDriver {
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
                         rows_affected,
+                        next_cursor: None,
                     })
                 }
                 Err(e) => Err(e.into()),
@@ -200,19 +229,11 @@ impl DbDriver for MySqlDriver {
         }
     }
 
-    async fn execute_with_schema(&self, query: &str, schema: &str) -> AppResult<QueryResult> {
-        let mut pool_conn = self.pool.acquire().await.map_err(|e| {
-            AppError::Connection(format!("Failed to acquire MySQL connection: {}", e))
-        })?;
-        use sqlx::Executor;
-        let conn: &mut sqlx::mysql::MySqlConnection = &mut pool_conn;
-
-        conn.execute(sqlx::raw_sql(&format!("USE `{}`", schema)))
-            .await
-            .map_err(|e| {
-                AppError::Database(format!("Failed to select database '{}': {}", schema, e))
-            })?;
-
+    async fn execute_with_params(
+        &self,
+        query: &str,
+        params: &[Option<String>],
+    ) -> AppResult<QueryResult> {
         let start = Instant::now();
         let trimmed_query = query.trim();
         let is_select = trimmed_query.to_uppercase().starts_with("SELECT")
@@ -221,8 +242,13 @@ impl DbDriver for MySqlDriver {
             || trimmed_query.to_uppercase().starts_with("EXPLAIN")
             || trimmed_query.to_uppercase().starts_with("CALL");
 
+        let mut qb = sqlx::query(query);
+        for param in params {
+            qb = qb.bind(param.as_deref());
+        }
+
         if is_select {
-            let rows = sqlx::query(query).fetch_all(&mut *conn).await?;
+            let rows = qb.fetch_all(&self.pool).await?;
 
             if rows.is_empty() {
                 return Ok(QueryResult {
@@ -231,6 +257,7 @@ impl DbDriver for MySqlDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 });
             }
 
@@ -256,27 +283,133 @@ impl DbDriver for MySqlDriver {
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
                 rows_affected: 0,
+                next_cursor: None,
             })
+        } else {
+            let result = qb.execute(&self.pool).await?;
+            let rows_affected = result.rows_affected();
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                execution_time_ms: start.elapsed().as_millis() as u64,
+                primary_keys: None,
+                rows_affected,
+                next_cursor: None,
+            })
+        }
+    }
+
+    async fn execute_with_schema(&self, query: &str, schema: &str) -> AppResult<QueryResult> {
+        let mut pool_conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire MySQL connection: {}", e))
+        })?;
+        use sqlx::Executor;
+        let conn: &mut sqlx::mysql::MySqlConnection = &mut pool_conn;
+
+        // Guardar la base actual para restaurarla antes de devolver la
+        // conexión al pool (evita contaminar el estado de otras consultas).
+        let previous_db: Option<String> = sqlx::query("SELECT DATABASE() AS db")
+            .fetch_one(&mut *conn)
+            .await
+            .ok()
+            .and_then(|r| r.try_get::<Option<String>, _>("db").ok())
+            .flatten();
+
+        let set_result = conn
+            .execute(sqlx::raw_sql(&format!(
+                "USE `{}`",
+                schema.replace('`', "``")
+            )))
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to select database '{}': {}", schema, e))
+            });
+
+        if let Err(e) = set_result {
+            Self::restore_database(conn, previous_db.as_deref()).await;
+            return Err(e);
+        }
+
+        let start = Instant::now();
+        let trimmed_query = query.trim();
+        let is_select = trimmed_query.to_uppercase().starts_with("SELECT")
+            || trimmed_query.to_uppercase().starts_with("SHOW")
+            || trimmed_query.to_uppercase().starts_with("DESCRIBE")
+            || trimmed_query.to_uppercase().starts_with("EXPLAIN")
+            || trimmed_query.to_uppercase().starts_with("CALL");
+
+        let result = if is_select {
+            let rows = sqlx::query(query).fetch_all(&mut *conn).await;
+            match rows {
+                Ok(rows) => {
+                    if rows.is_empty() {
+                        Some(Ok(QueryResult {
+                            columns: vec![],
+                            rows: vec![],
+                            execution_time_ms: start.elapsed().as_millis() as u64,
+                            primary_keys: None,
+                            rows_affected: 0,
+                            next_cursor: None,
+                        }))
+                    } else {
+                        let columns: Vec<String> = rows[0]
+                            .columns()
+                            .iter()
+                            .map(|col| col.name().to_string())
+                            .collect();
+
+                        let mut result_rows = Vec::new();
+                        for row in rows {
+                            let mut row_map = serde_json::Map::new();
+                            for (i, col_name) in columns.iter().enumerate() {
+                                let value = self.decode_column(&row, i);
+                                row_map.insert(col_name.clone(), value);
+                            }
+                            result_rows.push(serde_json::Value::Object(row_map));
+                        }
+
+                        Some(Ok(QueryResult {
+                            columns,
+                            rows: result_rows,
+                            execution_time_ms: start.elapsed().as_millis() as u64,
+                            primary_keys: None,
+                            rows_affected: 0,
+                            next_cursor: None,
+                        }))
+                    }
+                }
+                Err(e) => Some(Err(e)),
+            }
         } else {
             let result = if trimmed_query.contains(';') {
                 conn.execute(sqlx::raw_sql(query)).await
             } else {
                 conn.execute(sqlx::query(query)).await
             };
-
             match result {
                 Ok(res) => {
                     let rows_affected = res.rows_affected();
-                    Ok(QueryResult {
+                    Some(Ok(QueryResult {
                         columns: vec![],
                         rows: vec![],
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
                         rows_affected,
-                    })
+                        next_cursor: None,
+                    }))
                 }
-                Err(e) => Err(e.into()),
+                Err(e) => Some(Err(e)),
             }
+        };
+
+        Self::restore_database(conn, previous_db.as_deref()).await;
+
+        match result {
+            Some(Ok(qr)) => Ok(qr),
+            Some(Err(e)) => Err(e.into()),
+            None => Err(AppError::Internal(
+                "execute_with_schema produced no result".into(),
+            )),
         }
     }
 
@@ -954,6 +1087,15 @@ impl DataWriter for MySqlDriver {
 }
 
 impl MySqlDriver {
+    async fn restore_database(conn: &mut sqlx::mysql::MySqlConnection, previous_db: Option<&str>) {
+        use sqlx::Executor;
+        if let Some(db) = previous_db {
+            let _ = conn
+                .execute(sqlx::raw_sql(&format!("USE `{}`", db.replace('`', "``"))))
+                .await;
+        }
+    }
+
     fn decode_column(&self, row: &MySqlRow, index: usize) -> Value {
         const DECODERS: &[Decoder] = &[
             decode_string,
@@ -999,4 +1141,54 @@ impl CapabilityProvider for MySqlDriver {
             max_batch_size: 1000,
         }
     }
+}
+
+#[async_trait]
+impl crate::db::ScriptTransaction for MySqlScriptTransaction {
+    async fn execute_statement(
+        &mut self,
+        sql: &str,
+    ) -> crate::db::AppResult<crate::db::StatementOutcome> {
+        use sqlx::Executor;
+        let trimmed = sql.trim().to_uppercase();
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("DESCRIBE")
+            || trimmed.starts_with("EXPLAIN")
+            || trimmed.starts_with("CALL");
+        if is_select {
+            let rows = sqlx::query(sql).fetch_all(&mut *self.tx).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: None,
+                row_count: Some(rows.len()),
+            })
+        } else {
+            let result = self.tx.execute(sqlx::query(sql)).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: Some(result.rows_affected()),
+                row_count: None,
+            })
+        }
+    }
+
+    async fn commit(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.commit().await.map_err(|e| {
+            crate::error::AppError::Database(format!("Failed to commit script transaction: {}", e))
+        })
+    }
+
+    async fn rollback(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.rollback().await.map_err(|e| {
+            crate::error::AppError::Database(format!(
+                "Failed to rollback script transaction: {}",
+                e
+            ))
+        })
+    }
+}
+
+/// Sesión transaccional de script sobre MySQL.
+/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
+pub struct MySqlScriptTransaction {
+    tx: sqlx::Transaction<'static, sqlx::MySql>,
 }

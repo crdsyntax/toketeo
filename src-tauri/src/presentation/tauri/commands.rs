@@ -663,6 +663,44 @@ pub async fn execute_query(
     ExplorerService::execute_query(&state, &id, &query, schema).await
 }
 
+#[tauri::command]
+pub async fn run_script(
+    app: AppHandle,
+    id: String,
+    statements: Vec<String>,
+    schema: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::application::script::runner::ScriptReport> {
+    use crate::application::script::runner::ScriptRunner;
+    ScriptRunner::run(&state, &app, &id, schema, statements).await
+}
+
+#[tauri::command]
+pub async fn script_respond(
+    run_id: String,
+    decision: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    use crate::application::script::runner::ScriptDecision;
+    let decision = match decision.as_str() {
+        "skip" => ScriptDecision::Skip,
+        "skip_all" => ScriptDecision::SkipAll,
+        "cancel" => ScriptDecision::Cancel,
+        _ => {
+            return Err(AppError::Validation(format!(
+                "Invalid script decision: {}",
+                decision
+            )))
+        }
+    };
+    state.script_store.respond(&run_id, decision).await
+}
+
+#[tauri::command]
+pub async fn cancel_script(run_id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.script_store.cancel(&run_id).await
+}
+
 // ── Real-time Monitoring / Diagnostics ──────────────────────────────────────
 
 /// List active (non-sleeping) queries for a connection, ordered by TIME DESC.

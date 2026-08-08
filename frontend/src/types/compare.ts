@@ -67,6 +67,7 @@ export interface SchemaReport {
   constraints: ConstraintDiff[];
   warnings: string[];
   errors: string[];
+  summary?: string;
 }
 
 export interface RowColumnDiff {

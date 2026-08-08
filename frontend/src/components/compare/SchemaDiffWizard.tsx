@@ -1,9 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Minus, ChevronLeft, Table2, Eye, GitBranch, Activity, FileCode, Copy, CheckCircle2, AlertCircle, Loader2, Sparkles } from 'lucide-react'
+import { listen } from '@tauri-apps/api/event'
+import { X, Minus, ChevronLeft, Table2, Eye, GitBranch, Activity, FileCode, CheckCircle2, AlertCircle, Loader2, Sparkles, Square, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tauriApi } from '@/lib/api'
 import { compareService } from '@/services/compare.service'
 import { schemaService } from '@/services/schema.service'
+import { CompareResultsList, buildCompareItems } from '@/components/compare/CompareResultsList'
+import { CompareSummary } from '@/components/compare/CompareSummary'
+import { ScriptReview } from '@/components/compare/ScriptReview'
 import type { Connection } from '@/types/database'
 import type { SchemaReport, ScriptStatement } from '@/types/compare'
 
@@ -72,10 +77,67 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
   const [generating, setGenerating] = useState(false)
   const [script, setScript] = useState<ScriptStatement[]>([])
   const [copied, setCopied] = useState(false)
+  const [progress, setProgress] = useState<{ message: string; current: number; total: number } | null>(null)
+  const [compareId, setCompareId] = useState<string | null>(null)
+  const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({})
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [scriptSelectedIds, setScriptSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!open) { setWindowState('normal'); setPos(null); setStep('configure'); setReport(null); setScript([]); setError(null) }
+    if (!open) { setWindowState('normal'); setPos(null); setStep('configure'); setReport(null); setScript([]); setError(null); setProgress(null); setCompareId(null); setSectionCounts({}); setSelectedIds(new Set()); setScriptSelectedIds(new Set()) }
   }, [open])
+
+  useEffect(() => {
+    if (!comparing || !compareId) return
+    let unlistenProgress: (() => void) | undefined
+    let unlistenSection: (() => void) | undefined
+    Promise.all([
+      listen<{ compare_id: string; message: string; current: number; total: number }>(
+        'compare:progress',
+        (event) => {
+          if (event.payload.compare_id !== compareId) return
+          setProgress({
+            message: event.payload.message,
+            current: event.payload.current,
+            total: event.payload.total,
+          })
+        }
+      ),
+      listen<{ compare_id: string; section: string; count: number }>(
+        'compare:section',
+        (event) => {
+          if (event.payload.compare_id !== compareId) return
+          setSectionCounts(prev => ({ ...prev, [event.payload.section]: event.payload.count }))
+        }
+      ),
+    ]).then(([a, b]) => {
+      unlistenProgress = a
+      unlistenSection = b
+    })
+    return () => { unlistenProgress?.(); unlistenSection?.() }
+  }, [comparing, compareId])
+
+  const handleCancel = async () => {
+    if (!compareId) return
+    try {
+      await compareService.cancel(compareId)
+    } finally {
+      setComparing(false)
+      setProgress(null)
+      setCompareId(null)
+    }
+  }
+
+  const SECTION_LABELS = [
+    { key: 'tables', label: 'Tablas' },
+    { key: 'indexes', label: 'Índices' },
+    { key: 'foreign_keys', label: 'FKs' },
+    { key: 'constraints', label: 'Constraints' },
+    { key: 'views', label: 'Vistas' },
+    { key: 'procedures', label: 'Procedimientos' },
+    { key: 'functions', label: 'Funciones' },
+    { key: 'triggers', label: 'Triggers' },
+  ] as const
 
   const toggleObjectType = (key: string) => {
     setObjectTypes(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
@@ -98,12 +160,18 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
     setComparing(true)
     setReport(null)
     setScript([])
+    setProgress(null)
+    const cid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `cmp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    setCompareId(cid)
     try {
       const params: Record<string, unknown> = {
         sourceConnId: sourceId,
         targetConnId: targetId,
         sourceSchema: sourceSchema || undefined,
         targetSchema: targetSchema || undefined,
+        compareId: cid,
       }
       if (!objectTypes.includes('tables')) params.tables = []
       else if (selectedTables.length > 0) params.tables = selectedTables
@@ -122,13 +190,17 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
         procedures: params.procedures as string[] | undefined,
         functions: params.functions as string[] | undefined,
         triggers: params.triggers as string[] | undefined,
+        compareId: cid,
       })
       setReport(result)
       setStep('compare')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Compare failed')
+      const cancelled = String(err).toLowerCase().includes('cancelled')
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Compare failed')
     } finally {
       setComparing(false)
+      setProgress(null)
+      setCompareId(null)
     }
   }
 
@@ -139,8 +211,9 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
     try {
       const targetConn = connections?.find(c => c.id === targetId)
       const targetDbType = targetConn?.type || 'mysql'
+      const filtered = selectedIds.size > 0 ? filterReportBySelection(report, selectedIds) : report
       const result = await compareService.generateScript({
-        schemaReport: report,
+        schemaReport: filtered,
         targetDbType,
         options: {
           include_creates: true,
@@ -156,6 +229,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
         },
       })
       setScript(result.statements.filter(s => s.selected))
+      setScriptSelectedIds(new Set(result.statements.filter(s => s.selected).map(s => s.id)))
       setStep('script')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Script generation failed')
@@ -164,13 +238,46 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
     }
   }
 
-  const fullScript = script.map(s => s.sql).join('\n\n')
+  const fullScript = script
+    .filter(s => s.diff_type === 'section' || scriptSelectedIds.has(s.id))
+    .map(s => s.sql)
+    .join('\n\n')
 
   const handleCopy = () => {
     navigator.clipboard.writeText(fullScript).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }).catch(() => undefined)
+  }
+
+  const handleDownload = async () => {
+    if (!fullScript) return
+    try {
+      await tauriApi.invoke('save_file_dialog', {
+        content: fullScript,
+        defaultFileName: `schema-migration-${new Date().toISOString().slice(0, 10)}.sql`,
+        filterName: 'SQL Files',
+        filterExt: 'sql',
+      })
+    } catch { /* user cancelled */ }
+  }
+
+  const toggleScriptStatement = (id: string) => {
+    setScriptSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleNewComparison = () => {
+    setStep('configure')
+    setReport(null)
+    setScript([])
+    setScriptSelectedIds(new Set())
+    setSelectedIds(new Set())
+    setError(null)
   }
 
   if (!open) return null
@@ -203,7 +310,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
           <div
             className={cn(
               'absolute flex flex-col bg-surface border border-border rounded-xl shadow-2xl overflow-hidden pointer-events-auto transition-none',
-              'w-[700px] max-w-[90vw] max-h-[85vh]',
+              'min-w-[720px] w-[min(1100px,92vw)] max-h-[85vh]',
             )}
             style={{
               left: pos ? `${pos.x}px` : '50%',
@@ -256,6 +363,12 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
                   </div>
                 )
               })}
+              {report && (
+                <button onClick={handleNewComparison}
+                  className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                  <GitBranch className="w-3 h-3" /> Nueva comparación
+                </button>
+              )}
             </div>
 
             {/* Body */}
@@ -317,21 +430,87 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
                   {comparing ? (
                     <div className="flex flex-col items-center justify-center py-12 gap-3">
                       <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                      <p className="text-sm text-muted-foreground">Comparing schemas...</p>
+                      <p className="text-sm text-muted-foreground">{progress?.message ?? 'Comparing schemas...'}</p>
+                      {progress && progress.total > 0 && (
+                        <div className="w-64">
+                          <div className="flex items-center justify-between text-[var(--ch-text-9)] text-muted-foreground text-xs mb-1">
+                            <span>{progress.current}/{progress.total}</span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-primary transition-all"
+                              style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {Object.keys(sectionCounts).length > 0 && (
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[440px]">
+                          {SECTION_LABELS.map(({ key, label }) => {
+                            const done = sectionCounts[key] !== undefined
+                            return (
+                              <span key={key}
+                                className={cn(
+                                  'flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border transition-colors',
+                                  done ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                    : 'border-border bg-muted/30 text-muted-foreground/60'
+                                )}>
+                                {done ? <CheckCircle2 className="w-3 h-3" /> : <span className="w-3 h-3 rounded-full border border-muted-foreground/40" />}
+                                {label}
+                                {done && <span className="font-semibold">({sectionCounts[key]})</span>}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                      <button
+                        onClick={handleCancel}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/40 text-destructive text-xs font-medium hover:bg-destructive/10 transition-colors"
+                      >
+                        <Square className="w-3 h-3" /> Cancel
+                      </button>
                     </div>
                   ) : report ? (
                     <>
+                      <CompareSummary
+                        report={report}
+                        onViewScript={handleGenerateScript}
+                        onReviewDiffs={() =>
+                          document.getElementById('compare-results-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }
+                      />
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-foreground">
-                          Missing Objects Found: <span className="text-primary">{countMissing(report)}</span>
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-semibold text-foreground">
+                            <Layers className="w-3.5 h-3.5 inline mr-1 text-primary" />
+                            Diff Results: <span className="text-primary">{buildCompareItems(report).length}</span> objects
+                          </span>
+                          {selectedIds.size > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {selectedIds.size} selected
+                            </span>
+                          )}
+                        </div>
                         <button onClick={handleGenerateScript} disabled={generating}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-semibold hover:opacity-90 transition-all disabled:opacity-50">
                           {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileCode className="w-3 h-3" />}
-                          Generate Script
+                          Generate Script{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
                         </button>
                       </div>
-                      <MissingObjectsList report={report} objectTypes={objectTypes} />
+                      <div id="compare-results-list" className="scroll-mt-2">
+                        <CompareResultsList
+                          report={report}
+                          selectedIds={selectedIds}
+                          onToggleSelect={(id) => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev)
+                              if (next.has(id)) next.delete(id)
+                              else next.add(id)
+                              return next
+                            })
+                          }}
+                        />
+                      </div>
                     </>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
@@ -351,22 +530,17 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
                     </div>
                   ) : script.length > 0 ? (
                     <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          <span className="font-semibold text-foreground">{script.length}</span> statements generated
-                        </span>
-                        <button onClick={handleCopy}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                          {copied ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-                          {copied ? 'Copied' : 'Copy All'}
-                        </button>
-                      </div>
-                      <pre className="text-[var(--ch-text-11)] font-mono bg-[#0d1117] border border-[#30363d] rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed max-h-[400px] text-[#e6edf3]">
-                        {fullScript}
-                      </pre>
+                      <ScriptReview
+                        statements={script}
+                        selectedIds={scriptSelectedIds}
+                        onToggle={toggleScriptStatement}
+                        onCopy={handleCopy}
+                        copied={copied}
+                        onDownload={handleDownload}
+                      />
                       <p className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-md p-3">
                         <AlertCircle className="w-3 h-3 inline mr-1" />
-                        Review the script carefully before executing against your target database. Some statements may require adjustments depending on your database version and configuration.
+                        Review the script carefully before executing against your target database. Statements marked with a warning icon are destructive (DROP, column removal, table recreation). Some statements may require adjustments depending on your database version and configuration.
                       </p>
                     </>
                   ) : (
@@ -499,45 +673,17 @@ function TableSelector({ connId, schema, selected, onChange }: {
   )
 }
 
-function MissingObjectsList({ report, objectTypes }: { report: SchemaReport; objectTypes: string[] }) {
-  const sections: { key: string; label: string; items: { name: string; status: string }[] }[] = []
-
-  if (objectTypes.includes('tables')) {
-    sections.push({ key: 'tables', label: 'Tables', items: report.tables.filter(t => t.status === 'missing').map(t => ({ name: t.name, status: t.status })) })
-    sections.push({ key: 'indexes', label: 'Indexes', items: report.indexes.filter(i => i.status === 'missing').map(i => ({ name: `${i.table}.${i.name}`, status: i.status })) })
-    sections.push({ key: 'foreign_keys', label: 'Foreign Keys', items: report.foreign_keys.filter(fk => fk.status === 'missing').map(fk => ({ name: `${fk.table}.${fk.name}`, status: fk.status })) })
+function filterReportBySelection(report: SchemaReport, selectedIds: Set<string>): SchemaReport {
+  const id = (group: string, sectionLabel: string, name: string) => `${group}:${sectionLabel}:${name}`
+  return {
+    ...report,
+    tables: report.tables.filter(t => selectedIds.has(id(t.status, 'tabla', t.name))),
+    indexes: report.indexes.filter(i => selectedIds.has(id(i.status, 'índice', `${i.table}.${i.name}`))),
+    foreign_keys: report.foreign_keys.filter(f => selectedIds.has(id(f.status, 'FK', `${f.table}.${f.name}`))),
+    constraints: report.constraints.filter(c => selectedIds.has(id(c.status, 'constraint', `${c.table}.${c.name}`))),
+    views: report.views.filter(v => selectedIds.has(id(v.status, 'vista', v.name))),
+    procedures: report.procedures.filter(p => selectedIds.has(id(p.status, 'procedimiento', p.name))),
+    functions: report.functions.filter(f => selectedIds.has(id(f.status, 'función', f.name))),
+    triggers: report.triggers.filter(t => selectedIds.has(id(t.status, 'trigger', t.name))),
   }
-  if (objectTypes.includes('views')) sections.push({ key: 'views', label: 'Views', items: report.views.filter(v => v.status === 'missing').map(v => ({ name: v.name, status: v.status })) })
-  if (objectTypes.includes('procedures')) sections.push({ key: 'procedures', label: 'Procedures', items: report.procedures.filter(p => p.status === 'missing').map(p => ({ name: p.name, status: p.status })) })
-  if (objectTypes.includes('functions')) sections.push({ key: 'functions', label: 'Functions', items: report.functions.filter(f => f.status === 'missing').map(f => ({ name: f.name, status: f.status })) })
-  if (objectTypes.includes('triggers')) sections.push({ key: 'triggers', label: 'Triggers', items: report.triggers.filter(t => t.status === 'missing').map(t => ({ name: t.name, status: t.status })) })
-
-  const hasAny = sections.some(s => s.items.length > 0)
-  if (!hasAny) return (
-    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-      <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-      <p className="text-sm font-medium">All objects match — nothing missing in B</p>
-    </div>
-  )
-
-  return (
-    <div className="space-y-3">
-      {sections.map(section => section.items.length > 0 ? (
-        <div key={section.key}>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-xs font-semibold text-foreground uppercase tracking-wider">{section.label}</span>
-            <span className="text-[var(--ch-text-9)] text-muted-foreground">({section.items.length})</span>
-          </div>
-          <div className="space-y-0.5">
-            {section.items.map(item => (
-              <div key={item.name} className="flex items-center gap-2 px-2.5 py-1 rounded bg-amber-500/8 border border-amber-500/15">
-                <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
-                <span className="text-xs font-mono text-foreground">{item.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null)}
-    </div>
-  )
 }

@@ -4,6 +4,15 @@ fn backup_table_name(table: &str) -> String {
     format!("{}_bak", table)
 }
 
+/// Envuelve el cuerpo de una rutina (procedure/function/trigger) en
+/// directivas `DELIMITER` para que el script generado sea ejecutable desde
+/// cualquier cliente SQL (cliente CLI de MySQL/MariaDB, DBeaver, HeidiSQL,
+/// phpMyAdmin, etc.) sin partir el cuerpo en statements.
+fn wrap_routine(sql: &str) -> String {
+    let body = sql.trim_end_matches(';').trim_end();
+    format!("DELIMITER $$\n{}\n$$\nDELIMITER ;", body)
+}
+
 fn source_comment(
     source_name: &str,
     table: &str,
@@ -486,16 +495,15 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         source_comment(&report.source_name, "", &proc.name, Some("procedure"));
                     let sql = if ddl.is_empty() {
                         format!(
-                            "{}\n-- TODO: Recreate procedure `{}` (requires DDL from source)",
+                            "{}\n-- TODO: Recreate procedure `{}` (requires DDL from source);",
                             comment, proc.name
                         )
                     } else {
-                        let clean = ddl.trim_end_matches(';');
-                        format!("{}\n{}", comment, clean)
+                        format!("{}\n{}", comment, wrap_routine(ddl.trim_end_matches(';')))
                     };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{};", sql),
+                        sql,
                         description: format!("Recreate procedure {}", proc.name),
                         diff_type: "create_procedure".into(),
                         object_name: proc.name.clone(),
@@ -536,16 +544,15 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         source_comment(&report.source_name, "", &func.name, Some("function"));
                     let sql = if ddl.is_empty() {
                         format!(
-                            "{}\n-- TODO: Recreate function `{}` (requires DDL from source)",
+                            "{}\n-- TODO: Recreate function `{}` (requires DDL from source);",
                             comment, func.name
                         )
                     } else {
-                        let clean = ddl.trim_end_matches(';');
-                        format!("{}\n{}", comment, clean)
+                        format!("{}\n{}", comment, wrap_routine(ddl.trim_end_matches(';')))
                     };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{};", sql),
+                        sql,
                         description: format!("Recreate function {}", func.name),
                         diff_type: "create_function".into(),
                         object_name: func.name.clone(),
@@ -589,16 +596,15 @@ pub fn generate(report: &SchemaReport, options: &ScriptOptions) -> Vec<ScriptSta
                         source_comment(&report.source_name, "", &trigger.name, Some("trigger"));
                     let sql = if ddl.is_empty() {
                         format!(
-                            "{}\n-- TODO: Recreate trigger `{}` (requires DDL from source)",
+                            "{}\n-- TODO: Recreate trigger `{}` (requires DDL from source);",
                             comment, trigger.name
                         )
                     } else {
-                        let clean = ddl.trim_end_matches(';');
-                        format!("{}\n{}", comment, clean)
+                        format!("{}\n{}", comment, wrap_routine(ddl.trim_end_matches(';')))
                     };
                     stmts.push(ScriptStatement {
                         id: next_id(),
-                        sql: format!("{};", sql),
+                        sql,
                         description: format!("Recreate trigger {}", trigger.name),
                         diff_type: "create_trigger".into(),
                         object_name: trigger.name.clone(),
@@ -651,6 +657,7 @@ mod tests {
             constraints: vec![],
             warnings: vec![],
             errors: vec![],
+            summary: None,
         }
     }
 
@@ -788,5 +795,26 @@ mod tests {
         };
         let stmts = generate(&report, &opts);
         assert!(!stmts.iter().any(|s| s.sql.contains("CREATE TABLE")));
+    }
+
+    #[test]
+    fn routine_wrapped_in_delimiter_directives() {
+        let mut report = empty_report();
+        report.procedures.push(ObjectDiff {
+            name: "sp_foo".into(),
+            status: CompareStatus::Missing,
+            details: Some(serde_json::json!({
+                "source_definition": "CREATE PROCEDURE `sp_foo`()\nBEGIN\n  SELECT 1;\nEND"
+            })),
+        });
+        let opts = ScriptOptions::default();
+        let stmts = generate(&report, &opts);
+        let proc = stmts
+            .iter()
+            .find(|s| s.object_name == "sp_foo")
+            .expect("procedure statement present");
+        assert!(proc.sql.contains("DELIMITER $$\nCREATE PROCEDURE"));
+        assert!(proc.sql.trim_end().ends_with("$$\nDELIMITER ;"));
+        assert!(proc.sql.contains("BEGIN\n  SELECT 1;\nEND"));
     }
 }

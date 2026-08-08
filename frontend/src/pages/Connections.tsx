@@ -76,7 +76,15 @@ export default function Connections() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => connectionService.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connections'] }),
+    onSuccess: (_data, id) => {
+      const { setActiveConnection, removeExplorerTabsForConnection, removeConnectedConnection } = useAppStore.getState()
+      removeExplorerTabsForConnection(id)
+      removeConnectedConnection(id)
+      if (useAppStore.getState().activeConnection?.id === id) {
+        setActiveConnection(null)
+      }
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+    },
   })
 
   const handleCloseModal = () => {

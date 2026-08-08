@@ -88,7 +88,13 @@ export function ResultsPanelHeader({
           {isResultsPanelVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
         <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-          <span>Results</span>
+          <Table2 className="w-3.5 h-3.5 text-muted-foreground" />
+          <span>Query Result Grid</span>
+          {activeTab?.results && isResultsPanelVisible && (
+            <span className="font-normal text-muted-foreground">
+              ({sortedRows.length} rows returned)
+            </span>
+          )}
           {activeTab?.status === ExecutionStatus.EXECUTING && (
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[var(--ch-text-9)] font-medium bg-primary/10 text-primary animate-pulse">
               <span className="w-1 h-1 rounded-full bg-primary" />
@@ -100,6 +106,14 @@ export function ResultsPanelHeader({
 
       {activeTab?.results && isResultsPanelVisible && (
         <div className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'flex items-center gap-1 font-bold text-[var(--ch-text-9)] font-mono',
+              activeTab.status === ExecutionStatus.ERROR ? 'text-red-500' : 'text-emerald-400'
+            )}
+          >
+            STATUS {activeTab.status === ExecutionStatus.ERROR ? 'ERROR' : '200 OK'}
+          </span>
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setShowLimitMenu(v => !v); setShowExportMenu(false); }}

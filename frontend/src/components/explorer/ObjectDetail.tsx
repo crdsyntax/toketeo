@@ -386,6 +386,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
               editColumnMutation={editColumnMutation}
               dropColumnMutation={dropColumnMutation}
               isMongoDB={isMongoDB}
+              isRedis={isRedis}
             />
           )}
 

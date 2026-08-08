@@ -115,6 +115,8 @@ impl ExplorerService {
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
                             rows_affected: 0,
+
+                            next_cursor: None,
                         });
                     }
                 }

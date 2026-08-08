@@ -8,11 +8,12 @@ use fred::clients::RedisClient;
 use fred::prelude::*;
 use fred::types::{InfoKind, RedisValue};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Instant;
 
 pub struct RedisDriver {
     client: RedisClient,
-    db: u8,
+    db: AtomicU8,
 }
 
 impl RedisDriver {
@@ -107,25 +108,37 @@ impl RedisDriver {
             tracing::debug!("Redis SELECT {} completed", db);
         }
 
-        Ok(Self { client, db })
+        Ok(Self {
+            client,
+            db: AtomicU8::new(db),
+        })
     }
 
     fn extract_db_from_url(url: &str) -> u8 {
-        // Try to extract db number from redis://host:port/db
-        if let Some(path_start) = url.find('/') {
-            let after_scheme = &url[path_start + 1..];
-            if let Some(slash_pos) = after_scheme.find('/') {
-                let db_str = &after_scheme[slash_pos + 1..];
-                // Remove query params
-                let db_num = if let Some(q) = db_str.find('?') {
-                    &db_str[..q]
-                } else {
-                    db_str
+        // Parse the path segment after the authority: scheme://[user:pass@]host:port/db?opts
+        let rest = match url.find("://") {
+            Some(idx) => &url[idx + 3..],
+            None => url,
+        };
+
+        // Skip userinfo if present
+        let authority = match rest.find('@') {
+            Some(at) => &rest[at + 1..],
+            None => rest,
+        };
+
+        // The database number is everything after the first '/' in the authority
+        match authority.find('/') {
+            Some(slash) => {
+                let db_segment = &authority[slash + 1..];
+                let db_segment = match db_segment.find('?') {
+                    Some(q) => &db_segment[..q],
+                    None => db_segment,
                 };
-                return db_num.parse::<u8>().unwrap_or(0);
+                db_segment.trim().parse::<u8>().unwrap_or(0)
             }
+            None => 0,
         }
-        0
     }
 
     fn parse_redis_command(input: &str) -> AppResult<Vec<String>> {
@@ -179,18 +192,37 @@ impl RedisDriver {
         Ok(tokens)
     }
 
+    fn parse_scalar_str(s: &str) -> serde_json::Value {
+        // Try numeric parsing only for canonical numeric-looking strings,
+        // avoiding false positives such as "007", "1e", or hex identifiers.
+        let t = s.trim();
+        if !t.is_empty()
+            && !t.starts_with('0')
+            && t.chars().all(|c| c.is_ascii_digit())
+            && t.len() <= 18
+        {
+            if let Ok(n) = t.parse::<i64>() {
+                return serde_json::Value::Number(n.into());
+            }
+        }
+        if !t.is_empty() && t.contains('.') && !t.starts_with('0') {
+            if let Ok(f) = t.parse::<f64>() {
+                return serde_json::json!(f);
+            }
+        }
+        // Try to parse as JSON (arrays/objects stored as JSON strings)
+        let trimmed = s.trim();
+        if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                return value;
+            }
+        }
+        serde_json::Value::String(s.to_string())
+    }
+
     fn redis_value_to_json(val: &RedisValue) -> serde_json::Value {
         match val {
-            RedisValue::String(s) => {
-                let s_str = s.to_string();
-                if let Ok(n) = s_str.parse::<i64>() {
-                    serde_json::Value::Number(n.into())
-                } else if let Ok(f) = s_str.parse::<f64>() {
-                    serde_json::json!(f)
-                } else {
-                    serde_json::Value::String(s_str)
-                }
-            }
+            RedisValue::String(s) => Self::parse_scalar_str(s),
             RedisValue::Integer(n) => serde_json::Value::Number((*n).into()),
             RedisValue::Double(f) => serde_json::Number::from_f64(*f)
                 .map_or(serde_json::Value::Null, serde_json::Value::Number),
@@ -200,8 +232,22 @@ impl RedisDriver {
             }
             RedisValue::Null | RedisValue::Queued => serde_json::Value::Null,
             RedisValue::Bytes(b) => {
-                let s = String::from_utf8_lossy(b).to_string();
-                serde_json::Value::String(s)
+                // Detect binary vs utf-8 text
+                if b.is_ascii() {
+                    Self::parse_scalar_str(&String::from_utf8_lossy(b))
+                } else {
+                    // Try UTF-8, fall back to base64 for truly binary payloads
+                    match std::str::from_utf8(b) {
+                        Ok(s) => Self::parse_scalar_str(s),
+                        Err(_) => {
+                            use base64::Engine;
+                            serde_json::Value::String(format!(
+                                "base64:{}",
+                                base64::engine::general_purpose::STANDARD.encode(b)
+                            ))
+                        }
+                    }
+                }
             }
             RedisValue::Map(entries) => {
                 let mut map = serde_json::Map::new();
@@ -254,7 +300,7 @@ impl RedisDriver {
             "scan_keys: pattern='{}', batch_size={}, db={}",
             pattern,
             batch_size,
-            self.db
+            self.db.load(Ordering::Relaxed)
         );
 
         // First check how many keys exist
@@ -289,6 +335,57 @@ impl RedisDriver {
             all_keys.len()
         );
         Ok(all_keys)
+    }
+
+    /// Run a single SCAN page starting from `cursor`, returning the keys in this page
+    /// and the cursor to continue with (0 when iteration has finished).
+    async fn scan_page(
+        &self,
+        pattern: &str,
+        count: i64,
+        cursor: &str,
+    ) -> AppResult<(Vec<String>, String)> {
+        let batch_size = count.max(10) as u32;
+        let cmd = format!("SCAN {} MATCH {} COUNT {}", cursor, pattern, batch_size);
+
+        tracing::debug!("scan_page: {} db={}", cmd, self.db.load(Ordering::Relaxed));
+
+        // The raw SCAN response is a two-element array: [next_cursor, keys]
+        // because we need to expose the cursor back to the caller.
+        let response: RedisValue = self
+            .client
+            .custom(
+                fred::types::CustomCommand::new_static(
+                    "SCAN",
+                    fred::types::ClusterHash::FirstKey,
+                    false,
+                ),
+                vec![
+                    RedisValue::String(cursor.into()),
+                    RedisValue::String("MATCH".into()),
+                    RedisValue::String(pattern.into()),
+                    RedisValue::String("COUNT".into()),
+                    RedisValue::Integer(batch_size as i64),
+                ],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("SCAN failed: {}", e)))?;
+
+        let mut next_cursor = "0".to_string();
+        let mut keys = Vec::new();
+
+        if let RedisValue::Array(parts) = response {
+            if parts.len() >= 2 {
+                next_cursor = Self::redis_value_to_string(&parts[0]);
+                if let RedisValue::Array(items) = &parts[1] {
+                    for item in items {
+                        keys.push(Self::redis_value_to_string(item));
+                    }
+                }
+            }
+        }
+
+        Ok((keys, next_cursor))
     }
 
     async fn get_key_type(&self, key: &str) -> AppResult<String> {
@@ -390,6 +487,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "MGET" => {
@@ -408,6 +506,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "SET" => {
@@ -422,6 +521,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 1,
+                    next_cursor: None,
                 })
             }
             "DEL" => {
@@ -437,6 +537,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "EXISTS" => {
@@ -452,6 +553,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "TYPE" => {
@@ -466,6 +568,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "TTL" => {
@@ -480,6 +583,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "PTTL" => {
@@ -494,6 +598,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "EXPIRE" => {
@@ -510,6 +615,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "PEXPIRE" => {
@@ -526,6 +632,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "HGET" => {
@@ -540,6 +647,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "HSET" => {
@@ -563,6 +671,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: affected as u64,
+                    next_cursor: None,
                 })
             }
             "HGETALL" => {
@@ -583,6 +692,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "HDEL" => {
@@ -598,6 +708,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "HEXISTS" => {
@@ -612,6 +723,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "HLEN" => {
@@ -626,6 +738,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "HKEYS" => {
@@ -643,6 +756,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "HVALS" => {
@@ -660,6 +774,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "LPUSH" => {
@@ -675,6 +790,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "RPUSH" => {
@@ -690,6 +806,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "LPOP" => {
@@ -704,6 +821,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 1,
+                    next_cursor: None,
                 })
             }
             "RPOP" => {
@@ -718,6 +836,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 1,
+                    next_cursor: None,
                 })
             }
             "LRANGE" => {
@@ -739,6 +858,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "LLEN" => {
@@ -753,6 +873,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "SADD" => {
@@ -768,6 +889,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "SMEMBERS" => {
@@ -785,6 +907,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "SISMEMBER" => {
@@ -799,6 +922,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "SREM" => {
@@ -814,6 +938,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "SCARD" => {
@@ -828,6 +953,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "ZADD" => {
@@ -851,6 +977,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: affected as u64,
+                    next_cursor: None,
                 })
             }
             "ZRANGE" => {
@@ -880,6 +1007,7 @@ impl RedisDriver {
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
                         rows_affected: 0,
+                    next_cursor: None,
                     })
                 } else {
                     let vals: Vec<RedisValue> = self.client.zrange(&tokens[1], start_idx, stop_idx, None, false, None, false).await
@@ -893,6 +1021,7 @@ impl RedisDriver {
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
                         rows_affected: 0,
+                    next_cursor: None,
                     })
                 }
             }
@@ -923,6 +1052,7 @@ impl RedisDriver {
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
                         rows_affected: 0,
+                    next_cursor: None,
                     })
                 } else {
                     let vals: Vec<RedisValue> = self.client.zrange(&tokens[1], start_idx, stop_idx, None, true, None, false).await
@@ -936,6 +1066,7 @@ impl RedisDriver {
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
                         rows_affected: 0,
+                    next_cursor: None,
                     })
                 }
             }
@@ -952,6 +1083,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: count as u64,
+                    next_cursor: None,
                 })
             }
             "ZCARD" => {
@@ -966,6 +1098,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "ZSCORE" => {
@@ -980,16 +1113,460 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "INCR" | "DECR" | "INCRBY" | "DECRBY" => {
+                if tokens.len() < 2 {
+                    return Err(AppError::Validation(format!("{} requires a key", cmd)));
+                }
+                let value: i64 = match cmd.as_str() {
+                    "INCRBY" | "DECRBY" => {
+                        if tokens.len() < 3 {
+                            return Err(AppError::Validation(format!("{} requires a numeric amount", cmd)));
+                        }
+                        tokens[2].parse()
+                            .map_err(|_| AppError::Validation(format!("{} amount must be a number", cmd)))?
+                    }
+                    _ => 1,
+                };
+                let result: i64 = match cmd.as_str() {
+                    "INCR" => self.client.incr(&tokens[1]).await,
+                    "DECR" => self.client.decr(&tokens[1]).await,
+                    "INCRBY" => self.client.incr_by(&tokens[1], value).await,
+                    "DECRBY" => self.client.decr_by(&tokens[1], value).await,
+                    _ => unreachable!(),
+                }
+                .map_err(|e| AppError::Database(format!("{} failed: {}", cmd, e)))?;
+                Ok(QueryResult {
+                    columns: vec!["value".into()],
+                    rows: vec![serde_json::json!({"value": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "SETNX" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation("SETNX requires key and value".into()));
+                }
+                let result: bool = self.client.setnx(&tokens[1], &tokens[2]).await
+                    .map_err(|e| AppError::Database(format!("SETNX failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: if result { 1 } else { 0 },
+                    next_cursor: None,
+                })
+            }
+            "SETEX" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation("SETEX requires key, seconds, and value".into()));
+                }
+                let seconds: i64 = tokens[2].parse()
+                    .map_err(|_| AppError::Validation("SETEX seconds must be a number".into()))?;
+                let _: RedisValue = self
+                    .client
+                    .set(&tokens[1], &tokens[3], Some(fred::types::Expiration::EX(seconds)), None, false)
+                    .await
+                    .map_err(|e| AppError::Database(format!("SETEX failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": "OK"})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "GETDEL" => {
+                if tokens.len() < 2 {
+                    return Err(AppError::Validation("GETDEL requires a key".into()));
+                }
+                let val: RedisValue = self.client.getdel(&tokens[1]).await
+                    .map_err(|e| AppError::Database(format!("GETDEL failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["value".into()],
+                    rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "GETSET" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation("GETSET requires key and value".into()));
+                }
+                let val: RedisValue = self.client.getset(&tokens[1], &tokens[2]).await
+                    .map_err(|e| AppError::Database(format!("GETSET failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["value".into()],
+                    rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "APPEND" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation("APPEND requires key and value".into()));
+                }
+                let result: i64 = self.client.append(&tokens[1], &tokens[2]).await
+                    .map_err(|e| AppError::Database(format!("APPEND failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["length".into()],
+                    rows: vec![serde_json::json!({"length": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "STRLEN" => {
+                if tokens.len() < 2 {
+                    return Err(AppError::Validation("STRLEN requires a key".into()));
+                }
+                let result: i64 = self.client.strlen(&tokens[1]).await
+                    .map_err(|e| AppError::Database(format!("STRLEN failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["length".into()],
+                    rows: vec![serde_json::json!({"length": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "PERSIST" => {
+                if tokens.len() < 2 {
+                    return Err(AppError::Validation("PERSIST requires a key".into()));
+                }
+                let result: bool = self.client.persist(&tokens[1]).await
+                    .map_err(|e| AppError::Database(format!("PERSIST failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: if result { 1 } else { 0 },
+                    next_cursor: None,
+                })
+            }
+            "EXPIREAT" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation("EXPIREAT requires key and unix timestamp".into()));
+                }
+                let timestamp: i64 = tokens[2].parse()
+                    .map_err(|_| AppError::Validation("EXPIREAT timestamp must be a number".into()))?;
+                let result: bool = self.client.expire_at(&tokens[1], timestamp).await
+                    .map_err(|e| AppError::Database(format!("EXPIREAT failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: if result { 1 } else { 0 },
+                    next_cursor: None,
+                })
+            }
+            "HMGET" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation("HMGET requires key and fields".into()));
+                }
+                let fields: Vec<&str> = tokens[2..].iter().map(|s| s.as_str()).collect();
+                let vals: Vec<RedisValue> = self.client.hmget(&tokens[1], fields).await
+                    .map_err(|e| AppError::Database(format!("HMGET failed: {}", e)))?;
+                let rows: Vec<serde_json::Value> = tokens[2..].iter().zip(vals.iter()).map(|(field, val)| {
+                    serde_json::json!({"field": field, "value": Self::redis_value_to_json(val)})
+                }).collect();
+                Ok(QueryResult {
+                    columns: vec!["field".into(), "value".into()],
+                    rows,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "HMSET" => {
+                if tokens.len() < 4 || tokens.len() % 2 != 0 {
+                    return Err(AppError::Validation("HMSET requires key and field-value pairs".into()));
+                }
+                let key = &tokens[1];
+                let mut i = 2;
+                while i + 1 < tokens.len() {
+                    let _: RedisValue = self.client.hset(key, (&tokens[i], &tokens[i + 1])).await
+                        .map_err(|e| AppError::Database(format!("HMSET failed: {}", e)))?;
+                    i += 2;
+                }
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": "OK"})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: (i - 2) as u64 / 2,
+                    next_cursor: None,
+                })
+            }
+            "HSETNX" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation("HSETNX requires key, field, and value".into()));
+                }
+                let result: bool = self.client.hsetnx(&tokens[1], &tokens[2], &tokens[3]).await
+                    .map_err(|e| AppError::Database(format!("HSETNX failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: if result { 1 } else { 0 },
+                    next_cursor: None,
+                })
+            }
+            "HSTRLEN" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation("HSTRLEN requires key and field".into()));
+                }
+                let result: i64 = self.client.hstrlen(&tokens[1], &tokens[2]).await
+                    .map_err(|e| AppError::Database(format!("HSTRLEN failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["length".into()],
+                    rows: vec![serde_json::json!({"length": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "HINCRBY" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation("HINCRBY requires key, field, and increment".into()));
+                }
+                let increment: i64 = tokens[3].parse()
+                    .map_err(|_| AppError::Validation("HINCRBY increment must be a number".into()))?;
+                let result: i64 = self.client.hincrby(&tokens[1], &tokens[2], increment).await
+                    .map_err(|e| AppError::Database(format!("HINCRBY failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["value".into()],
+                    rows: vec![serde_json::json!({"value": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "LSET" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation("LSET requires key, index, and value".into()));
+                }
+                let index: i64 = tokens[2].parse()
+                    .map_err(|_| AppError::Validation("LSET index must be a number".into()))?;
+                let _: RedisValue = self.client.lset(&tokens[1], index, &tokens[3]).await
+                    .map_err(|e| AppError::Database(format!("LSET failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": "OK"})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "LTRIM" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation("LTRIM requires key, start, and stop".into()));
+                }
+                let start_idx: i64 = tokens[2].parse()
+                    .map_err(|_| AppError::Validation("LTRIM start must be a number".into()))?;
+                let stop_idx: i64 = tokens[3].parse()
+                    .map_err(|_| AppError::Validation("LTRIM stop must be a number".into()))?;
+                let _: RedisValue = self.client.ltrim(&tokens[1], start_idx, stop_idx).await
+                    .map_err(|e| AppError::Database(format!("LTRIM failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["result".into()],
+                    rows: vec![serde_json::json!({"result": "OK"})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "LINSERT" => {
+                if tokens.len() < 5 {
+                    return Err(AppError::Validation("LINSERT requires key, BEFORE|AFTER, pivot, and value".into()));
+                }
+                let before = tokens[2].to_uppercase() == "BEFORE";
+                let location = if before {
+                    fred::types::ListLocation::Before
+                } else {
+                    fred::types::ListLocation::After
+                };
+                let result: i64 = self.client.linsert(&tokens[1], location, &tokens[3], &tokens[4]).await
+                    .map_err(|e| AppError::Database(format!("LINSERT failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["length".into()],
+                    rows: vec![serde_json::json!({"length": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
+                })
+            }
+            "SRANDMEMBER" => {
+                if tokens.len() < 2 {
+                    return Err(AppError::Validation("SRANDMEMBER requires a key".into()));
+                }
+                let count: Option<usize> = if tokens.len() > 2 {
+                    Some(tokens[2].parse()
+                        .map_err(|_| AppError::Validation("SRANDMEMBER count must be a number".into()))?)
+                } else {
+                    None
+                };
+                let val: RedisValue = self.client.srandmember(&tokens[1], count).await
+                    .map_err(|e| AppError::Database(format!("SRANDMEMBER failed: {}", e)))?;
+                let rows: Vec<serde_json::Value> = match val {
+                    RedisValue::Array(items) => items.iter().map(|v| serde_json::json!({"member": Self::redis_value_to_json(v)})).collect(),
+                    other => vec![serde_json::json!({"member": Self::redis_value_to_json(&other)})],
+                };
+                Ok(QueryResult {
+                    columns: vec!["member".into()],
+                    rows,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "SPOP" => {
+                if tokens.len() < 2 {
+                    return Err(AppError::Validation("SPOP requires a key".into()));
+                }
+                let count: Option<usize> = if tokens.len() > 2 {
+                    Some(tokens[2].parse()
+                        .map_err(|_| AppError::Validation("SPOP count must be a number".into()))?)
+                } else {
+                    None
+                };
+                let val: RedisValue = self.client.spop(&tokens[1], count).await
+                    .map_err(|e| AppError::Database(format!("SPOP failed: {}", e)))?;
+                let rows: Vec<serde_json::Value> = match val {
+                    RedisValue::Array(items) => items.iter().map(|v| serde_json::json!({"member": Self::redis_value_to_json(v)})).collect(),
+                    other => vec![serde_json::json!({"member": Self::redis_value_to_json(&other)})],
+                };
+                Ok(QueryResult {
+                    columns: vec!["member".into()],
+                    rows,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "ZRANGEBYSCORE" | "ZREVRANGEBYSCORE" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation(format!("{} requires key, min, and max", cmd)));
+                }
+                let min: f64 = tokens[2].parse()
+                    .map_err(|_| AppError::Validation(format!("{} min must be a number", cmd)))?;
+                let max: f64 = tokens[3].parse()
+                    .map_err(|_| AppError::Validation(format!("{} max must be a number", cmd)))?;
+                let reverse = cmd == "ZREVRANGEBYSCORE";
+                let with_scores = tokens.len() > 4 && tokens[4].to_uppercase() == "WITHSCORES";
+                let vals: Vec<RedisValue> = if reverse {
+                    Box::pin(self.client.zrevrangebyscore(&tokens[1], max, min, with_scores, None)).await
+                } else {
+                    Box::pin(self.client.zrangebyscore(&tokens[1], min, max, with_scores, None)).await
+                }
+                    .map_err(|e| AppError::Database(format!("{} failed: {}", cmd, e)))?;
+                let mut rows = Vec::new();
+                if with_scores {
+                    let mut i = 0;
+                    while i + 1 < vals.len() {
+                        rows.push(serde_json::json!({
+                            "member": Self::redis_value_to_json(&vals[i]),
+                            "score": Self::redis_value_to_json(&vals[i + 1])
+                        }));
+                        i += 2;
+                    }
+                } else {
+                    for v in &vals {
+                        rows.push(serde_json::json!({"member": Self::redis_value_to_json(v)}));
+                    }
+                }
+                Ok(QueryResult {
+                    columns: if with_scores { vec!["member".into(), "score".into()] } else { vec!["member".into()] },
+                    rows,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "ZRANK" | "ZREVRANK" => {
+                if tokens.len() < 3 {
+                    return Err(AppError::Validation(format!("{} requires key and member", cmd)));
+                }
+                let result: Option<i64> = match cmd.as_str() {
+                    "ZRANK" => self.client.zrank(&tokens[1], &tokens[2]).await,
+                    "ZREVRANK" => self.client.zrevrank(&tokens[1], &tokens[2]).await,
+                    _ => unreachable!(),
+                }
+                .map_err(|e| AppError::Database(format!("{} failed: {}", cmd, e)))?;
+                Ok(QueryResult {
+                    columns: vec!["rank".into()],
+                    rows: vec![serde_json::json!({"rank": result})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                })
+            }
+            "ZINCRBY" => {
+                if tokens.len() < 4 {
+                    return Err(AppError::Validation("ZINCRBY requires key, increment, and member".into()));
+                }
+                let increment: f64 = tokens[2].parse()
+                    .map_err(|_| AppError::Validation("ZINCRBY increment must be a number".into()))?;
+                let score: f64 = self.client.zincrby(&tokens[1], increment, &tokens[3]).await
+                    .map_err(|e| AppError::Database(format!("ZINCRBY failed: {}", e)))?;
+                Ok(QueryResult {
+                    columns: vec!["score".into()],
+                    rows: vec![serde_json::json!({"score": score})],
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 1,
+                    next_cursor: None,
                 })
             }
             "SCAN" => {
-                let pattern = if tokens.len() > 2 && tokens[2].to_uppercase() == "MATCH" {
-                    tokens.get(3).map(|s| s.as_str()).unwrap_or("*")
-                } else {
-                    tokens.get(2).map(|s| s.as_str()).unwrap_or("*")
-                };
+                // SCAN [cursor] [MATCH pattern] [COUNT n]
+                let mut cursor = "0";
+                let mut pattern = "*";
+                let mut count = 100;
 
-                let keys = self.scan_keys(pattern, 500).await?;
+                let mut i = 1;
+                while i < tokens.len() {
+                    if tokens[i].to_uppercase() == "MATCH" && i + 1 < tokens.len() {
+                        pattern = &tokens[i + 1];
+                        i += 2;
+                    } else if tokens[i].to_uppercase() == "COUNT" && i + 1 < tokens.len() {
+                        count = tokens[i + 1].parse().unwrap_or(100);
+                        i += 2;
+                    } else {
+                        // First bare token is the cursor
+                        if i == 1 {
+                            cursor = &tokens[i];
+                        }
+                        i += 1;
+                    }
+                }
+
+                let (keys, next_cursor) = self.scan_page(pattern, count, cursor).await?;
 
                 let rows: Vec<serde_json::Value> = keys.iter().map(|key| {
                     let namespace = Self::extract_namespace(key);
@@ -997,11 +1574,12 @@ impl RedisDriver {
                 }).collect();
 
                 Ok(QueryResult {
-                    columns: vec!["key".into(), "namespace".into()],
+                    columns: vec!["key".into(), "namespace".into(), "cursor".into()],
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: Some(next_cursor),
                 })
             }
             "KEYS" => {
@@ -1019,6 +1597,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "DBSIZE" => {
@@ -1030,6 +1609,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "PING" => {
@@ -1041,6 +1621,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "SELECT" => {
@@ -1051,12 +1632,14 @@ impl RedisDriver {
                     .map_err(|_| AppError::Validation("SELECT database must be a number (0-15)".into()))?;
                 self.client.select(db_num).await
                     .map_err(|e| AppError::Database(format!("SELECT {} failed: {}", db_num, e)))?;
+                self.db.store(db_num, Ordering::Relaxed);
                 Ok(QueryResult {
                     columns: vec!["result".into()],
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "INFO" => {
@@ -1099,6 +1682,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "RENAME" => {
@@ -1113,6 +1697,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "OBJECT" => {
@@ -1139,6 +1724,7 @@ impl RedisDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 })
             }
             "MULTI" | "EXEC" | "DISCARD" | "WATCH" => {
@@ -1153,7 +1739,7 @@ impl RedisDriver {
             }
             _ => {
                 Err(AppError::Validation(
-                    format!("Unsupported Redis command: '{}'. Supported: GET, SET, MGET, DEL, EXISTS, TYPE, TTL, PTTL, EXPIRE, PEXPIRE, HGET, HSET, HGETALL, HDEL, HEXISTS, HLEN, HKEYS, HVALS, LPUSH, RPUSH, LPOP, RPOP, LRANGE, LLEN, SADD, SMEMBERS, SISMEMBER, SREM, SCARD, ZADD, ZRANGE, ZREVRANGE, ZREM, ZCARD, ZSCORE, SCAN, KEYS, DBSIZE, PING, SELECT, INFO, RENAME, OBJECT, DUMP", cmd)
+                    format!("Unsupported Redis command: '{}'. Supported: GET, SET, MGET, DEL, EXISTS, TYPE, TTL, PTTL, EXPIRE, PEXPIRE, SETNX, SETEX, GETDEL, GETSET, APPEND, STRLEN, PERSIST, EXPIREAT, INCR, DECR, INCRBY, DECRBY, HGET, HSET, HMSET, HSETNX, HGETALL, HDEL, HEXISTS, HLEN, HKEYS, HVALS, HMGET, HSTRLEN, HINCRBY, LPUSH, RPUSH, LPOP, RPOP, LRANGE, LLEN, LSET, LTRIM, LINSERT, SADD, SMEMBERS, SISMEMBER, SREM, SCARD, SRANDMEMBER, SPOP, ZADD, ZRANGE, ZREVRANGE, ZRANGEBYSCORE, ZREVRANGEBYSCORE, ZRANK, ZREVRANK, ZREM, ZCARD, ZSCORE, ZINCRBY, SCAN, KEYS, DBSIZE, PING, SELECT, INFO, RENAME, OBJECT, DUMP", cmd)
                 ))
             }
         }
@@ -1193,7 +1779,7 @@ impl DbDriver for RedisDriver {
         }
 
         if databases.is_empty() {
-            databases.push(format!("db{}", self.db));
+            databases.push(format!("db{}", self.db.load(Ordering::Relaxed)));
         }
 
         Ok(databases)
@@ -1270,9 +1856,12 @@ impl DbDriver for RedisDriver {
         table: &str,
         _schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        // 'table' here is the namespace prefix. Scan keys with pattern "table:*"
+        // 'table' here is the namespace prefix. Sample a single bounded SCAN
+        // page (keys starting with "table:*") so structure inference stays fast
+        // even when the namespace holds a huge number of keys. Scanning every
+        // key with scan_keys would block the response for large namespaces.
         let pattern = format!("{}:*", table);
-        let keys = self.scan_keys(&pattern, 100).await?;
+        let (keys, _next_cursor) = self.scan_page(&pattern, 100, "0").await?;
 
         let mut columns = Vec::new();
 
@@ -1503,23 +2092,26 @@ impl DataReader for RedisDriver {
         _last_key: Option<serde_json::Value>,
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>> {
+        use futures::StreamExt;
+
         let pattern = format!("{}:*", table);
-        let keys = self.scan_keys(&pattern, batch_size as i64).await?;
+        // Respect the requested batch size instead of scanning the whole namespace
+        let keys = self
+            .scan_page(&pattern, batch_size.max(1) as i64, "0")
+            .await?
+            .0;
 
-        let mut rows = Vec::new();
-        for key in &keys {
-            let key_type = self.get_key_type(key).await.unwrap_or_default();
-            let val = self
-                .read_key_value(key, &key_type)
-                .await
-                .unwrap_or(serde_json::Value::Null);
-
-            let mut row = serde_json::Map::new();
-            row.insert("key".into(), serde_json::Value::String(key.clone()));
-            row.insert("type".into(), serde_json::Value::String(key_type.clone()));
-            row.insert("value".into(), val);
-            rows.push(serde_json::Value::Object(row));
-        }
+        // Read each key concurrently to avoid sequential N+1 round trips.
+        let concurrency = batch_size.clamp(1, 50).max(1);
+        let rows: Vec<serde_json::Value> = futures::stream::iter(keys)
+            .map(|key| {
+                let client = self.client.clone();
+                let key_c = key.clone();
+                async move { Self::read_key_row(&client, &key_c).await }
+            })
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
 
         Ok(rows)
     }
@@ -1528,6 +2120,86 @@ impl DataReader for RedisDriver {
         let pattern = format!("{}:*", table);
         let keys = self.scan_keys(&pattern, 10000).await?;
         Ok(keys.len() as u64)
+    }
+}
+
+impl RedisDriver {
+    async fn read_key_row(client: &RedisClient, key: &str) -> serde_json::Value {
+        let key_type = match client.r#type::<String, _>(key).await {
+            Ok(t) => t.to_lowercase(),
+            Err(_) => String::new(),
+        };
+
+        let val = match &key_type[..] {
+            "string" => client
+                .get(key)
+                .await
+                .ok()
+                .map(|v| Self::redis_value_to_json(&v))
+                .unwrap_or(serde_json::Value::Null),
+            "list" => {
+                let len: i64 = client.llen(key).await.unwrap_or(0);
+                if len <= 0 {
+                    serde_json::Value::Array(vec![])
+                } else {
+                    client
+                        .lrange::<Vec<RedisValue>, _>(key, 0, len - 1)
+                        .await
+                        .map(|vals| {
+                            serde_json::Value::Array(
+                                vals.iter().map(Self::redis_value_to_json).collect(),
+                            )
+                        })
+                        .unwrap_or(serde_json::Value::Null)
+                }
+            }
+            "set" => client
+                .smembers::<Vec<RedisValue>, _>(key)
+                .await
+                .map(|vals| {
+                    serde_json::Value::Array(vals.iter().map(Self::redis_value_to_json).collect())
+                })
+                .unwrap_or(serde_json::Value::Null),
+            "zset" => {
+                let vals: Vec<RedisValue> = client
+                    .zrange(key, 0, -1, None, false, None, true)
+                    .await
+                    .unwrap_or_default();
+                let mut arr = Vec::new();
+                let mut i = 0;
+                while i + 1 < vals.len() {
+                    if let Some(score) = vals[i + 1].as_f64() {
+                        arr.push(serde_json::json!({
+                            "member": Self::redis_value_to_json(&vals[i]),
+                            "score": score
+                        }));
+                    }
+                    i += 2;
+                }
+                serde_json::Value::Array(arr)
+            }
+            "hash" => client
+                .hgetall::<Vec<(RedisValue, RedisValue)>, _>(key)
+                .await
+                .map(|entries| {
+                    let mut map = serde_json::Map::new();
+                    for (field, val) in entries {
+                        map.insert(
+                            Self::redis_value_to_string(&field),
+                            Self::redis_value_to_json(&val),
+                        );
+                    }
+                    serde_json::Value::Object(map)
+                })
+                .unwrap_or(serde_json::Value::Null),
+            _ => serde_json::Value::Null,
+        };
+
+        let mut row = serde_json::Map::new();
+        row.insert("key".into(), serde_json::Value::String(key.to_string()));
+        row.insert("type".into(), serde_json::Value::String(key_type));
+        row.insert("value".into(), val);
+        serde_json::Value::Object(row)
     }
 }
 

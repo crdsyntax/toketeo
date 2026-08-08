@@ -33,7 +33,7 @@ export function useExplorer() {
   } = useAppStore();
   const queryClient = useQueryClient();
 
-  const { data: connections = [] } = useQuery({
+  const { data: connections = [], isLoading: connectionsLoading } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   });
@@ -44,17 +44,30 @@ export function useExplorer() {
     ? explorerTabs[activeExplorerTabId]
     : null;
 
+  // When there are no explorer tabs open (all closed), the explorer must be
+  // cleared: resolve no connection so the sidebar stops fetching/displaying
+  // the residual objects of the last connection.
+  const hasExplorerTabs = Object.keys(explorerTabs).length > 0;
+
   // Each explorer tab carries its own connection context (connectionId +
   // database). All operations below resolve against the ACTIVE tab's
   // connection, falling back to the global activeConnection only when the tab
   // has no connection (legacy) or it can't be found.
+  // Once the connections list has loaded, an activeConnection that is no
+  // longer in the list (deleted/ghost) is treated as null so the explorer
+  // never surfaces a connection that no longer exists. While the list is
+  // still loading, the activeConnection is trusted to avoid a flicker.
   const resolvedConnection = useMemo(() => {
+    if (!hasExplorerTabs) return null;
     const tabConnId = activeTabState?.connectionId;
-    if (tabConnId) {
-      return connections.find((c) => c.id === tabConnId) ?? activeConnection;
-    }
-    return activeConnection;
-  }, [activeTabState?.connectionId, connections, activeConnection]);
+    const tabMatch = tabConnId ? connections.find((c) => c.id === tabConnId) : undefined;
+    if (tabMatch) return tabMatch;
+    const activeIsGhost =
+      activeConnection !== null &&
+      !connectionsLoading &&
+      !connections.some((c) => c.id === activeConnection.id);
+    return activeIsGhost ? null : activeConnection;
+  }, [hasExplorerTabs, activeTabState?.connectionId, connections, connectionsLoading, activeConnection]);
 
   const {
     selectedItem,
@@ -203,13 +216,27 @@ export function useExplorer() {
   );
 
   const prevConnIdRef = useRef<string | null>(null);
+  const prevSchemaRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (resolvedConnection?.id && resolvedConnection.id !== prevConnIdRef.current) {
+    if (!resolvedConnection) return;
+
+    const isRedis = resolvedConnection.type === DatabaseType.REDIS;
+    const connChanged = resolvedConnection.id !== prevConnIdRef.current;
+    const schemaChanged = currentSchema !== prevSchemaRef.current;
+
+    if (isRedis) {
+      if (connChanged || schemaChanged) {
+        setIsSidebarCollapsed(true);
+        prevConnIdRef.current = resolvedConnection.id;
+        prevSchemaRef.current = currentSchema;
+      }
+    } else if (connChanged) {
       setIsSidebarCollapsed(false);
       prevConnIdRef.current = resolvedConnection.id;
+      prevSchemaRef.current = currentSchema;
     }
-  }, [resolvedConnection?.id, setExplorerState]);
+  }, [resolvedConnection, currentSchema]);
 
   const handleSelectItem = useCallback(
     (item: DatabaseObject) => {

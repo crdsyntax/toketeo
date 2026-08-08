@@ -1,5 +1,6 @@
 use crate::application::assistant::context::schema_engine::SchemaEngine;
 use crate::application::assistant::tools::tool_engine::ToolEngine;
+use crate::application::script::runner::ScriptPromptStore;
 use crate::application::session_service::ConnectionSession;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
@@ -67,6 +68,7 @@ pub struct AppState {
     pub job_engine: RwLock<Option<Arc<JobEngine>>>,
     pub schema_engine: SchemaEngine,
     pub tool_engine: ToolEngine,
+    pub script_store: ScriptPromptStore,
 }
 
 impl AppState {
@@ -86,6 +88,7 @@ impl AppState {
             job_engine: RwLock::new(None),
             schema_engine: SchemaEngine::new(300),
             tool_engine: Self::init_tools(),
+            script_store: ScriptPromptStore::new(),
         }
     }
 

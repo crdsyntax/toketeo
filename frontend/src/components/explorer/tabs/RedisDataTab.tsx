@@ -55,6 +55,7 @@ export function RedisDataTab({
   setFilter,
 }: RedisDataTabProps) {
   const [command, setCommand] = useState(filter || 'SCAN 0 COUNT 100');
+  const [scanCursor, setScanCursor] = useState<string>('0');
   const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
   const copiedTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const storeConnection = useAppStore((state) => state.activeConnection);
@@ -68,6 +69,9 @@ export function RedisDataTab({
 
   useEffect(() => {
     if (!queryData) return;
+    if (queryData.nextCursor !== undefined && queryData.nextCursor !== null) {
+      setScanCursor(queryData.nextCursor);
+    }
     const newCols = queryData.columns.filter(c => !prevColumns.current.includes(c));
     if (newCols.length === 0) return;
     setColumnWidths(prev => {
@@ -108,6 +112,35 @@ export function RedisDataTab({
   const handleExecuteCommand = () => {
     setFilter(command);
     queueMicrotask(() => handleExecute());
+  };
+
+  // Rebuild the SCAN command with a specific cursor so Prev/Next page through keys.
+  const buildScanCommand = (cursor: string) => {
+    const tokens = command.trim().split(/\s+/);
+    const upper = tokens[0]?.toUpperCase() ?? 'SCAN';
+    if (upper !== 'SCAN') return command;
+    // Preserve MATCH / COUNT args, only replace the cursor token.
+    const rest = tokens.slice(2);
+    return `SCAN ${cursor}${rest.length ? ' ' + rest.join(' ') : ''}`;
+  };
+
+  const handleScanPage = (cursor: string) => {
+    const cmd = buildScanCommand(cursor);
+    setCommand(cmd);
+    setFilter(cmd);
+    queueMicrotask(() => handleExecute());
+  };
+
+  const handlePrevPage = () => {
+    setPage(() => 0);
+    handleScanPage('0');
+  };
+
+  const handleNextPage = () => {
+    const next = queryData?.nextCursor;
+    if (!next || next === '0') return;
+    setPage((p) => p + 1);
+    handleScanPage(scanCursor);
   };
 
   const handleCopyCell = (value: DbValue, key: string) => {
@@ -349,7 +382,7 @@ export function RedisDataTab({
             <div className="flex items-center gap-1">
               <button
                 disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                onClick={handlePrevPage}
                 className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="Previous Page"
               >
@@ -361,8 +394,8 @@ export function RedisDataTab({
                 </span>
               </div>
               <button
-                disabled={queryData.rows.length < pageSize}
-                onClick={() => setPage((p) => p + 1)}
+                disabled={!queryData.nextCursor || queryData.nextCursor === '0'}
+                onClick={handleNextPage}
                 className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="Next Page"
               >

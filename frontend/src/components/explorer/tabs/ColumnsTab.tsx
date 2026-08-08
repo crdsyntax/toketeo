@@ -14,6 +14,7 @@ interface ColumnsTabProps {
   editColumnMutation: UseMutationResult<unknown, Error, string>;
   dropColumnMutation: UseMutationResult<unknown, Error, string>;
   isMongoDB?: boolean;
+  isRedis?: boolean;
 }
 
 const COMMON_TYPES = [
@@ -37,6 +38,7 @@ export function ColumnsTab({
   editColumnMutation,
   dropColumnMutation,
   isMongoDB = false,
+  isRedis = false,
 }: ColumnsTabProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [editedColData, setEditedColData] = useState<ColumnResponse | null>(null);
@@ -86,9 +88,11 @@ export function ColumnsTab({
         <div className="flex items-center gap-2">
           <Info className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-[var(--ch-text-10)] uppercase font-bold text-muted-foreground tracking-wider">
-            {isMongoDB
-              ? 'Schema inferred from sample documents — add a field to set it on existing documents'
-              : 'Edit mode generates ALTER TABLE SQL statements'}
+            {isRedis
+              ? 'Schema inferred from sample keys — structure varies by key type'
+              : isMongoDB
+                ? 'Schema inferred from sample documents — add a field to set it on existing documents'
+                : 'Edit mode generates ALTER TABLE SQL statements'}
           </span>
         </div>
         <button 

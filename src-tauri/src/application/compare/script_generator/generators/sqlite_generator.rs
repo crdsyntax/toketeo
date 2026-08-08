@@ -157,6 +157,7 @@ mod tests {
             constraints: vec![],
             warnings: vec![],
             errors: vec![],
+            summary: None,
         }
     }
 

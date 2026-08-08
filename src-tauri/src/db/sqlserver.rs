@@ -272,6 +272,34 @@ impl DbDriver for SqlServerDriver {
         DbType::Sqlserver
     }
 
+    async fn begin_script(
+        &self,
+        schema: Option<&str>,
+    ) -> crate::db::AppResult<crate::db::BoxScriptTransaction> {
+        let mut guard = self.client.lock().await;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
+        if let Some(schema) = schema.filter(|s| !s.is_empty()) {
+            client
+                .execute(&format!("USE [{}]", Self::escape_sql(schema)), &[])
+                .await
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to select database '{}': {}", schema, e))
+                })?;
+        }
+        client
+            .execute("BEGIN TRANSACTION", &[])
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to begin script transaction: {}", e))
+            })?;
+        drop(guard);
+        Ok(Box::new(SqlServerScriptTransaction {
+            client: Arc::clone(&self.client),
+        }))
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let rows = self.run_query(query).await?;
@@ -290,6 +318,8 @@ impl DbDriver for SqlServerDriver {
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
             rows_affected: 0,
+
+            next_cursor: None,
         })
     }
 
@@ -762,5 +792,83 @@ impl CapabilityProvider for SqlServerDriver {
             supports_returning: false,
             max_batch_size: 500,
         }
+    }
+}
+
+/// Sesión transaccional de script sobre SQL Server.
+/// Usa BEGIN TRANSACTION / COMMIT / ROLLBACK manuales sobre la conexión
+/// compartida del driver (tiberius no expone transacciones de primera clase).
+pub struct SqlServerScriptTransaction {
+    client: Arc<Mutex<Option<Client<Compat<TcpStream>>>>>,
+}
+
+#[async_trait]
+impl crate::db::ScriptTransaction for SqlServerScriptTransaction {
+    async fn execute_statement(
+        &mut self,
+        sql: &str,
+    ) -> crate::db::AppResult<crate::db::StatementOutcome> {
+        let mut guard = self.client.lock().await;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
+
+        let trimmed = sql.trim().to_uppercase();
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("EXEC")
+            || trimmed.starts_with("PRINT");
+
+        if is_select {
+            let mut stream = client
+                .query(sql, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server query failed: {}", e)))?
+                .into_row_stream();
+            let mut count = 0usize;
+            while stream
+                .try_next()
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server query stream failed: {}", e)))?
+                .is_some()
+            {
+                count += 1;
+            }
+            Ok(crate::db::StatementOutcome {
+                rows_affected: None,
+                row_count: Some(count),
+            })
+        } else {
+            let result = client
+                .execute(sql, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server execute failed: {}", e)))?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: Some(result.total()),
+                row_count: None,
+            })
+        }
+    }
+
+    async fn commit(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.run_control("COMMIT").await
+    }
+
+    async fn rollback(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.run_control("ROLLBACK").await
+    }
+}
+
+impl SqlServerScriptTransaction {
+    async fn run_control(self: Box<Self>, control_sql: &str) -> crate::db::AppResult<()> {
+        let mut guard = self.client.lock().await;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
+        client
+            .execute(control_sql, &[])
+            .await
+            .map_err(|e| AppError::Database(format!("SQL Server {} failed: {}", control_sql, e)))?;
+        Ok(())
     }
 }

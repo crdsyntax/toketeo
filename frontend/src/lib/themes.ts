@@ -10,6 +10,10 @@ export interface Palette {
 }
 
 export const themePalettes: Record<string, Palette> = {
+  toketeo: {
+    light: { accent: '#0891b2', accentHover: '#0e7490', accentMuted: 'color-mix(in srgb, #0891b2 15%, transparent)' },
+    dark: { accent: '#00d4ff', accentHover: '#33ddff', accentMuted: 'color-mix(in srgb, #00d4ff 15%, transparent)' },
+  },
   cyan: {
     light: { accent: '#06b6d4', accentHover: '#0891b2', accentMuted: 'color-mix(in srgb, #06b6d4 15%, transparent)' },
     dark: { accent: '#22d3ee', accentHover: '#67e8f9', accentMuted: 'color-mix(in srgb, #22d3ee 15%, transparent)' },

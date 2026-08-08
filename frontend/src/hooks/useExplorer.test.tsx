@@ -33,7 +33,18 @@ describe('useExplorer Performance and Caching', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(connectionService.getAll).mockResolvedValue([])
+    vi.mocked(connectionService.getAll).mockResolvedValue([{
+      id: 'test-id',
+      name: 'Test',
+      type: DatabaseType.POSTGRES,
+      environment: Environment.LOCAL,
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      database: 'test-db',
+      createdAt: '',
+      updatedAt: '',
+    }])
     vi.mocked(useAppStore).mockReturnValue({
       activeConnection: mockActiveConnection,
       explorer: {
@@ -43,10 +54,29 @@ describe('useExplorer Performance and Caching', () => {
         search: '',
         executionStatus: ExecutionStatus.IDLE,
         executionError: null,
-        socketResults: null
+        socketResults: null,
+        activeExplorerTabId: 'test-id:test-db:table1',
       },
-      explorerTabs: {},
+      explorerTabs: {
+        'test-id:test-db:table1': {
+          id: 'test-id:test-db:table1',
+          connectionId: 'test-id',
+          database: 'test-db',
+          selectedItem: { name: 'table1', type: 'table' },
+          activeTab: ExplorerTab.DATA,
+          executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
+          socketResults: null,
+          page: 0,
+          pageSize: 50,
+          editableDdl: '',
+          filter: '',
+        },
+      },
       setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+      addExplorerTab: vi.fn(),
+      removeExplorerTab: vi.fn(),
     } as unknown as ReturnType<typeof useAppStore>)
   })
 

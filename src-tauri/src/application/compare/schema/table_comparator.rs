@@ -1,7 +1,11 @@
 use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::models::compare::{ColumnDiffDetail, CompareStatus, ObjectDiff, TableDiff};
+use futures::stream::{self, StreamExt};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+
+use super::INTROSPECTION_CONCURRENCY;
 
 /// Column snapshot used for pure comparison (driver-agnostic).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,9 +200,11 @@ pub async fn compare_table(
 }
 
 /// Compare the full table name sets and return per-table ObjectDiffs.
+/// La introspección por tabla se ejecuta en paralelo (buffered) para
+/// aprovechar el pool de conexiones.
 pub async fn compare_tables(
-    source: &dyn DbDriver,
-    target: &dyn DbDriver,
+    source: Arc<dyn DbDriver>,
+    target: Arc<dyn DbDriver>,
     source_schema: Option<&str>,
     target_schema: Option<&str>,
     table_filter: Option<&[String]>,
@@ -234,22 +240,36 @@ pub async fn compare_tables(
     all_names.extend(src_set.iter().cloned());
     all_names.extend(tgt_set.iter().cloned());
 
-    let mut results = Vec::new();
-    for key in all_names {
-        let display = name_map.get(&key).cloned().unwrap_or_else(|| key.clone());
-        let diff = compare_table(
-            source,
-            target,
-            &display,
-            source_schema,
-            target_schema,
-            src_set.contains(&key),
-            tgt_set.contains(&key),
-        )
-        .await?;
-        results.push(diff);
-    }
+    let src_schema_owned = source_schema.map(String::from);
+    let tgt_schema_owned = target_schema.map(String::from);
 
+    let results: Vec<AppResult<ObjectDiff>> = stream::iter(all_names)
+        .map(move |key| {
+            let src = source.clone();
+            let tgt = target.clone();
+            let display = name_map.get(&key).cloned().unwrap_or_else(|| key.clone());
+            let src_schema = src_schema_owned.clone();
+            let tgt_schema = tgt_schema_owned.clone();
+            let src_has = src_set.contains(&key);
+            let tgt_has = tgt_set.contains(&key);
+            async move {
+                compare_table(
+                    src.as_ref(),
+                    tgt.as_ref(),
+                    &display,
+                    src_schema.as_deref(),
+                    tgt_schema.as_deref(),
+                    src_has,
+                    tgt_has,
+                )
+                .await
+            }
+        })
+        .buffered(INTROSPECTION_CONCURRENCY)
+        .collect()
+        .await;
+
+    let mut results: Vec<ObjectDiff> = results.into_iter().collect::<AppResult<Vec<_>>>()?;
     results.sort_by_key(|a| a.name.to_lowercase());
     Ok(results)
 }

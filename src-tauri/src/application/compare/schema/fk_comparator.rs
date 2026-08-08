@@ -96,7 +96,9 @@ fn postgres_on_delete_update_query() -> &'static str {
             CASE confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' \
              WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END as \"onUpdate\" \
      FROM pg_constraint \
-     WHERE conrelid = (SELECT oid FROM pg_class WHERE relname = $1) AND contype = 'f'"
+     WHERE conrelid = (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid \
+                       WHERE c.relname = $1 AND n.nspname = COALESCE($2, current_schema())) \
+       AND contype = 'f'"
 }
 
 fn sqlserver_on_delete_update_query(table: &str, schema: &str) -> String {
@@ -122,7 +124,12 @@ async fn fetch_on_delete_update(
 
     match db_type {
         DbType::Mysql | DbType::Mariadb => {
-            let result = driver.execute(mysql_on_delete_update_query()).await?;
+            let result = driver
+                .execute_with_params(
+                    mysql_on_delete_update_query(),
+                    &[Some(table.to_string()), schema.map(str::to_string)],
+                )
+                .await?;
             for row in &result.rows {
                 if let (Some(name), Some(on_delete), Some(on_update)) = (
                     row.get("constraintName").and_then(|v| v.as_str()),
@@ -137,9 +144,12 @@ async fn fetch_on_delete_update(
             }
         }
         DbType::Postgres => {
-            let table_name = table;
-            let query = postgres_on_delete_update_query();
-            let result = driver.execute_with_schema(query, table_name).await?;
+            let result = driver
+                .execute_with_params(
+                    postgres_on_delete_update_query(),
+                    &[Some(table.to_string()), schema.map(str::to_string)],
+                )
+                .await?;
             for row in &result.rows {
                 if let (Some(name), Some(on_delete), Some(on_update)) = (
                     row.get("constraintName").and_then(|v| v.as_str()),

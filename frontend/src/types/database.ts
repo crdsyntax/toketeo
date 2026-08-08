@@ -81,6 +81,7 @@ export interface QueryResult {
   pageSize?: number;
   hasMore?: boolean;
   primary_keys?: string[];
+  nextCursor?: string;
 }
 
 export interface TableColumn {

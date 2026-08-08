@@ -100,6 +100,7 @@ pub fn filter_differences_only(report: &SchemaReport) -> SchemaReport {
         compared_at: report.compared_at.clone(),
         warnings: report.warnings.clone(),
         errors: report.errors.clone(),
+        summary: report.summary.clone(),
     }
 }
 
@@ -134,6 +135,7 @@ mod tests {
             constraints: vec![],
             warnings: vec![],
             errors: vec![],
+            summary: None,
         }
     }
 

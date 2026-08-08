@@ -68,6 +68,30 @@ impl DbDriver for PostgresDriver {
         crate::db::DbType::Postgres
     }
 
+    async fn begin_script(
+        &self,
+        schema: Option<&str>,
+    ) -> crate::db::AppResult<crate::db::BoxScriptTransaction> {
+        let conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire Postgres connection: {}", e))
+        })?;
+        let mut tx = sqlx::Transaction::begin(conn, None).await.map_err(|e| {
+            AppError::Database(format!("Failed to begin script transaction: {}", e))
+        })?;
+        if let Some(schema) = schema.filter(|s| !s.is_empty()) {
+            sqlx::query(&format!(
+                "SET search_path TO \"{}\"",
+                schema.replace('"', "\"\"")
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
+            })?;
+        }
+        Ok(Box::new(PostgresScriptTransaction { tx }))
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let trimmed = query.trim().to_uppercase();
@@ -88,6 +112,8 @@ impl DbDriver for PostgresDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+
+                    next_cursor: None,
                 });
             }
 
@@ -125,6 +151,8 @@ impl DbDriver for PostgresDriver {
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys,
                 rows_affected: 0,
+
+                next_cursor: None,
             })
         } else {
             let result = sqlx::raw_sql(query).execute(&self.pool).await?;
@@ -135,23 +163,16 @@ impl DbDriver for PostgresDriver {
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
                 rows_affected,
+                next_cursor: None,
             })
         }
     }
 
-    async fn execute_with_schema(&self, query: &str, schema: &str) -> AppResult<QueryResult> {
-        let mut pool_conn = self.pool.acquire().await.map_err(|e| {
-            AppError::Connection(format!("Failed to acquire Postgres connection: {}", e))
-        })?;
-        use sqlx::Executor;
-        let conn: &mut sqlx::postgres::PgConnection = &mut pool_conn;
-
-        conn.execute(sqlx::query(&format!("SET search_path TO \"{}\"", schema)))
-            .await
-            .map_err(|e| {
-                AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
-            })?;
-
+    async fn execute_with_params(
+        &self,
+        query: &str,
+        params: &[Option<String>],
+    ) -> AppResult<QueryResult> {
         let start = Instant::now();
         let trimmed = query.trim().to_uppercase();
 
@@ -161,8 +182,13 @@ impl DbDriver for PostgresDriver {
             || trimmed.starts_with("EXPLAIN")
             || trimmed.starts_with("WITH");
 
+        let mut qb = sqlx::query(query);
+        for param in params {
+            qb = qb.bind(param.as_deref());
+        }
+
         if is_select {
-            let rows = sqlx::query(query).fetch_all(&mut *conn).await?;
+            let rows = qb.fetch_all(&self.pool).await?;
 
             if rows.is_empty() {
                 return Ok(QueryResult {
@@ -171,6 +197,7 @@ impl DbDriver for PostgresDriver {
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
                     rows_affected: 0,
+                    next_cursor: None,
                 });
             }
 
@@ -192,24 +219,16 @@ impl DbDriver for PostgresDriver {
                 })
                 .collect();
 
-            let primary_keys = if let Some(table) = self.extract_table_name(query) {
-                self.get_primary_keys(&table)
-                    .await
-                    .ok()
-                    .filter(|keys| !keys.is_empty())
-            } else {
-                None
-            };
-
             Ok(QueryResult {
                 columns,
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
-                primary_keys,
+                primary_keys: None,
                 rows_affected: 0,
+                next_cursor: None,
             })
         } else {
-            let result = conn.execute(sqlx::raw_sql(query)).await?;
+            let result = qb.execute(&self.pool).await?;
             let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
@@ -217,7 +236,120 @@ impl DbDriver for PostgresDriver {
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
                 rows_affected,
+                next_cursor: None,
             })
+        }
+    }
+
+    async fn execute_with_schema(&self, query: &str, schema: &str) -> AppResult<QueryResult> {
+        let mut pool_conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire Postgres connection: {}", e))
+        })?;
+        use sqlx::Executor;
+        let conn: &mut sqlx::postgres::PgConnection = &mut pool_conn;
+
+        // Guardar el search_path anterior para restaurarlo antes de devolver
+        // la conexión al pool (evita contaminar el estado de otras consultas).
+        let previous_path: Option<String> = sqlx::query("SELECT current_setting('search_path')")
+            .fetch_one(&mut *conn)
+            .await
+            .ok()
+            .and_then(|r| r.try_get::<String, _>(0).ok());
+
+        let set_result = conn
+            .execute(sqlx::query(&format!(
+                "SET search_path TO \"{}\"",
+                schema.replace('"', "\"\"")
+            )))
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
+            });
+
+        if let Err(e) = set_result {
+            Self::restore_search_path(conn, previous_path.as_deref()).await;
+            return Err(e);
+        }
+
+        let start = Instant::now();
+        let trimmed = query.trim().to_uppercase();
+
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("DESCRIBE")
+            || trimmed.starts_with("EXPLAIN")
+            || trimmed.starts_with("WITH");
+
+        let result = if is_select {
+            let rows = sqlx::query(query).fetch_all(&mut *conn).await;
+            match rows {
+                Ok(rows) => {
+                    if rows.is_empty() {
+                        Some(Ok(QueryResult {
+                            columns: vec![],
+                            rows: vec![],
+                            execution_time_ms: start.elapsed().as_millis() as u64,
+                            primary_keys: None,
+                            rows_affected: 0,
+                            next_cursor: None,
+                        }))
+                    } else {
+                        let columns: Vec<String> = rows[0]
+                            .columns()
+                            .iter()
+                            .map(|col| col.name().to_string())
+                            .collect();
+
+                        let result_rows = rows
+                            .into_iter()
+                            .map(|row| {
+                                let mut row_map = serde_json::Map::new();
+                                for (i, col_name) in columns.iter().enumerate() {
+                                    let value = self.decode_column(&row, i);
+                                    row_map.insert(col_name.clone(), value);
+                                }
+                                serde_json::Value::Object(row_map)
+                            })
+                            .collect();
+
+                        Some(Ok(QueryResult {
+                            columns,
+                            rows: result_rows,
+                            execution_time_ms: start.elapsed().as_millis() as u64,
+                            primary_keys: None,
+                            rows_affected: 0,
+                            next_cursor: None,
+                        }))
+                    }
+                }
+                Err(e) => Some(Err(e)),
+            }
+        } else {
+            let result = conn.execute(sqlx::raw_sql(query)).await;
+            match result {
+                Ok(res) => {
+                    let rows_affected = res.rows_affected();
+                    Some(Ok(QueryResult {
+                        columns: vec![],
+                        rows: vec![],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: None,
+                        rows_affected,
+                        next_cursor: None,
+                    }))
+                }
+                Err(e) => Some(Err(e)),
+            }
+        };
+
+        Self::restore_search_path(conn, previous_path.as_deref()).await;
+
+        match result {
+            Some(Ok(qr)) => Ok(qr),
+            Some(Err(e)) => Err(e.into()),
+            None => Err(AppError::Internal(
+                "execute_with_schema produced no result".into(),
+            )),
         }
     }
 
@@ -882,6 +1014,17 @@ impl DataWriter for PostgresDriver {
 // ==================== MÉTODOS AUXILIARES ====================
 
 impl PostgresDriver {
+    async fn restore_search_path(
+        conn: &mut sqlx::postgres::PgConnection,
+        previous_path: Option<&str>,
+    ) {
+        use sqlx::Executor;
+        let restore = previous_path
+            .map(|p| format!("SET search_path TO {}", p))
+            .unwrap_or_else(|| "SET search_path TO DEFAULT".to_string());
+        let _ = conn.execute(sqlx::raw_sql(&restore)).await;
+    }
+
     fn decode_column(&self, row: &sqlx::postgres::PgRow, i: usize) -> serde_json::Value {
         use sqlx::TypeInfo;
         let col = &row.columns()[i];
@@ -1355,5 +1498,53 @@ impl CapabilityProvider for PostgresDriver {
             supports_returning: true,
             max_batch_size: 1000,
         }
+    }
+}
+
+/// Sesión transaccional de script sobre PostgreSQL.
+/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
+pub struct PostgresScriptTransaction {
+    tx: sqlx::Transaction<'static, sqlx::Postgres>,
+}
+
+#[async_trait]
+impl crate::db::ScriptTransaction for PostgresScriptTransaction {
+    async fn execute_statement(
+        &mut self,
+        sql: &str,
+    ) -> crate::db::AppResult<crate::db::StatementOutcome> {
+        use sqlx::Executor;
+        let trimmed = sql.trim().to_uppercase();
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("DESCRIBE")
+            || trimmed.starts_with("EXPLAIN")
+            || trimmed.starts_with("WITH");
+        if is_select {
+            let rows = sqlx::query(sql).fetch_all(&mut *self.tx).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: None,
+                row_count: Some(rows.len()),
+            })
+        } else {
+            let result = self.tx.execute(sqlx::query(sql)).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: Some(result.rows_affected()),
+                row_count: None,
+            })
+        }
+    }
+
+    async fn commit(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx
+            .commit()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to commit script transaction: {}", e)))
+    }
+
+    async fn rollback(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.rollback().await.map_err(|e| {
+            AppError::Database(format!("Failed to rollback script transaction: {}", e))
+        })
     }
 }

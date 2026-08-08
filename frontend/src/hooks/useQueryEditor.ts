@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { EditorView } from '@codemirror/view'
 import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
-import { queryService } from '@/services/query.service'
+import { queryService, type ScriptDecision, type ScriptLiveStatement, type ScriptReport } from '@/services/query.service'
 import { schemaService } from '@/services/schema.service'
 import { tauriApi } from '@/lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -16,6 +16,9 @@ import { calculateQueryXp, hashQuery } from '@/lib/gamification'
 import { onRunQueryRequested } from '@/lib/queryRunEvents'
 import { assistantService } from '@/services/assistant.service'
 import type { SqlFixResult } from '@/types/assistant'
+import { listen } from '@tauri-apps/api/event'
+import { splitSqlStatements } from '@/lib/sqlScript'
+import type { ScriptErrorPrompt } from '@/components/query/ScriptErrorModal'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -226,6 +229,12 @@ export function useQueryEditor() {
   const [safeDeleteSuggestion, setSafeDeleteSuggestion] = useState<string | null>(null)
   const [sqlFixSuggestion, setSqlFixSuggestion] = useState<SqlFixResult | null>(null)
   const [sqlFixLoading, setSqlFixLoading] = useState(false)
+  const [scriptPrompt, setScriptPrompt] = useState<ScriptErrorPrompt | null>(null)
+  const [scriptSummary, setScriptSummary] = useState<ScriptReport | null>(null)
+  const [scriptResponding, setScriptResponding] = useState(false)
+  const [scriptLive, setScriptLive] = useState<ScriptLiveStatement[] | null>(null)
+  const [lastScriptSql, setLastScriptSql] = useState<string[]>([])
+  const activeScriptRunIdRef = useRef<string | null>(null)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -324,6 +333,191 @@ export function useQueryEditor() {
     }
   }, [])
 
+  const resolveTargetConnection = useCallback((tab: { connectionId?: string }): Connection | null => {
+    const connId = tab.connectionId || activeConnection?.id;
+    if (!connId) return null;
+    return (connections.find(c => c.id === connId) || activeConnection || null) as Connection | null;
+  }, [activeConnection, connections])
+
+  const handleRunScript = useCallback(async (statements: string[], raw: string) => {
+    const targetConnection = resolveTargetConnection(activeTab)
+    if (!targetConnection) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'No connection selected. Select a connection in the toolbar to execute this query.',
+      })
+      return
+    }
+    setScriptPrompt(null)
+    setScriptSummary(null)
+    setLastScriptSql(statements)
+    setScriptLive(statements.map((sql, index) => ({
+      index,
+      sql,
+      phase: 'pending',
+      error: null,
+      rowsAffected: null,
+      rowCount: null,
+    })))
+    const schema = targetConnection.database || activeConnection?.database;
+    updateTabResults(activeTab.id, {
+      status: ExecutionStatus.EXECUTING,
+      error: null,
+      results: null,
+    })
+
+    const startTime = Date.now()
+    try {
+      let report: ScriptReport
+      try {
+        report = await queryService.runScript(targetConnection.id, statements, schema)
+      } catch (err: unknown) {
+        const isConnNotFound = err instanceof Error && err.message.includes('not found') && err.message.includes('Connection');
+        if (isConnNotFound) {
+          await connectionService.reconnect(targetConnection.id);
+          report = await queryService.runScript(targetConnection.id, statements, schema);
+        } else {
+          throw err;
+        }
+      }
+
+      activeScriptRunIdRef.current = null
+      const durationMs = Date.now() - startTime
+      setScriptSummary(report)
+      // Los statements pendientes (no ejecutados, p. ej. tras cancel) quedan skipped.
+      setScriptLive(prev => prev
+        ? prev.map(s => s.phase === 'running' || s.phase === 'pending' ? { ...s, phase: 'skipped' as const } : s)
+        : prev)
+      updateTabResults(activeTab.id, {
+        status: report.rolledBack ? ExecutionStatus.ERROR : report.failed > 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.SUCCESS,
+        error: report.rolledBack
+          ? `Script cancelled: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped — transaction rolled back.`
+          : report.failed > 0
+            ? `Script completed with errors: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped.`
+            : null,
+        results: null,
+      })
+
+      if (report.rolledBack) {
+        toast.error(`Script rolled back: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped`)
+      } else if (report.failed > 0) {
+        toast(`Script completed: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped`, { icon: '⚠️' })
+      } else {
+        toast.success(`Script completed: ${report.ok} statements in ${durationMs} ms`)
+      }
+
+      const histEntry: QueryHistoryEntry = {
+        id: Math.random().toString(36).substring(2),
+        query: raw,
+        connectionId: targetConnection.id,
+        executedAt: Date.now(),
+        durationMs,
+        status: report.failed > 0 || report.rolledBack ? 'error' : 'success',
+        rowCount: report.ok,
+      };
+      addQueryHistory(histEntry);
+      schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
+      if (!report.rolledBack && report.failed === 0) {
+        usePerformanceStore.getState().addRecord({
+          id: histEntry.id,
+          connectionId: targetConnection.id,
+          sql: raw,
+          durationMs,
+          rowsReturned: report.ok,
+          executedAt: Date.now(),
+        });
+      }
+    } catch (error: unknown) {
+      activeScriptRunIdRef.current = null
+      setScriptPrompt(null)
+      const message = error instanceof Error ? error.message : String(error);
+      const durationMs = Date.now() - startTime;
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: message
+      });
+      setScriptLive(prev => prev
+        ? prev.map(s => s.phase === 'running' || s.phase === 'pending' ? { ...s, phase: 'skipped' as const } : s)
+        : prev)
+      const histEntry: QueryHistoryEntry = {
+        id: Math.random().toString(36).substring(2),
+        query: raw,
+        connectionId: targetConnection.id,
+        executedAt: Date.now(),
+        durationMs,
+        status: 'error',
+        error: message,
+      };
+      addQueryHistory(histEntry);
+      schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
+    }
+  }, [activeTab, activeConnection, connections, resolveTargetConnection, updateTabResults, addQueryHistory])
+
+  const respondScriptPrompt = useCallback(async (decision: ScriptDecision) => {
+    if (!scriptPrompt || scriptResponding) return
+    setScriptResponding(true)
+    try {
+      await queryService.respond(scriptPrompt.runId, decision)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to send decision: ${message}`)
+    } finally {
+      setScriptResponding(false)
+      setScriptPrompt(null)
+    }
+  }, [scriptPrompt, scriptResponding])
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    let cancelled = false
+    listen<ScriptErrorPrompt>('script:error-prompt', (event) => {
+      if (cancelled) return
+      const payload = event.payload
+      if (typeof payload === 'object' && payload !== null && 'runId' in payload) {
+        activeScriptRunIdRef.current = payload.runId ?? null
+        setScriptSummary(null)
+        setScriptPrompt({
+          runId: String(payload.runId),
+          index: Number(payload.index ?? 0),
+          sql: String(payload.sql ?? ''),
+          error: String(payload.error ?? ''),
+        })
+      }
+    }).then((fn) => { unlisten = fn })
+    return () => { cancelled = true; unlisten?.() }
+  }, [])
+
+  // Estados en vivo de cada statement del script (vista estilo Workbench):
+  // running → ok / failed (skipped se decide al terminar).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    let cancelled = false
+    listen<Record<string, unknown>>('script:statement', (event) => {
+      if (cancelled) return
+      const payload = event.payload
+      if (typeof payload !== 'object' || payload === null) return
+      const index = Number(payload.index ?? -1)
+      const phase = String(payload.phase ?? 'running')
+      setScriptLive(prev => {
+        if (!prev || index < 0 || index >= prev.length) return prev
+        return prev.map((s) => {
+          if (s.index !== index) return s
+          if (phase === 'ok' || phase === 'failed') {
+            return {
+              ...s,
+              phase: phase as 'ok' | 'failed',
+              error: payload.error != null ? String(payload.error) : s.error,
+              rowsAffected: payload.rowsAffected != null ? Number(payload.rowsAffected) : s.rowsAffected,
+              rowCount: payload.rowCount != null ? Number(payload.rowCount) : s.rowCount,
+            }
+          }
+          return { ...s, phase: 'running' }
+        })
+      })
+    }).then((fn) => { unlisten = fn })
+    return () => { cancelled = true; unlisten?.() }
+  }, [])
+
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number, overrideSql?: string) => {
     const raw = overrideSql?.trim() ?? activeTab?.query
     if (!raw) return
@@ -352,6 +546,13 @@ export function useQueryEditor() {
       if (isMongo) {
         sql = buildMongoJsonQuery(sql, activeTab.mongoFilter, activeTab.editorMode);
       } else {
+        const statements = splitSqlStatements(sql);
+        if (statements.length > 1) {
+          // Script multi-statement: el backend lo ejecuta en una transacción
+          // propia, statement a statement, preguntando qué hacer ante errores.
+          void handleRunScript(statements, raw);
+          return;
+        }
         const isSelect = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CALL)\b/i.test(sql);
         if (page > 1 && !isSelect) {
           updateTabResults(activeTab.id, {
@@ -483,7 +684,7 @@ export function useQueryEditor() {
           fetchSqlFix(targetConnection.id, sql, message)
         }
       }
-  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
+  }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix, handleRunScript])
 
   // Run a query requested from the assistant into the active editor tab.
   useEffect(() => {
@@ -677,6 +878,12 @@ export function useQueryEditor() {
   }, [handleExecuteCurrent, handleExecuteAll])
 
   const handleCancel = useCallback(() => {
+    // Si hay un script en curso, cancelarlo produce rollback real.
+    const runningRunId = activeScriptRunIdRef.current;
+    if (runningRunId) {
+      queryService.cancelScript(runningRunId).catch(() => undefined)
+      setScriptPrompt(null)
+    }
     if (activeTabId) {
       const tab = tabs.find(t => t.id === activeTabId);
       const connId = tab?.connectionId || activeConnection?.id;
@@ -1083,5 +1290,13 @@ export function useQueryEditor() {
     sqlFixSuggestion,
     setSqlFixSuggestion,
     sqlFixLoading,
+    scriptPrompt,
+    setScriptPrompt,
+    scriptSummary,
+    setScriptSummary,
+    scriptResponding,
+    respondScriptPrompt,
+    scriptLive,
+    lastScriptSql,
   }
 }

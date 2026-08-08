@@ -7,6 +7,8 @@ import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
+import { ScriptErrorModal } from '@/components/query/ScriptErrorModal';
+import { ScriptSummaryModal } from '@/components/query/ScriptSummaryModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
 import { AssistantLayout } from '@/components/assistant/AssistantLayout';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
@@ -87,16 +89,25 @@ export default function QueryEditor() {
     sqlFixSuggestion,
     setSqlFixSuggestion,
     sqlFixLoading,
+    scriptPrompt,
+    scriptSummary,
+    scriptResponding,
+    respondScriptPrompt,
+    scriptLive,
   } = useQueryEditor()
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
   const [showHistory, setShowHistory] = useState(false);
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [seenReportId, setSeenReportId] = useState<string | null>(null);
   const showAssistant = useAssistantStore((s) => s.showAssistant);
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
   const targetConnection = (connections.find(c => c.id === currentConnectionId) || activeConnection || null);
+
+  const scriptLiveRunning = scriptLive?.some(s => s.phase === 'running' || s.phase === 'pending') ?? false;
+  const scriptSummaryOpen = !!scriptSummary && seenReportId !== scriptSummary.runId;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -180,6 +191,19 @@ export default function QueryEditor() {
         initialSql={sqlModal.sql}
       />
 
+      <ScriptErrorModal
+        prompt={scriptPrompt}
+        responding={scriptResponding}
+        onSkip={() => respondScriptPrompt('skip')}
+        onSkipAll={() => respondScriptPrompt('skip_all')}
+        onCancel={() => respondScriptPrompt('cancel')}
+      />
+
+      <ScriptSummaryModal
+        report={scriptSummaryOpen ? scriptSummary : null}
+        onClose={() => { if (scriptSummary) setSeenReportId(scriptSummary.runId) }}
+      />
+
       {contextMenuSql && (
         <div
           className="fixed z-[200] min-w-[160px] bg-card border border-border/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
@@ -227,6 +251,8 @@ export default function QueryEditor() {
         showHistory={showHistory}
         historyCount={currentHistory.length}
         onNewWithConnection={() => setShowNewScriptModal(true)}
+        executionTime={activeTab?.results?.executionTime}
+        query={activeTab?.query}
       />
 
       <NewScriptModal
@@ -374,6 +400,11 @@ export default function QueryEditor() {
                 sqlFixSuggestion={sqlFixSuggestion}
                 setSqlFixSuggestion={setSqlFixSuggestion}
                 sqlFixLoading={sqlFixLoading}
+                scriptLive={scriptLive}
+                scriptLiveRunning={scriptLiveRunning}
+                onShowScriptSummary={() => {
+                  if (scriptSummary) setSeenReportId(null);
+                }}
               />
             </div>
           )}
