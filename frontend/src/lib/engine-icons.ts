@@ -4,6 +4,7 @@ import {
   Zap,
   Server,
   HardDrive,
+  Share2,
 } from 'lucide-react'
 import { DatabaseType } from '@/types/database'
 import type { LucideIcon } from 'lucide-react'
@@ -74,6 +75,14 @@ export const ENGINE_CONFIG: Record<DatabaseType, EngineConfig> = {
     textClass: 'text-amber-400',
     borderClass: 'border-amber-500/30',
   },
+  [DatabaseType.NEO4J]: {
+    icon: Share2,
+    label: 'Neo4j',
+    color: '#3ddc84',
+    bgClass: 'bg-emerald-500/10',
+    textClass: 'text-emerald-400',
+    borderClass: 'border-emerald-500/30',
+  },
 }
 
 export const ENGINE_ORDER: DatabaseType[] = [
@@ -84,6 +93,7 @@ export const ENGINE_ORDER: DatabaseType[] = [
   DatabaseType.SQLSERVER,
   DatabaseType.SQLITE,
   DatabaseType.REDIS,
+  DatabaseType.NEO4J,
 ]
 
 export function getEngineConfig(type: DatabaseType): EngineConfig {

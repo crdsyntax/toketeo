@@ -43,6 +43,7 @@ export enum DatabaseType {
   SQLSERVER = 'sqlserver',
   SQLITE = 'sqlite',
   REDIS = 'redis',
+  NEO4J = 'neo4j',
 }
 
 export enum Environment {
