@@ -1,11 +1,11 @@
 {
-    "version":  "0.4.3",
-    "notes":  "v0.4.3 - Sync scripts portability (DELIMITER for routines) and script execution fixes in Query Editor.",
-    "pub_date":  "2026-08-08T22:49:09Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.3_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUFTQUNyMGM0TnVUR1hyakliRUFMYzI4bE80Z0VCMTJ4d25NMlE5VFRqc0FtTHZHZ21yMWtqWlJUL0ZrVFdvUHhYb0JxZzlWbnpGcDVtMyt6U0VNNHdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MjI5MzI4CWZpbGU6VG9rZXRlb18wLjQuM194NjRfZW4tVVMubXNpCjNlcmtRKzhqRFlXNFozNzNzQUNTNStqKytwWVRGYnBCM1BSWUphOGhGSGEzOGpwVmpHTlJDMzMxNU1GdUVyNVJudkhBZi9FcVR2S2hYQUUvMXNYT0J3PT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.4_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU0xRGZqVFBmd29qUVFoQ3dOTnZUTVBORjRDTHhzdm1JRkJRaXBvYzRkYnFpeXRWMnk4d2hSbWdYRjRsRXIvdFg4MUE3ZVowT2dPS0hCZ3RBT0JxZUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MjMzNTcxCWZpbGU6VG9rZXRlb18wLjQuNF94NjRfZW4tVVMubXNpCklYdzhPKzA2WHlrczdxeGhVanM5aTRJakIzR2JrQmRtc3lCaWlvU1R5NGU1aUs2T1BLelZGMTRabWhDQXB5SW1BdXZjdmRlQ1M3QjNmRTZSNDZzSUNBPT0K"
                                          }
-                  }
+                  },
+    "pub_date":  "2026-08-08T23:59:31Z",
+    "version":  "0.4.4",
+    "notes":  "v0.4.4 - Fix update signature verification (pubkey matched to signing key)."
 }
