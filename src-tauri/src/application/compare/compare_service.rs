@@ -5,20 +5,24 @@ use crate::models::compare::{
     ScriptOptions, ScriptStatement, SyncScript, TableDataDiff,
 };
 use crate::state::{SyncControl, SyncController};
+use futures::stream::{self, StreamExt};
 use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
 use super::data::diff_builder::build_data_report;
 use super::data::hash_generator::compute_table_hashes;
+use super::data::metadata_cache::SchemaMetadataCache;
 use super::data::pk_resolver::resolve_pk;
-use super::data::row_comparator::compare_row_columns;
+use super::data::row_comparator::{compare_rows_batch, BatchSide};
 use super::schema::{
     compare_functions, compare_procedures, compare_table_constraints, compare_table_foreign_keys,
     compare_table_indexes, compare_tables, compare_triggers, compare_views,
+    INTROSPECTION_CONCURRENCY,
 };
-use super::script_generator::generators::{mysql_generator, postgres_generator, sqlite_generator};
 use super::script_generator::data_sync;
+use super::script_generator::generators::{mysql_generator, postgres_generator, sqlite_generator};
 
 pub struct CompareService;
 
@@ -48,14 +52,16 @@ impl CompareService {
         Self::check_control(compare_id, controller).await?;
 
         let table_diffs = Self::compare_all_tables(
-            source.as_ref(),
-            target.as_ref(),
+            source.clone(),
+            target.clone(),
             source_schema,
             target_schema,
             tables,
             &mut warnings,
         )
         .await?;
+
+        Self::emit_section(app_handle, compare_id, "tables", table_diffs.len());
 
         Self::check_control(compare_id, controller).await?;
 
@@ -85,16 +91,19 @@ impl CompareService {
         );
         Self::check_control(compare_id, controller).await?;
         let index_diffs = Self::compare_all_indexes(
-            source.as_ref(),
-            target.as_ref(),
+            source.clone(),
+            target.clone(),
             &active_tables,
             source_schema,
             target_schema,
             compare_id,
             controller,
+            app_handle,
         )
         .await?;
         step += 1;
+
+        Self::emit_section(app_handle, compare_id, "indexes", index_diffs.len());
 
         Self::emit_progress(
             app_handle,
@@ -105,16 +114,19 @@ impl CompareService {
         );
         Self::check_control(compare_id, controller).await?;
         let fk_diffs = Self::compare_all_foreign_keys(
-            source.as_ref(),
-            target.as_ref(),
+            source.clone(),
+            target.clone(),
             &active_tables,
             source_schema,
             target_schema,
             compare_id,
             controller,
+            app_handle,
         )
         .await?;
         step += 1;
+
+        Self::emit_section(app_handle, compare_id, "foreign_keys", fk_diffs.len());
 
         Self::emit_progress(
             app_handle,
@@ -125,87 +137,115 @@ impl CompareService {
         );
         Self::check_control(compare_id, controller).await?;
         let constraint_diffs = Self::compare_all_constraints(
-            source.as_ref(),
-            target.as_ref(),
+            source.clone(),
+            target.clone(),
             &active_tables,
             source_schema,
             target_schema,
             compare_id,
             controller,
+            app_handle,
         )
         .await?;
         step += 1;
 
-        Self::emit_progress(app_handle, compare_id, "Comparing views...", step, total_steps);
+        Self::emit_progress(
+            app_handle,
+            compare_id,
+            "Comparing views...",
+            step,
+            total_steps,
+        );
         Self::check_control(compare_id, controller).await?;
-        let view_diffs = match compare_views(
-            source.as_ref(),
-            target.as_ref(),
-            source_schema,
-            target_schema,
-            views,
-        )
-        .await
-        {
+        let (view_res, proc_res, func_res, trig_res) = tokio::join!(
+            compare_views(
+                source.as_ref(),
+                target.as_ref(),
+                source_schema,
+                target_schema,
+                views
+            ),
+            compare_procedures(
+                source.as_ref(),
+                target.as_ref(),
+                source_schema,
+                target_schema,
+                procedures,
+            ),
+            compare_functions(
+                source.as_ref(),
+                target.as_ref(),
+                source_schema,
+                target_schema,
+                functions,
+            ),
+            compare_triggers(
+                source.as_ref(),
+                target.as_ref(),
+                source_schema,
+                target_schema,
+                triggers,
+            ),
+        );
+        let view_diffs = match view_res {
             Ok(d) => d,
             Err(e) => {
                 warnings.push(format!("View comparison failed: {}", e));
                 Vec::new()
             }
         };
+        Self::emit_section(app_handle, compare_id, "views", view_diffs.len());
 
         Self::check_control(compare_id, controller).await?;
-        let procedure_diffs = match compare_procedures(
-            source.as_ref(),
-            target.as_ref(),
-            source_schema,
-            target_schema,
-            procedures,
-        )
-        .await
-        {
+        let procedure_diffs = match proc_res {
             Ok(d) => d,
             Err(e) => {
                 warnings.push(format!("Procedure comparison failed: {}", e));
                 Vec::new()
             }
         };
+        Self::emit_section(app_handle, compare_id, "procedures", procedure_diffs.len());
 
         Self::check_control(compare_id, controller).await?;
-        let function_diffs = match compare_functions(
-            source.as_ref(),
-            target.as_ref(),
-            source_schema,
-            target_schema,
-            functions,
-        )
-        .await
-        {
+        let function_diffs = match func_res {
             Ok(d) => d,
             Err(e) => {
                 warnings.push(format!("Function comparison failed: {}", e));
                 Vec::new()
             }
         };
+        Self::emit_section(app_handle, compare_id, "functions", function_diffs.len());
 
         Self::check_control(compare_id, controller).await?;
-        let trigger_diffs = match compare_triggers(
-            source.as_ref(),
-            target.as_ref(),
-            source_schema,
-            target_schema,
-            triggers,
-        )
-        .await
-        {
+        let trigger_diffs = match trig_res {
             Ok(d) => d,
             Err(e) => {
                 warnings.push(format!("Trigger comparison failed: {}", e));
                 Vec::new()
             }
         };
+        Self::emit_section(app_handle, compare_id, "triggers", trigger_diffs.len());
 
-        Self::emit_progress(app_handle, compare_id, "Schema compare complete", total_steps, total_steps);
+        Self::emit_progress(
+            app_handle,
+            compare_id,
+            "Schema compare complete",
+            total_steps,
+            total_steps,
+        );
+
+        let summary = Self::build_summary(
+            &table_diffs,
+            &view_diffs,
+            &procedure_diffs,
+            &function_diffs,
+            &trigger_diffs,
+            &index_diffs,
+            &fk_diffs,
+            &constraint_diffs,
+            &source_name,
+            &target_name,
+        );
 
         Ok(SchemaReport {
             source_name,
@@ -221,7 +261,142 @@ impl CompareService {
             constraints: constraint_diffs,
             warnings,
             errors,
+            summary: Some(summary),
         })
+    }
+
+    /// Genera un resumen en lenguaje natural de la comparación.
+    fn build_summary(
+        tables: &[ObjectDiff],
+        views: &[ObjectDiff],
+        procedures: &[ObjectDiff],
+        functions: &[ObjectDiff],
+        triggers: &[ObjectDiff],
+        indexes: &[IndexDiff],
+        fks: &[FkDiff],
+        constraints: &[ConstraintDiff],
+        source_name: &str,
+        target_name: &str,
+    ) -> String {
+        let mut all: Vec<(&str, &CompareStatus)> = Vec::new();
+        for diff in tables {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in views {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in procedures {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in functions {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in triggers {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in indexes {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in fks {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+        for diff in constraints {
+            all.push((diff.name.as_str(), &diff.status));
+        }
+
+        let total = all.len().max(1);
+        let mut equal = 0;
+        let mut modified = 0;
+        let mut missing = 0;
+        let mut new_count = 0;
+        let mut missing_names = Vec::new();
+        let mut modified_names = Vec::new();
+        let mut new_names = Vec::new();
+
+        for (name, status) in all {
+            match status {
+                CompareStatus::Equal => equal += 1,
+                CompareStatus::Modified => {
+                    modified += 1;
+                    if modified_names.len() < 3 {
+                        modified_names.push(name);
+                    }
+                }
+                CompareStatus::Missing => {
+                    missing += 1;
+                    if missing_names.len() < 3 {
+                        missing_names.push(name);
+                    }
+                }
+                CompareStatus::New => {
+                    new_count += 1;
+                    if new_names.len() < 3 {
+                        new_names.push(name);
+                    }
+                }
+            }
+        }
+
+        let mut parts = vec![format!(
+            "Tu base {} y tu base {} coinciden en {} de {} objetos.",
+            source_name, target_name, equal, total
+        )];
+
+        if missing > 0 {
+            let names = Self::format_name_list(&missing_names, missing);
+            parts.push(format!(
+                "Hay {} que existen en {} pero faltan en {}{}.",
+                Self::pluralize(missing, "objeto", "objetos"),
+                source_name,
+                target_name,
+                names
+            ));
+        }
+        if modified > 0 {
+            let names = Self::format_name_list(&modified_names, modified);
+            let verb = if modified == 1 {
+                "fue modificado"
+            } else {
+                "fueron modificados"
+            };
+            parts.push(format!(
+                "Hay {} que {}{}.",
+                Self::pluralize(modified, "objeto", "objetos"),
+                verb,
+                names
+            ));
+        }
+        if new_count > 0 {
+            let names = Self::format_name_list(&new_names, new_count);
+            parts.push(format!(
+                "Hay {} que solo existen en {}{}.",
+                Self::pluralize(new_count, "objeto", "objetos"),
+                target_name,
+                names
+            ));
+        }
+
+        parts.join(" ")
+    }
+
+    fn format_name_list(names: &[&str], total: usize) -> String {
+        if names.is_empty() {
+            return String::new();
+        }
+        let listed = names.join(", ");
+        if total > names.len() {
+            format!(" (por ejemplo: {})", listed)
+        } else {
+            format!(" ({})", listed)
+        }
+    }
+
+    fn pluralize(count: usize, singular: &str, plural: &str) -> String {
+        if count == 1 {
+            format!("1 {}", singular)
+        } else {
+            format!("{} {}", count, plural)
+        }
     }
 
     pub async fn compare_data(
@@ -238,6 +413,9 @@ impl CompareService {
         let mut table_diffs = Vec::new();
         let total = tables.len();
 
+        let mut source_cache = SchemaMetadataCache::new();
+        let mut target_cache = SchemaMetadataCache::new();
+
         for (i, table) in tables.iter().enumerate() {
             Self::check_control(compare_id, controller).await?;
             Self::emit_progress(
@@ -251,6 +429,8 @@ impl CompareService {
             let diff = Self::compare_table_data(
                 source.as_ref(),
                 target.as_ref(),
+                &mut source_cache,
+                &mut target_cache,
                 table,
                 source_schema,
                 target_schema,
@@ -262,7 +442,13 @@ impl CompareService {
             table_diffs.push(diff);
         }
 
-        Self::emit_progress(app_handle, compare_id, "Data compare complete", total, total);
+        Self::emit_progress(
+            app_handle,
+            compare_id,
+            "Data compare complete",
+            total,
+            total,
+        );
 
         Ok(DataReport {
             tables: table_diffs,
@@ -272,6 +458,8 @@ impl CompareService {
     async fn compare_table_data(
         source: &dyn DbDriver,
         target: &dyn DbDriver,
+        source_cache: &mut SchemaMetadataCache,
+        target_cache: &mut SchemaMetadataCache,
         table: &str,
         source_schema: Option<&str>,
         target_schema: Option<&str>,
@@ -279,7 +467,7 @@ impl CompareService {
         compare_id: Option<&str>,
         controller: Option<&SyncController>,
     ) -> AppResult<TableDataDiff> {
-        let pk_columns = resolve_pk(source, table, source_schema)
+        let pk_columns = resolve_pk(source_cache, source, table, source_schema)
             .await?
             .unwrap_or_default();
 
@@ -302,9 +490,7 @@ impl CompareService {
 
         let pk_col = pk_columns[0].clone();
 
-        let src_cols = source
-            .fetch_columns(table, source_schema.map(String::from))
-            .await?;
+        let src_cols = source_cache.columns(source, table, source_schema).await?;
         let source_columns: Vec<String> = src_cols
             .iter()
             .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(String::from))
@@ -327,18 +513,20 @@ impl CompareService {
             });
         }
 
-        let tgt_cols = match target.fetch_columns(table, target_schema.map(String::from)).await {
+        let tgt_cols = match target_cache.columns(target, table, target_schema).await {
             Ok(c) => c,
             Err(_) => {
+                let source_count = source.count_rows(table, source_schema).await.unwrap_or(0);
+                let target_count = target.count_rows(table, target_schema).await.unwrap_or(0);
                 return Ok(TableDataDiff {
                     table: table.to_string(),
                     status: CompareStatus::Missing,
-                    source_count: 0,
-                    target_count: 0,
+                    source_count,
+                    target_count,
                     rows_equal: 0,
                     rows_modified: 0,
-                    rows_only_in_source: 0,
-                    rows_only_in_target: 0,
+                    rows_only_in_source: source_count,
+                    rows_only_in_target: target_count,
                     pk_columns,
                     column_diffs: vec![],
                     source_only_rows: vec![],
@@ -395,37 +583,49 @@ impl CompareService {
 
         let mut source_hashes: HashMap<String, String> = HashMap::new();
         let mut target_hashes: HashMap<String, String> = HashMap::new();
-        let mut offset = 0u64;
+        let mut last_src_pk: Option<String> = None;
 
         loop {
             Self::check_control(compare_id, controller).await?;
             let src_chunk = compute_table_hashes(
-                source, table, source_schema, &common_columns, &pk_col, chunk_size, offset,
+                source,
+                table,
+                source_schema,
+                &common_columns,
+                &pk_col,
+                chunk_size,
+                last_src_pk.as_deref(),
             )
             .await?;
             if src_chunk.is_empty() {
                 break;
             }
+            last_src_pk = src_chunk.last().map(|(pk, _)| pk.clone());
             for (pk, hash) in src_chunk {
                 source_hashes.insert(pk, hash);
             }
-            offset += chunk_size as u64;
         }
 
-        offset = 0;
+        let mut last_tgt_pk: Option<String> = None;
         loop {
             Self::check_control(compare_id, controller).await?;
             let tgt_chunk = compute_table_hashes(
-                target, table, target_schema, &common_columns, &pk_col, chunk_size, offset,
+                target,
+                table,
+                target_schema,
+                &common_columns,
+                &pk_col,
+                chunk_size,
+                last_tgt_pk.as_deref(),
             )
             .await?;
             if tgt_chunk.is_empty() {
                 break;
             }
+            last_tgt_pk = tgt_chunk.last().map(|(pk, _)| pk.clone());
             for (pk, hash) in tgt_chunk {
                 target_hashes.insert(pk, hash);
             }
-            offset += chunk_size as u64;
         }
 
         let source_count = source_hashes.len() as u64;
@@ -435,63 +635,77 @@ impl CompareService {
         let mut source_only_rows = Vec::new();
         let mut target_only_rows = Vec::new();
 
+        // Clasificar PKs: divergentes (ambos lados), solo source, solo target.
+        let mut divergent_pks: Vec<String> = Vec::new();
+        let mut src_only_pks: Vec<String> = Vec::new();
+        let mut tgt_only_pks: Vec<String> = Vec::new();
         for (pk, src_hash) in &source_hashes {
-            Self::check_control(compare_id, controller).await?;
             match target_hashes.get(pk) {
-                Some(tgt_hash) if src_hash != tgt_hash => {
-                    let pk_val = serde_json::Value::String(pk.clone());
-                    let diffs = compare_row_columns(
-                        source,
-                        target,
-                        table,
-                        table,
-                        source_schema,
-                        target_schema,
-                        &pk_columns,
-                        &pk_val,
-                        &common_columns,
-                    )
-                    .await?;
-                    column_diffs.extend(diffs);
-                }
-                None => {
-                    let pk_val = serde_json::Value::String(pk.clone());
-                    let diffs = compare_row_columns(
-                        source,
-                        target,
-                        table,
-                        table,
-                        source_schema,
-                        target_schema,
-                        &pk_columns,
-                        &pk_val,
-                        &common_columns,
-                    )
-                    .await?;
-                    source_only_rows.extend(diffs);
-                }
+                Some(tgt_hash) if src_hash != tgt_hash => divergent_pks.push(pk.clone()),
+                None => src_only_pks.push(pk.clone()),
                 _ => {}
             }
         }
-
         for pk in target_hashes.keys() {
             if !source_hashes.contains_key(pk) {
-                Self::check_control(compare_id, controller).await?;
-                let pk_val = serde_json::Value::String(pk.clone());
-                let diffs = compare_row_columns(
-                    source,
-                    target,
-                    table,
-                    table,
-                    source_schema,
-                    target_schema,
-                    &pk_columns,
-                    &pk_val,
-                    &common_columns,
-                )
-                .await?;
-                target_only_rows.extend(diffs);
+                tgt_only_pks.push(pk.clone());
             }
+        }
+
+        const BATCH_SIZE: usize = 500;
+
+        for chunk in divergent_pks.chunks(BATCH_SIZE) {
+            Self::check_control(compare_id, controller).await?;
+            let diffs = compare_rows_batch(
+                source,
+                target,
+                table,
+                table,
+                source_schema,
+                target_schema,
+                &pk_columns,
+                chunk,
+                &common_columns,
+                BatchSide::Both,
+            )
+            .await?;
+            column_diffs.extend(diffs);
+        }
+
+        for chunk in src_only_pks.chunks(BATCH_SIZE) {
+            Self::check_control(compare_id, controller).await?;
+            let diffs = compare_rows_batch(
+                source,
+                target,
+                table,
+                table,
+                source_schema,
+                target_schema,
+                &pk_columns,
+                chunk,
+                &common_columns,
+                BatchSide::SourceOnly,
+            )
+            .await?;
+            source_only_rows.extend(diffs);
+        }
+
+        for chunk in tgt_only_pks.chunks(BATCH_SIZE) {
+            Self::check_control(compare_id, controller).await?;
+            let diffs = compare_rows_batch(
+                source,
+                target,
+                table,
+                table,
+                source_schema,
+                target_schema,
+                &pk_columns,
+                chunk,
+                &common_columns,
+                BatchSide::TargetOnly,
+            )
+            .await?;
+            target_only_rows.extend(diffs);
         }
 
         Ok(build_data_report(
@@ -529,8 +743,8 @@ impl CompareService {
             let data_stmts = data_sync::generate_data_sync(report, target_db_type, options);
             if !data_stmts.is_empty() {
                 statements.push(ScriptStatement {
-                    id: format!("section_data_0"),
-                    sql: format!("-- ============================================================\n-- DATA SYNCHRONIZATION\n-- ============================================================"),
+                    id: "section_data_0".to_string(),
+                    sql: "-- ============================================================\n-- DATA SYNCHRONIZATION\n-- ============================================================".to_string(),
                     description: "Data synchronization section".into(),
                     diff_type: "section".into(),
                     object_name: String::new(),
@@ -591,15 +805,44 @@ impl CompareService {
         }
     }
 
+    /// Emite el conteo de una sección del report apenas se completa, para que
+    /// el frontend muestre avance por sección sin esperar el invoke completo
+    /// (solo envía el conteo, no los diffs: no duplica el payload final).
+    fn emit_section(
+        app_handle: Option<&AppHandle>,
+        compare_id: Option<&str>,
+        section: &str,
+        count: usize,
+    ) {
+        if let (Some(handle), Some(id)) = (app_handle, compare_id) {
+            let _ = handle.emit(
+                "compare:section",
+                serde_json::json!({
+                    "compare_id": id,
+                    "section": section,
+                    "count": count,
+                }),
+            );
+        }
+    }
+
     async fn compare_all_tables(
-        source: &dyn DbDriver,
-        target: &dyn DbDriver,
+        source: Arc<dyn DbDriver>,
+        target: Arc<dyn DbDriver>,
         source_schema: Option<&str>,
         target_schema: Option<&str>,
         table_filter: Option<&[String]>,
         warnings: &mut Vec<String>,
     ) -> AppResult<Vec<ObjectDiff>> {
-        match compare_tables(source, target, source_schema, target_schema, table_filter).await {
+        match compare_tables(
+            source.clone(),
+            target.clone(),
+            source_schema,
+            target_schema,
+            table_filter,
+        )
+        .await
+        {
             Ok(diffs) => Ok(diffs),
             Err(e) => {
                 warnings.push(format!("Table comparison error: {}", e));
@@ -616,25 +859,115 @@ impl CompareService {
         }
     }
 
-    async fn compare_all_indexes(
-        source: &dyn DbDriver,
-        target: &dyn DbDriver,
+    /// Ejecuta la comparación de un tipo de objeto por tabla en paralelo
+    /// (`buffered(INTROSPECTION_CONCURRENCY)`), con progreso por tabla
+    /// completada y control de cancelación por tarea.
+    async fn compare_per_table<T, Fut>(
+        source: Arc<dyn DbDriver>,
+        target: Arc<dyn DbDriver>,
         tables: &[String],
         source_schema: Option<&str>,
         target_schema: Option<&str>,
         compare_id: Option<&str>,
         controller: Option<&SyncController>,
-    ) -> AppResult<Vec<IndexDiff>> {
+        app_handle: Option<&AppHandle>,
+        progress_label: &str,
+        compare: impl Fn(
+            Arc<dyn DbDriver>,
+            Arc<dyn DbDriver>,
+            String,
+            Option<String>,
+            Option<String>,
+        ) -> Fut,
+    ) -> AppResult<Vec<T>>
+    where
+        T: Send + 'static,
+        Fut: std::future::Future<Output = AppResult<Vec<T>>> + Send,
+    {
+        let total = tables.len().max(1);
+        let done = Arc::new(AtomicUsize::new(0));
+        let compare_ref = &compare;
+        let results: Vec<AppResult<Vec<T>>> = stream::iter(tables.to_vec())
+            .map(move |table| {
+                let src = source.clone();
+                let tgt = target.clone();
+                let done = done.clone();
+                let cid = compare_id.map(String::from);
+                let ctrl = controller.cloned();
+                let handle = app_handle.cloned();
+                let src_schema = source_schema.map(String::from);
+                let tgt_schema = target_schema.map(String::from);
+                let label = progress_label.to_string();
+                let table_name = table.clone();
+                async move {
+                    if let Some(ctrl) = ctrl.as_ref() {
+                        Self::check_control(cid.as_deref(), Some(ctrl)).await?;
+                    }
+                    let result = compare_ref(src, tgt, table, src_schema, tgt_schema).await;
+                    let n = done.fetch_add(1, Ordering::SeqCst) + 1;
+                    if let Some(handle) = handle.as_ref() {
+                        Self::emit_progress(
+                            Some(handle),
+                            cid.as_deref(),
+                            &format!("{} ({}/{}): {}", label, n, total, table_name),
+                            n,
+                            total,
+                        );
+                    }
+                    result
+                }
+            })
+            .buffered(INTROSPECTION_CONCURRENCY)
+            .collect()
+            .await;
+
         let mut all = Vec::new();
-        for table in tables {
-            Self::check_control(compare_id, controller).await?;
-            match compare_table_indexes(source, target, table, source_schema, target_schema).await {
+        for r in results {
+            match r {
                 Ok(diffs) => all.extend(diffs),
                 Err(e) => {
-                    tracing::warn!("Index comparison failed for table {}: {}", table, e);
+                    if e.to_string().to_lowercase().contains("cancelled") {
+                        return Err(e);
+                    }
+                    tracing::warn!("{} comparison failed for a table: {}", progress_label, e);
                 }
             }
         }
+        Ok(all)
+    }
+
+    async fn compare_all_indexes(
+        source: Arc<dyn DbDriver>,
+        target: Arc<dyn DbDriver>,
+        tables: &[String],
+        source_schema: Option<&str>,
+        target_schema: Option<&str>,
+        compare_id: Option<&str>,
+        controller: Option<&SyncController>,
+        app_handle: Option<&AppHandle>,
+    ) -> AppResult<Vec<IndexDiff>> {
+        let mut all = Self::compare_per_table(
+            source,
+            target,
+            tables,
+            source_schema,
+            target_schema,
+            compare_id,
+            controller,
+            app_handle,
+            "Comparing indexes",
+            |src, tgt, table, src_schema, tgt_schema| async move {
+                compare_table_indexes(
+                    src.as_ref(),
+                    tgt.as_ref(),
+                    &table,
+                    src_schema.as_deref(),
+                    tgt_schema.as_deref(),
+                )
+                .await
+            },
+        )
+        .await?;
         all.sort_by(|a, b| {
             a.table
                 .to_lowercase()
@@ -645,26 +978,37 @@ impl CompareService {
     }
 
     async fn compare_all_foreign_keys(
-        source: &dyn DbDriver,
-        target: &dyn DbDriver,
+        source: Arc<dyn DbDriver>,
+        target: Arc<dyn DbDriver>,
         tables: &[String],
         source_schema: Option<&str>,
         target_schema: Option<&str>,
         compare_id: Option<&str>,
         controller: Option<&SyncController>,
+        app_handle: Option<&AppHandle>,
     ) -> AppResult<Vec<FkDiff>> {
-        let mut all = Vec::new();
-        for table in tables {
-            Self::check_control(compare_id, controller).await?;
-            match compare_table_foreign_keys(source, target, table, source_schema, target_schema)
+        let mut all = Self::compare_per_table(
+            source,
+            target,
+            tables,
+            source_schema,
+            target_schema,
+            compare_id,
+            controller,
+            app_handle,
+            "Comparing foreign keys",
+            |src, tgt, table, src_schema, tgt_schema| async move {
+                compare_table_foreign_keys(
+                    src.as_ref(),
+                    tgt.as_ref(),
+                    &table,
+                    src_schema.as_deref(),
+                    tgt_schema.as_deref(),
+                )
                 .await
-            {
-                Ok(diffs) => all.extend(diffs),
-                Err(e) => {
-                    tracing::warn!("FK comparison failed for table {}: {}", table, e);
-                }
-            }
-        }
+            },
+        )
+        .await?;
         all.sort_by(|a, b| {
             a.table
                 .to_lowercase()
@@ -675,26 +1019,37 @@ impl CompareService {
     }
 
     async fn compare_all_constraints(
-        source: &dyn DbDriver,
-        target: &dyn DbDriver,
+        source: Arc<dyn DbDriver>,
+        target: Arc<dyn DbDriver>,
         tables: &[String],
         source_schema: Option<&str>,
         target_schema: Option<&str>,
         compare_id: Option<&str>,
         controller: Option<&SyncController>,
+        app_handle: Option<&AppHandle>,
     ) -> AppResult<Vec<ConstraintDiff>> {
-        let mut all = Vec::new();
-        for table in tables {
-            Self::check_control(compare_id, controller).await?;
-            match compare_table_constraints(source, target, table, source_schema, target_schema)
+        let mut all = Self::compare_per_table(
+            source,
+            target,
+            tables,
+            source_schema,
+            target_schema,
+            compare_id,
+            controller,
+            app_handle,
+            "Comparing constraints",
+            |src, tgt, table, src_schema, tgt_schema| async move {
+                compare_table_constraints(
+                    src.as_ref(),
+                    tgt.as_ref(),
+                    &table,
+                    src_schema.as_deref(),
+                    tgt_schema.as_deref(),
+                )
                 .await
-            {
-                Ok(diffs) => all.extend(diffs),
-                Err(e) => {
-                    tracing::warn!("Constraint comparison failed for table {}: {}", table, e);
-                }
-            }
-        }
+            },
+        )
+        .await?;
         all.sort_by(|a, b| {
             a.table
                 .to_lowercase()
@@ -713,7 +1068,9 @@ impl CompareService {
             name_map.insert(t.to_lowercase(), t.clone());
         }
         for t in target_names {
-            name_map.entry(t.to_lowercase()).or_insert_with(|| t.clone());
+            name_map
+                .entry(t.to_lowercase())
+                .or_insert_with(|| t.clone());
         }
 
         let mut all: BTreeSet<String> = BTreeSet::new();
@@ -734,7 +1091,89 @@ impl CompareService {
                 details: None,
             });
         }
-        results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        results.sort_by_key(|a| a.name.to_lowercase());
         results
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use super::*;
+
+    fn obj(name: &str, status: CompareStatus) -> ObjectDiff {
+        ObjectDiff {
+            name: name.to_string(),
+            status,
+            details: None,
+        }
+    }
+
+    #[test]
+    fn summary_all_equal() {
+        let s = CompareService::build_summary(
+            &[
+                obj("a", CompareStatus::Equal),
+                obj("b", CompareStatus::Equal),
+            ],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            "A",
+            "B",
+        );
+        assert!(s.contains("coinciden en 2 de 2"));
+        assert!(!s.contains("faltan"));
+    }
+
+    #[test]
+    fn summary_missing_and_modified() {
+        let s = CompareService::build_summary(
+            &[
+                obj("orders", CompareStatus::Equal),
+                obj("invoices", CompareStatus::Missing),
+                obj("users", CompareStatus::Modified),
+                obj("payments", CompareStatus::Equal),
+            ],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            "A",
+            "B",
+        );
+        assert!(s.contains("coinciden en 2 de 4"));
+        assert!(s.contains("Hay 1 objeto que existen en A pero faltan en B (invoices)"));
+        assert!(s.contains("fue modificado"));
+    }
+
+    #[test]
+    fn summary_new_only() {
+        let s = CompareService::build_summary(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[IndexDiff {
+                name: "idx_1".into(),
+                table: "t".into(),
+                status: CompareStatus::New,
+                columns_changed: None,
+                unique_changed: None,
+                type_changed: None,
+            }],
+            &[],
+            &[],
+            "A",
+            "B",
+        );
+        assert!(s.contains("solo existen en B"));
     }
 }

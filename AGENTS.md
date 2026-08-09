@@ -38,3 +38,12 @@ Never load unrelated agent files.
 Signing / Releases:
 - Use the signing key at `D:\Desktop\toketeo-signing\toketeo-signing.key` and its password file `D:\Desktop\toketeo-signing\signing_pass.txt` (same password always; do not rotate).
 - Prefer `scripts/publish-update.ps1` for release signing.
+
+Contribution policy (see CONTRIBUTING.md):
+- Do NOT commit, push, create branches, or open PRs in this repo unless the user explicitly asks.
+- PRs must come from forks; `main` is protected and the PR gate rejects direct pushes.
+- Every PR must reference a linked issue ("Fixes #123") or explicitly check "No issue linked".
+- Before any commit, run the CI checks locally:
+  - `cd frontend` then `bun run lint`, `bunx tsc -b`, `bun run test`
+  - `cd src-tauri` then `cargo fmt --all -- --check`, `cargo clippy --lib --all-targets -- -D warnings`, `cargo test --lib`
+- The repo has pre-commit hooks configured in `.pre-commit-config.yaml`.

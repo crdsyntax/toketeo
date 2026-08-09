@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Clock, CheckCircle2, XCircle, Loader2, PauseCircle, ChevronDown, ChevronRight, Database } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { syncService } from '@/services/sync.service'
-import type { SyncRun, SyncBatch } from '@/types/sync'
+import type { SyncRun } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
 
 interface SyncHistoryProps {

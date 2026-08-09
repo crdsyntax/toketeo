@@ -56,7 +56,9 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
 
   const isBackup = jobType === JobType.Backup
 
-  useEffect(() => {
+  const [prevSelKey, setPrevSelKey] = useState(`${connectionId}|${selectedDatabase}`)
+  if (prevSelKey !== `${connectionId}|${selectedDatabase}`) {
+    setPrevSelKey(`${connectionId}|${selectedDatabase}`)
     if (!connectionId) {
       setDatabases([])
       setSelectedDatabase('')
@@ -64,33 +66,39 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
       setSelectedTables(new Set())
       setDbError(null)
       setTablesError(null)
-      return
+    } else if (!selectedDatabase) {
+      setTables([])
+      setSelectedTables(new Set())
+      setTablesError(null)
     }
-    setDbError(null)
-    setTablesError(null)
-    setLoadingDbs(true)
-    schedulerService.getDatabases(connectionId)
+  }
+
+  useEffect(() => {
+    if (!connectionId) return
+    let cancelled = false
+    Promise.resolve()
+      .then(() => { if (!cancelled) setLoadingDbs(true) })
+      .then(() => schedulerService.getDatabases(connectionId))
       .then((dbs) => {
+        if (cancelled) return
         setDatabases(dbs)
         if (dbs.length > 0 && !job) {
           setSelectedDatabase(dbs[0])
         }
       })
-      .catch((e) => setDbError(String(e)))
-      .finally(() => setLoadingDbs(false))
+      .catch((e) => { if (!cancelled) setDbError(String(e)) })
+      .finally(() => { if (!cancelled) setLoadingDbs(false) })
+    return () => { cancelled = true }
   }, [connectionId, job])
 
   useEffect(() => {
-    if (!connectionId || !selectedDatabase) {
-      setTables([])
-      setSelectedTables(new Set())
-      setTablesError(null)
-      return
-    }
-    setTablesError(null)
-    setLoadingTables(true)
-    schedulerService.getTables(connectionId, selectedDatabase)
+    if (!connectionId || !selectedDatabase) return
+    let cancelled = false
+    Promise.resolve()
+      .then(() => { if (!cancelled) setLoadingTables(true) })
+      .then(() => schedulerService.getTables(connectionId, selectedDatabase))
       .then((tbls) => {
+        if (cancelled) return
         setTables(tbls)
         if (!job) {
           setSelectedTables(new Set(tbls))
@@ -99,8 +107,9 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
           setSelectedTables(new Set(tbls.filter((t) => existing.has(t))))
         }
       })
-      .catch((e) => setTablesError(String(e)))
-      .finally(() => setLoadingTables(false))
+      .catch((e) => { if (!cancelled) setTablesError(String(e)) })
+      .finally(() => { if (!cancelled) setLoadingTables(false) })
+    return () => { cancelled = true }
   }, [connectionId, selectedDatabase, job])
 
   const toggleTable = useCallback((table: string) => {

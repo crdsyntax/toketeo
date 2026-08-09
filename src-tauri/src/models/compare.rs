@@ -62,6 +62,9 @@ pub struct SchemaReport {
     pub constraints: Vec<ConstraintDiff>,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
+    /// Resumen en lenguaje natural de los resultados (generado en backend).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 /// Generic schema object difference.
@@ -358,10 +361,12 @@ mod tests {
             constraints: vec![],
             warnings: vec![],
             errors: vec![],
+            summary: Some("resumen".into()),
         };
         let json = serde_json::to_string(&report).unwrap();
         let back: SchemaReport = serde_json::from_str(&json).unwrap();
         assert_eq!(back.tables[0].name, "users");
         assert_eq!(back.tables[0].status, CompareStatus::Equal);
+        assert_eq!(back.summary.as_deref(), Some("resumen"));
     }
 }

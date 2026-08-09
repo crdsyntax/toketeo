@@ -42,10 +42,7 @@ impl<'a> SqlFixer<'a> {
         let driver = if self.connection_id.is_empty() {
             None
         } else {
-            match self.state.get_connection(self.connection_id).await {
-                Ok(d) => Some(d),
-                Err(_) => None,
-            }
+            self.state.get_connection(self.connection_id).await.ok()
         };
 
         let ctx = if let Some(ref driver) = driver {
@@ -237,7 +234,10 @@ mod tests {
 
     #[test]
     fn returns_default_when_only_sql_block() {
-        assert_eq!(explanation_from_answer("```sql\nSELECT 1;\n```"), "The query was corrected.");
+        assert_eq!(
+            explanation_from_answer("```sql\nSELECT 1;\n```"),
+            "The query was corrected."
+        );
     }
 
     #[test]

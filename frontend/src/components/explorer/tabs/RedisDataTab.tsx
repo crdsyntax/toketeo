@@ -4,26 +4,21 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
-  ChevronDown,
   ChevronUp,
   Zap,
   Terminal,
   Copy,
   Check,
-  X,
 } from 'lucide-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import type {
   QueryResult,
   DatabaseObject,
-  DbRow,
   DbValue,
   Connection,
 } from '@/types/database';
 import { ExecutionStatus, Environment } from '@/types/database';
-import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/store/useAppStore';
-import { cn } from '@/lib/utils';
 import { formatCellValue } from '@/lib/formatCellValue';
 
 interface RedisDataTabProps {
@@ -60,6 +55,7 @@ export function RedisDataTab({
   setFilter,
 }: RedisDataTabProps) {
   const [command, setCommand] = useState(filter || 'SCAN 0 COUNT 100');
+  const [scanCursor, setScanCursor] = useState<string>('0');
   const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
   const copiedTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const storeConnection = useAppStore((state) => state.activeConnection);
@@ -68,22 +64,27 @@ export function RedisDataTab({
   const resultsFontSize = useAppStore((s) => s.uiFontSize);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const resizing = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
-  const prevColumns = useRef<string[]>([]);
+  const [prevColumns, setPrevColumns] = useState<string[]>([]);
+  const [prevQueryData, setPrevQueryData] = useState<QueryResult | null>(null);
   const DEFAULT_COL_WIDTH = 180;
 
-  useEffect(() => {
-    if (!queryData) return;
-    const newCols = queryData.columns.filter(c => !prevColumns.current.includes(c));
-    if (newCols.length === 0) return;
-    setColumnWidths(prev => {
-      const next = { ...prev };
-      for (const col of newCols) {
-        if (!(col in next)) next[col] = DEFAULT_COL_WIDTH;
-      }
-      return next;
-    });
-    prevColumns.current = queryData.columns;
-  }, [queryData]);
+  if (queryData && queryData !== prevQueryData) {
+    setPrevQueryData(queryData);
+    if (queryData.nextCursor !== undefined && queryData.nextCursor !== null) {
+      setScanCursor(queryData.nextCursor);
+    }
+    const newCols = queryData.columns.filter(c => !prevColumns.includes(c));
+    if (newCols.length > 0) {
+      setPrevColumns(queryData.columns);
+      setColumnWidths(prev => {
+        const next = { ...prev };
+        for (const col of newCols) {
+          if (!(col in next)) next[col] = DEFAULT_COL_WIDTH;
+        }
+        return next;
+      });
+    }
+  }
 
   const handleResizeStart = (col: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -113,6 +114,35 @@ export function RedisDataTab({
   const handleExecuteCommand = () => {
     setFilter(command);
     queueMicrotask(() => handleExecute());
+  };
+
+  // Rebuild the SCAN command with a specific cursor so Prev/Next page through keys.
+  const buildScanCommand = (cursor: string) => {
+    const tokens = command.trim().split(/\s+/);
+    const upper = tokens[0]?.toUpperCase() ?? 'SCAN';
+    if (upper !== 'SCAN') return command;
+    // Preserve MATCH / COUNT args, only replace the cursor token.
+    const rest = tokens.slice(2);
+    return `SCAN ${cursor}${rest.length ? ' ' + rest.join(' ') : ''}`;
+  };
+
+  const handleScanPage = (cursor: string) => {
+    const cmd = buildScanCommand(cursor);
+    setCommand(cmd);
+    setFilter(cmd);
+    queueMicrotask(() => handleExecute());
+  };
+
+  const handlePrevPage = () => {
+    setPage(() => 0);
+    handleScanPage('0');
+  };
+
+  const handleNextPage = () => {
+    const next = queryData?.nextCursor;
+    if (!next || next === '0') return;
+    setPage((p) => p + 1);
+    handleScanPage(scanCursor);
   };
 
   const handleCopyCell = (value: DbValue, key: string) => {
@@ -354,7 +384,7 @@ export function RedisDataTab({
             <div className="flex items-center gap-1">
               <button
                 disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                onClick={handlePrevPage}
                 className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="Previous Page"
               >
@@ -366,8 +396,8 @@ export function RedisDataTab({
                 </span>
               </div>
               <button
-                disabled={queryData.rows.length < pageSize}
-                onClick={() => setPage((p) => p + 1)}
+                disabled={!queryData.nextCursor || queryData.nextCursor === '0'}
+                onClick={handleNextPage}
                 className="p-1 hover:bg-muted rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="Next Page"
               >

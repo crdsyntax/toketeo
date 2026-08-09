@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { ChevronDown, ChevronRight, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { syncService } from '@/services/sync.service'
 import type { SyncBatch, SyncRowError } from '@/types/sync'

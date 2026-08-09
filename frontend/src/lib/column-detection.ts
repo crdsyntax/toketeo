@@ -18,8 +18,8 @@ function classifyValue(value: unknown): ColumnRole {
   if (typeof value === 'boolean') return 'categorical'
   if (typeof value === 'string') {
     if (/^-?\d+(\.\d+)?$/.test(value)) return 'numeric'
-    if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(value)) return 'temporal'
-    if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}/.test(value)) return 'temporal'
+    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(value)) return 'temporal'
+    if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(value)) return 'temporal'
     return 'categorical'
   }
   return 'categorical'

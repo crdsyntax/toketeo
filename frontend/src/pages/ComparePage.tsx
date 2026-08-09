@@ -724,7 +724,6 @@ export function ComparePage() {
       <FullscreenModal
         open={fullscreenTab !== null}
         title={fullscreenTab === 'schema' ? 'Schema Diff — Fullscreen' : 'Data Diff — Fullscreen'}
-        onOpen={() => {}}
         onClose={() => setFullscreenTab(null)}
       >
         {fullscreenTab === 'schema' && schemaReport && <SchemaDiffTree report={schemaReport} />}

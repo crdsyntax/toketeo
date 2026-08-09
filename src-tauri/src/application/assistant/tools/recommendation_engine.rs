@@ -16,7 +16,10 @@ impl RecommendationEngine {
         let negative_rate = if messages.is_empty() {
             0.0
         } else {
-            let neg = messages.iter().filter(|m| m.feedback.as_deref() == Some("negative")).count();
+            let neg = messages
+                .iter()
+                .filter(|m| m.feedback.as_deref() == Some("negative"))
+                .count();
             neg as f64 / messages.len() as f64
         };
         if negative_rate > 0.3 {
@@ -39,7 +42,7 @@ impl RecommendationEngine {
         // Slow queries
         let slow_queries: Vec<&QueryHistoryEntry> = history
             .iter()
-            .filter(|q| q.duration_ms.map_or(false, |d| d > 5000))
+            .filter(|q| q.duration_ms.is_some_and(|d| d > 5000))
             .collect();
         if slow_queries.len() > 3 {
             suggestions.push(format!(
@@ -60,9 +63,7 @@ impl RecommendationEngine {
     }
 
     /// Suggest tables that might need indexes based on FK columns.
-    pub fn suggest_missing_fk_indexes(
-        unused_cases: &[KnowledgeCase],
-    ) -> Option<String> {
+    pub fn suggest_missing_fk_indexes(unused_cases: &[KnowledgeCase]) -> Option<String> {
         let unused: Vec<&KnowledgeCase> =
             unused_cases.iter().filter(|c| c.used_count == 0).collect();
         if unused.len() > 3 {

@@ -18,13 +18,17 @@ impl DriverFactory {
         pool_config: Option<PoolConfig>,
     ) -> AppResult<Arc<dyn DbDriver>> {
         match db_type {
-            DbType::Postgres => Ok(Arc::new(PostgresDriver::new(url, transactional, pool_config).await?)),
-            DbType::Mysql | DbType::Mariadb => {
-                Ok(Arc::new(MySqlDriver::new(url, transactional, pool_config).await?))
-            }
+            DbType::Postgres => Ok(Arc::new(
+                PostgresDriver::new(url, transactional, pool_config).await?,
+            )),
+            DbType::Mysql | DbType::Mariadb => Ok(Arc::new(
+                MySqlDriver::new(url, transactional, pool_config).await?,
+            )),
             DbType::Mongodb => Ok(Arc::new(MongoDbDriver::new(url, pool_config).await?)),
             DbType::Sqlserver => Ok(Arc::new(SqlServerDriver::new(url).await?)),
-            DbType::Redis => Ok(Arc::new(RedisDriver::new(url, transactional, pool_config).await?)),
+            DbType::Redis => Ok(Arc::new(
+                RedisDriver::new(url, transactional, pool_config).await?,
+            )),
             DbType::Sqlite => Ok(Arc::new(SqliteDriver::new(url).await?)),
         }
     }

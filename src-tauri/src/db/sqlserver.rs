@@ -120,9 +120,9 @@ impl SqlServerDriver {
 
     async fn run_query(&self, query: &str) -> AppResult<Vec<serde_json::Value>> {
         let mut guard = self.client.lock().await;
-        let client = guard.as_mut().ok_or_else(|| {
-            AppError::Internal("SQL Server client is closed".into())
-        })?;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
         let mut stream = client
             .query(query, &[])
             .await
@@ -178,18 +178,29 @@ impl SqlServerDriver {
         );
 
         let pk_rows = self.run_query(&pk_query).await?;
-        let pk_cols: Vec<String> = pk_rows.iter()
-            .filter_map(|r| r.get("COLUMN_NAME").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        let pk_cols: Vec<String> = pk_rows
+            .iter()
+            .filter_map(|r| {
+                r.get("COLUMN_NAME")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
             .collect();
 
         let mut col_defs = Vec::new();
         for row in &columns {
-            let col_name = row.get("COLUMN_NAME").and_then(|v| v.as_str()).unwrap_or("");
+            let col_name = row
+                .get("COLUMN_NAME")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let data_type = row.get("DATA_TYPE").and_then(|v| v.as_str()).unwrap_or("");
             let char_max_len = row.get("CHARACTER_MAXIMUM_LENGTH").and_then(|v| v.as_i64());
             let num_prec = row.get("NUMERIC_PRECISION").and_then(|v| v.as_i64());
             let num_scale = row.get("NUMERIC_SCALE").and_then(|v| v.as_i64());
-            let is_nullable = row.get("IS_NULLABLE").and_then(|v| v.as_str()).unwrap_or("YES");
+            let is_nullable = row
+                .get("IS_NULLABLE")
+                .and_then(|v| v.as_str())
+                .unwrap_or("YES");
             let default_val = row.get("COLUMN_DEFAULT").and_then(|v| v.as_str());
 
             let sql_type = match data_type {
@@ -248,7 +259,9 @@ impl SqlServerDriver {
 
         Ok(format!(
             "CREATE TABLE IF NOT EXISTS [{}].[{}] (\n{}\n);",
-            schema_quoted, name_quoted, col_defs.join(",\n")
+            schema_quoted,
+            name_quoted,
+            col_defs.join(",\n")
         ))
     }
 }
@@ -257,6 +270,34 @@ impl SqlServerDriver {
 impl DbDriver for SqlServerDriver {
     fn db_type(&self) -> DbType {
         DbType::Sqlserver
+    }
+
+    async fn begin_script(
+        &self,
+        schema: Option<&str>,
+    ) -> crate::db::AppResult<crate::db::BoxScriptTransaction> {
+        let mut guard = self.client.lock().await;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
+        if let Some(schema) = schema.filter(|s| !s.is_empty()) {
+            client
+                .execute(&format!("USE [{}]", Self::escape_sql(schema)), &[])
+                .await
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to select database '{}': {}", schema, e))
+                })?;
+        }
+        client
+            .execute("BEGIN TRANSACTION", &[])
+            .await
+            .map_err(|e| {
+                AppError::Database(format!("Failed to begin script transaction: {}", e))
+            })?;
+        drop(guard);
+        Ok(Box::new(SqlServerScriptTransaction {
+            client: Arc::clone(&self.client),
+        }))
     }
 
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
@@ -277,6 +318,8 @@ impl DbDriver for SqlServerDriver {
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
             rows_affected: 0,
+
+            next_cursor: None,
         })
     }
 
@@ -557,9 +600,10 @@ impl DbDriver for SqlServerDriver {
     async fn close(&self) -> AppResult<()> {
         let mut guard = self.client.lock().await;
         if let Some(client) = guard.take() {
-            client.close().await.map_err(|e| {
-                AppError::Internal(format!("SQL Server close error: {}", e))
-            })?;
+            client
+                .close()
+                .await
+                .map_err(|e| AppError::Internal(format!("SQL Server close error: {}", e)))?;
         }
         Ok(())
     }
@@ -603,25 +647,26 @@ impl DataReader for SqlServerDriver {
         } else {
             format!(
                 "SELECT TOP ({}) {} FROM {} ORDER BY {} ASC",
-                batch_size, select_clause, table_ref, quote_ss(pk_column),
+                batch_size,
+                select_clause,
+                table_ref,
+                quote_ss(pk_column),
             )
         };
 
         self.run_query(&query).await
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64> {
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
         let table_ref = if let Some(s) = schema {
             format!("{}.[{}]", quote_ss(s), quote_ss(table))
         } else {
             quote_ss(table)
         };
 
-        let rows = self.run_query(&format!("SELECT COUNT(*) as cnt FROM {}", table_ref)).await?;
+        let rows = self
+            .run_query(&format!("SELECT COUNT(*) as cnt FROM {}", table_ref))
+            .await?;
         Ok(rows
             .first()
             .and_then(|r| r.get("cnt").and_then(|v| v.as_i64()))
@@ -633,7 +678,11 @@ fn json_to_ss_string(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => "NULL".to_string(),
         serde_json::Value::Bool(b) => {
-            if *b { "1".to_string() } else { "0".to_string() }
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
         }
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
@@ -678,11 +727,7 @@ impl DataWriter for SqlServerDriver {
         let pk_cols: Vec<String> = primary_keys.iter().map(|k| quote_ss(k)).collect();
         let pk_condition = pk_cols
             .iter()
-            .map(|pk| {
-                format!(
-                    "target.{pk} = source.{pk}"
-                )
-            })
+            .map(|pk| format!("target.{pk} = source.{pk}"))
             .collect::<Vec<_>>()
             .join(" AND ");
 
@@ -714,9 +759,9 @@ impl DataWriter for SqlServerDriver {
             );
 
             let mut guard = self.client.lock().await;
-            let client = guard.as_mut().ok_or_else(|| {
-                AppError::Internal("SQL Server client is closed".into())
-            })?;
+            let client = guard
+                .as_mut()
+                .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
 
             let result = client
                 .execute(&query, &[])
@@ -726,7 +771,10 @@ impl DataWriter for SqlServerDriver {
             total_affected += result.total();
         }
 
-        Ok(UpsertResult { affected: total_affected, skipped: 0 })
+        Ok(UpsertResult {
+            affected: total_affected,
+            skipped: 0,
+        })
     }
 }
 
@@ -744,5 +792,83 @@ impl CapabilityProvider for SqlServerDriver {
             supports_returning: false,
             max_batch_size: 500,
         }
+    }
+}
+
+/// Sesión transaccional de script sobre SQL Server.
+/// Usa BEGIN TRANSACTION / COMMIT / ROLLBACK manuales sobre la conexión
+/// compartida del driver (tiberius no expone transacciones de primera clase).
+pub struct SqlServerScriptTransaction {
+    client: Arc<Mutex<Option<Client<Compat<TcpStream>>>>>,
+}
+
+#[async_trait]
+impl crate::db::ScriptTransaction for SqlServerScriptTransaction {
+    async fn execute_statement(
+        &mut self,
+        sql: &str,
+    ) -> crate::db::AppResult<crate::db::StatementOutcome> {
+        let mut guard = self.client.lock().await;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
+
+        let trimmed = sql.trim().to_uppercase();
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("EXEC")
+            || trimmed.starts_with("PRINT");
+
+        if is_select {
+            let mut stream = client
+                .query(sql, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server query failed: {}", e)))?
+                .into_row_stream();
+            let mut count = 0usize;
+            while stream
+                .try_next()
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server query stream failed: {}", e)))?
+                .is_some()
+            {
+                count += 1;
+            }
+            Ok(crate::db::StatementOutcome {
+                rows_affected: None,
+                row_count: Some(count),
+            })
+        } else {
+            let result = client
+                .execute(sql, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("SQL Server execute failed: {}", e)))?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: Some(result.total()),
+                row_count: None,
+            })
+        }
+    }
+
+    async fn commit(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.run_control("COMMIT").await
+    }
+
+    async fn rollback(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.run_control("ROLLBACK").await
+    }
+}
+
+impl SqlServerScriptTransaction {
+    async fn run_control(self: Box<Self>, control_sql: &str) -> crate::db::AppResult<()> {
+        let mut guard = self.client.lock().await;
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| AppError::Internal("SQL Server client is closed".into()))?;
+        client
+            .execute(control_sql, &[])
+            .await
+            .map_err(|e| AppError::Database(format!("SQL Server {} failed: {}", control_sql, e)))?;
+        Ok(())
     }
 }

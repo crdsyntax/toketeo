@@ -73,11 +73,8 @@ impl RelevanceFilter {
             .collect()
     }
 
-    fn collect_fk_targets<'a>(
-        tables: &'a [TableContext],
-    ) -> std::collections::HashMap<&'a str, Vec<&'a str>> {
-        let mut map: std::collections::HashMap<&str, Vec<&str>> =
-            std::collections::HashMap::new();
+    fn collect_fk_targets(tables: &[TableContext]) -> std::collections::HashMap<&str, Vec<&str>> {
+        let mut map: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
         for table in tables {
             for fk in &table.foreign_keys {
                 map.entry(table.name.as_str())

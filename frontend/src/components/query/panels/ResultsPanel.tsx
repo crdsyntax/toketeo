@@ -13,6 +13,8 @@ import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { VisualizePanel } from './VisualizePanel';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 import type { SqlFixResult } from '@/types/assistant';
+import { ScriptLivePanel } from '../ScriptLivePanel';
+import type { ScriptLiveStatement } from '@/services/query.service';
 
 const LIMIT_OPTIONS = [
   { label: '100 rows', value: 100 },
@@ -46,6 +48,9 @@ interface ResultsPanelProps {
   sqlFixSuggestion: SqlFixResult | null;
   setSqlFixSuggestion: (suggestion: SqlFixResult | null) => void;
   sqlFixLoading: boolean;
+  scriptLive: ScriptLiveStatement[] | null;
+  scriptLiveRunning: boolean;
+  onShowScriptSummary: () => void;
 }
 
 export function ResultsPanel({
@@ -72,6 +77,9 @@ export function ResultsPanel({
   sqlFixSuggestion,
   setSqlFixSuggestion,
   sqlFixLoading,
+  scriptLive,
+  scriptLiveRunning,
+  onShowScriptSummary,
 }: ResultsPanelProps) {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -83,8 +91,10 @@ export function ResultsPanel({
   return (
     <div
       className={cn(
-        "border border-border bg-card flex flex-col transition-all duration-200",
-        isResultsPanelVisible ? "flex-1 min-h-[100px] overflow-hidden" : "h-9 shrink-0 overflow-visible"
+        "border border-border bg-card flex flex-col",
+        isResultsPanelVisible
+          ? "flex-1 min-h-[100px] overflow-hidden"
+          : "h-9 shrink-0 overflow-visible transition-all duration-200"
       )}
       onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}
     >
@@ -112,7 +122,21 @@ export function ResultsPanel({
         <div className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-0 min-w-0">
           <ResultsPanelError activeTab={activeTab} updateTabResults={updateTabResults} safeDeleteSuggestion={safeDeleteSuggestion} setSafeDeleteSuggestion={setSafeDeleteSuggestion} sqlFixSuggestion={sqlFixSuggestion} setSqlFixSuggestion={setSqlFixSuggestion} sqlFixLoading={sqlFixLoading} />
 
-          {activeTab?.results && sortedRows.length > 0 ? (
+          {scriptLive ? (
+            <>
+              <ScriptLivePanel
+                statements={scriptLive}
+                running={scriptLiveRunning}
+                onShowSummary={onShowScriptSummary}
+              />
+              {scriptLiveRunning && (
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/90 border border-border shadow-sm backdrop-blur animate-in fade-in zoom-in-95 duration-150">
+                  <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+                  <span className="text-[var(--ch-text-10)] text-muted-foreground font-medium">Running...</span>
+                </div>
+              )}
+            </>
+          ) : activeTab?.results && sortedRows.length > 0 ? (
             <>
               {viewMode === 'json' ? (
                 <div className="flex-1 overflow-auto relative h-full">

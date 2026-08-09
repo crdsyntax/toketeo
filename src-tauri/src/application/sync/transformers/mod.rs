@@ -27,7 +27,10 @@ fn apply_mappings(
     let mut map = serde_json::Map::new();
 
     for mapping in mappings {
-        let value = row.get(&mapping.source_column).cloned().unwrap_or(serde_json::Value::Null);
+        let value = row
+            .get(&mapping.source_column)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
 
         let transformed = if let Some(ref t) = mapping.transform {
             apply_transform(value, t)?
@@ -46,15 +49,18 @@ fn apply_transform(
     transform: &ColumnTransform,
 ) -> AppResult<serde_json::Value> {
     match transform {
-        ColumnTransform::Trim => {
-            Ok(value.as_str().map(|s| serde_json::Value::String(s.trim().to_string())).unwrap_or(value))
-        }
-        ColumnTransform::Uppercase => {
-            Ok(value.as_str().map(|s| serde_json::Value::String(s.to_uppercase())).unwrap_or(value))
-        }
-        ColumnTransform::Lowercase => {
-            Ok(value.as_str().map(|s| serde_json::Value::String(s.to_lowercase())).unwrap_or(value))
-        }
+        ColumnTransform::Trim => Ok(value
+            .as_str()
+            .map(|s| serde_json::Value::String(s.trim().to_string()))
+            .unwrap_or(value)),
+        ColumnTransform::Uppercase => Ok(value
+            .as_str()
+            .map(|s| serde_json::Value::String(s.to_uppercase()))
+            .unwrap_or(value)),
+        ColumnTransform::Lowercase => Ok(value
+            .as_str()
+            .map(|s| serde_json::Value::String(s.to_lowercase()))
+            .unwrap_or(value)),
         ColumnTransform::DefaultValue { value: default } => {
             if value.is_null() {
                 Ok(serde_json::Value::String(default.clone()))
@@ -62,36 +68,31 @@ fn apply_transform(
                 Ok(value)
             }
         }
-        ColumnTransform::Regex { pattern, replacement } => {
+        ColumnTransform::Regex {
+            pattern,
+            replacement,
+        } => {
             let s = value.as_str().unwrap_or("");
             let re = regex::Regex::new(pattern)
                 .map_err(|e| crate::error::AppError::Validation(format!("Invalid regex: {e}")))?;
             let result = re.replace_all(s, replacement.as_str()).to_string();
             Ok(serde_json::Value::String(result))
         }
-        ColumnTransform::Concat { parts } => {
-            Ok(serde_json::Value::String(parts.join("")))
-        }
-        ColumnTransform::Cast { target_type } => {
-            cast_value(value, target_type)
-        }
-        ColumnTransform::DateFormat { format } => {
-            date_format(value, format)
-        }
+        ColumnTransform::Concat { parts } => Ok(serde_json::Value::String(parts.join(""))),
+        ColumnTransform::Cast { target_type } => cast_value(value, target_type),
+        ColumnTransform::DateFormat { format } => date_format(value, format),
     }
 }
 
 fn cast_value(value: serde_json::Value, target_type: &str) -> AppResult<serde_json::Value> {
     match target_type {
-        "string" | "text" | "varchar" => {
-            Ok(serde_json::Value::String(match value {
-                serde_json::Value::String(s) => s,
-                serde_json::Value::Number(n) => n.to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                serde_json::Value::Null => String::new(),
-                other => other.to_string(),
-            }))
-        }
+        "string" | "text" | "varchar" => Ok(serde_json::Value::String(match value {
+            serde_json::Value::String(s) => s,
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Null => String::new(),
+            other => other.to_string(),
+        })),
         "int" | "integer" | "i64" => {
             let n = value.as_i64().unwrap_or(0);
             Ok(serde_json::json!(n))
@@ -132,7 +133,8 @@ fn date_format(value: serde_json::Value, format: &str) -> AppResult<serde_json::
                     "month" => dt.format("%Y-%m").to_string(),
                     _ => {
                         // Treat as strftime format
-                        let fmt = format.replace("YYYY", "%Y")
+                        let fmt = format
+                            .replace("YYYY", "%Y")
                             .replace("yy", "%y")
                             .replace("MM", "%m")
                             .replace("dd", "%d")

@@ -1,30 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { Loader2, CheckCircle2, AlertTriangle, Database, ArrowRightFromLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SyncEvent, SyncRun } from '@/types/sync'
 import { PipelineStatus } from '@/types/sync'
-
-export interface ProgressState {
-  completedBatches: number
-  processedRows: number
-  totalRows: number
-  errors: number
-  skipped: number
-  currentTable: string
-  tableIndex: number
-  totalTables: number
-  phase: 'extracting' | 'loading' | 'done' | 'idle'
-  elapsedMs: number
-  estimatedMs: number
-}
-
-export interface MiniLog {
-  type: 'batch' | 'error' | 'phase'
-  table: string
-  message: string
-  time: Date
-}
+import type { ProgressState, MiniLog } from '@/lib/sync-progress'
 
 interface SyncProgressProps {
   run: SyncRun
@@ -35,33 +15,18 @@ interface SyncProgressProps {
   onEvent?: (event: SyncEvent) => void
 }
 
-export const createInitialProgress = (run: SyncRun): ProgressState => ({
-  completedBatches: 0,
-  processedRows: run.processed_rows,
-  totalRows: run.total_rows,
-  errors: run.error_count,
-  skipped: 0,
-  currentTable: '',
-  tableIndex: 0,
-  totalTables: 0,
-  phase: run.status === PipelineStatus.Completed ? 'done' : 'idle',
-  elapsedMs: 0,
-  estimatedMs: 0,
-})
-
 export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChange, onEvent }: SyncProgressProps) {
-  const startTime = useRef(Date.now())
-  const processedAtStart = useRef(run.processed_rows)
+  const [startTime] = useState(() => Date.now())
 
-  // Reset start time when run changes
+  const latestHandlers = useRef({ onProgressChange, onLogsChange, onEvent })
   useEffect(() => {
-    startTime.current = Date.now()
-    processedAtStart.current = run.processed_rows
-  }, [run.id])
+    latestHandlers.current = { onProgressChange, onLogsChange, onEvent }
+  }, [onProgressChange, onLogsChange, onEvent])
 
   useEffect(() => {
     const unlisten = listen<SyncEvent>('sync:event', (event) => {
       const e = event.payload
+      const { onProgressChange, onLogsChange, onEvent } = latestHandlers.current
       onEvent?.(e)
 
       if (e.TableStarted) {
@@ -89,7 +54,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
         const batch = e.BatchCompleted!
         onProgressChange((p) => {
           const now = Date.now()
-          const elapsed = now - startTime.current
+          const elapsed = now - startTime
           const rowsPerMs = p.processedRows / Math.max(elapsed, 1)
           const remaining = Math.max(p.totalRows - p.processedRows, 0)
           const estimated = rowsPerMs > 0 ? remaining / rowsPerMs : 0
@@ -115,19 +80,19 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           ...prev,
         ].slice(0, 10))
       } else if (e.PhaseCompleted) {
-        onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime.current }))
+        onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
         onLogsChange((prev) => [
           { type: 'phase' as const, table: e.PhaseCompleted!.table, message: `Completado: ${e.PhaseCompleted!.total_rows} filas`, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.Error) {
-        onProgressChange((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime.current }))
+        onProgressChange((p) => ({ ...p, phase: 'done', elapsedMs: Date.now() - startTime }))
         onLogsChange((prev) => [
           { type: 'error' as const, table: '', message: e.Error!.message, time: new Date() },
           ...prev,
         ].slice(0, 10))
       } else if (e.Completed) {
-        onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime.current }))
+        onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
         onLogsChange((prev) => [
           { type: 'phase' as const, table: '', message: 'Sincronización completada', time: new Date() },
           ...prev,
@@ -136,16 +101,16 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
     })
 
     return () => { unlisten.then((f) => f()) }
-  }, [])
+  }, [startTime])
 
   // Elapsed time ticker
   useEffect(() => {
     if (run.status !== PipelineStatus.Running) return
     const interval = setInterval(() => {
-      onProgressChange((p) => ({ ...p, elapsedMs: Date.now() - startTime.current }))
+      latestHandlers.current.onProgressChange((p) => ({ ...p, elapsedMs: Date.now() - startTime }))
     }, 1000)
     return () => clearInterval(interval)
-  }, [run.status])
+  }, [run.status, startTime])
 
   const isRunning = run.status === PipelineStatus.Running
   const isCompleted = run.status === PipelineStatus.Completed

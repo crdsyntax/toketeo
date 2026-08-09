@@ -77,7 +77,9 @@ impl AiAdapter for OpenAiAdapter {
             .map_err(|e| AppError::Internal(format!("OpenAI models request failed: {e}")))?;
 
         if !resp.status().is_success() {
-            return Err(AppError::Internal("Failed to list OpenAI models".to_string()));
+            return Err(AppError::Internal(
+                "Failed to list OpenAI models".to_string(),
+            ));
         }
 
         let data: serde_json::Value = resp

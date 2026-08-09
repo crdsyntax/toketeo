@@ -127,7 +127,10 @@ impl AssistantTool for AppSettingsTool {
                     });
                 }
                 emit(&serde_json::json!({ "kind": "accent", "value": palette }));
-                let _ = state.storage.set_preference("app.accentPalette", palette).await;
+                let _ = state
+                    .storage
+                    .set_preference("app.accentPalette", palette)
+                    .await;
                 Ok(ToolResult {
                     ok: true,
                     data: Some(serde_json::json!({ "palette": palette })),

@@ -27,6 +27,12 @@ pub struct ToolEngine {
     tools: HashMap<String, Box<dyn AssistantTool>>,
 }
 
+impl Default for ToolEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolEngine {
     pub fn new() -> Self {
         Self {
@@ -90,9 +96,7 @@ impl ToolEngine {
                 ok: false,
                 data: None,
                 requires_confirmation: true,
-                message: Some(format!(
-                    "CONNECTION_NOT_ACTIVE|{name}|{cid}"
-                )),
+                message: Some(format!("CONNECTION_NOT_ACTIVE|{name}|{cid}")),
             });
         }
 
@@ -122,9 +126,7 @@ impl ToolEngine {
                         ok: false,
                         data: None,
                         requires_confirmation: true,
-                        message: Some(format!(
-                            "This operation is destructive. Call again with confirm_destructive=true to proceed."
-                        )),
+                        message: Some("This operation is destructive. Call again with confirm_destructive=true to proceed.".to_string()),
                     })
                 } else {
                     match self.resolve_driver(&args, driver, state, false).await {
@@ -165,7 +167,10 @@ impl ToolEngine {
                         )),
                     });
                 }
-                match self.resolve_driver(&args, driver, state, confirm_destructive).await {
+                match self
+                    .resolve_driver(&args, driver, state, confirm_destructive)
+                    .await
+                {
                     Ok(own) => {
                         let effective = own.as_deref().or(driver);
                         tool.execute(args, effective, state).await
@@ -202,14 +207,6 @@ impl SafetyClassifier {
     }
 }
 
-
-
-
-
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::SafetyClassifier;
@@ -229,14 +226,24 @@ mod tests {
             "  select * from t",
         ] {
             let expected = !q.trim_start().starts_with("select");
-            assert_eq!(SafetyClassifier::is_destructive_query(q), expected, "for {q}");
+            assert_eq!(
+                SafetyClassifier::is_destructive_query(q),
+                expected,
+                "for {q}"
+            );
         }
     }
 
     #[test]
     fn safety_classifier_treats_select_as_safe() {
-        assert!(!SafetyClassifier::is_destructive_query("SELECT * FROM users"));
-        assert!(!SafetyClassifier::is_destructive_query("  select count(*) from t"));
-        assert!(!SafetyClassifier::is_destructive_query("WITH x AS (SELECT 1) SELECT * FROM x"));
+        assert!(!SafetyClassifier::is_destructive_query(
+            "SELECT * FROM users"
+        ));
+        assert!(!SafetyClassifier::is_destructive_query(
+            "  select count(*) from t"
+        ));
+        assert!(!SafetyClassifier::is_destructive_query(
+            "WITH x AS (SELECT 1) SELECT * FROM x"
+        ));
     }
 }

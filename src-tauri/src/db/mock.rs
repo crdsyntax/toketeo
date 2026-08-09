@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::db::{CapabilityProvider, DataReader, DataWriter, DbDriver, DbType, UpsertResult};
 use crate::error::AppResult;
-use crate::models::QueryResult;
 use crate::models::sync::DriverCapabilities;
+use crate::models::QueryResult;
 
 /// A table definition served by the mock.
 #[derive(Debug, Clone, Default)]
@@ -79,11 +79,7 @@ impl MockDriver {
     }
 
     fn find_table(&self, name: &str) -> Option<MockTable> {
-        self.spec()
-            .tables
-            .iter()
-            .find(|t| t.name == name)
-            .cloned()
+        self.spec().tables.iter().find(|t| t.name == name).cloned()
     }
 }
 
@@ -102,7 +98,10 @@ impl DataReader for MockDriver {
     }
 
     async fn count_rows(&self, table: &str, _schema: Option<&str>) -> AppResult<u64> {
-        Ok(self.find_table(table).map(|t| t.rows.len() as u64).unwrap_or(0))
+        Ok(self
+            .find_table(table)
+            .map(|t| t.rows.len() as u64)
+            .unwrap_or(0))
     }
 }
 
@@ -147,13 +146,17 @@ impl DbDriver for MockDriver {
                 .unwrap_or_default();
             let t = self.find_table(&table).unwrap_or_default();
             return Ok(QueryResult {
-                columns: t.columns.iter().filter_map(|c| {
-                    c.get("name").and_then(|v| v.as_str()).map(String::from)
-                }).collect(),
+                columns: t
+                    .columns
+                    .iter()
+                    .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
+                    .collect(),
                 rows: t.rows,
                 execution_time_ms: 1,
                 primary_keys: Some(vec!["id".to_string()]),
                 rows_affected: 0,
+
+                next_cursor: None,
             });
         }
         Ok(QueryResult {
@@ -162,6 +165,8 @@ impl DbDriver for MockDriver {
             execution_time_ms: 0,
             primary_keys: None,
             rows_affected: 1,
+
+            next_cursor: None,
         })
     }
 
@@ -178,12 +183,7 @@ impl DbDriver for MockDriver {
         _schema: Option<String>,
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        Ok(self
-            .spec()
-            .tables
-            .iter()
-            .map(|t| t.name.clone())
-            .collect())
+        Ok(self.spec().tables.iter().map(|t| t.name.clone()).collect())
     }
 
     async fn fetch_views(
@@ -223,7 +223,10 @@ impl DbDriver for MockDriver {
         table: &str,
         _schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        Ok(self.find_table(table).map(|t| t.columns).unwrap_or_default())
+        Ok(self
+            .find_table(table)
+            .map(|t| t.columns)
+            .unwrap_or_default())
     }
 
     async fn fetch_indexes(
@@ -236,7 +239,11 @@ impl DbDriver for MockDriver {
             .map(|t| {
                 t.columns
                     .iter()
-                    .filter(|c| c.get("isPrimaryKey").and_then(|v| v.as_bool()).unwrap_or(false))
+                    .filter(|c| {
+                        c.get("isPrimaryKey")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                    })
                     .cloned()
                     .collect()
             })

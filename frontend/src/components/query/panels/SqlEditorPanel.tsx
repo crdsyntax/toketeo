@@ -122,15 +122,6 @@ export function SqlEditorPanel({
       });
     };
 
-    const handleEditorWheel = (event: WheelEvent) => {
-      const delta = event.deltaY;
-      if (!delta) return;
-
-      event.preventDefault();
-      view.scrollDOM.scrollTop += delta;
-      captureState(view);
-    };
-
     const handleEditorKeyUp = () => {
       const pos = view.state.selection.main.head;
       const line = view.state.doc.lineAt(pos);
@@ -141,9 +132,8 @@ export function SqlEditorPanel({
     view.dom.addEventListener('paste', handleEditorPaste);
     view.dom.addEventListener('keyup', handleEditorKeyUp);
     view.dom.addEventListener('click', () => captureState(view));
-    view.scrollDOM.addEventListener('wheel', handleEditorWheel, { passive: false });
     view.scrollDOM.addEventListener('scroll', () => captureState(view));
-  }, [editorRef, captureState, executeCurrent]);
+  }, [editorRef, captureState]);
 
   // Restore the stored view state once the editor mounts for a given tab.
   useEffect(() => {

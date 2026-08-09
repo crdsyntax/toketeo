@@ -119,22 +119,30 @@ impl AssistantTool for ExplorerTool {
             "columns" => {
                 let object = required_object(&args)?;
                 let c = driver.fetch_columns(&object, schema).await?;
-                Ok(success(serde_json::json!({ "table": object, "columns": c })))
+                Ok(success(
+                    serde_json::json!({ "table": object, "columns": c }),
+                ))
             }
             "indexes" => {
                 let object = required_object(&args)?;
                 let i = driver.fetch_indexes(&object, schema).await?;
-                Ok(success(serde_json::json!({ "table": object, "indexes": i })))
+                Ok(success(
+                    serde_json::json!({ "table": object, "indexes": i }),
+                ))
             }
             "foreignKeys" => {
                 let object = required_object(&args)?;
                 let fk = driver.fetch_foreign_keys(&object, schema).await?;
-                Ok(success(serde_json::json!({ "table": object, "foreignKeys": fk })))
+                Ok(success(
+                    serde_json::json!({ "table": object, "foreignKeys": fk }),
+                ))
             }
             "constraints" => {
                 let object = required_object(&args)?;
                 let c = driver.fetch_constraints(&object, schema).await?;
-                Ok(success(serde_json::json!({ "table": object, "constraints": c })))
+                Ok(success(
+                    serde_json::json!({ "table": object, "constraints": c }),
+                ))
             }
             "ddl" => {
                 let object = required_object(&args)?;
@@ -148,11 +156,7 @@ impl AssistantTool for ExplorerTool {
                     .iter()
                     .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
                     .collect();
-                let query = format!(
-                    "SELECT {} FROM {} LIMIT 100",
-                    col_names.join(", "),
-                    object
-                );
+                let query = format!("SELECT {} FROM {} LIMIT 100", col_names.join(", "), object);
                 let result = driver.execute(&query).await?;
                 Ok(success(serde_json::json!({
                     "table": object,

@@ -59,10 +59,7 @@ impl AssistantTool for ExplainTool {
             }
         };
 
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         if query.is_empty() {
             return Ok(ToolResult {
                 ok: false,

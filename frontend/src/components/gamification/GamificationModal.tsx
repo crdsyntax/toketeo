@@ -63,10 +63,12 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
           if (reordered.length === SOUL_ITEMS.length) {
             setSoulItems(reordered);
           }
-        } catch {}
+        } catch {
+          // ignore load errors
+        }
       }
     }).finally(() => setCharacterLoading(false));
-  }, []);
+  }, [setSoulItems]);
 
   useEffect(() => {
     if (characterLoading) return;

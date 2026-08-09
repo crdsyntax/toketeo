@@ -183,8 +183,7 @@ impl SyncExecutionService {
             .iter()
             .enumerate()
             .filter(|(_, t)| {
-                t.primary_key.is_none()
-                    || t.primary_key.as_ref().is_some_and(|v| v.is_empty())
+                t.primary_key.is_none() || t.primary_key.as_ref().is_some_and(|v| v.is_empty())
             })
             .map(|(i, _)| i)
             .collect();
@@ -224,9 +223,7 @@ impl SyncExecutionService {
                                     .unwrap_or(false)
                             })
                             .filter_map(|c| {
-                                c.get("name")
-                                    .and_then(|v| v.as_str())
-                                    .map(String::from)
+                                c.get("name").and_then(|v| v.as_str()).map(String::from)
                             })
                             .collect();
                         if !pks.is_empty() {
@@ -240,11 +237,7 @@ impl SyncExecutionService {
                         }
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "[sync] Failed to fetch columns for {}: {}",
-                            table_name,
-                            e
-                        );
+                        tracing::error!("[sync] Failed to fetch columns for {}: {}", table_name, e);
                     }
                 }
             }

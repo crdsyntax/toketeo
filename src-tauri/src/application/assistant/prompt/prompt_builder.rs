@@ -104,15 +104,26 @@ impl PromptBuilder {
         parts.push("=== RULES ===".to_string());
         parts.push("1. Use the available TOOLS to execute tasks — do NOT explain how to do something, DO it.".to_string());
         parts.push("2. For schema comparisons call the `compare_schema` tool with source and target connection IDs.".to_string());
-        parts.push("3. For backups call the `backup` tool with a connection_id, schema, and file path.".to_string());
-        parts.push("4. For export call the `export` tool with a table name and format (sql/json).".to_string());
-        parts.push("5. For index suggestions call the `index` tool with a table name and connection_id.".to_string());
+        parts.push(
+            "3. For backups call the `backup` tool with a connection_id, schema, and file path."
+                .to_string(),
+        );
+        parts.push(
+            "4. For export call the `export` tool with a table name and format (sql/json)."
+                .to_string(),
+        );
+        parts.push(
+            "5. For index suggestions call the `index` tool with a table name and connection_id."
+                .to_string(),
+        );
         parts.push("6. For SQL explanations call the `explain` tool with a query.".to_string());
         parts.push("7. For cross-dialect DDL generation call the `auto_schema` tool with table name and target dialect.".to_string());
         parts.push("8. For database syncs call the `sync` tool with source_connection_id, target_connection_id, and optional tables + mode (full/incremental).".to_string());
         parts.push("9. Write only valid SQL for the specified engine.".to_string());
         parts.push("10. Use appropriate data types and functions.".to_string());
-        parts.push("11. Consider performance: prefer JOINs over subqueries when possible.".to_string());
+        parts.push(
+            "11. Consider performance: prefer JOINs over subqueries when possible.".to_string(),
+        );
         parts.push("12. If the user refers to the connection that is currently active in the app, call tools WITHOUT a connection_id — the active connection is used automatically. Only pass connection_id when the user asks for a DIFFERENT connection.".to_string());
         parts.push("13. When a tool reports that a connection is not active or that an operation needs approval, reply to the user with a single natural-language question (e.g. \"¿Conecto la conexión X?\" or \"¿Procedo con Y?\") and STOP calling tools until the user confirms. NEVER mention confirm_destructive, requires_confirmation, tool names, JSON payloads, or any internal mechanism.".to_string());
         parts.push("14. After a tool succeeds, reply ONLY with the requested data (e.g. the rows, counts or files) formatted readably — never raw JSON, never the tool output itself. If the operation failed, say briefly why it failed and suggest what the user could try next.".to_string());
@@ -149,7 +160,9 @@ impl PromptBuilder {
 
         let mut ctx = ctx.clone();
         let total_tokens = ctx.tables.iter().fold(0, |acc, t| {
-            acc + Self::estimate_tokens(&t.name) + t.columns.len() * 8 + t.indexes.len() * 6
+            acc + Self::estimate_tokens(&t.name)
+                + t.columns.len() * 8
+                + t.indexes.len() * 6
                 + t.foreign_keys.len() * 8
         });
 

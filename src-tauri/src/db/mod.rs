@@ -1,6 +1,6 @@
-use crate::error::AppResult;
-use crate::models::QueryResult;
+use crate::error::{AppError, AppResult};
 use crate::models::sync::DriverCapabilities;
+use crate::models::QueryResult;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -45,11 +45,7 @@ pub trait DataReader: Send + Sync {
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>>;
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64>;
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64>;
 }
 
 /// Escritura de datos con upsert.
@@ -72,10 +68,43 @@ pub struct UpsertResult {
     pub skipped: u64,
 }
 
+/// Resultado de un statement dentro de una sesión de script: filas afectadas
+/// (DML) o número de filas devueltas (SELECT). Los datos de SELECT no viajan
+/// por IPC: solo el conteo.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StatementOutcome {
+    pub rows_affected: Option<u64>,
+    pub row_count: Option<usize>,
+}
+
+/// Sesión transaccional para ejecutar un script statement a statement sobre
+/// UNA conexión: BEGIN al crearla, COMMIT/ROLLBACK al finalizar.
+/// Las implementaciones con sqlx usan `Transaction` (rollback automático en
+/// drop si nunca se llama commit/rollback).
+#[async_trait]
+pub trait ScriptTransaction: Send + Sync {
+    async fn execute_statement(&mut self, sql: &str) -> AppResult<StatementOutcome>;
+    async fn commit(self: Box<Self>) -> AppResult<()>;
+    async fn rollback(self: Box<Self>) -> AppResult<()>;
+}
+
+pub type BoxScriptTransaction = Box<dyn ScriptTransaction>;
+
 #[async_trait]
 pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     fn db_type(&self) -> DbType;
     async fn execute(&self, query: &str) -> AppResult<QueryResult>;
+    /// Ejecuta una query con parámetros bindeados (identificadores/valores
+    /// sanitizados por el driver). Fallback por defecto: no soportado.
+    async fn execute_with_params(
+        &self,
+        _query: &str,
+        _params: &[Option<String>],
+    ) -> AppResult<QueryResult> {
+        Err(AppError::Validation(
+            "execute_with_params is not supported for this database type".into(),
+        ))
+    }
     async fn execute_with_schema(&self, query: &str, _schema: &str) -> AppResult<QueryResult> {
         self.execute(query).await
     }
@@ -146,7 +175,16 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>>;
     async fn fetch_mongo_structure(&self) -> AppResult<serde_json::Value> {
-        Err(crate::error::AppError::Validation("Not supported for this database type".to_string()))
+        Err(crate::error::AppError::Validation(
+            "Not supported for this database type".to_string(),
+        ))
+    }
+    /// Abre una sesión transaccional para ejecutar un script statement a
+    /// statement (BEGIN + conexión única). Soporte por defecto: no soportado.
+    async fn begin_script(&self, _schema: Option<&str>) -> AppResult<Box<dyn ScriptTransaction>> {
+        Err(AppError::Validation(
+            "Script execution is not supported for this database type".into(),
+        ))
     }
     async fn close(&self) -> AppResult<()>;
 }
@@ -156,8 +194,8 @@ pub trait CapabilityProvider: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
 }
 
-pub mod mongodb;
 pub mod common;
+pub mod mongodb;
 pub mod mysql;
 pub mod postgres;
 pub mod redis;
@@ -211,14 +249,12 @@ impl DataReader for std::sync::Arc<dyn DbDriver> {
         last_key: Option<serde_json::Value>,
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>> {
-        (**self).fetch_rows(table, schema, columns, pk_column, last_key, batch_size).await
+        (**self)
+            .fetch_rows(table, schema, columns, pk_column, last_key, batch_size)
+            .await
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        schema: Option<&str>,
-    ) -> AppResult<u64> {
+    async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
         (**self).count_rows(table, schema).await
     }
 }
@@ -233,7 +269,9 @@ impl DataWriter for std::sync::Arc<dyn DbDriver> {
         primary_keys: &[String],
         rows: &[serde_json::Value],
     ) -> AppResult<UpsertResult> {
-        (**self).upsert_rows(table, schema, columns, primary_keys, rows).await
+        (**self)
+            .upsert_rows(table, schema, columns, primary_keys, rows)
+            .await
     }
 }
 
@@ -251,11 +289,26 @@ impl From<&crate::models::DbConnectionConfig> for Option<PoolConfig> {
 
         Some(PoolConfig {
             max_connections: if max > 0 { max as u32 } else { 5 },
-            idle_timeout: if idle > 0 { Some(Duration::from_secs(idle as u64)) } else { None },
-            acquire_timeout: if acq > 0 { Duration::from_secs(acq as u64) } else { Duration::from_secs(30) },
-            max_lifetime: if life > 0 { Some(Duration::from_secs(life as u64)) } else { None },
-            keep_alive: if ka > 0 { Some(Duration::from_secs(ka as u64)) } else { None },
+            idle_timeout: if idle > 0 {
+                Some(Duration::from_secs(idle as u64))
+            } else {
+                None
+            },
+            acquire_timeout: if acq > 0 {
+                Duration::from_secs(acq as u64)
+            } else {
+                Duration::from_secs(30)
+            },
+            max_lifetime: if life > 0 {
+                Some(Duration::from_secs(life as u64))
+            } else {
+                None
+            },
+            keep_alive: if ka > 0 {
+                Some(Duration::from_secs(ka as u64))
+            } else {
+                None
+            },
         })
     }
 }
-

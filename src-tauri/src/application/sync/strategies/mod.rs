@@ -1,6 +1,6 @@
+use crate::application::sync::extractors::DataExtractor;
 use crate::error::AppResult;
 use crate::models::sync::{SyncPipeline, SyncRun};
-use crate::application::sync::extractors::DataExtractor;
 use crate::state::SyncController;
 use crate::storage::Storage;
 use async_trait::async_trait;

@@ -5,8 +5,8 @@ use crate::application::assistant::sql_fixer::SqlFixer;
 use crate::application::assistant::tools::recommendation_engine::RecommendationEngine;
 use crate::error::AppResult;
 use crate::models::assistant::{
-    AssistantTurn, KnowledgeCase, ModelInfo, Preference, ProviderConfig, ProviderInfo, SqlFixResult,
-    TestResult, ToolDescriptor, ToolResult,
+    AssistantTurn, KnowledgeCase, ModelInfo, Preference, ProviderConfig, ProviderInfo,
+    SqlFixResult, TestResult, ToolDescriptor, ToolResult,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -140,9 +140,15 @@ pub async fn assistant_chat(
         }
     };
 
-    ChatOrchestrator::new(&state, &connection_id, &question, &config, confirm_destructive)
-        .run()
-        .await
+    ChatOrchestrator::new(
+        &state,
+        &connection_id,
+        &question,
+        &config,
+        confirm_destructive,
+    )
+    .run()
+    .await
 }
 
 /// Ask the assistant to fix a failing SQL query using the DB error message.
@@ -160,8 +166,9 @@ pub async fn assistant_fix_sql(
             return Ok(SqlFixResult {
                 sql: None,
                 alternatives: vec![],
-                explanation: "No AI provider configured. Go to Settings → AI Providers to set one up."
-                    .to_string(),
+                explanation:
+                    "No AI provider configured. Go to Settings → AI Providers to set one up."
+                        .to_string(),
                 status: "unconfigured".to_string(),
             })
         }
@@ -190,7 +197,10 @@ pub async fn assistant_list_knowledge(
     limit: Option<i64>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<KnowledgeCase>> {
-    state.storage.list_knowledge_all(&engine, limit.unwrap_or(50)).await
+    state
+        .storage
+        .list_knowledge_all(&engine, limit.unwrap_or(50))
+        .await
 }
 
 #[tauri::command]
@@ -245,16 +255,16 @@ pub async fn assistant_record_feedback(
             )
             .await
         }
-        _ => Err(crate::error::AppError::Internal(format!("Unknown rating: {rating}"))),
+        _ => Err(crate::error::AppError::Internal(format!(
+            "Unknown rating: {rating}"
+        ))),
     }
 }
 
 // ── Preferences ──
 
 #[tauri::command]
-pub async fn assistant_get_preferences(
-    state: State<'_, AppState>,
-) -> AppResult<Vec<Preference>> {
+pub async fn assistant_get_preferences(state: State<'_, AppState>) -> AppResult<Vec<Preference>> {
     state.storage.get_preferences().await
 }
 
@@ -285,10 +295,7 @@ pub async fn assistant_execute_tool(
     let driver = if connection_id.is_empty() {
         None
     } else {
-        match state.get_connection(&connection_id).await {
-            Ok(d) => Some(d),
-            Err(_) => None,
-        }
+        state.get_connection(&connection_id).await.ok()
     };
 
     state
@@ -316,10 +323,7 @@ pub async fn assistant_get_recommendations(
         .storage
         .load_query_history(&connection_id, 100)
         .await?;
-    let cases = state
-        .storage
-        .list_knowledge_global(200)
-        .await?;
+    let cases = state.storage.list_knowledge_global(200).await?;
 
     Ok(RecommendationEngine::analyze(&messages, &history, &cases))
 }

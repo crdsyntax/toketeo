@@ -5,10 +5,11 @@ import {
   CalendarClock, Sparkles, Flame, Shield, Star, Gauge
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Environment } from '@/types/database'
+import { Environment, DatabaseType } from '@/types/database'
 import { useAppStore } from '@/store/useAppStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
+import { getEngineConfig } from '@/lib/engine-icons'
 import { NotificationBell } from './NotificationBell'
 
 interface NavItem {
@@ -53,6 +54,15 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
   const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
   const { level, streak } = useGamificationStore()
   const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION
+  const activeEngineType = activeConnection?.type ?? null
+
+  const enginePills: DatabaseType[] = [
+    DatabaseType.POSTGRES,
+    DatabaseType.MYSQL,
+    DatabaseType.MONGODB,
+    DatabaseType.REDIS,
+    DatabaseType.SQLITE,
+  ]
 
   return (
     <header className="h-12 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0 relative z-40">
@@ -169,6 +179,27 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
             </button>
           </div>
         )}
+
+        <div className="hidden lg:flex items-center gap-0.5 p-0.5 bg-surface border border-border rounded-lg">
+          {enginePills.map((type) => {
+            const config = getEngineConfig(type)
+            const isActive = activeEngineType === type
+            return (
+              <span
+                key={type}
+                title={config.label}
+                className={cn(
+                  'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider select-none transition-all duration-200',
+                  isActive
+                    ? cn(config.bgClass, config.textClass, config.borderClass, 'border')
+                    : 'text-muted-foreground/60'
+                )}
+              >
+                {type.toUpperCase()}
+              </span>
+            )
+          })}
+        </div>
 
         <NotificationBell />
 

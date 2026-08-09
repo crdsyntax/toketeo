@@ -68,7 +68,11 @@ impl AssistantTool for CompareDataTool {
         let tables: Vec<String> = args
             .get("tables")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         if source_id.is_empty() || target_id.is_empty() || tables.is_empty() {
@@ -76,7 +80,10 @@ impl AssistantTool for CompareDataTool {
                 ok: false,
                 data: None,
                 requires_confirmation: false,
-                message: Some("source_connection_id, target_connection_id, and tables are required.".to_string()),
+                message: Some(
+                    "source_connection_id, target_connection_id, and tables are required."
+                        .to_string(),
+                ),
             });
         }
 
@@ -89,15 +96,7 @@ impl AssistantTool for CompareDataTool {
             .unwrap_or(10000) as usize;
 
         let report = CompareService::compare_data(
-            source,
-            target,
-            None,
-            None,
-            &tables,
-            chunk_size,
-            None,
-            None,
-            None,
+            source, target, None, None, &tables, chunk_size, None, None, None,
         )
         .await?;
 

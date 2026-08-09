@@ -67,10 +67,7 @@ impl AssistantTool for ExportTool {
             }
         };
 
-        let table = args
-            .get("table")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let table = args.get("table").and_then(|v| v.as_str()).unwrap_or("");
         if table.is_empty() {
             return Ok(ToolResult {
                 ok: false,
@@ -80,10 +77,7 @@ impl AssistantTool for ExportTool {
             });
         }
 
-        let format = args
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("sql");
+        let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("sql");
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100);
 
         let columns = driver.fetch_columns(table, None).await?;
@@ -107,7 +101,7 @@ impl AssistantTool for ExportTool {
                 "rows": result.rows,
             }),
             _ => {
-                let sql = format_insert(&table, &col_names, &result.rows);
+                let sql = format_insert(table, &col_names, &result.rows);
                 serde_json::json!({
                     "table": table,
                     "rowCount": result.rows.len(),

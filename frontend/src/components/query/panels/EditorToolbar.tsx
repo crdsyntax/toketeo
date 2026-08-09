@@ -7,6 +7,7 @@ import {
   Loader2,
   Square,
   Clock,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRef } from 'react';
@@ -28,6 +29,14 @@ interface EditorToolbarProps {
   showHistory: boolean;
   historyCount: number;
   onNewWithConnection: () => void;
+  executionTime?: number;
+  query?: string;
+}
+
+function formatMs(ms: number) {
+  if (!Number.isFinite(ms)) return '—'
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`
+  return `${ms < 100 ? Number(ms.toFixed(1)) : Math.round(ms)}ms`
 }
 
 export function EditorToolbar({
@@ -46,6 +55,8 @@ export function EditorToolbar({
   showHistory,
   historyCount,
   onNewWithConnection,
+  executionTime,
+  query,
 }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,7 +143,7 @@ export function EditorToolbar({
         <button
           onClick={() => onExecute()}
           disabled={isExecuting}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-1.5 rounded-none text-xs font-bold hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
+          className="flex items-center gap-2 bg-[var(--ch-primary,var(--primary))] hover:opacity-90 text-primary-foreground px-4 py-1.5 rounded-[var(--ch-radius,6px)] font-bold shadow-sm transition-all disabled:opacity-50 disabled:hover:opacity-50 [font-family:var(--ch-ui-font-family,inherit)] [font-size:var(--ch-ui-font-size,0.75rem)]"
           title="Execute the entire script (Run All)"
         >
           {isExecuting ? (
@@ -140,13 +151,19 @@ export function EditorToolbar({
           ) : (
             <Play className="w-3.5 h-3.5 fill-current" />
           )}
-          {isExecuting ? 'Running...' : 'Run All'}
+          {isExecuting ? 'Running...' : 'Run Query'}
         </button>
+
+        {executionTime !== undefined && !isExecuting && (
+          <span className="text-xs font-bold text-emerald-400 font-mono">
+            Time: {formatMs(executionTime)}
+          </span>
+        )}
 
         {isExecuting && (
           <button
             onClick={onCancel}
-            className="flex items-center gap-2 bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1.5 rounded-none text-xs font-bold hover:bg-destructive/20 transition-colors shadow-sm"
+            className="flex items-center gap-2 bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1.5 rounded-full text-xs font-bold hover:bg-destructive/20 transition-colors shadow-sm"
           >
             <Square className="w-3 h-3 fill-current" /> Stop
           </button>
@@ -154,6 +171,16 @@ export function EditorToolbar({
       </div>
 
       <div className="flex items-center gap-1 p-0.5 bg-muted/30 rounded-lg border border-border/50">
+        <button
+          onClick={() => {
+            if (query) navigator.clipboard.writeText(query).catch(() => undefined);
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+          title="Copy query to clipboard"
+        >
+          <Copy className="w-3.5 h-3.5" />
+          Copy
+        </button>
         <button
           onClick={onHistoryToggle}
           className={cn(

@@ -15,7 +15,11 @@ fn json_to_sqlite_value(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => "NULL".to_string(),
         serde_json::Value::Bool(b) => {
-            if *b { "1".to_string() } else { "0".to_string() }
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
         }
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
@@ -89,6 +93,19 @@ impl DbDriver for SqliteDriver {
         DbType::Sqlite
     }
 
+    async fn begin_script(
+        &self,
+        _schema: Option<&str>,
+    ) -> crate::db::AppResult<crate::db::BoxScriptTransaction> {
+        let conn = self.pool.acquire().await.map_err(|e| {
+            AppError::Connection(format!("Failed to acquire SQLite connection: {}", e))
+        })?;
+        let tx = sqlx::Transaction::begin(conn, None).await.map_err(|e| {
+            AppError::Database(format!("Failed to begin script transaction: {}", e))
+        })?;
+        Ok(Box::new(SqliteScriptTransaction { tx }))
+    }
+
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
         let rows = self.run_query(query).await?;
@@ -107,6 +124,8 @@ impl DbDriver for SqliteDriver {
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
             rows_affected: 0,
+
+            next_cursor: None,
         })
     }
 
@@ -123,7 +142,9 @@ impl DbDriver for SqliteDriver {
         _schema: Option<String>,
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let rows = self.run_query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").await?;
+        let rows = self
+            .run_query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -138,7 +159,9 @@ impl DbDriver for SqliteDriver {
         _schema: Option<String>,
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let rows = self.run_query("SELECT name FROM sqlite_master WHERE type='view' ORDER BY name").await?;
+        let rows = self
+            .run_query("SELECT name FROM sqlite_master WHERE type='view' ORDER BY name")
+            .await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -161,7 +184,9 @@ impl DbDriver for SqliteDriver {
         _schema: Option<String>,
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        let rows = self.run_query("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name").await?;
+        let rows = self
+            .run_query("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
+            .await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -190,8 +215,16 @@ impl DbDriver for SqliteDriver {
         let mut cols = Vec::new();
         for row in rows {
             let mut map = serde_json::Map::new();
-            let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let col_type = row.get("type").and_then(|v| v.as_str()).unwrap_or("TEXT").to_string();
+            let name = row
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let col_type = row
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("TEXT")
+                .to_string();
             let notnull = row.get("notnull").and_then(|v| v.as_i64()).unwrap_or(0);
             let pk = row.get("pk").and_then(|v| v.as_i64()).unwrap_or(0);
             let default_val = row.get("dflt_value").and_then(|v| v.as_str());
@@ -200,7 +233,12 @@ impl DbDriver for SqliteDriver {
             map.insert("type".into(), serde_json::Value::String(col_type));
             map.insert("isNullable".into(), serde_json::json!(notnull == 0));
             map.insert("isPrimaryKey".into(), serde_json::json!(pk != 0));
-            map.insert("defaultValue".into(), default_val.map(|s| serde_json::Value::String(s.to_string())).unwrap_or(serde_json::Value::Null));
+            map.insert(
+                "defaultValue".into(),
+                default_val
+                    .map(|s| serde_json::Value::String(s.to_string()))
+                    .unwrap_or(serde_json::Value::Null),
+            );
             map.insert("comment".into(), serde_json::Value::Null);
             cols.push(serde_json::Value::Object(map));
         }
@@ -220,8 +258,14 @@ impl DbDriver for SqliteDriver {
         let mut indexes = Vec::new();
         for row in rows {
             let mut map = serde_json::Map::new();
-            map.insert("name".into(), row.get("name").cloned().unwrap_or(serde_json::Value::Null));
-            map.insert("type".into(), serde_json::Value::String("btree".to_string()));
+            map.insert(
+                "name".into(),
+                row.get("name").cloned().unwrap_or(serde_json::Value::Null),
+            );
+            map.insert(
+                "type".into(),
+                serde_json::Value::String("btree".to_string()),
+            );
             indexes.push(serde_json::Value::Object(map));
         }
         Ok(indexes)
@@ -232,7 +276,10 @@ impl DbDriver for SqliteDriver {
         table: &str,
         _schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let pragma_query = format!("PRAGMA foreign_key_list(\"{}\")", table.replace('"', "\"\""));
+        let pragma_query = format!(
+            "PRAGMA foreign_key_list(\"{}\")",
+            table.replace('"', "\"\"")
+        );
         self.run_query(&pragma_query).await
     }
 
@@ -262,7 +309,10 @@ impl DbDriver for SqliteDriver {
                 return Ok(sql.to_string());
             }
         }
-        Err(AppError::Internal(format!("Could not retrieve DDL for {} {}", object_type, name)))
+        Err(AppError::Internal(format!(
+            "Could not retrieve DDL for {} {}",
+            object_type, name
+        )))
     }
 
     async fn fetch_parameters(
@@ -314,19 +364,23 @@ impl DataReader for SqliteDriver {
         } else {
             format!(
                 "SELECT {} FROM {} ORDER BY {} ASC LIMIT {}",
-                select_clause, table_ref, quote_sqlite(pk_column), batch_size,
+                select_clause,
+                table_ref,
+                quote_sqlite(pk_column),
+                batch_size,
             )
         };
 
         self.run_query(&query).await
     }
 
-    async fn count_rows(
-        &self,
-        table: &str,
-        _schema: Option<&str>,
-    ) -> AppResult<u64> {
-        let rows = self.run_query(&format!("SELECT COUNT(*) as cnt FROM {}", quote_sqlite(table))).await?;
+    async fn count_rows(&self, table: &str, _schema: Option<&str>) -> AppResult<u64> {
+        let rows = self
+            .run_query(&format!(
+                "SELECT COUNT(*) as cnt FROM {}",
+                quote_sqlite(table)
+            ))
+            .await?;
         Ok(rows
             .first()
             .and_then(|r| r.get("cnt").and_then(|v| v.as_i64()))
@@ -388,13 +442,17 @@ impl DataWriter for SqliteDriver {
                 Err(e) => {
                     tracing::warn!(
                         "[sqlite] upsert_rows failed for row in {}: {}",
-                        table_ref, e,
+                        table_ref,
+                        e,
                     );
                 }
             }
         }
 
-        Ok(UpsertResult { affected: total_affected, skipped: 0 })
+        Ok(UpsertResult {
+            affected: total_affected,
+            skipped: 0,
+        })
     }
 }
 
@@ -413,4 +471,54 @@ impl CapabilityProvider for SqliteDriver {
             max_batch_size: 500,
         }
     }
+}
+
+#[async_trait]
+impl crate::db::ScriptTransaction for SqliteScriptTransaction {
+    async fn execute_statement(
+        &mut self,
+        sql: &str,
+    ) -> crate::db::AppResult<crate::db::StatementOutcome> {
+        use sqlx::Executor;
+        let trimmed = sql.trim().to_uppercase();
+        let is_select = trimmed.starts_with("SELECT")
+            || trimmed.starts_with("SHOW")
+            || trimmed.starts_with("PRAGMA")
+            || trimmed.starts_with("EXPLAIN")
+            || trimmed.starts_with("WITH");
+        if is_select {
+            let rows = sqlx::query(sql).fetch_all(&mut *self.tx).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: None,
+                row_count: Some(rows.len()),
+            })
+        } else {
+            let result = self.tx.execute(sqlx::query(sql)).await?;
+            Ok(crate::db::StatementOutcome {
+                rows_affected: Some(result.rows_affected()),
+                row_count: None,
+            })
+        }
+    }
+
+    async fn commit(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.commit().await.map_err(|e| {
+            crate::error::AppError::Database(format!("Failed to commit script transaction: {}", e))
+        })
+    }
+
+    async fn rollback(self: Box<Self>) -> crate::db::AppResult<()> {
+        self.tx.rollback().await.map_err(|e| {
+            crate::error::AppError::Database(format!(
+                "Failed to rollback script transaction: {}",
+                e
+            ))
+        })
+    }
+}
+
+/// Sesión transaccional de script sobre SQLite.
+/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
+pub struct SqliteScriptTransaction {
+    tx: sqlx::Transaction<'static, sqlx::Sqlite>,
 }

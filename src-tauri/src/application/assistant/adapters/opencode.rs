@@ -23,8 +23,8 @@ pub struct OpenCodeAdapter {
     /// Free tier endpoint, derived from `base_url` (e.g. `.../zen/go/v1` →
     /// `https://opencode.ai/zen/v1`).
     free_base_url: String,
-    model: String,        // display format – may include `opencode/` prefix
-    model_raw: String,    // raw ID sent to the API (prefix stripped)
+    model: String,     // display format – may include `opencode/` prefix
+    model_raw: String, // raw ID sent to the API (prefix stripped)
     client: reqwest::Client,
 }
 
@@ -57,7 +57,10 @@ impl OpenCodeAdapter {
             .map(|c| if c.is_whitespace() { '-' } else { c })
             .flat_map(|c| c.to_lowercase())
             .collect();
-        cleaned.strip_prefix("opencode/").unwrap_or(&cleaned).to_string()
+        cleaned
+            .strip_prefix("opencode/")
+            .unwrap_or(&cleaned)
+            .to_string()
     }
 
     fn is_free_model(&self) -> bool {
@@ -229,24 +232,41 @@ mod tests {
 
     #[test]
     fn strip_prefix_removes_opencode_prefix() {
-        assert_eq!(OpenCodeAdapter::strip_prefix("opencode/deepseek-v4-flash"), "deepseek-v4-flash");
-        assert_eq!(OpenCodeAdapter::strip_prefix("deepseek-v4-flash"), "deepseek-v4-flash");
+        assert_eq!(
+            OpenCodeAdapter::strip_prefix("opencode/deepseek-v4-flash"),
+            "deepseek-v4-flash"
+        );
+        assert_eq!(
+            OpenCodeAdapter::strip_prefix("deepseek-v4-flash"),
+            "deepseek-v4-flash"
+        );
     }
 
     #[test]
     fn strip_prefix_normalizes_case_and_spaces() {
-        assert_eq!(OpenCodeAdapter::strip_prefix("OpenCode/DeepSeek V4 Flash"), "deepseek-v4-flash");
+        assert_eq!(
+            OpenCodeAdapter::strip_prefix("OpenCode/DeepSeek V4 Flash"),
+            "deepseek-v4-flash"
+        );
     }
 
     #[test]
     fn free_model_by_suffix() {
-        let a = OpenCodeAdapter::new(String::new(), Some("opencode/deepseek-v4-flash-free".to_string()), None);
+        let a = OpenCodeAdapter::new(
+            String::new(),
+            Some("opencode/deepseek-v4-flash-free".to_string()),
+            None,
+        );
         assert!(a.is_free_model());
     }
 
     #[test]
     fn paid_model_not_free_by_default() {
-        let a = OpenCodeAdapter::new(String::new(), Some("opencode/deepseek-v4-flash".to_string()), None);
+        let a = OpenCodeAdapter::new(
+            String::new(),
+            Some("opencode/deepseek-v4-flash".to_string()),
+            None,
+        );
         assert!(!a.is_free_model());
     }
 
@@ -263,7 +283,11 @@ mod tests {
 
     #[test]
     fn free_endpoint_defaults_to_base_url() {
-        let a = OpenCodeAdapter::new(String::new(), None, Some("https://opencode.ai/zen/v1".to_string()));
+        let a = OpenCodeAdapter::new(
+            String::new(),
+            None,
+            Some("https://opencode.ai/zen/v1".to_string()),
+        );
         assert_eq!(a.free_base_url, "https://opencode.ai/zen/v1");
     }
 

@@ -38,7 +38,10 @@ impl SchemaDiff {
         // Columnas en source que no están en target
         for (name, src_col) in &source_map {
             if !target_map.contains_key(name) {
-                let src_type = src_col.get("type").and_then(|t| t.as_str()).map(String::from);
+                let src_type = src_col
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .map(String::from);
                 column_diffs.push(ColumnDiff {
                     column_name: name.to_string(),
                     source_type: src_type,
@@ -53,7 +56,10 @@ impl SchemaDiff {
         // Columnas en target que no están en source
         for (name, tgt_col) in &target_map {
             if !source_map.contains_key(name) {
-                let tgt_type = tgt_col.get("type").and_then(|t| t.as_str()).map(String::from);
+                let tgt_type = tgt_col
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .map(String::from);
                 column_diffs.push(ColumnDiff {
                     column_name: name.to_string(),
                     source_type: None,
@@ -70,8 +76,14 @@ impl SchemaDiff {
             if let Some(tgt_col) = target_map.get(name) {
                 let src_type = src_col.get("type").and_then(|t| t.as_str()).unwrap_or("");
                 let tgt_type = tgt_col.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                let src_nullable = src_col.get("isNullable").and_then(|n| n.as_bool()).unwrap_or(false);
-                let tgt_nullable = tgt_col.get("isNullable").and_then(|n| n.as_bool()).unwrap_or(false);
+                let src_nullable = src_col
+                    .get("isNullable")
+                    .and_then(|n| n.as_bool())
+                    .unwrap_or(false);
+                let tgt_nullable = tgt_col
+                    .get("isNullable")
+                    .and_then(|n| n.as_bool())
+                    .unwrap_or(false);
 
                 if src_type != tgt_type {
                     column_diffs.push(ColumnDiff {
@@ -100,13 +112,21 @@ impl SchemaDiff {
         // Detectar diferencias de PK (basado en isPrimaryKey de cada columna)
         let source_pks: Vec<&str> = source_cols
             .iter()
-            .filter(|col| col.get("isPrimaryKey").and_then(|v| v.as_bool()).unwrap_or(false))
+            .filter(|col| {
+                col.get("isPrimaryKey")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
             .filter_map(|col| col.get("name").and_then(|n| n.as_str()))
             .collect();
 
         let target_pks: Vec<&str> = target_cols
             .iter()
-            .filter(|col| col.get("isPrimaryKey").and_then(|v| v.as_bool()).unwrap_or(false))
+            .filter(|col| {
+                col.get("isPrimaryKey")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
             .filter_map(|col| col.get("name").and_then(|n| n.as_str()))
             .collect();
 

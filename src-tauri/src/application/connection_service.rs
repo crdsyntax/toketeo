@@ -25,15 +25,12 @@ impl ConnectionService {
             .unwrap_or(false)
     }
 
-    fn encrypt_connection(
-        config: &mut DbConnectionConfig,
-        key: &[u8; 32],
-    ) -> AppResult<()> {
+    fn encrypt_connection(config: &mut DbConnectionConfig, key: &[u8; 32]) -> AppResult<()> {
         if let Some(ref pw) = config.password {
             let plaintext = pw.expose_secret();
             if !plaintext.is_empty() {
-                let (enc, nonce) = crypto::encrypt(plaintext, key)
-                    .map_err(|e| crate::error::AppError::Auth(e))?;
+                let (enc, nonce) =
+                    crypto::encrypt(plaintext, key).map_err(crate::error::AppError::Auth)?;
                 config.password_enc = Some(enc);
                 config.password_nonce = Some(nonce.to_vec());
                 config.password = None;
@@ -51,10 +48,9 @@ impl ConnectionService {
                 ssh_fields.push(("passphrase", pp.expose_secret().to_string()));
             }
             if !ssh_fields.is_empty() {
-                let ssh_json = serde_json::to_string(&ssh_fields)
-                    .unwrap_or_default();
-                let (enc, nonce) = crypto::encrypt(&ssh_json, key)
-                    .map_err(|e| crate::error::AppError::Auth(e))?;
+                let ssh_json = serde_json::to_string(&ssh_fields).unwrap_or_default();
+                let (enc, nonce) =
+                    crypto::encrypt(&ssh_json, key).map_err(crate::error::AppError::Auth)?;
                 config.ssh_enc = Some(enc);
                 config.ssh_nonce = Some(nonce.to_vec());
                 // Never persist plaintext SSH secrets; they are restored from ssh_enc on decrypt.
@@ -71,7 +67,8 @@ impl ConnectionService {
     pub(crate) fn decrypt_connection(
         config: &mut DbConnectionConfig,
         key: &[u8; 32],
-    ) -> AppResult<()> {        if let Some(ref enc) = config.password_enc.clone() {
+    ) -> AppResult<()> {
+        if let Some(ref enc) = config.password_enc.clone() {
             if let Some(ref nonce_vec) = config.password_nonce.clone() {
                 if nonce_vec.len() == 12 {
                     let mut nonce = [0u8; 12];
@@ -94,12 +91,17 @@ impl ConnectionService {
                             if let Some(ref mut ssh) = config.ssh_tunnel {
                                 for (field, value) in ssh_fields {
                                     match field.as_str() {
-                                        "password" => ssh.password =
-                                            Some(secrecy::SecretString::from(value)),
-                                        "private_key" => ssh.private_key =
-                                            Some(secrecy::SecretString::from(value)),
-                                        "passphrase" => ssh.passphrase =
-                                            Some(secrecy::SecretString::from(value)),
+                                        "password" => {
+                                            ssh.password = Some(secrecy::SecretString::from(value))
+                                        }
+                                        "private_key" => {
+                                            ssh.private_key =
+                                                Some(secrecy::SecretString::from(value))
+                                        }
+                                        "passphrase" => {
+                                            ssh.passphrase =
+                                                Some(secrecy::SecretString::from(value))
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -198,8 +200,13 @@ impl ConnectionService {
                     }
                 }
 
-                tracing::debug!("merge_sensitive_data: after merge, final_password_present={}", 
-                    config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false)
+                tracing::debug!(
+                    "merge_sensitive_data: after merge, final_password_present={}",
+                    config
+                        .password
+                        .as_ref()
+                        .map(|p| !p.expose_secret().is_empty())
+                        .unwrap_or(false)
                 );
             }
         }
@@ -303,7 +310,11 @@ impl ConnectionService {
     /// returned, never the whole config, and only while the caller is
     /// authenticated. Field names: `password`, `ssh_password`,
     /// `ssh_private_key`, `ssh_passphrase`.
-    pub async fn reveal_secret(state: &AppState, id: &str, field: &str) -> AppResult<Option<String>> {
+    pub async fn reveal_secret(
+        state: &AppState,
+        id: &str,
+        field: &str,
+    ) -> AppResult<Option<String>> {
         let mut conn = state.storage.get_connection(id).await?;
         if let Ok(key) = state.require_unlock().await {
             Self::decrypt_connection(&mut conn, &key)?;
@@ -394,8 +405,8 @@ impl ConnectionService {
         };
 
         let url = ConnectionStringBuilder::build(&config)?;
-        tracing::debug!("Connection string built: db_type={:?}, auth_enabled={:?}, password_present={}, user_present={}", 
-            config.db_type, config.auth_enabled, 
+        tracing::debug!("Connection string built: db_type={:?}, auth_enabled={:?}, password_present={}, user_present={}",
+            config.db_type, config.auth_enabled,
             config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false),
             !config.user.is_empty()
         );
@@ -405,21 +416,29 @@ impl ConnectionService {
 
         tracing::debug!("Initializing driver for {:?}", config.db_type);
 
-        let driver =
-            match DriverFactory::create(config.db_type.clone(), &url, is_transactional, pool_config).await {
-                Ok(d) => {
-                    tracing::info!("Driver created successfully and connection verified");
-                    d
-                }
-                Err(e) => {
-                    println!("[Database] FAILED to connect: {}", e);
-                    tracing::error!("Failed to create driver: {:?}", e);
-                    return Err(e);
-                }
-            };
+        let driver = match DriverFactory::create(
+            config.db_type.clone(),
+            &url,
+            is_transactional,
+            pool_config,
+        )
+        .await
+        {
+            Ok(d) => {
+                tracing::info!("Driver created successfully and connection verified");
+                d
+            }
+            Err(e) => {
+                println!("[Database] FAILED to connect: {}", e);
+                tracing::error!("Failed to create driver: {:?}", e);
+                return Err(e);
+            }
+        };
 
         if is_transactional {
-            if config.db_type != crate::db::DbType::Mongodb && config.db_type != crate::db::DbType::Redis {
+            if config.db_type != crate::db::DbType::Mongodb
+                && config.db_type != crate::db::DbType::Redis
+            {
                 let begin_sql = match config.db_type {
                     crate::db::DbType::Postgres => "BEGIN",
                     crate::db::DbType::Mysql | crate::db::DbType::Mariadb => "START TRANSACTION",
@@ -434,10 +453,19 @@ impl ConnectionService {
         }
 
         let max_ttl = config.max_lifetime.map(|s| Duration::from_secs(s as u64));
-        let metadata_cache_ttl = Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
+        let metadata_cache_ttl =
+            Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
 
         state
-            .add_connection(id.clone(), driver, ssh_tunnel, is_transactional, config.read_only.unwrap_or(false), max_ttl, metadata_cache_ttl)
+            .add_connection(
+                id.clone(),
+                driver,
+                ssh_tunnel,
+                is_transactional,
+                config.read_only.unwrap_or(false),
+                max_ttl,
+                metadata_cache_ttl,
+            )
             .await;
         tracing::info!("Connection session established: {}", id);
         Ok(id)
@@ -483,7 +511,8 @@ impl ConnectionService {
         let driver = DriverFactory::create(config.db_type, &url, false, pool_config).await?;
 
         let max_ttl = config.max_lifetime.map(|s| Duration::from_secs(s as u64));
-        let metadata_cache_ttl = Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
+        let metadata_cache_ttl =
+            Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
 
         // Swap driver while preserving the existing SSH tunnel (dropping it would kill the tunnel)
         let old_driver = {
@@ -493,7 +522,12 @@ impl ConnectionService {
                 conns.insert(
                     id.to_string(),
                     crate::application::session_service::ConnectionSession::new(
-                        driver, ssh_tunnel, false, config.read_only.unwrap_or(false), max_ttl, metadata_cache_ttl,
+                        driver,
+                        ssh_tunnel,
+                        false,
+                        config.read_only.unwrap_or(false),
+                        max_ttl,
+                        metadata_cache_ttl,
                     ),
                 );
                 Some(session.driver)

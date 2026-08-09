@@ -74,13 +74,16 @@ impl AssistantTool for QueryTool {
         }
 
         // Reject writes on read-only connections.
-        if SafetyClassifier::is_destructive_query(sql) && state.is_read_only(cid).await.unwrap_or(false)
+        if SafetyClassifier::is_destructive_query(sql)
+            && state.is_read_only(cid).await.unwrap_or(false)
         {
             return Ok(ToolResult {
                 ok: false,
                 data: None,
                 requires_confirmation: false,
-                message: Some("Connection is read-only; write statements are not allowed.".to_string()),
+                message: Some(
+                    "Connection is read-only; write statements are not allowed.".to_string(),
+                ),
             });
         }
 

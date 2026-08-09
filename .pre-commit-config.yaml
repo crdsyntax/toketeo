@@ -1,0 +1,34 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Format Rust code with rustfmt
+        entry: cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
+        language: system
+        files: ^src-tauri/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Lint Rust code with clippy (deny warnings)
+        entry: cargo clippy --manifest-path src-tauri/Cargo.toml --lib --all-targets -- -D warnings
+        language: system
+        files: ^src-tauri/.*\.rs$
+        pass_filenames: false
+
+      - id: frontend-lint
+        name: frontend eslint
+        description: Lint frontend code with eslint
+        entry: bun run lint
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      - id: frontend-typecheck
+        name: frontend typecheck
+        description: Typecheck frontend with tsc
+        entry: bunx --cwd frontend tsc -b
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false

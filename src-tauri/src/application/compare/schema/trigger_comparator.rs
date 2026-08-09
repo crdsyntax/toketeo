@@ -10,15 +10,23 @@ use super::normalizer::{hash_sql, normalize_sql};
 fn re_trigger_header() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"(?i)CREATE\s+TRIGGER\s+\S+\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(INSERT|UPDATE|DELETE)")
-            .unwrap()
+        Regex::new(
+            r"(?i)CREATE\s+TRIGGER\s+\S+\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(INSERT|UPDATE|DELETE)",
+        )
+        .unwrap()
     })
 }
 
 fn parse_trigger_ddl(ddl: &str) -> (String, String, String) {
     if let Some(caps) = re_trigger_header().captures(ddl) {
-        let timing = caps.get(1).map(|m| m.as_str().to_uppercase()).unwrap_or_default();
-        let event = caps.get(2).map(|m| m.as_str().to_uppercase()).unwrap_or_default();
+        let timing = caps
+            .get(1)
+            .map(|m| m.as_str().to_uppercase())
+            .unwrap_or_default();
+        let event = caps
+            .get(2)
+            .map(|m| m.as_str().to_uppercase())
+            .unwrap_or_default();
         let body_hash = hash_sql(&normalize_sql(ddl));
         (timing, event, body_hash)
     } else {
@@ -41,7 +49,9 @@ fn compare_trigger_names(
         name_map.insert(v.to_lowercase(), v.clone());
     }
     for v in target_names {
-        name_map.entry(v.to_lowercase()).or_insert_with(|| v.clone());
+        name_map
+            .entry(v.to_lowercase())
+            .or_insert_with(|| v.clone());
     }
 
     let mut all_keys: BTreeSet<String> = BTreeSet::new();
@@ -78,15 +88,24 @@ fn compare_trigger_names(
 
                 if let (Some(s_info), Some(t_info)) = (s, t) {
                     if s_info.0 != t_info.0 {
-                        details.insert("timing_changed".into(), serde_json::json!([s_info.0, t_info.0]));
+                        details.insert(
+                            "timing_changed".into(),
+                            serde_json::json!([s_info.0, t_info.0]),
+                        );
                         has_diff = true;
                     }
                     if s_info.1 != t_info.1 {
-                        details.insert("event_changed".into(), serde_json::json!([s_info.1, t_info.1]));
+                        details.insert(
+                            "event_changed".into(),
+                            serde_json::json!([s_info.1, t_info.1]),
+                        );
                         has_diff = true;
                     }
                     if s_info.2 != t_info.2 {
-                        details.insert("body_hash_changed".into(), serde_json::json!([s_info.2, t_info.2]));
+                        details.insert(
+                            "body_hash_changed".into(),
+                            serde_json::json!([s_info.2, t_info.2]),
+                        );
                         has_diff = true;
                     }
                 }
@@ -111,7 +130,7 @@ fn compare_trigger_names(
         }
     }
 
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    results.sort_by_key(|a| a.name.to_lowercase());
     results
 }
 
@@ -119,7 +138,10 @@ pub async fn fetch_trigger_infos(
     driver: &dyn DbDriver,
     names: &[String],
     schema: Option<&str>,
-) -> AppResult<(BTreeMap<String, (String, String, String)>, BTreeMap<String, String>)> {
+) -> AppResult<(
+    BTreeMap<String, (String, String, String)>,
+    BTreeMap<String, String>,
+)> {
     let mut map = BTreeMap::new();
     let mut ddls = BTreeMap::new();
     for name in names {
@@ -174,16 +196,13 @@ pub async fn compare_triggers(
     let (src_infos, src_ddls) = fetch_trigger_infos(source, &names_vec, source_schema).await?;
     let (tgt_infos, _tgt_ddls) = fetch_trigger_infos(target, &names_vec, target_schema).await?;
 
-    let mut results = compare_trigger_names(
-        &src_triggers,
-        &tgt_triggers,
-        &src_infos,
-        &tgt_infos,
-    );
+    let mut results = compare_trigger_names(&src_triggers, &tgt_triggers, &src_infos, &tgt_infos);
 
     // Attach DDL to results
     for r in &mut results {
-        if (r.status == CompareStatus::Missing || r.status == CompareStatus::Modified) && r.details.is_none() {
+        if (r.status == CompareStatus::Missing || r.status == CompareStatus::Modified)
+            && r.details.is_none()
+        {
             if let Some(ddl) = src_ddls.get(&r.name) {
                 if !ddl.is_empty() {
                     r.details = Some(serde_json::json!({ "source_definition": ddl }));
@@ -240,9 +259,15 @@ mod tests {
     fn equal_triggers() {
         let names = vec![trigger_name("trg_audit")];
         let mut src = BTreeMap::new();
-        src.insert("trg_audit".into(), ("BEFORE".into(), "INSERT".into(), "h1".into()));
+        src.insert(
+            "trg_audit".into(),
+            ("BEFORE".into(), "INSERT".into(), "h1".into()),
+        );
         let mut tgt = BTreeMap::new();
-        tgt.insert("trg_audit".into(), ("BEFORE".into(), "INSERT".into(), "h1".into()));
+        tgt.insert(
+            "trg_audit".into(),
+            ("BEFORE".into(), "INSERT".into(), "h1".into()),
+        );
         let diffs = compare_trigger_names(&names, &names, &src, &tgt);
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, CompareStatus::Equal);
@@ -252,9 +277,15 @@ mod tests {
     fn timing_changed() {
         let names = vec![trigger_name("trg_1")];
         let mut src = BTreeMap::new();
-        src.insert("trg_1".into(), ("BEFORE".into(), "INSERT".into(), "h".into()));
+        src.insert(
+            "trg_1".into(),
+            ("BEFORE".into(), "INSERT".into(), "h".into()),
+        );
         let mut tgt = BTreeMap::new();
-        tgt.insert("trg_1".into(), ("AFTER".into(), "INSERT".into(), "h".into()));
+        tgt.insert(
+            "trg_1".into(),
+            ("AFTER".into(), "INSERT".into(), "h".into()),
+        );
         let diffs = compare_trigger_names(&names, &names, &src, &tgt);
         assert_eq!(diffs[0].status, CompareStatus::Modified);
         let d = diffs[0].details.as_ref().unwrap();
@@ -265,9 +296,15 @@ mod tests {
     fn event_changed() {
         let names = vec![trigger_name("trg_1")];
         let mut src = BTreeMap::new();
-        src.insert("trg_1".into(), ("AFTER".into(), "INSERT".into(), "h".into()));
+        src.insert(
+            "trg_1".into(),
+            ("AFTER".into(), "INSERT".into(), "h".into()),
+        );
         let mut tgt = BTreeMap::new();
-        tgt.insert("trg_1".into(), ("AFTER".into(), "UPDATE".into(), "h".into()));
+        tgt.insert(
+            "trg_1".into(),
+            ("AFTER".into(), "UPDATE".into(), "h".into()),
+        );
         let diffs = compare_trigger_names(&names, &names, &src, &tgt);
         assert_eq!(diffs[0].status, CompareStatus::Modified);
         let d = diffs[0].details.as_ref().unwrap();
@@ -278,9 +315,15 @@ mod tests {
     fn body_hash_changed() {
         let names = vec![trigger_name("trg_1")];
         let mut src = BTreeMap::new();
-        src.insert("trg_1".into(), ("AFTER".into(), "INSERT".into(), "aaa".into()));
+        src.insert(
+            "trg_1".into(),
+            ("AFTER".into(), "INSERT".into(), "aaa".into()),
+        );
         let mut tgt = BTreeMap::new();
-        tgt.insert("trg_1".into(), ("AFTER".into(), "INSERT".into(), "bbb".into()));
+        tgt.insert(
+            "trg_1".into(),
+            ("AFTER".into(), "INSERT".into(), "bbb".into()),
+        );
         let diffs = compare_trigger_names(&names, &names, &src, &tgt);
         assert_eq!(diffs[0].status, CompareStatus::Modified);
         let d = diffs[0].details.as_ref().unwrap();
@@ -314,9 +357,15 @@ mod tests {
         let src = vec![trigger_name("trg_common"), trigger_name("trg_old")];
         let tgt = vec![trigger_name("trg_common"), trigger_name("trg_new")];
         let mut src_t = BTreeMap::new();
-        src_t.insert("trg_common".into(), ("AFTER".into(), "INSERT".into(), "h1".into()));
+        src_t.insert(
+            "trg_common".into(),
+            ("AFTER".into(), "INSERT".into(), "h1".into()),
+        );
         let mut tgt_t = BTreeMap::new();
-        tgt_t.insert("trg_common".into(), ("AFTER".into(), "INSERT".into(), "h1".into()));
+        tgt_t.insert(
+            "trg_common".into(),
+            ("AFTER".into(), "INSERT".into(), "h1".into()),
+        );
         let diffs = compare_trigger_names(&src, &tgt, &src_t, &tgt_t);
         assert_eq!(diffs.len(), 3);
         let by_name: BTreeMap<_, _> = diffs.iter().map(|d| (d.name.as_str(), &d.status)).collect();
@@ -329,9 +378,15 @@ mod tests {
     fn multiple_changes_combined() {
         let names = vec![trigger_name("trg_1")];
         let mut src = BTreeMap::new();
-        src.insert("trg_1".into(), ("BEFORE".into(), "INSERT".into(), "aaa".into()));
+        src.insert(
+            "trg_1".into(),
+            ("BEFORE".into(), "INSERT".into(), "aaa".into()),
+        );
         let mut tgt = BTreeMap::new();
-        tgt.insert("trg_1".into(), ("AFTER".into(), "UPDATE".into(), "bbb".into()));
+        tgt.insert(
+            "trg_1".into(),
+            ("AFTER".into(), "UPDATE".into(), "bbb".into()),
+        );
         let diffs = compare_trigger_names(&names, &names, &src, &tgt);
         assert_eq!(diffs[0].status, CompareStatus::Modified);
         let d = diffs[0].details.as_ref().unwrap();

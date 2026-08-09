@@ -1,4 +1,4 @@
-use crate::db::{DbType, DbDriver};
+use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
 use crate::models::compare::{CompareStatus, FkDiff};
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,23 +23,33 @@ fn get_str(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
 fn parse_fk_row(value: &serde_json::Value) -> Option<FkInfo> {
     let constraint_name = get_str(value, &["constraintName", "constraint_name"])?;
     let column = get_str(value, &["columnName", "column_name", "from"]).unwrap_or_default();
-    let referenced_table = get_str(value, &[
-        "referencedTable",
-        "referenced_table",
-        "referencedTableName",
-        "table",
-    ])?;
-    let referenced_column = get_str(value, &[
-        "referencedColumn",
-        "referenced_column",
-        "referencedColumnName",
-        "to",
-    ])
+    let referenced_table = get_str(
+        value,
+        &[
+            "referencedTable",
+            "referenced_table",
+            "referencedTableName",
+            "table",
+        ],
+    )?;
+    let referenced_column = get_str(
+        value,
+        &[
+            "referencedColumn",
+            "referenced_column",
+            "referencedColumnName",
+            "to",
+        ],
+    )
     .unwrap_or_default();
 
     Some(FkInfo {
         constraint_name,
-        columns: if column.is_empty() { vec![] } else { vec![column] },
+        columns: if column.is_empty() {
+            vec![]
+        } else {
+            vec![column]
+        },
         referenced_table,
         referenced_columns: if referenced_column.is_empty() {
             vec![]
@@ -64,7 +74,9 @@ fn group_foreign_keys(rows: &[serde_json::Value]) -> BTreeMap<String, FkInfo> {
                 entry.columns.append(&mut info.columns);
             }
             if !info.referenced_columns.is_empty() {
-                entry.referenced_columns.append(&mut info.referenced_columns);
+                entry
+                    .referenced_columns
+                    .append(&mut info.referenced_columns);
             }
         }
     }
@@ -84,7 +96,9 @@ fn postgres_on_delete_update_query() -> &'static str {
             CASE confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' \
              WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END as \"onUpdate\" \
      FROM pg_constraint \
-     WHERE conrelid = (SELECT oid FROM pg_class WHERE relname = $1) AND contype = 'f'"
+     WHERE conrelid = (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid \
+                       WHERE c.relname = $1 AND n.nspname = COALESCE($2, current_schema())) \
+       AND contype = 'f'"
 }
 
 fn sqlserver_on_delete_update_query(table: &str, schema: &str) -> String {
@@ -110,28 +124,42 @@ async fn fetch_on_delete_update(
 
     match db_type {
         DbType::Mysql | DbType::Mariadb => {
-            let result = driver.execute(mysql_on_delete_update_query()).await?;
+            let result = driver
+                .execute_with_params(
+                    mysql_on_delete_update_query(),
+                    &[Some(table.to_string()), schema.map(str::to_string)],
+                )
+                .await?;
             for row in &result.rows {
                 if let (Some(name), Some(on_delete), Some(on_update)) = (
                     row.get("constraintName").and_then(|v| v.as_str()),
                     row.get("onDelete").and_then(|v| v.as_str()),
                     row.get("onUpdate").and_then(|v| v.as_str()),
                 ) {
-                    map.insert(name.to_string(), (on_delete.to_string(), on_update.to_string()));
+                    map.insert(
+                        name.to_string(),
+                        (on_delete.to_string(), on_update.to_string()),
+                    );
                 }
             }
         }
         DbType::Postgres => {
-            let table_name = table;
-            let query = postgres_on_delete_update_query();
-            let result = driver.execute_with_schema(query, table_name).await?;
+            let result = driver
+                .execute_with_params(
+                    postgres_on_delete_update_query(),
+                    &[Some(table.to_string()), schema.map(str::to_string)],
+                )
+                .await?;
             for row in &result.rows {
                 if let (Some(name), Some(on_delete), Some(on_update)) = (
                     row.get("constraintName").and_then(|v| v.as_str()),
                     row.get("onDelete").and_then(|v| v.as_str()),
                     row.get("onUpdate").and_then(|v| v.as_str()),
                 ) {
-                    map.insert(name.to_string(), (on_delete.to_string(), on_update.to_string()));
+                    map.insert(
+                        name.to_string(),
+                        (on_delete.to_string(), on_update.to_string()),
+                    );
                 }
             }
         }
@@ -145,7 +173,10 @@ async fn fetch_on_delete_update(
                     row.get("onDelete").and_then(|v| v.as_str()),
                     row.get("onUpdate").and_then(|v| v.as_str()),
                 ) {
-                    map.insert(name.to_string(), (on_delete.to_string(), on_update.to_string()));
+                    map.insert(
+                        name.to_string(),
+                        (on_delete.to_string(), on_update.to_string()),
+                    );
                 }
             }
         }
@@ -184,40 +215,29 @@ pub fn compare_foreign_keys_for_table(
                     has_diff = true;
                 }
                 if s.referenced_table != t.referenced_table {
-                    referenced_changed = Some((s.referenced_table.clone(), t.referenced_table.clone()));
+                    referenced_changed =
+                        Some((s.referenced_table.clone(), t.referenced_table.clone()));
                     has_diff = true;
                 }
 
-                let s_on_delete = source_on_delete
-                    .get(&name)
-                    .map(|(d, _)| d.clone());
-                let s_on_update = source_on_delete
-                    .get(&name)
-                    .map(|(_, u)| u.clone());
-                let t_on_delete = target_on_delete
-                    .get(&name)
-                    .map(|(d, _)| d.clone());
-                let t_on_update = target_on_delete
-                    .get(&name)
-                    .map(|(_, u)| u.clone());
+                let s_on_delete = source_on_delete.get(&name).map(|(d, _)| d.clone());
+                let s_on_update = source_on_delete.get(&name).map(|(_, u)| u.clone());
+                let t_on_delete = target_on_delete.get(&name).map(|(d, _)| d.clone());
+                let t_on_update = target_on_delete.get(&name).map(|(_, u)| u.clone());
 
-                if s_on_delete.is_some() || t_on_delete.is_some() {
-                    if s_on_delete != t_on_delete {
-                        on_delete_changed = Some((
-                            s_on_delete.unwrap_or_default(),
-                            t_on_delete.unwrap_or_default(),
-                        ));
-                        has_diff = true;
-                    }
+                if (s_on_delete.is_some() || t_on_delete.is_some()) && s_on_delete != t_on_delete {
+                    on_delete_changed = Some((
+                        s_on_delete.unwrap_or_default(),
+                        t_on_delete.unwrap_or_default(),
+                    ));
+                    has_diff = true;
                 }
-                if s_on_update.is_some() || t_on_update.is_some() {
-                    if s_on_update != t_on_update {
-                        on_update_changed = Some((
-                            s_on_update.unwrap_or_default(),
-                            t_on_update.unwrap_or_default(),
-                        ));
-                        has_diff = true;
-                    }
+                if (s_on_update.is_some() || t_on_update.is_some()) && s_on_update != t_on_update {
+                    on_update_changed = Some((
+                        s_on_update.unwrap_or_default(),
+                        t_on_update.unwrap_or_default(),
+                    ));
+                    has_diff = true;
                 }
 
                 results.push(FkDiff {
@@ -272,7 +292,7 @@ pub fn compare_foreign_keys_for_table(
         }
     }
 
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    results.sort_by_key(|a| a.name.to_lowercase());
     results
 }
 
@@ -307,7 +327,12 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn fk_row_mysql(constraint: &str, col: &str, ref_table: &str, ref_col: &str) -> serde_json::Value {
+    fn fk_row_mysql(
+        constraint: &str,
+        col: &str,
+        ref_table: &str,
+        ref_col: &str,
+    ) -> serde_json::Value {
         json!({
             "constraintName": constraint,
             "columnName": col,
@@ -316,7 +341,12 @@ mod tests {
         })
     }
 
-    fn fk_row_postgres(constraint: &str, col: &str, ref_table: &str, ref_col: &str) -> serde_json::Value {
+    fn fk_row_postgres(
+        constraint: &str,
+        col: &str,
+        ref_table: &str,
+        ref_col: &str,
+    ) -> serde_json::Value {
         json!({
             "constraint_name": constraint,
             "column_name": col,
@@ -325,7 +355,12 @@ mod tests {
         })
     }
 
-    fn fk_row_sqlserver(constraint: &str, col: &str, ref_table: &str, ref_col: &str) -> serde_json::Value {
+    fn fk_row_sqlserver(
+        constraint: &str,
+        col: &str,
+        ref_table: &str,
+        ref_col: &str,
+    ) -> serde_json::Value {
         json!({
             "constraintName": constraint,
             "columnName": col,
@@ -388,10 +423,7 @@ mod tests {
         let tgt_od = BTreeMap::new();
         let diffs = compare_foreign_keys_for_table(&src, &tgt, &src_od, &tgt_od, "users");
         assert_eq!(diffs[0].status, CompareStatus::Modified);
-        assert_eq!(
-            diffs[0].on_delete,
-            Some(("CASCADE".into(), String::new()))
-        );
+        assert_eq!(diffs[0].on_delete, Some(("CASCADE".into(), String::new())));
     }
 
     #[test]
@@ -403,10 +435,7 @@ mod tests {
         let tgt_od = BTreeMap::new();
         let diffs = compare_foreign_keys_for_table(&src, &tgt, &src_od, &tgt_od, "users");
         assert_eq!(diffs[0].status, CompareStatus::Modified);
-        assert_eq!(
-            diffs[0].on_update,
-            Some(("SET NULL".into(), String::new()))
-        );
+        assert_eq!(diffs[0].on_update, Some(("SET NULL".into(), String::new())));
     }
 
     #[test]

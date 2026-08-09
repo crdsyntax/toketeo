@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { X, Loader2, Database, Eye, EyeOff, ChevronDown, ChevronRight, Columns, ListChecks, Search } from 'lucide-react'
 import { schemaService } from '@/services/schema.service'
 import { ColumnMapper } from '@/components/sync/ColumnMapper'
-import { Tooltip } from '@/components/ui/Tooltip'
 import type { SyncTableConfig, ColumnMapping } from '@/types/sync'
 
 interface Step2TablesProps {

@@ -29,7 +29,9 @@ export function DataDefenderGame({ onClose }: { onClose: () => void }) {
 
   const addXP = useGamificationStore((s) => s.addXP)
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     const canvas = canvasRef.current

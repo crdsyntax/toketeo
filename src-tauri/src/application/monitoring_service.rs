@@ -288,7 +288,10 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
     let pending_writes = status
         .lines()
         .filter_map(|l| {
-            writes_re.captures(l)?.get(1)?.as_str()
+            writes_re
+                .captures(l)?
+                .get(1)?
+                .as_str()
                 .split(',')
                 .filter_map(|s| s.trim().parse::<u64>().ok())
                 .reduce(|a, b| a + b)
@@ -624,14 +627,20 @@ END OF INNODB MONITOR OUTPUT";
         assert_eq!(lock_waits["level"], "critical");
         let deadlock = indicators.iter().find(|i| i["id"] == "deadlock").unwrap();
         assert_eq!(deadlock["value"], "Detected");
-        let history = indicators.iter().find(|i| i["id"] == "history_list").unwrap();
+        let history = indicators
+            .iter()
+            .find(|i| i["id"] == "history_list")
+            .unwrap();
         assert_eq!(history["value"], "20000");
         assert_eq!(history["level"], "warning");
     }
 
     #[test]
     fn capture_u64_extracts_number() {
-        assert_eq!(capture_u64("History list length 42", r"History list length\s+(\d+)"), Some(42));
+        assert_eq!(
+            capture_u64("History list length 42", r"History list length\s+(\d+)"),
+            Some(42)
+        );
         assert_eq!(capture_u64("none", r"History list length\s+(\d+)"), None);
     }
 }

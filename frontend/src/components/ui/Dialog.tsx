@@ -29,18 +29,15 @@ export function Dialog({ open, onClose, title, size = 'md', children, className,
   const dragStart = useRef({ x: 0, y: 0 })
   const dragOrigPos = useRef({ x: 0, y: 0 })
   const dialogRef = useRef<HTMLDivElement>(null)
-  const zIndex = useRef(50)
 
-  const bringToFront = useCallback(() => {
-    zIndex.current = Math.max(zIndex.current, 50)
-  }, [])
-
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (prevOpen !== open) {
+    setPrevOpen(open)
     if (!open) {
       setWindowState('normal')
       setPos(null)
     }
-  }, [open])
+  }
 
   useEffect(() => {
     if (!open) return
@@ -128,7 +125,7 @@ export function Dialog({ open, onClose, title, size = 'md', children, className,
             top: pos.y,
             transform: 'none',
           } : undefined}
-          onPointerDown={bringToFront}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           {!disableWindowControls && (
             <div

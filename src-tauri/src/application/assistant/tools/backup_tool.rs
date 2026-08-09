@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use crate::application::explorer_service::ExplorerService;
 use crate::db::DbDriver;
 use crate::error::AppResult;
-use crate::models::DumpSelection;
 use crate::models::assistant::ToolResult;
+use crate::models::DumpSelection;
 use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
@@ -77,10 +77,7 @@ impl AssistantTool for BackupTool {
             .get("connection_id")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let file_path = args
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
 
         if connection_id.is_empty() || file_path.is_empty() {
             return Ok(ToolResult {
@@ -103,10 +100,7 @@ impl AssistantTool for BackupTool {
 
         match action {
             "dump" => {
-                let schema = args
-                    .get("schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let schema = args.get("schema").and_then(|v| v.as_str()).unwrap_or("");
                 if schema.is_empty() {
                     return Ok(ToolResult {
                         ok: false,
@@ -146,10 +140,7 @@ impl AssistantTool for BackupTool {
                 }
             }
             "restore" => {
-                let schema = args
-                    .get("schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let schema = args.get("schema").and_then(|v| v.as_str()).unwrap_or("");
                 match ExplorerService::restore_database_selected(
                     state,
                     connection_id,
@@ -174,10 +165,7 @@ impl AssistantTool for BackupTool {
                 }
             }
             "mongoBackup" => {
-                let database = args
-                    .get("database")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let database = args.get("database").and_then(|v| v.as_str()).unwrap_or("");
                 if database.is_empty() {
                     return Ok(ToolResult {
                         ok: false,
@@ -202,10 +190,7 @@ impl AssistantTool for BackupTool {
                 }
             }
             "mongoRestore" => {
-                let database = args
-                    .get("database")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let database = args.get("database").and_then(|v| v.as_str()).unwrap_or("");
                 if database.is_empty() {
                     return Ok(ToolResult {
                         ok: false,
@@ -294,8 +279,9 @@ async fn mongo_restore(
     db_name: &str,
     file_path: &str,
 ) -> AppResult<u64> {
-    let content = std::fs::read_to_string(file_path)
-        .map_err(|e| crate::error::AppError::Internal(format!("Failed to read backup file: {e}")))?;
+    let content = std::fs::read_to_string(file_path).map_err(|e| {
+        crate::error::AppError::Internal(format!("Failed to read backup file: {e}"))
+    })?;
     let backup: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| crate::error::AppError::Validation(format!("Invalid backup JSON: {e}")))?;
 
@@ -303,7 +289,9 @@ async fn mongo_restore(
         .get("collections")
         .and_then(|c| c.as_object())
         .ok_or_else(|| {
-            crate::error::AppError::Validation("Invalid backup format: missing 'collections'".into())
+            crate::error::AppError::Validation(
+                "Invalid backup format: missing 'collections'".into(),
+            )
         })?;
 
     let driver = state.get_connection(connection_id).await?;

@@ -5,7 +5,9 @@ const MASTER_KEY_ENTRY: &str = "master_password";
 
 #[cfg(windows)]
 async fn is_user_consent_verifier_available() -> bool {
-    use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerifierAvailability};
+    use windows::Security::Credentials::UI::{
+        UserConsentVerifier, UserConsentVerifierAvailability,
+    };
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
     use windows::Win32::System::StationsAndDesktops::{
         OpenInputDesktop, SetThreadDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS,
@@ -19,14 +21,18 @@ async fn is_user_consent_verifier_available() -> bool {
     tokio::task::spawn_blocking(move || {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            if let Ok(desktop) = OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) {
+            if let Ok(desktop) =
+                OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS)
+            {
                 let _ = SetThreadDesktop(desktop);
             }
         }
 
         let result = async_op.get();
 
-        unsafe { CoUninitialize(); }
+        unsafe {
+            CoUninitialize();
+        }
 
         match result {
             Ok(availability) => availability == UserConsentVerifierAvailability::Available,
@@ -48,7 +54,7 @@ pub async fn is_available() -> bool {
 
 #[cfg(windows)]
 async fn request_verification_inner(hwnd: isize) -> AppResult<bool> {
-    use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerificationResult};
+    use windows::Security::Credentials::UI::{UserConsentVerificationResult, UserConsentVerifier};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
     use windows::Win32::System::StationsAndDesktops::{
@@ -63,7 +69,9 @@ async fn request_verification_inner(hwnd: isize) -> AppResult<bool> {
     let result = tokio::task::spawn_blocking(move || {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            if let Ok(desktop) = OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) {
+            if let Ok(desktop) =
+                OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS)
+            {
                 let _ = SetThreadDesktop(desktop);
             }
             if hwnd != 0 {
@@ -73,7 +81,9 @@ async fn request_verification_inner(hwnd: isize) -> AppResult<bool> {
 
         let r = async_op.get();
 
-        unsafe { CoUninitialize(); }
+        unsafe {
+            CoUninitialize();
+        }
         r
     })
     .await
@@ -85,7 +95,9 @@ async fn request_verification_inner(hwnd: isize) -> AppResult<bool> {
 
 #[cfg(not(windows))]
 async fn request_verification_inner(_hwnd: isize) -> AppResult<bool> {
-    Err(AppError::Internal("Windows Hello is not available on this platform".into()))
+    Err(AppError::Internal(
+        "Windows Hello is not available on this platform".into(),
+    ))
 }
 
 pub async fn request_verification(hwnd: isize) -> AppResult<bool> {

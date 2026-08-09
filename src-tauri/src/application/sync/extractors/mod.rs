@@ -25,8 +25,8 @@ pub trait DataExtractor: Send + Sync {
     async fn count(&self, table: &str, schema: Option<&str>) -> AppResult<u64>;
 }
 
-pub use sql_extractor::SqlExtractor;
 pub use mongo_extractor::MongoExtractor;
+pub use sql_extractor::SqlExtractor;
 
-pub mod sql_extractor;
 pub mod mongo_extractor;
+pub mod sql_extractor;

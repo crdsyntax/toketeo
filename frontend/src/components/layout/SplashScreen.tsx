@@ -1,4 +1,21 @@
+import { useEffect, useState } from 'react'
+import { getVersion } from '@tauri-apps/api/app'
+
 export function SplashScreen() {
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    let active = true
+    getVersion()
+      .then((v) => {
+        if (active) setVersion(v)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
   return (
     <div className="splash-screen">
       <div className="splash-backdrop" />
@@ -23,6 +40,7 @@ export function SplashScreen() {
       {/* Texto de estado */}
       <div className="splash-status">
         <p className="splash-label">Initializing session</p>
+        {version && <p className="splash-version">v{version}</p>}
         <div className="splash-dots">
           <span className="splash-dot" style={{ animationDelay: '0ms' }} />
           <span className="splash-dot" style={{ animationDelay: '200ms' }} />

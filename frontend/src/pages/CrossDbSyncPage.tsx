@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils'
 import { connectionService } from '@/services/connection.service'
 import { syncService } from '@/services/sync.service'
 import { SyncWizard } from '@/components/sync/wizard/SyncWizard'
-import { SyncProgress, createInitialProgress } from '@/components/sync/SyncProgress'
-import type { ProgressState, MiniLog } from '@/components/sync/SyncProgress'
+import { SyncProgress } from '@/components/sync/SyncProgress'
+import type { ProgressState, MiniLog } from '@/lib/sync-progress'
+import { createInitialProgress } from '@/lib/sync-progress'
 import { SyncLogViewer } from '@/components/sync/SyncLogViewer'
 import { SyncHistory } from '@/components/sync/SyncHistory'
 import type { SyncPipeline, SyncRun } from '@/types/sync'
@@ -55,13 +56,14 @@ export function CrossDbSyncPage() {
   const [latestRuns, setLatestRuns] = useState<Record<string, SyncRun>>({})
   const queryClient = useQueryClient()
 
-  // Reset progress state when activeRun changes
-  useEffect(() => {
+  const [prevRunKey, setPrevRunKey] = useState<string | undefined>(activeRun?.id)
+  if (activeRun?.id !== prevRunKey) {
+    setPrevRunKey(activeRun?.id)
     if (activeRun) {
       setProgressState(createInitialProgress(activeRun))
       setProgressLogs([])
     }
-  }, [activeRun?.id])
+  }
 
   const { data: pipelines, isLoading } = useQuery({
     queryKey: ['sync-pipelines'],
@@ -480,7 +482,7 @@ export function CrossDbSyncPage() {
 
             {detailTab === 'progress' && (
               activeRun ? (
-                <SyncProgress run={activeRun} progress={progressState} logs={progressLogs} onProgressChange={setProgressState} onLogsChange={setProgressLogs} />
+                <SyncProgress key={activeRun?.id ?? 'none'} run={activeRun} progress={progressState} logs={progressLogs} onProgressChange={setProgressState} onLogsChange={setProgressLogs} />
               ) : (
                 <div className="border border-border bg-muted/20 p-6 text-center">
                   <p className="text-xs text-muted-foreground">Selecciona una ejecución del historial para ver su progreso, o inicia una nueva sincronización.</p>

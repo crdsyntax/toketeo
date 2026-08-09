@@ -7,6 +7,8 @@ import { ResultsPanel } from '@/components/query/panels/ResultsPanel';
 import { QueryMenus } from '@/components/query/panels/QueryMenus';
 import { ResultsModal } from '@/components/query/ResultsModal';
 import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
+import { ScriptErrorModal } from '@/components/query/ScriptErrorModal';
+import { ScriptSummaryModal } from '@/components/query/ScriptSummaryModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
 import { AssistantLayout } from '@/components/assistant/AssistantLayout';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
@@ -87,16 +89,25 @@ export default function QueryEditor() {
     sqlFixSuggestion,
     setSqlFixSuggestion,
     sqlFixLoading,
+    scriptPrompt,
+    scriptSummary,
+    scriptResponding,
+    respondScriptPrompt,
+    scriptLive,
   } = useQueryEditor()
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
   const [showHistory, setShowHistory] = useState(false);
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [seenReportId, setSeenReportId] = useState<string | null>(null);
   const showAssistant = useAssistantStore((s) => s.showAssistant);
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
   const targetConnection = (connections.find(c => c.id === currentConnectionId) || activeConnection || null);
+
+  const scriptLiveRunning = scriptLive?.some(s => s.phase === 'running' || s.phase === 'pending') ?? false;
+  const scriptSummaryOpen = !!scriptSummary && seenReportId !== scriptSummary.runId;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -118,15 +129,15 @@ export default function QueryEditor() {
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const splitterRef = useRef({ isDragging: false })
+  const splitterRef = useRef({ isDragging: false, startY: 0, startHeight: 60 })
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (splitterRef.current.isDragging && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect()
-        const relativeY = e.clientY - rect.top
-        const newHeight = (relativeY / rect.height) * 100
-        
+        const { startY, startHeight } = splitterRef.current
+        const newHeight = startHeight + ((e.clientY - startY) / rect.height) * 100
+
         if (newHeight > 10 && newHeight < 90) {
           setEditorHeight(newHeight)
         }
@@ -180,6 +191,19 @@ export default function QueryEditor() {
         initialSql={sqlModal.sql}
       />
 
+      <ScriptErrorModal
+        prompt={scriptPrompt}
+        responding={scriptResponding}
+        onSkip={() => respondScriptPrompt('skip')}
+        onSkipAll={() => respondScriptPrompt('skip_all')}
+        onCancel={() => respondScriptPrompt('cancel')}
+      />
+
+      <ScriptSummaryModal
+        report={scriptSummaryOpen ? scriptSummary : null}
+        onClose={() => { if (scriptSummary) setSeenReportId(scriptSummary.runId) }}
+      />
+
       {contextMenuSql && (
         <div
           className="fixed z-[200] min-w-[160px] bg-card border border-border/60 rounded-lg shadow-xl shadow-black/40 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100"
@@ -227,6 +251,8 @@ export default function QueryEditor() {
         showHistory={showHistory}
         historyCount={currentHistory.length}
         onNewWithConnection={() => setShowNewScriptModal(true)}
+        executionTime={activeTab?.results?.executionTime}
+        query={activeTab?.query}
       />
 
       <NewScriptModal
@@ -312,7 +338,14 @@ export default function QueryEditor() {
       <div className="flex-1 flex min-h-0">
         <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {panels.editor && (
-            <div className="min-h-[100px] flex flex-col flex-1">
+            <div
+              className="min-h-[100px] flex flex-col"
+              style={
+                panels.editorHeight
+                  ? { height: `${panels.editorHeight}%`, flexGrow: 0, flexShrink: 0 }
+                  : undefined
+              }
+            >
               {isMongo && activeTab && (
                 <MongoFilterBar
                   filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
@@ -342,7 +375,14 @@ export default function QueryEditor() {
           {panels.editor && panels.results && (
             <div 
               className="h-1 w-full cursor-row-resize bg-border/60 hover:bg-primary/70 active:bg-primary transition-colors shrink-0 z-50 relative"
-              onMouseDown={() => { splitterRef.current.isDragging = true }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                const rect = containerRef.current?.getBoundingClientRect()
+                if (!rect) return
+                splitterRef.current.startY = e.clientY
+                splitterRef.current.startHeight = panels.editorHeight ?? 60
+                splitterRef.current.isDragging = true
+              }}
             >
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-0.5 rounded-full bg-muted-foreground/20 group-hover:bg-muted-foreground/40" />
             </div>
@@ -374,6 +414,11 @@ export default function QueryEditor() {
                 sqlFixSuggestion={sqlFixSuggestion}
                 setSqlFixSuggestion={setSqlFixSuggestion}
                 sqlFixLoading={sqlFixLoading}
+                scriptLive={scriptLive}
+                scriptLiveRunning={scriptLiveRunning}
+                onShowScriptSummary={() => {
+                  if (scriptSummary) setSeenReportId(null);
+                }}
               />
             </div>
           )}

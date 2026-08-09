@@ -60,11 +60,7 @@ impl SqlGeneratorService {
             .keys()
             .map(|k| format!("{}{}{}", q_open, k, q_close))
             .collect();
-        let values: Vec<String> = context
-            .data
-            .values()
-            .map(|v| Self::format_value(v))
-            .collect();
+        let values: Vec<String> = context.data.values().map(Self::format_value).collect();
 
         format!(
             "INSERT INTO {} ({}) VALUES ({})",
@@ -162,7 +158,7 @@ impl SqlGeneratorService {
             )
         };
 
-        parts.push(format!("-- Step 2: Delete target table"));
+        parts.push("-- Step 2: Delete target table".to_string());
         parts.push(format!("DELETE FROM {};", target_qualified));
         parts.push(String::new());
         parts.push("COMMIT;".to_string());

@@ -4,10 +4,8 @@ use crate::application::assistant::knowledge::KnowledgeEngine;
 use crate::application::assistant::learning::memory_engine::MemoryEngine;
 use crate::application::assistant::prompt::prompt_builder::PromptBuilder;
 use crate::error::AppResult;
-use crate::models::assistant::{
-    AiRequest, AssistantTurn, ChatMessage, SchemaContext, TokenUsage,
-};
 use crate::models::assistant::ProviderConfig;
+use crate::models::assistant::{AiRequest, AssistantTurn, ChatMessage, SchemaContext, TokenUsage};
 use crate::state::AppState;
 
 /// Orchestrates a single assistant chat turn: builds context (schema, history,
@@ -54,10 +52,7 @@ impl<'a> ChatOrchestrator<'a> {
         let driver = if self.connection_id.is_empty() {
             None
         } else {
-            match self.state.get_connection(self.connection_id).await {
-                Ok(d) => Some(d),
-                Err(_) => None,
-            }
+            self.state.get_connection(self.connection_id).await.ok()
         };
 
         let ctx = if let Some(ref driver) = driver {
@@ -165,8 +160,14 @@ impl<'a> ChatOrchestrator<'a> {
                 "Based on a previously validated answer (reused from your knowledge library, score {score:.2}):\n\n```sql\n{}\n```",
                 case.sql_text
             );
-            self.save_message(&turn_id, "assistant", answer.clone(), Some(case.sql_text.clone()), None)
-                .await;
+            self.save_message(
+                &turn_id,
+                "assistant",
+                answer.clone(),
+                Some(case.sql_text.clone()),
+                None,
+            )
+            .await;
             return Ok(AssistantTurn {
                 turn_id,
                 answer,
@@ -394,8 +395,14 @@ impl<'a> ChatOrchestrator<'a> {
         // can surface a "Run SQL" affordance even outside of tool responses.
         let sql = extract_sql_block(&response.content);
 
-        self.save_message(&turn_id, "assistant", response.content.clone(), sql.clone(), tool_used.clone())
-            .await;
+        self.save_message(
+            &turn_id,
+            "assistant",
+            response.content.clone(),
+            sql.clone(),
+            tool_used.clone(),
+        )
+        .await;
 
         Ok(AssistantTurn {
             turn_id,
@@ -469,7 +476,10 @@ mod tests {
     #[test]
     fn extracts_simple_sql_block() {
         let answer = "Here is the query:\n```sql\nSELECT * FROM users;\n```\nEnjoy!";
-        assert_eq!(extract_sql_block(answer), Some("SELECT * FROM users;".to_string()));
+        assert_eq!(
+            extract_sql_block(answer),
+            Some("SELECT * FROM users;".to_string())
+        );
     }
 
     #[test]
@@ -505,14 +515,18 @@ mod tests {
     fn extracts_all_blocks_in_order() {
         let answer = "1. Direct:\n```sql\nSELECT 1;\n```\n2. Subquery:\n```sql\nSELECT 2;\n```\n3. Left join:\n```sql\nSELECT 3;\n```";
         assert_eq!(
-            extract_sql_blocks(&answer),
-            vec!["SELECT 1;".to_string(), "SELECT 2;".to_string(), "SELECT 3;".to_string()]
+            extract_sql_blocks(answer),
+            vec![
+                "SELECT 1;".to_string(),
+                "SELECT 2;".to_string(),
+                "SELECT 3;".to_string()
+            ]
         );
     }
 
     #[test]
     fn skips_empty_blocks() {
         let answer = "```sql\n\n```\ntext\n```sql\nSELECT 2;\n```";
-        assert_eq!(extract_sql_blocks(&answer), vec!["SELECT 2;".to_string()]);
+        assert_eq!(extract_sql_blocks(answer), vec!["SELECT 2;".to_string()]);
     }
 }

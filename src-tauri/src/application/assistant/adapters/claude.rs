@@ -89,8 +89,7 @@ impl AiAdapter for ClaudeAdapter {
             prompt_tokens: u["input_tokens"].as_u64().unwrap_or(0) as u32,
             completion_tokens: u["output_tokens"].as_u64().unwrap_or(0) as u32,
             total_tokens: (u["input_tokens"].as_u64().unwrap_or(0)
-                + u["output_tokens"].as_u64().unwrap_or(0))
-                as u32,
+                + u["output_tokens"].as_u64().unwrap_or(0)) as u32,
         });
 
         let model = data["model"].as_str().unwrap_or(&self.model).to_string();

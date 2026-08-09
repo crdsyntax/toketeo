@@ -64,7 +64,9 @@ impl MetadataCache {
 
     pub fn set(&mut self, key: MetadataCacheKey, data: Vec<serde_json::Value>) {
         if self.entries.len() >= self.max_entries {
-            if let Some(oldest_key) = self.entries.iter()
+            if let Some(oldest_key) = self
+                .entries
+                .iter()
                 .min_by_key(|(_, v)| v.cached_at)
                 .map(|(k, _)| k.clone())
             {
@@ -81,15 +83,13 @@ impl MetadataCache {
     }
 
     pub fn invalidate_table(&mut self, object: &str, schema: Option<&str>) {
-        self.entries.retain(|k, _| {
-            !(k.object == object && k.schema.as_deref() == schema)
-        });
+        self.entries
+            .retain(|k, _| !(k.object == object && k.schema.as_deref() == schema));
     }
 
     pub fn invalidate_schema_lists(&mut self, schema: Option<&str>) {
-        self.entries.retain(|k, _| {
-            !(k.object == "*" && k.schema.as_deref() == schema)
-        });
+        self.entries
+            .retain(|k, _| !(k.object == "*" && k.schema.as_deref() == schema));
     }
 
     pub fn clear(&mut self) {
@@ -162,11 +162,13 @@ impl SessionService {
         let drivers: Vec<(String, Arc<dyn DbDriver>)>;
         {
             let mut conns = state.connections.write().await;
-            to_remove = conns.iter()
+            to_remove = conns
+                .iter()
                 .filter(|(_, session)| !session.in_use && session.is_expired(idle_timeout))
                 .map(|(id, _)| id.clone())
                 .collect();
-            drivers = to_remove.iter()
+            drivers = to_remove
+                .iter()
                 .filter_map(|id| conns.remove(id).map(|s| (id.clone(), s.driver)))
                 .collect();
         }
@@ -353,7 +355,8 @@ mod tests {
     #[test]
     fn test_session_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
+        let mut session =
+            ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
 
         // Initial state
         assert!(!session.is_expired(Duration::from_secs(3600)));
@@ -370,7 +373,8 @@ mod tests {
     #[test]
     fn test_session_ttl_expiration() {
         let driver = Arc::new(MockDriver);
-        let mut session = ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
+        let mut session =
+            ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
         session.max_ttl = Some(Duration::from_secs(10));
 
         // Fake old creation

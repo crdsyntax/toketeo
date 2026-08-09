@@ -91,8 +91,7 @@ impl AssistantTool for JobsTool {
         match action {
             "list" => match state.storage.get_all_scheduled_jobs().await {
                 Ok(jobs) => {
-                    let safe: Vec<serde_json::Value> =
-                        jobs.iter().map(sanitize_job).collect();
+                    let safe: Vec<serde_json::Value> = jobs.iter().map(sanitize_job).collect();
                     Ok(ToolResult {
                         ok: true,
                         data: Some(serde_json::json!({ "jobs": safe })),
@@ -155,7 +154,9 @@ impl AssistantTool for JobsTool {
                 match *engine_guard {
                     Some(ref engine) => Ok(ToolResult {
                         ok: true,
-                        data: Some(serde_json::json!({ "stopped": id, "cancelled": engine.cancel_job(id) })),
+                        data: Some(
+                            serde_json::json!({ "stopped": id, "cancelled": engine.cancel_job(id) }),
+                        ),
                         requires_confirmation: false,
                         message: None,
                     }),
@@ -203,15 +204,13 @@ impl AssistantTool for JobsTool {
                     .get("connection_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let database = args
-                    .get("database")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let database = args.get("database").and_then(|v| v.as_str()).unwrap_or("");
                 if cid.is_empty() || database.is_empty() {
                     return missing("connection_id and database are required for tables");
                 }
                 match state.get_or_connect_driver(cid).await {
-                    Ok(driver) => match driver.fetch_tables(Some(database.to_string()), None).await {
+                    Ok(driver) => match driver.fetch_tables(Some(database.to_string()), None).await
+                    {
                         Ok(t) => Ok(ToolResult {
                             ok: true,
                             data: Some(serde_json::json!({ "tables": t })),
@@ -264,7 +263,9 @@ impl JobsTool {
             .and_then(|v| v.as_str())
             .map(String::from);
         let config: JobConfigDto = match serde_json::from_value(
-            args.get("config").cloned().unwrap_or(serde_json::Value::Null),
+            args.get("config")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
         ) {
             Ok(c) => c,
             Err(e) => {
@@ -424,8 +425,14 @@ impl JobsTool {
 
         let job_id = id.to_string();
         tokio::spawn(async move {
-            if let Err(e) =
-                job_engine::execute_job_now(&storage, &known_hosts, &app_handle, &job_id, Some(token_clone)).await
+            if let Err(e) = job_engine::execute_job_now(
+                &storage,
+                &known_hosts,
+                &app_handle,
+                &job_id,
+                Some(token_clone),
+            )
+            .await
             {
                 tracing::error!("[jobs] run_job_now error: {e}");
             }
@@ -482,7 +489,10 @@ mod tests {
     fn sanitize_job_removes_password_from_config() {
         let value = sanitize_job(&job_with_password());
         let config = &value["config"];
-        assert!(config.get("password").is_none(), "password must be stripped");
+        assert!(
+            config.get("password").is_none(),
+            "password must be stripped"
+        );
         assert_eq!(config["host"], "localhost");
         assert_eq!(config["database"], "app");
         assert_eq!(value["name"], "backup nightly");

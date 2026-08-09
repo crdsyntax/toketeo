@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, Shield, Plus, X, Cpu, Lock, Info, Minimize2, Maximize2 } from 'lucide-react'
+import { Database, Plus, X, Cpu, Lock, Info, Minimize2, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection } from '@/types/database'
 import { schemaService } from '@/services/schema.service'

@@ -137,7 +137,8 @@ export const useSchedulerStore = create<SchedulerState>()((set, get) => ({
   }),
 
   clearRunningJob: (jobId) => set((state) => {
-    const { [jobId]: _, ...rest } = state.runningJobs
+    const { [jobId]: removed, ...rest } = state.runningJobs
+    void removed
     return { runningJobs: rest }
   }),
 }))

@@ -1,11 +1,17 @@
 use crate::db::DbType;
 use crate::error::AppResult;
 use crate::models::compare::CompareSession;
-use crate::models::sync::{SyncBatch, SyncCheckpoint, SyncPipeline, SyncRun, SyncRowError, SyncMode, PipelineStatus, SyncTableConfig};
-use crate::models::{DbConnectionConfig, SshConfig, ScheduledJob, JobType, JobExecutionLog};
+use crate::models::sync::{
+    PipelineStatus, SyncBatch, SyncCheckpoint, SyncMode, SyncPipeline, SyncRowError, SyncRun,
+    SyncTableConfig,
+};
+use crate::models::{DbConnectionConfig, JobExecutionLog, JobType, ScheduledJob, SshConfig};
 use chrono::{DateTime, Utc};
 use secrecy::ExposeSecret;
-use sqlx::{Row, sqlite::{SqlitePool, SqlitePoolOptions}};
+use sqlx::{
+    sqlite::{SqlitePool, SqlitePoolOptions},
+    Row,
+};
 use std::path::PathBuf;
 use std::sync::RwLock;
 use uuid::Uuid;
@@ -27,8 +33,12 @@ impl Storage {
             .await?;
 
         // WAL mode for concurrent reads + busy timeout to retry on contention
-        sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
-        sqlx::query("PRAGMA busy_timeout=5000").execute(&pool).await?;
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA busy_timeout=5000")
+            .execute(&pool)
+            .await?;
 
         // Create tables if not exists
         sqlx::query(
@@ -368,9 +378,11 @@ impl Storage {
             .execute(&pool)
             .await;
 
-        let _ = sqlx::query("ALTER TABLE sync_batches ADD COLUMN skipped_rows INTEGER NOT NULL DEFAULT 0")
-            .execute(&pool)
-            .await;
+        let _ = sqlx::query(
+            "ALTER TABLE sync_batches ADD COLUMN skipped_rows INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(&pool)
+        .await;
 
         // Assistant migrations
         let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN accepted_sql TEXT")
@@ -382,9 +394,11 @@ impl Storage {
         let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN tool_used TEXT")
             .execute(&pool)
             .await;
-        let _ = sqlx::query("ALTER TABLE assistant_knowledge ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
-            .execute(&pool)
-            .await;
+        let _ = sqlx::query(
+            "ALTER TABLE assistant_knowledge ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(&pool)
+        .await;
 
         // Phase 7: encrypt API keys at rest in `assistant_providers`.
         // `api_key` keeps its nullable-TEXT for back-compat (legacy plaintext
@@ -397,7 +411,10 @@ impl Storage {
             .execute(&pool)
             .await;
 
-        Ok(Self { pool, master_key: RwLock::new(None) })
+        Ok(Self {
+            pool,
+            master_key: RwLock::new(None),
+        })
     }
 
     pub fn set_master_key(&self, key: [u8; 32]) {
@@ -470,11 +487,17 @@ impl Storage {
         let db_type_str: String = row.get("type");
         let ssh_json: Option<String> = row.get("ssh");
 
-        let db_type: DbType = serde_json::from_value(serde_json::Value::String(db_type_str.clone()))
-            .unwrap_or_else(|e| {
-                tracing::warn!("Failed to parse db_type '{}': {}. Falling back to Mysql", db_type_str, e);
-                DbType::Mysql
-            });
+        let db_type: DbType = serde_json::from_value(serde_json::Value::String(
+            db_type_str.clone(),
+        ))
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                "Failed to parse db_type '{}': {}. Falling back to Mysql",
+                db_type_str,
+                e
+            );
+            DbType::Mysql
+        });
         let ssh_tunnel: Option<SshConfig> = ssh_json.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(DbConnectionConfig {
@@ -485,16 +508,17 @@ impl Storage {
             host: row.get("host"),
             port: row.get::<i64, _>("port") as u16,
             user: row.get("user"),
-            password: row
-                .get::<Option<String>, _>("password")
-                .map(|mut s| {
-                    let secret = secrecy::SecretString::from(s.as_str());
-                    s.zeroize();
-                    secret
-                }),
+            password: row.get::<Option<String>, _>("password").map(|mut s| {
+                let secret = secrecy::SecretString::from(s.as_str());
+                s.zeroize();
+                secret
+            }),
             database: row.get("database"),
             default_database: row.get("default_database"),
-            auth_enabled: row.try_get::<Option<i64>, _>("auth_enabled").unwrap_or(None).map(|v| v != 0),
+            auth_enabled: row
+                .try_get::<Option<i64>, _>("auth_enabled")
+                .unwrap_or(None)
+                .map(|v| v != 0),
             auth_source: row.get("auth_source"),
             replica_set: row.get("replica_set"),
             direct_connection: row
@@ -502,29 +526,55 @@ impl Storage {
                 .map(|v| v != 0),
             ssl: row.get("ssl"),
             ssh_tunnel,
-            read_only: row.try_get::<Option<i64>, _>("read_only").unwrap_or(None).map(|v| v != 0),
-            max_pool_size: row.try_get::<Option<i64>, _>("max_pool_size").unwrap_or(None).map(|v| v as i32),
-            idle_timeout: row.try_get::<Option<i64>, _>("idle_timeout").unwrap_or(None).map(|v| v as i32),
-            acquire_timeout: row.try_get::<Option<i64>, _>("acquire_timeout").unwrap_or(None).map(|v| v as i32),
-            max_lifetime: row.try_get::<Option<i64>, _>("max_lifetime").unwrap_or(None).map(|v| v as i32),
-            keep_alive: row.try_get::<Option<i64>, _>("keep_alive").unwrap_or(None).map(|v| v as i32),
-            metadata_cache_ttl: row.try_get::<Option<i64>, _>("metadata_cache_ttl").unwrap_or(None).map(|v| v as i32),
-            password_enc: row.try_get::<Option<Vec<u8>>, _>("password_enc").unwrap_or(None),
-            password_nonce: row.try_get::<Option<Vec<u8>>, _>("password_nonce").unwrap_or(None),
+            read_only: row
+                .try_get::<Option<i64>, _>("read_only")
+                .unwrap_or(None)
+                .map(|v| v != 0),
+            max_pool_size: row
+                .try_get::<Option<i64>, _>("max_pool_size")
+                .unwrap_or(None)
+                .map(|v| v as i32),
+            idle_timeout: row
+                .try_get::<Option<i64>, _>("idle_timeout")
+                .unwrap_or(None)
+                .map(|v| v as i32),
+            acquire_timeout: row
+                .try_get::<Option<i64>, _>("acquire_timeout")
+                .unwrap_or(None)
+                .map(|v| v as i32),
+            max_lifetime: row
+                .try_get::<Option<i64>, _>("max_lifetime")
+                .unwrap_or(None)
+                .map(|v| v as i32),
+            keep_alive: row
+                .try_get::<Option<i64>, _>("keep_alive")
+                .unwrap_or(None)
+                .map(|v| v as i32),
+            metadata_cache_ttl: row
+                .try_get::<Option<i64>, _>("metadata_cache_ttl")
+                .unwrap_or(None)
+                .map(|v| v as i32),
+            password_enc: row
+                .try_get::<Option<Vec<u8>>, _>("password_enc")
+                .unwrap_or(None),
+            password_nonce: row
+                .try_get::<Option<Vec<u8>>, _>("password_nonce")
+                .unwrap_or(None),
             ssh_enc: row.try_get::<Option<Vec<u8>>, _>("ssh_enc").unwrap_or(None),
-            ssh_nonce: row.try_get::<Option<Vec<u8>>, _>("ssh_nonce").unwrap_or(None),
+            ssh_nonce: row
+                .try_get::<Option<Vec<u8>>, _>("ssh_nonce")
+                .unwrap_or(None),
         })
     }
 
     pub async fn save_connection(&self, config: DbConnectionConfig) -> AppResult<String> {
         let id = config.id.unwrap_or_else(Uuid::new_v4).to_string();
-        let ssh_json = config
-            .ssh_tunnel
-            .as_ref()
-            .map(|s| serde_json::to_string(&s).unwrap_or_else(|e| {
+        let ssh_json = config.ssh_tunnel.as_ref().map(|s| {
+            serde_json::to_string(&s).unwrap_or_else(|e| {
                 tracing::error!("Failed to serialize ssh config: {}", e);
                 "{}".into()
-            }));
+            })
+        });
         let db_type = serde_json::to_value(&config.db_type)
             .unwrap_or_else(|e| {
                 tracing::error!("Failed to serialize db_type: {}", e);
@@ -639,16 +689,17 @@ impl Storage {
                 host: row.get("host"),
                 port: row.get::<i64, _>("port") as u16,
                 user: row.get("user"),
-                password: row
-                    .get::<Option<String>, _>("password")
-                    .map(|mut s| {
-                        let secret = secrecy::SecretString::from(s.as_str());
-                        s.zeroize();
-                        secret
-                    }),
+                password: row.get::<Option<String>, _>("password").map(|mut s| {
+                    let secret = secrecy::SecretString::from(s.as_str());
+                    s.zeroize();
+                    secret
+                }),
                 database: row.get("database"),
                 default_database: row.get("default_database"),
-                auth_enabled: row.try_get::<Option<i64>, _>("auth_enabled").unwrap_or(None).map(|v| v != 0),
+                auth_enabled: row
+                    .try_get::<Option<i64>, _>("auth_enabled")
+                    .unwrap_or(None)
+                    .map(|v| v != 0),
                 auth_source: row.get("auth_source"),
                 replica_set: row.get("replica_set"),
                 direct_connection: row
@@ -656,17 +707,44 @@ impl Storage {
                     .map(|v| v != 0),
                 ssl: row.get("ssl"),
                 ssh_tunnel,
-                read_only: row.try_get::<Option<i64>, _>("read_only").unwrap_or(None).map(|v| v != 0),
-                max_pool_size: row.try_get::<Option<i64>, _>("max_pool_size").unwrap_or(None).map(|v| v as i32),
-                idle_timeout: row.try_get::<Option<i64>, _>("idle_timeout").unwrap_or(None).map(|v| v as i32),
-                acquire_timeout: row.try_get::<Option<i64>, _>("acquire_timeout").unwrap_or(None).map(|v| v as i32),
-                max_lifetime: row.try_get::<Option<i64>, _>("max_lifetime").unwrap_or(None).map(|v| v as i32),
-                keep_alive: row.try_get::<Option<i64>, _>("keep_alive").unwrap_or(None).map(|v| v as i32),
-                metadata_cache_ttl: row.try_get::<Option<i64>, _>("metadata_cache_ttl").unwrap_or(None).map(|v| v as i32),
-                password_enc: row.try_get::<Option<Vec<u8>>, _>("password_enc").unwrap_or(None),
-                password_nonce: row.try_get::<Option<Vec<u8>>, _>("password_nonce").unwrap_or(None),
+                read_only: row
+                    .try_get::<Option<i64>, _>("read_only")
+                    .unwrap_or(None)
+                    .map(|v| v != 0),
+                max_pool_size: row
+                    .try_get::<Option<i64>, _>("max_pool_size")
+                    .unwrap_or(None)
+                    .map(|v| v as i32),
+                idle_timeout: row
+                    .try_get::<Option<i64>, _>("idle_timeout")
+                    .unwrap_or(None)
+                    .map(|v| v as i32),
+                acquire_timeout: row
+                    .try_get::<Option<i64>, _>("acquire_timeout")
+                    .unwrap_or(None)
+                    .map(|v| v as i32),
+                max_lifetime: row
+                    .try_get::<Option<i64>, _>("max_lifetime")
+                    .unwrap_or(None)
+                    .map(|v| v as i32),
+                keep_alive: row
+                    .try_get::<Option<i64>, _>("keep_alive")
+                    .unwrap_or(None)
+                    .map(|v| v as i32),
+                metadata_cache_ttl: row
+                    .try_get::<Option<i64>, _>("metadata_cache_ttl")
+                    .unwrap_or(None)
+                    .map(|v| v as i32),
+                password_enc: row
+                    .try_get::<Option<Vec<u8>>, _>("password_enc")
+                    .unwrap_or(None),
+                password_nonce: row
+                    .try_get::<Option<Vec<u8>>, _>("password_nonce")
+                    .unwrap_or(None),
                 ssh_enc: row.try_get::<Option<Vec<u8>>, _>("ssh_enc").unwrap_or(None),
-                ssh_nonce: row.try_get::<Option<Vec<u8>>, _>("ssh_nonce").unwrap_or(None),
+                ssh_nonce: row
+                    .try_get::<Option<Vec<u8>>, _>("ssh_nonce")
+                    .unwrap_or(None),
             });
         }
         Ok(connections)
@@ -706,7 +784,7 @@ impl Storage {
     pub async fn set_app_secret(&self, key: &str, value: &[u8]) -> AppResult<()> {
         sqlx::query(
             "INSERT INTO app_secrets (key, value) VALUES (?, ?)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         )
         .bind(key)
         .bind(value)
@@ -829,12 +907,24 @@ impl Storage {
             job_type,
             cron_expression: {
                 let ce: String = row.get("cron_expression");
-                if ce.is_empty() { None } else { Some(ce) }
+                if ce.is_empty() {
+                    None
+                } else {
+                    Some(ce)
+                }
             },
             config: serde_json::from_str(&config_str).unwrap_or_default(),
             enabled: row.get::<i64, _>("enabled") != 0,
-            last_run: last_run_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&Utc))),
-            next_run: next_run_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&Utc))),
+            last_run: last_run_str.and_then(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .ok()
+                    .map(|d| d.with_timezone(&Utc))
+            }),
+            next_run: next_run_str.and_then(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .ok()
+                    .map(|d| d.with_timezone(&Utc))
+            }),
             created_at: DateTime::parse_from_rfc3339(&created_at_str)
                 .map(|d| d.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now()),
@@ -865,7 +955,7 @@ impl Storage {
 
     pub async fn get_job_execution_logs(&self, job_id: &str) -> AppResult<Vec<JobExecutionLog>> {
         let rows = sqlx::query(
-            "SELECT * FROM job_execution_logs WHERE job_id = ? ORDER BY started_at DESC LIMIT 50"
+            "SELECT * FROM job_execution_logs WHERE job_id = ? ORDER BY started_at DESC LIMIT 50",
         )
         .bind(job_id)
         .fetch_all(&self.pool)
@@ -902,14 +992,21 @@ impl Storage {
 
     // ── Diagrams ──
 
-    pub async fn save_diagram(&self, diagram: &crate::models::diagram::Diagram) -> AppResult<crate::models::diagram::Diagram> {
+    pub async fn save_diagram(
+        &self,
+        diagram: &crate::models::diagram::Diagram,
+    ) -> AppResult<crate::models::diagram::Diagram> {
         let config = serde_json::to_string(&serde_json::json!({
             "nodes": diagram.nodes,
             "edges": diagram.edges,
             "viewport": diagram.viewport,
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
         let now = chrono::Utc::now().to_rfc3339();
-        let diagram_id = diagram.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let diagram_id = diagram
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let created_at = diagram.created_at.clone().unwrap_or_else(|| now.clone());
         let updated_at = diagram.updated_at.clone().unwrap_or(now);
 
@@ -983,9 +1080,13 @@ impl Storage {
             "source_schema": pipeline.source_schema,
             "target_schema": pipeline.target_schema,
             "tables": pipeline.tables,
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
         let now = chrono::Utc::now().to_rfc3339();
-        let pipeline_id = pipeline.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let pipeline_id = pipeline
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let created_at = pipeline.created_at.clone().unwrap_or_else(|| now.clone());
         let updated_at = pipeline.updated_at.clone().unwrap_or(now);
 
@@ -1035,10 +1136,19 @@ impl Storage {
         })
     }
 
-    pub async fn update_sync_pipeline_status(&self, id: &str, status: PipelineStatus) -> AppResult<()> {
+    pub async fn update_sync_pipeline_status(
+        &self,
+        id: &str,
+        status: PipelineStatus,
+    ) -> AppResult<()> {
         let status_str = serde_json::to_value(&status)
-            .unwrap_or_else(|e| { tracing::error!("Failed to serialize status: {}", e); serde_json::Value::String("draft".into()) })
-            .as_str().unwrap_or("draft").to_string();
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to serialize status: {}", e);
+                serde_json::Value::String("draft".into())
+            })
+            .as_str()
+            .unwrap_or("draft")
+            .to_string();
         let now = chrono::Utc::now().to_rfc3339();
         sqlx::query("UPDATE sync_pipelines SET status = ?, updated_at = ? WHERE id = ?")
             .bind(&status_str)
@@ -1120,10 +1230,11 @@ impl Storage {
     }
 
     pub async fn list_sync_runs(&self, pipeline_id: &str) -> AppResult<Vec<SyncRun>> {
-        let rows = sqlx::query("SELECT * FROM sync_runs WHERE pipeline_id = ? ORDER BY started_at DESC")
-            .bind(pipeline_id)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows =
+            sqlx::query("SELECT * FROM sync_runs WHERE pipeline_id = ? ORDER BY started_at DESC")
+                .bind(pipeline_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         let mut runs = Vec::new();
         for row in rows {
@@ -1156,14 +1267,17 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn get_sync_checkpoint(&self, pipeline_id: &str, table_name: &str) -> AppResult<Option<SyncCheckpoint>> {
-        let result = sqlx::query(
-            "SELECT * FROM sync_checkpoints WHERE pipeline_id = ? AND table_name = ?"
-        )
-        .bind(pipeline_id)
-        .bind(table_name)
-        .fetch_optional(&self.pool)
-        .await?;
+    pub async fn get_sync_checkpoint(
+        &self,
+        pipeline_id: &str,
+        table_name: &str,
+    ) -> AppResult<Option<SyncCheckpoint>> {
+        let result =
+            sqlx::query("SELECT * FROM sync_checkpoints WHERE pipeline_id = ? AND table_name = ?")
+                .bind(pipeline_id)
+                .bind(table_name)
+                .fetch_optional(&self.pool)
+                .await?;
 
         match result {
             Some(row) => Ok(Some(row_to_sync_checkpoint(row)?)),
@@ -1179,7 +1293,10 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn get_latest_checkpoint(&self, pipeline_id: &str) -> AppResult<Option<SyncCheckpoint>> {
+    pub async fn get_latest_checkpoint(
+        &self,
+        pipeline_id: &str,
+    ) -> AppResult<Option<SyncCheckpoint>> {
         let result = sqlx::query(
             "SELECT * FROM sync_checkpoints WHERE pipeline_id = ? ORDER BY batch_number DESC LIMIT 1"
         )
@@ -1224,12 +1341,11 @@ impl Storage {
     }
 
     pub async fn list_sync_batches(&self, run_id: &str) -> AppResult<Vec<SyncBatch>> {
-        let rows = sqlx::query(
-            "SELECT * FROM sync_batches WHERE run_id = ? ORDER BY batch_number ASC"
-        )
-        .bind(run_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query("SELECT * FROM sync_batches WHERE run_id = ? ORDER BY batch_number ASC")
+                .bind(run_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         let mut batches = Vec::new();
         for row in rows {
@@ -1260,12 +1376,11 @@ impl Storage {
     }
 
     pub async fn list_sync_row_errors(&self, batch_id: &str) -> AppResult<Vec<SyncRowError>> {
-        let rows = sqlx::query(
-            "SELECT * FROM sync_row_errors WHERE batch_id = ? ORDER BY row_key ASC"
-        )
-        .bind(batch_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query("SELECT * FROM sync_row_errors WHERE batch_id = ? ORDER BY row_key ASC")
+                .bind(batch_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         let mut errors = Vec::new();
         for row in rows {
@@ -1303,7 +1418,7 @@ impl Storage {
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 lore = excluded.lore,
-                slot_order = excluded.slot_order"
+                slot_order = excluded.slot_order",
         )
         .bind(&character.id)
         .bind(&character.name)
@@ -1315,16 +1430,29 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn save_compare_session(&self, session: &CompareSession) -> AppResult<CompareSession> {
-        let selected_tables_json = session.selected_tables.as_ref()
+    pub async fn save_compare_session(
+        &self,
+        session: &CompareSession,
+    ) -> AppResult<CompareSession> {
+        let selected_tables_json = session
+            .selected_tables
+            .as_ref()
             .map(|t| serde_json::to_string(t).unwrap_or_default());
-        let schema_report_json = session.schema_report.as_ref()
+        let schema_report_json = session
+            .schema_report
+            .as_ref()
             .map(|r| serde_json::to_string(r).unwrap_or_default());
-        let data_report_json = session.data_report.as_ref()
+        let data_report_json = session
+            .data_report
+            .as_ref()
             .map(|r| serde_json::to_string(r).unwrap_or_default());
-        let sync_script_json = session.sync_script.as_ref()
+        let sync_script_json = session
+            .sync_script
+            .as_ref()
             .map(|s| serde_json::to_string(s).unwrap_or_default());
-        let script_options_json = session.script_options.as_ref()
+        let script_options_json = session
+            .script_options
+            .as_ref()
             .map(|o| serde_json::to_string(o).unwrap_or_default());
 
         sqlx::query(
@@ -1406,7 +1534,10 @@ impl Storage {
 
     // ── Assistant Messages ──
 
-    pub async fn save_assistant_messages(&self, messages: &[crate::models::AssistantMessage]) -> AppResult<()> {
+    pub async fn save_assistant_messages(
+        &self,
+        messages: &[crate::models::AssistantMessage],
+    ) -> AppResult<()> {
         for msg in messages {
             sqlx::query(
                 "INSERT INTO assistant_messages (id, role, content, sql, is_safe_delete, feedback, accepted_sql, rejection_reason, tool_used, timestamp, connection_id)
@@ -1440,7 +1571,10 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn load_assistant_messages(&self, connection_id: &str) -> AppResult<Vec<crate::models::AssistantMessage>> {
+    pub async fn load_assistant_messages(
+        &self,
+        connection_id: &str,
+    ) -> AppResult<Vec<crate::models::AssistantMessage>> {
         let rows = sqlx::query(
             "SELECT id, role, content, sql, is_safe_delete, feedback, accepted_sql, rejection_reason, tool_used, timestamp, connection_id
              FROM assistant_messages
@@ -1478,7 +1612,11 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn update_assistant_feedback(&self, message_id: &str, feedback: &str) -> AppResult<()> {
+    pub async fn update_assistant_feedback(
+        &self,
+        message_id: &str,
+        feedback: &str,
+    ) -> AppResult<()> {
         sqlx::query("UPDATE assistant_messages SET feedback = ? WHERE id = ?")
             .bind(feedback)
             .bind(message_id)
@@ -1489,7 +1627,10 @@ impl Storage {
 
     // ── Query History ──
 
-    pub async fn save_query_history(&self, entries: &[crate::models::QueryHistoryEntry]) -> AppResult<()> {
+    pub async fn save_query_history(
+        &self,
+        entries: &[crate::models::QueryHistoryEntry],
+    ) -> AppResult<()> {
         for entry in entries {
             sqlx::query(
                 "INSERT INTO query_history (id, connection_id, query, executed_at, duration_ms, status, error, row_count)
@@ -1517,13 +1658,17 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn load_query_history(&self, connection_id: &str, limit: i64) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
+    pub async fn load_query_history(
+        &self,
+        connection_id: &str,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
         let rows = sqlx::query(
             "SELECT id, connection_id, query, executed_at, duration_ms, status, error, row_count
              FROM query_history
              WHERE connection_id = ?
              ORDER BY executed_at DESC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(connection_id)
         .bind(limit)
@@ -1554,7 +1699,12 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn search_similar_queries(&self, connection_id: &str, search: &str, limit: i64) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
+    pub async fn search_similar_queries(
+        &self,
+        connection_id: &str,
+        search: &str,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::QueryHistoryEntry>> {
         let pattern = format!("%{}%", search);
         let rows = sqlx::query(
             "SELECT id, connection_id, query, executed_at, duration_ms, status, error, row_count
@@ -1562,7 +1712,7 @@ impl Storage {
              WHERE connection_id = ?
                AND query LIKE ?
              ORDER BY executed_at DESC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(connection_id)
         .bind(&pattern)
@@ -1586,28 +1736,34 @@ impl Storage {
         Ok(entries)
     }
 
-    pub async fn save_provider_config(&self, config: &crate::models::assistant::ProviderConfig) -> AppResult<String> {
+    pub async fn save_provider_config(
+        &self,
+        config: &crate::models::assistant::ProviderConfig,
+    ) -> AppResult<String> {
         let now = chrono::Utc::now().timestamp();
-        let id = config.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let id = config
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
         // Encrypt the API key at rest if the session is unlocked (master key
         // available). If the session is locked, fall back to plaintext storage
         // rather than dropping the key. Ollama (key-less) writes NULL here.
-        let (api_key_plain, api_key_enc, api_key_nonce) = match (&config.api_key, self.get_master_key()) {
-            (Some(key), Some(k)) if !key.is_empty() => {
-                let (enc, nonce) =
-                    crate::infrastructure::crypto::encrypt(key, &k)
+        let (api_key_plain, api_key_enc, api_key_nonce) =
+            match (&config.api_key, self.get_master_key()) {
+                (Some(key), Some(k)) if !key.is_empty() => {
+                    let (enc, nonce) = crate::infrastructure::crypto::encrypt(key, &k)
                         .map_err(crate::error::AppError::Internal)?;
-                use base64::Engine;
-                (
-                    None as Option<String>,
-                    Some(base64::engine::general_purpose::STANDARD.encode(&enc)),
-                    Some(base64::engine::general_purpose::STANDARD.encode(&nonce)),
-                )
-            }
-            (Some(key), _) => (Some(key.clone()), None, None),
-            (None, _) => (None, None, None),
-        };
+                    use base64::Engine;
+                    (
+                        None as Option<String>,
+                        Some(base64::engine::general_purpose::STANDARD.encode(&enc)),
+                        Some(base64::engine::general_purpose::STANDARD.encode(nonce)),
+                    )
+                }
+                (Some(key), _) => (Some(key.clone()), None, None),
+                (None, _) => (None, None, None),
+            };
 
         sqlx::query(
             "INSERT OR REPLACE INTO assistant_providers
@@ -1628,24 +1784,30 @@ impl Storage {
         Ok(id)
     }
 
-    pub async fn load_provider_configs(&self) -> AppResult<Vec<crate::models::assistant::ProviderConfig>> {
+    pub async fn load_provider_configs(
+        &self,
+    ) -> AppResult<Vec<crate::models::assistant::ProviderConfig>> {
         let rows = sqlx::query(
             "SELECT id, provider_id, model, api_key, api_key_enc, api_key_nonce, base_url
-             FROM assistant_providers ORDER BY updated_at DESC"
+             FROM assistant_providers ORDER BY updated_at DESC",
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|row| {
-            let api_key = self.decrypt_provider_key(row, "api_key", "api_key_enc", "api_key_nonce");
-            crate::models::assistant::ProviderConfig {
-                id: Some(row.get("id")),
-                provider_id: row.get("provider_id"),
-                model: row.get("model"),
-                api_key,
-                base_url: row.get("base_url"),
-            }
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let api_key =
+                    self.decrypt_provider_key(row, "api_key", "api_key_enc", "api_key_nonce");
+                crate::models::assistant::ProviderConfig {
+                    id: Some(row.get("id")),
+                    provider_id: row.get("provider_id"),
+                    model: row.get("model"),
+                    api_key,
+                    base_url: row.get("base_url"),
+                }
+            })
+            .collect())
     }
 
     pub async fn delete_provider_config(&self, id: &str) -> AppResult<()> {
@@ -1656,10 +1818,13 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn get_provider_config_by_id(&self, id: &str) -> AppResult<Option<crate::models::assistant::ProviderConfig>> {
+    pub async fn get_provider_config_by_id(
+        &self,
+        id: &str,
+    ) -> AppResult<Option<crate::models::assistant::ProviderConfig>> {
         let row = sqlx::query(
             "SELECT id, provider_id, model, api_key, api_key_enc, api_key_nonce, base_url
-             FROM assistant_providers WHERE id = ?"
+             FROM assistant_providers WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -1702,7 +1867,9 @@ impl Storage {
                     return row.get::<Option<String>, _>(plain_col);
                 }
                 nonce_arr.copy_from_slice(&nonce_bytes);
-                if let Ok(plain) = crate::infrastructure::crypto::decrypt(&enc_bytes, &nonce_arr, &key) {
+                if let Ok(plain) =
+                    crate::infrastructure::crypto::decrypt(&enc_bytes, &nonce_arr, &key)
+                {
                     return Some(plain);
                 }
                 // Decryption failed (e.g. wrong master password); fall through
@@ -1728,7 +1895,7 @@ impl Storage {
              FROM assistant_knowledge
              WHERE engine = ? AND (question LIKE ? OR sql_text LIKE ?)
              ORDER BY favorite DESC, used_count DESC, created_at DESC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(engine)
         .bind(&pattern)
@@ -1737,15 +1904,21 @@ impl Storage {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|row| crate::models::assistant::KnowledgeCase {
-            id: row.get("id"),
-            question: row.get("question"),
-            sql_text: row.get("sql_text"),
-            engine: row.get("engine"),
-            rating: row.get("rating"),
-            used_count: row.get("used_count"),
-            favorite: row.get::<Option<i64>, _>("favorite").map(|v| v != 0).unwrap_or(false),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::KnowledgeCase {
+                id: row.get("id"),
+                question: row.get("question"),
+                sql_text: row.get("sql_text"),
+                engine: row.get("engine"),
+                rating: row.get("rating"),
+                used_count: row.get("used_count"),
+                favorite: row
+                    .get::<Option<i64>, _>("favorite")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+            })
+            .collect())
     }
 
     pub async fn list_knowledge_all(
@@ -1758,22 +1931,28 @@ impl Storage {
              FROM assistant_knowledge
              WHERE engine = ?
              ORDER BY favorite DESC, used_count DESC, created_at DESC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(engine)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|row| crate::models::assistant::KnowledgeCase {
-            id: row.get("id"),
-            question: row.get("question"),
-            sql_text: row.get("sql_text"),
-            engine: row.get("engine"),
-            rating: row.get("rating"),
-            used_count: row.get("used_count"),
-            favorite: row.get::<Option<i64>, _>("favorite").map(|v| v != 0).unwrap_or(false),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::KnowledgeCase {
+                id: row.get("id"),
+                question: row.get("question"),
+                sql_text: row.get("sql_text"),
+                engine: row.get("engine"),
+                rating: row.get("rating"),
+                used_count: row.get("used_count"),
+                favorite: row
+                    .get::<Option<i64>, _>("favorite")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+            })
+            .collect())
     }
 
     pub async fn list_knowledge_global(
@@ -1784,30 +1963,35 @@ impl Storage {
             "SELECT id, question, sql_text, engine, rating, used_count, favorite
              FROM assistant_knowledge
              ORDER BY favorite DESC, used_count DESC, created_at DESC
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|row| crate::models::assistant::KnowledgeCase {
-            id: row.get("id"),
-            question: row.get("question"),
-            sql_text: row.get("sql_text"),
-            engine: row.get("engine"),
-            rating: row.get("rating"),
-            used_count: row.get("used_count"),
-            favorite: row.get::<Option<i64>, _>("favorite").map(|v| v != 0).unwrap_or(false),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::KnowledgeCase {
+                id: row.get("id"),
+                question: row.get("question"),
+                sql_text: row.get("sql_text"),
+                engine: row.get("engine"),
+                rating: row.get("rating"),
+                used_count: row.get("used_count"),
+                favorite: row
+                    .get::<Option<i64>, _>("favorite")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+            })
+            .collect())
     }
 
     pub async fn toggle_knowledge_favorite(&self, id: &str) -> AppResult<bool> {
-        let current: Option<i64> = sqlx::query_scalar(
-            "SELECT favorite FROM assistant_knowledge WHERE id = ?"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let current: Option<i64> =
+            sqlx::query_scalar("SELECT favorite FROM assistant_knowledge WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         let new_val = match current {
             Some(v) if v != 0 => 0i64,
@@ -1847,12 +2031,10 @@ impl Storage {
     }
 
     pub async fn increment_knowledge_used(&self, id: &str) -> AppResult<()> {
-        sqlx::query(
-            "UPDATE assistant_knowledge SET used_count = used_count + 1 WHERE id = ?"
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE assistant_knowledge SET used_count = used_count + 1 WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -1867,16 +2049,17 @@ impl Storage {
     // ── Assistant Preferences ──
 
     pub async fn get_preferences(&self) -> AppResult<Vec<crate::models::assistant::Preference>> {
-        let rows = sqlx::query(
-            "SELECT key, value FROM assistant_preferences ORDER BY key"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query("SELECT key, value FROM assistant_preferences ORDER BY key")
+            .fetch_all(&self.pool)
+            .await?;
 
-        Ok(rows.iter().map(|row| crate::models::assistant::Preference {
-            key: row.get("key"),
-            value: row.get("value"),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::Preference {
+                key: row.get("key"),
+                value: row.get("value"),
+            })
+            .collect())
     }
 
     pub async fn set_preference(&self, key: &str, value: &str) -> AppResult<()> {
@@ -1910,8 +2093,14 @@ fn row_to_diagram(row: sqlx::sqlite::SqliteRow) -> AppResult<crate::models::diag
         name: row.get("name"),
         source_connection_id: row.get("source_connection_id"),
         source_schema: row.get("source_schema"),
-        nodes: config.get("nodes").cloned().unwrap_or(serde_json::Value::Array(vec![])),
-        edges: config.get("edges").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        nodes: config
+            .get("nodes")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
+        edges: config
+            .get("edges")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
         viewport: config.get("viewport").cloned(),
         created_at: Some(row.get("created_at")),
         updated_at: Some(row.get("updated_at")),
@@ -1923,35 +2112,40 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
     let mode_str: String = row.get("mode");
     let status_str: String = row.get("status");
 
-    let mode: SyncMode = serde_json::from_value(serde_json::Value::String(mode_str))
-        .unwrap_or(SyncMode::Full);
+    let mode: SyncMode =
+        serde_json::from_value(serde_json::Value::String(mode_str)).unwrap_or(SyncMode::Full);
     let status: PipelineStatus = serde_json::from_value(serde_json::Value::String(status_str))
         .unwrap_or(PipelineStatus::Draft);
 
     // Support both old format (just a tables array) and new format (object with schemas + tables)
-    let (tables, source_schema, target_schema) = if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&config_str) {
-        match obj {
-            serde_json::Value::Object(map) => {
-                let tables: Vec<SyncTableConfig> = map.get("tables")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok())
-                    .unwrap_or_default();
-                let source_schema = map.get("source_schema")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok())
-                    .unwrap_or(None);
-                let target_schema = map.get("target_schema")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok())
-                    .unwrap_or(None);
-                (tables, source_schema, target_schema)
+    let (tables, source_schema, target_schema) =
+        if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&config_str) {
+            match obj {
+                serde_json::Value::Object(map) => {
+                    let tables: Vec<SyncTableConfig> = map
+                        .get("tables")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let source_schema = map
+                        .get("source_schema")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or(None);
+                    let target_schema = map
+                        .get("target_schema")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or(None);
+                    (tables, source_schema, target_schema)
+                }
+                serde_json::Value::Array(_) => {
+                    let tables: Vec<SyncTableConfig> =
+                        serde_json::from_str(&config_str).unwrap_or_default();
+                    (tables, None, None)
+                }
+                _ => (vec![], None, None),
             }
-            serde_json::Value::Array(_) => {
-                let tables: Vec<SyncTableConfig> = serde_json::from_str(&config_str).unwrap_or_default();
-                (tables, None, None)
-            }
-            _ => (vec![], None, None),
-        }
-    } else {
-        (vec![], None, None)
-    };
+        } else {
+            (vec![], None, None)
+        };
 
     Ok(SyncPipeline {
         id: Some(row.get("id")),
@@ -1970,15 +2164,20 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
 }
 
 fn row_to_compare_session(row: sqlx::sqlite::SqliteRow) -> AppResult<CompareSession> {
-    let selected_tables: Option<Vec<String>> = row.get::<Option<String>, _>("selected_tables")
+    let selected_tables: Option<Vec<String>> = row
+        .get::<Option<String>, _>("selected_tables")
         .and_then(|s| serde_json::from_str(&s).ok());
-    let schema_report = row.get::<Option<String>, _>("schema_report")
+    let schema_report = row
+        .get::<Option<String>, _>("schema_report")
         .and_then(|s| serde_json::from_str(&s).ok());
-    let data_report = row.get::<Option<String>, _>("data_report")
+    let data_report = row
+        .get::<Option<String>, _>("data_report")
         .and_then(|s| serde_json::from_str(&s).ok());
-    let sync_script = row.get::<Option<String>, _>("sync_script")
+    let sync_script = row
+        .get::<Option<String>, _>("sync_script")
         .and_then(|s| serde_json::from_str(&s).ok());
-    let script_options = row.get::<Option<String>, _>("script_options")
+    let script_options = row
+        .get::<Option<String>, _>("script_options")
         .and_then(|s| serde_json::from_str(&s).ok());
 
     Ok(CompareSession {
@@ -2026,7 +2225,10 @@ fn row_to_sync_batch(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncBatch> {
         table_name: row.get("table_name"),
         rows_extracted: row.get::<i64, _>("rows_extracted") as u64,
         rows_loaded: row.get::<i64, _>("rows_loaded") as u64,
-        skipped_rows: row.try_get::<i64, _>("skipped_rows").map(|v| v as u64).unwrap_or(0),
+        skipped_rows: row
+            .try_get::<i64, _>("skipped_rows")
+            .map(|v| v as u64)
+            .unwrap_or(0),
         duration_ms: row.get::<i64, _>("duration_ms") as u64,
         status: row.get("status"),
         error_message: row.get("error_message"),
@@ -2096,7 +2298,10 @@ mod tests {
     #[tokio::test]
     async fn sync_pipeline_crud() {
         let storage = test_storage().await;
-        let saved = storage.save_sync_pipeline(&sample_pipeline()).await.unwrap();
+        let saved = storage
+            .save_sync_pipeline(&sample_pipeline())
+            .await
+            .unwrap();
         let id = saved.id.clone().unwrap();
 
         let fetched = storage.get_sync_pipeline(&id).await.unwrap();
@@ -2104,7 +2309,10 @@ mod tests {
         assert_eq!(fetched.tables.len(), 1);
         assert_eq!(fetched.mode, SyncMode::Full);
 
-        storage.update_sync_pipeline_status(&id, PipelineStatus::Completed).await.unwrap();
+        storage
+            .update_sync_pipeline_status(&id, PipelineStatus::Completed)
+            .await
+            .unwrap();
         let updated = storage.get_sync_pipeline(&id).await.unwrap();
         assert_eq!(updated.status, PipelineStatus::Completed);
 
@@ -2126,7 +2334,11 @@ mod tests {
             base_url: Some("https://opencode.ai/zen/v1".to_string()),
         };
         let id = storage.save_provider_config(&cfg).await.unwrap();
-        let loaded = storage.get_provider_config_by_id(&id).await.unwrap().unwrap();
+        let loaded = storage
+            .get_provider_config_by_id(&id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(loaded.provider_id, "opencode");
         assert_eq!(loaded.model, Some("opencode/gpt-5.5".to_string()));
 

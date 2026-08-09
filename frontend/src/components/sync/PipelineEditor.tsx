@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { GitBranch, X, Loader2, Database, Save, FlaskConical, ChevronDown, ChevronRight, Columns, ListChecks } from 'lucide-react'
 import { connectionService } from '@/services/connection.service'
@@ -51,17 +51,21 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
     enabled: !!targetId,
   })
 
-  useEffect(() => {
+  const [prevSourceSchemas, setPrevSourceSchemas] = useState(sourceSchemas)
+  if (sourceSchemas !== prevSourceSchemas) {
+    setPrevSourceSchemas(sourceSchemas)
     if (sourceSchemas && sourceSchemas.length > 0 && !sourceSchema) {
       setSourceSchema(sourceSchemas[0])
     }
-  }, [sourceSchemas, sourceSchema])
+  }
 
-  useEffect(() => {
+  const [prevTargetSchemas, setPrevTargetSchemas] = useState(targetSchemas)
+  if (targetSchemas !== prevTargetSchemas) {
+    setPrevTargetSchemas(targetSchemas)
     if (targetSchemas && targetSchemas.length > 0 && !targetSchema) {
       setTargetSchema(targetSchemas[0])
     }
-  }, [targetSchemas, targetSchema])
+  }
 
   const dto = (): CreateSyncPipelineDto => ({
     name,

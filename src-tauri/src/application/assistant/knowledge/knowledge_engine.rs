@@ -1,6 +1,6 @@
+use crate::error::AppResult;
 use crate::models::assistant::KnowledgeCase;
 use crate::storage::Storage;
-use crate::error::AppResult;
 use std::sync::Arc;
 
 pub struct KnowledgeEngine;

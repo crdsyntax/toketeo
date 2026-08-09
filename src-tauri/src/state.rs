@@ -1,5 +1,6 @@
 use crate::application::assistant::context::schema_engine::SchemaEngine;
 use crate::application::assistant::tools::tool_engine::ToolEngine;
+use crate::application::script::runner::ScriptPromptStore;
 use crate::application::session_service::ConnectionSession;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
@@ -25,13 +26,24 @@ pub struct SyncController {
     inner: Arc<RwLock<HashMap<String, SyncControl>>>,
 }
 
+impl Default for SyncController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SyncController {
     pub fn new() -> Self {
-        Self { inner: Arc::new(RwLock::new(HashMap::new())) }
+        Self {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     pub async fn set(&self, pipeline_id: &str, control: SyncControl) {
-        self.inner.write().await.insert(pipeline_id.to_string(), control);
+        self.inner
+            .write()
+            .await
+            .insert(pipeline_id.to_string(), control);
     }
 
     pub async fn get(&self, pipeline_id: &str) -> Option<SyncControl> {
@@ -56,6 +68,7 @@ pub struct AppState {
     pub job_engine: RwLock<Option<Arc<JobEngine>>>,
     pub schema_engine: SchemaEngine,
     pub tool_engine: ToolEngine,
+    pub script_store: ScriptPromptStore,
 }
 
 impl AppState {
@@ -75,34 +88,35 @@ impl AppState {
             job_engine: RwLock::new(None),
             schema_engine: SchemaEngine::new(300),
             tool_engine: Self::init_tools(),
+            script_store: ScriptPromptStore::new(),
         }
     }
 
     fn init_tools() -> ToolEngine {
-        use crate::application::assistant::tools::schema_tool::SchemaTool;
-        use crate::application::assistant::tools::index_tool::IndexTool;
-        use crate::application::assistant::tools::explain_tool::ExplainTool;
-        use crate::application::assistant::tools::compare_tool::CompareSchemaTool;
-        use crate::application::assistant::tools::data_compare_tool::CompareDataTool;
-        use crate::application::assistant::tools::codegen_tool::CodegenTool;
-        use crate::application::assistant::tools::backup_tool::BackupTool;
-        use crate::application::assistant::tools::export_tool::ExportTool;
-        use crate::application::assistant::tools::auto_schema_tool::AutoSchemaTool;
-        use crate::application::assistant::tools::sync_tool::SyncTool;
-        use crate::application::assistant::tools::connections_tool::ConnectionsTool;
-        use crate::application::assistant::tools::connection_manage_tool::ConnectionManageTool;
-        use crate::application::assistant::tools::explorer_tool::ExplorerTool;
-        use crate::application::assistant::tools::history_tool::HistoryTool;
-        use crate::application::assistant::tools::knowledge_tool::KnowledgeTool;
-        use crate::application::assistant::tools::assistant_config_tool::AssistantConfigTool;
-        use crate::application::assistant::tools::query_tool::QueryTool;
-        use crate::application::assistant::tools::query_edit_tool::QueryEditTool;
-        use crate::application::assistant::tools::transaction_tool::TransactionTool;
-        use crate::application::assistant::tools::ddl_tool::DdlTool;
-        use crate::application::assistant::tools::compare_sessions_tool::CompareSessionsTool;
-        use crate::application::assistant::tools::jobs_tool::JobsTool;
-        use crate::application::assistant::tools::diagrams_tool::DiagramsTool;
         use crate::application::assistant::tools::app_settings_tool::AppSettingsTool;
+        use crate::application::assistant::tools::assistant_config_tool::AssistantConfigTool;
+        use crate::application::assistant::tools::auto_schema_tool::AutoSchemaTool;
+        use crate::application::assistant::tools::backup_tool::BackupTool;
+        use crate::application::assistant::tools::codegen_tool::CodegenTool;
+        use crate::application::assistant::tools::compare_sessions_tool::CompareSessionsTool;
+        use crate::application::assistant::tools::compare_tool::CompareSchemaTool;
+        use crate::application::assistant::tools::connection_manage_tool::ConnectionManageTool;
+        use crate::application::assistant::tools::connections_tool::ConnectionsTool;
+        use crate::application::assistant::tools::data_compare_tool::CompareDataTool;
+        use crate::application::assistant::tools::ddl_tool::DdlTool;
+        use crate::application::assistant::tools::diagrams_tool::DiagramsTool;
+        use crate::application::assistant::tools::explain_tool::ExplainTool;
+        use crate::application::assistant::tools::explorer_tool::ExplorerTool;
+        use crate::application::assistant::tools::export_tool::ExportTool;
+        use crate::application::assistant::tools::history_tool::HistoryTool;
+        use crate::application::assistant::tools::index_tool::IndexTool;
+        use crate::application::assistant::tools::jobs_tool::JobsTool;
+        use crate::application::assistant::tools::knowledge_tool::KnowledgeTool;
+        use crate::application::assistant::tools::query_edit_tool::QueryEditTool;
+        use crate::application::assistant::tools::query_tool::QueryTool;
+        use crate::application::assistant::tools::schema_tool::SchemaTool;
+        use crate::application::assistant::tools::sync_tool::SyncTool;
+        use crate::application::assistant::tools::transaction_tool::TransactionTool;
 
         let mut engine = ToolEngine::new();
         engine.register(Box::new(SchemaTool));
@@ -159,19 +173,25 @@ impl AppState {
     pub async fn require_unlock(&self) -> crate::error::AppResult<[u8; 32]> {
         let locked = self.ui_locked.read().await;
         if *locked {
-            return Err(crate::error::AppError::Unauthorized("Session locked".into()));
+            return Err(crate::error::AppError::Unauthorized(
+                "Session locked".into(),
+            ));
         }
         let key = self.master_key.read().await;
         if let Some(k) = *key {
             let expired = self.session_expires_at.read().await;
             if let Some(exp) = *expired {
                 if std::time::Instant::now() > exp {
-                    return Err(crate::error::AppError::Unauthorized("Session expired".into()));
+                    return Err(crate::error::AppError::Unauthorized(
+                        "Session expired".into(),
+                    ));
                 }
             }
             Ok(k)
         } else {
-            Err(crate::error::AppError::Unauthorized("Session locked".into()))
+            Err(crate::error::AppError::Unauthorized(
+                "Session locked".into(),
+            ))
         }
     }
 
@@ -182,7 +202,9 @@ impl AppState {
         let key = self.master_key.read().await;
         match *key {
             Some(k) => Ok(k),
-            None => Err(crate::error::AppError::Unauthorized("Session locked".into())),
+            None => Err(crate::error::AppError::Unauthorized(
+                "Session locked".into(),
+            )),
         }
     }
 
@@ -271,7 +293,14 @@ impl AppState {
             let old = conns.remove(&id);
             conns.insert(
                 id,
-                ConnectionSession::new(driver, ssh_tunnel, transactional, read_only, max_ttl, metadata_cache_ttl),
+                ConnectionSession::new(
+                    driver,
+                    ssh_tunnel,
+                    transactional,
+                    read_only,
+                    max_ttl,
+                    metadata_cache_ttl,
+                ),
             );
             old.map(|s| s.driver)
         };

@@ -3,6 +3,7 @@ import type { Connection } from '@/types/database'
 import type { QueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
 import toast from 'react-hot-toast'
+import type { RefObject } from 'react'
 
 interface ConnectionContextMenuProps {
   x: number
@@ -13,6 +14,7 @@ interface ConnectionContextMenuProps {
   onConnect: (conn: Connection) => Promise<void> | void
   onClose: () => void
   queryClient: QueryClient
+  containerRef?: RefObject<HTMLDivElement | null>
   setPromptModal: (modal: {
     title: string
     message?: string
@@ -26,10 +28,11 @@ interface ConnectionContextMenuProps {
 
 export function ConnectionContextMenu({
   x, y, connId, connections,
-  onDisconnect, onConnect, onClose, queryClient, setPromptModal,
+  onDisconnect, onConnect, onClose, queryClient, setPromptModal, containerRef,
 }: ConnectionContextMenuProps) {
   return (
     <div
+      ref={containerRef}
       style={{ left: x, top: y }}
       className="fixed z-50 min-w-[160px] bg-muted border border-border rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
       onClick={onClose}
