@@ -122,20 +122,6 @@ export function SqlEditorPanel({
       });
     };
 
-    const handleEditorWheel = (event: WheelEvent) => {
-      const delta = event.deltaY;
-      if (!delta) return;
-
-      const sd = view.scrollDOM;
-      const canScrollDown = sd.scrollTop + sd.clientHeight < sd.scrollHeight - 1;
-      const canScrollUp = sd.scrollTop > 0;
-      if (delta > 0 ? !canScrollDown : !canScrollUp) return;
-
-      event.preventDefault();
-      sd.scrollTop += delta;
-      captureState(view);
-    };
-
     const handleEditorKeyUp = () => {
       const pos = view.state.selection.main.head;
       const line = view.state.doc.lineAt(pos);
@@ -146,7 +132,6 @@ export function SqlEditorPanel({
     view.dom.addEventListener('paste', handleEditorPaste);
     view.dom.addEventListener('keyup', handleEditorKeyUp);
     view.dom.addEventListener('click', () => captureState(view));
-    view.scrollDOM.addEventListener('wheel', handleEditorWheel, { passive: false });
     view.scrollDOM.addEventListener('scroll', () => captureState(view));
   }, [editorRef, captureState]);
 

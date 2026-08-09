@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.4_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU0xRGZqVFBmd29qUVFoQ3dOTnZUTVBORjRDTHhzdm1JRkJRaXBvYzRkYnFpeXRWMnk4d2hSbWdYRjRsRXIvdFg4MUE3ZVowT2dPS0hCZ3RBT0JxZUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MjMzNTcxCWZpbGU6VG9rZXRlb18wLjQuNF94NjRfZW4tVVMubXNpCklYdzhPKzA2WHlrczdxeGhVanM5aTRJakIzR2JrQmRtc3lCaWlvU1R5NGU1aUs2T1BLelZGMTRabWhDQXB5SW1BdXZjdmRlQ1M3QjNmRTZSNDZzSUNBPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.5_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUxWRGNVMmVLT2E5OHF6eSs4ampHQzVTRWxzYlNHdW5lOHQvKzBzMnIvUmluV3lwakVYc292TG5TTUt4Q0Y0OEZtYmtQdEthUDYrZTZDY2FNcnAwS0E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MjM4NTc0CWZpbGU6VG9rZXRlb18wLjQuNV94NjRfZW4tVVMubXNpCm44ZGtJZEtrWFlFNTMzV1k3T2UzcVJCdzU1eUJaeG1udW4zQTdxRFdNdjVTdkV5SGxnMUxLdlVsaXpZQnBndlNIcWVPcFBsc3BtQWpMTk1qK3lXeUJRPT0K"
                                          }
                   },
-    "pub_date":  "2026-08-08T23:59:31Z",
-    "version":  "0.4.4",
-    "notes":  "v0.4.4 - Fix update signature verification (pubkey matched to signing key)."
+    "pub_date":  "2026-08-09T01:22:54Z",
+    "version":  "0.4.5",
+    "notes":  "v0.4.5 - Fix SQL editor scroll (CodeMirror wrapper height), connections panel scroll, ResultPanel resize"
 }

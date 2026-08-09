@@ -112,6 +112,11 @@
     font-size: var(--ch-ui-font-size, 13px);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  /* CodeMirror: constrain the wrapper to the parent so .cm-scroller actually scrolls */
+  .cm-theme,
+  [class^="cm-theme"] {
+    height: 100%;
+  }
   button {
     @apply transition-all active:scale-95 cursor-pointer;
   }
