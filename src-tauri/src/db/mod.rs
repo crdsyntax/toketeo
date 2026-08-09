@@ -189,6 +189,11 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
         ))
     }
     async fn close(&self) -> AppResult<()>;
+    /// Expone las capacidades de grafo si el driver es un motor de grafos
+    /// (Neo4j). Default: este driver no tiene capacidades de grafo.
+    fn as_graph(&self) -> Option<&dyn GraphDriver> {
+        None
+    }
 }
 
 /// Capacidades del driver para sync.
@@ -219,6 +224,7 @@ pub type BoxGraphDriver = Box<dyn GraphDriver>;
 pub mod common;
 pub mod mongodb;
 pub mod mysql;
+pub mod neo4j;
 pub mod postgres;
 pub mod redis;
 pub mod sqlite;

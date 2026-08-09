@@ -148,6 +148,16 @@ impl ConnectionStringBuilder {
 
                 Ok(url)
             }
+            DbType::Neo4j => {
+                let scheme = if config.ssh_tunnel.is_some() {
+                    "bolt"
+                } else if ssl_enabled {
+                    "bolt+s"
+                } else {
+                    "bolt"
+                };
+                Ok(format!("{}://{}:{}", scheme, host, port))
+            }
             _ => Err(AppError::Validation(format!(
                 "Unsupported database engine for connection string: {:?}",
                 config.db_type

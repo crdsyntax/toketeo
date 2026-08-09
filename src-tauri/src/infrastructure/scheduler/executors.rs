@@ -5,6 +5,7 @@ use crate::models::{JobType, ScheduledJob};
 use crate::ssh::KnownHostsStore;
 use crate::storage::Storage;
 use chrono::Utc;
+use secrecy::ExposeSecret;
 use std::fs;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -358,9 +359,17 @@ impl JobExecutor {
             .map_err(|e| err(format!("Failed to build connection string: {}", e)))?;
         let db_type = conn_config.db_type.clone();
 
-        let driver = DriverFactory::create(db_type.clone(), &url, false, None)
-            .await
-            .map_err(|e| err(format!("Failed to connect for backup: {}", e)))?;
+        let driver = DriverFactory::create(
+            db_type.clone(),
+            &url,
+            false,
+            None,
+            &conn_config.user,
+            conn_config.password.as_ref().map(|p| p.expose_secret()),
+            conn_config.database.as_deref(),
+        )
+        .await
+        .map_err(|e| err(format!("Failed to connect for backup: {}", e)))?;
 
         Ok(JobOutput {
             driver,

@@ -421,6 +421,9 @@ impl ConnectionService {
             &url,
             is_transactional,
             pool_config,
+            &config.user,
+            config.password.as_ref().map(|p| p.expose_secret()),
+            config.database.as_deref(),
         )
         .await
         {
@@ -438,6 +441,7 @@ impl ConnectionService {
         if is_transactional {
             if config.db_type != crate::db::DbType::Mongodb
                 && config.db_type != crate::db::DbType::Redis
+                && config.db_type != crate::db::DbType::Neo4j
             {
                 let begin_sql = match config.db_type {
                     crate::db::DbType::Postgres => "BEGIN",
@@ -478,7 +482,16 @@ impl ConnectionService {
         }
         let url = ConnectionStringBuilder::build(&config)?;
 
-        let driver = DriverFactory::create(config.db_type, &url, false, None).await?;
+        let driver = DriverFactory::create(
+            config.db_type,
+            &url,
+            false,
+            None,
+            &config.user,
+            config.password.as_ref().map(|p| p.expose_secret()),
+            config.database.as_deref(),
+        )
+        .await?;
 
         let dbs = driver.fetch_databases().await?;
         let schemas = driver.fetch_schemas().await?;
@@ -508,7 +521,16 @@ impl ConnectionService {
 
         let url = ConnectionStringBuilder::build(&config)?;
         let pool_config: Option<PoolConfig> = (&config).into();
-        let driver = DriverFactory::create(config.db_type, &url, false, pool_config).await?;
+        let driver = DriverFactory::create(
+            config.db_type,
+            &url,
+            false,
+            pool_config,
+            &config.user,
+            config.password.as_ref().map(|p| p.expose_secret()),
+            config.database.as_deref(),
+        )
+        .await?;
 
         let max_ttl = config.max_lifetime.map(|s| Duration::from_secs(s as u64));
         let metadata_cache_ttl =
