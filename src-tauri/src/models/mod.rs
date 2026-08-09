@@ -190,6 +190,57 @@ pub struct QueryResult {
     pub next_cursor: Option<String>,
 }
 
+/// Nodo de grafo neutral (DTO propio, sin tipos del crate del driver).
+/// `id` es el `elementId` de Neo4j (D2 del plan de integración).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNode {
+    pub id: String,
+    pub labels: Vec<String>,
+    pub properties: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// Relación de grafo neutral. `source`/`target` son elementIds de nodos.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphRelationship {
+    pub id: String,
+    pub r#type: String,
+    pub source: String,
+    pub target: String,
+    pub properties: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// Camino de grafo: secuencia de nodos y relaciones que lo componen.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphPath {
+    pub nodes: Vec<GraphNode>,
+    pub relationships: Vec<GraphRelationship>,
+}
+
+/// Resultado normalizado de una query de grafo (neutral a la librería del
+/// driver). `nodes`/`relationships`/`paths` se pueblan según la topología de
+/// la query `RETURN`.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphResult {
+    pub nodes: Vec<GraphNode>,
+    pub relationships: Vec<GraphRelationship>,
+    pub paths: Vec<GraphPath>,
+}
+
+/// Metadatos de un grafo (catálogos nativos de Neo4j): labels, tipos de
+/// relación y property keys. No es un `DatabaseSchema` unificado — preserva
+/// la metadata nativa del motor.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphMetadata {
+    pub labels: Vec<String>,
+    pub relationship_types: Vec<String>,
+    pub property_keys: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RowContext {
     pub schema: Option<String>,

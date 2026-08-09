@@ -30,6 +30,9 @@ impl DriverFactory {
                 RedisDriver::new(url, transactional, pool_config).await?,
             )),
             DbType::Sqlite => Ok(Arc::new(SqliteDriver::new(url).await?)),
+            DbType::Neo4j => Err(crate::error::AppError::Validation(
+                "Neo4j driver is not implemented yet".into(),
+            )),
         }
     }
 }

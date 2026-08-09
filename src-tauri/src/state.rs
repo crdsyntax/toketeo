@@ -337,6 +337,8 @@ impl AppState {
                 // MongoDB doesn't support SQL — use fetch_databases instead
                 DbType::Mongodb => driver.fetch_databases().await.is_ok(),
                 DbType::Redis => driver.execute("PING").await.is_ok(),
+                // Neo4j driver no implementado aún (Fase 1)
+                DbType::Neo4j => false,
             };
             if healthy {
                 return Ok(driver);
