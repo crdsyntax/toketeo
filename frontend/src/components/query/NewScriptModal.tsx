@@ -17,34 +17,38 @@ export function NewScriptModal({ isOpen, onClose, connections, onCreate }: NewSc
   const [selectedDb, setSelectedDb] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(isOpen);
+  if (prevOpen !== isOpen) {
+    setPrevOpen(isOpen);
     setSelectedConnId('');
     setSelectedDb('');
     setDatabases([]);
-  }, [isOpen]);
+  }
 
   useEffect(() => {
-    if (!selectedConnId) {
-      setDatabases([]);
-      setSelectedDb('');
-      return;
-    }
-    setLoading(true);
-    setSelectedDb('');
+    if (!selectedConnId) return;
     const conn = connections.find(c => c.id === selectedConnId);
-    if (!conn) { setLoading(false); return; }
+    if (!conn) return;
 
+    let cancelled = false;
     const fetchDbs = conn.type === DatabaseType.POSTGRES
       ? schemaService.getDatabases(selectedConnId)
       : schemaService.getSchemas(selectedConnId);
 
-    fetchDbs.then((dbs) => {
-      setDatabases(dbs);
-    }).catch(() => {
-      setDatabases([]);
-    }).finally(() => {
-      setLoading(false);
-    });
+    Promise.resolve()
+      .then(() => { if (!cancelled) { setLoading(true); setSelectedDb(''); } })
+      .then(() => fetchDbs)
+      .then((dbs) => {
+        if (!cancelled) setDatabases(dbs);
+      })
+      .catch(() => {
+        if (!cancelled) setDatabases([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, [selectedConnId, connections]);
 
   const selectedConn = connections.find(c => c.id === selectedConnId);

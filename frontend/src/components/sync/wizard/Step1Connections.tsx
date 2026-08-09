@@ -53,17 +53,21 @@ export function Step1Connections({
     enabled: isTargetPostgres && !!targetId,
   })
 
-  useEffect(() => {
+  const [prevSourceDbList, setPrevSourceDbList] = useState(sourceDatabases)
+  if (sourceDatabases !== prevSourceDbList) {
+    setPrevSourceDbList(sourceDatabases)
     if (isSourcePostgres && sourceDatabases && sourceDatabases.length > 0 && !sourceDatabase) {
       setSourceDatabase(sourceDatabases[0])
     }
-  }, [isSourcePostgres, sourceDatabases])
+  }
 
-  useEffect(() => {
+  const [prevTargetDbList, setPrevTargetDbList] = useState(targetDatabases)
+  if (targetDatabases !== prevTargetDbList) {
+    setPrevTargetDbList(targetDatabases)
     if (isTargetPostgres && targetDatabases && targetDatabases.length > 0 && !targetDatabase) {
       setTargetDatabase(targetDatabases[0])
     }
-  }, [isTargetPostgres, targetDatabases])
+  }
 
   const sourceSchemasEnabled = isSourcePostgres ? (!!sourceId && !!sourceDatabase) : !!sourceId
   const targetSchemasEnabled = isTargetPostgres ? (!!targetId && !!targetDatabase) : !!targetId

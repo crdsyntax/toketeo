@@ -129,15 +129,15 @@ export default function QueryEditor() {
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const splitterRef = useRef({ isDragging: false })
+  const splitterRef = useRef({ isDragging: false, startY: 0, startHeight: 60 })
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (splitterRef.current.isDragging && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect()
-        const relativeY = e.clientY - rect.top
-        const newHeight = (relativeY / rect.height) * 100
-        
+        const { startY, startHeight } = splitterRef.current
+        const newHeight = startHeight + ((e.clientY - startY) / rect.height) * 100
+
         if (newHeight > 10 && newHeight < 90) {
           setEditorHeight(newHeight)
         }
@@ -338,7 +338,14 @@ export default function QueryEditor() {
       <div className="flex-1 flex min-h-0">
         <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {panels.editor && (
-            <div className="min-h-[100px] flex flex-col flex-1">
+            <div
+              className="min-h-[100px] flex flex-col"
+              style={
+                panels.editorHeight
+                  ? { height: `${panels.editorHeight}%`, flexGrow: 0, flexShrink: 0 }
+                  : undefined
+              }
+            >
               {isMongo && activeTab && (
                 <MongoFilterBar
                   filter={activeTab.mongoFilter ?? { find: '', project: '', sort: '', collation: '', hint: '' }}
@@ -368,7 +375,14 @@ export default function QueryEditor() {
           {panels.editor && panels.results && (
             <div 
               className="h-1 w-full cursor-row-resize bg-border/60 hover:bg-primary/70 active:bg-primary transition-colors shrink-0 z-50 relative"
-              onMouseDown={() => { splitterRef.current.isDragging = true }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                const rect = containerRef.current?.getBoundingClientRect()
+                if (!rect) return
+                splitterRef.current.startY = e.clientY
+                splitterRef.current.startHeight = panels.editorHeight ?? 60
+                splitterRef.current.isDragging = true
+              }}
             >
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-0.5 rounded-full bg-muted-foreground/20 group-hover:bg-muted-foreground/40" />
             </div>

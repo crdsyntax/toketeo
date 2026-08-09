@@ -126,8 +126,13 @@ export function SqlEditorPanel({
       const delta = event.deltaY;
       if (!delta) return;
 
+      const sd = view.scrollDOM;
+      const canScrollDown = sd.scrollTop + sd.clientHeight < sd.scrollHeight - 1;
+      const canScrollUp = sd.scrollTop > 0;
+      if (delta > 0 ? !canScrollDown : !canScrollUp) return;
+
       event.preventDefault();
-      view.scrollDOM.scrollTop += delta;
+      sd.scrollTop += delta;
       captureState(view);
     };
 
@@ -143,7 +148,7 @@ export function SqlEditorPanel({
     view.dom.addEventListener('click', () => captureState(view));
     view.scrollDOM.addEventListener('wheel', handleEditorWheel, { passive: false });
     view.scrollDOM.addEventListener('scroll', () => captureState(view));
-  }, [editorRef, captureState, executeCurrent]);
+  }, [editorRef, captureState]);
 
   // Restore the stored view state once the editor mounts for a given tab.
   useEffect(() => {

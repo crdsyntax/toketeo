@@ -68,7 +68,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
         }
       }
     }).finally(() => setCharacterLoading(false));
-  }, []);
+  }, [setSoulItems]);
 
   useEffect(() => {
     if (characterLoading) return;

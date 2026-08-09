@@ -10,7 +10,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import type {
   QueryResult,
   DatabaseObject,
@@ -64,25 +64,27 @@ export function RedisDataTab({
   const resultsFontSize = useAppStore((s) => s.uiFontSize);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const resizing = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
-  const prevColumns = useRef<string[]>([]);
+  const [prevColumns, setPrevColumns] = useState<string[]>([]);
+  const [prevQueryData, setPrevQueryData] = useState<QueryResult | null>(null);
   const DEFAULT_COL_WIDTH = 180;
 
-  useEffect(() => {
-    if (!queryData) return;
+  if (queryData && queryData !== prevQueryData) {
+    setPrevQueryData(queryData);
     if (queryData.nextCursor !== undefined && queryData.nextCursor !== null) {
       setScanCursor(queryData.nextCursor);
     }
-    const newCols = queryData.columns.filter(c => !prevColumns.current.includes(c));
-    if (newCols.length === 0) return;
-    setColumnWidths(prev => {
-      const next = { ...prev };
-      for (const col of newCols) {
-        if (!(col in next)) next[col] = DEFAULT_COL_WIDTH;
-      }
-      return next;
-    });
-    prevColumns.current = queryData.columns;
-  }, [queryData]);
+    const newCols = queryData.columns.filter(c => !prevColumns.includes(c));
+    if (newCols.length > 0) {
+      setPrevColumns(queryData.columns);
+      setColumnWidths(prev => {
+        const next = { ...prev };
+        for (const col of newCols) {
+          if (!(col in next)) next[col] = DEFAULT_COL_WIDTH;
+        }
+        return next;
+      });
+    }
+  }
 
   const handleResizeStart = (col: string, e: React.MouseEvent) => {
     e.preventDefault();

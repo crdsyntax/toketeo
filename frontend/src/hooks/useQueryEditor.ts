@@ -451,7 +451,7 @@ export function useQueryEditor() {
       addQueryHistory(histEntry);
       schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
     }
-  }, [activeTab, activeConnection, connections, resolveTargetConnection, updateTabResults, addQueryHistory])
+  }, [activeTab, activeConnection, resolveTargetConnection, updateTabResults, addQueryHistory])
 
   const respondScriptPrompt = useCallback(async (decision: ScriptDecision) => {
     if (!scriptPrompt || scriptResponding) return

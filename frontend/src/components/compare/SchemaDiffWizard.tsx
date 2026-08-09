@@ -36,10 +36,10 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
   const dragStart = useRef({ x: 0, y: 0 })
   const dragOrigPos = useRef({ x: 0, y: 0 })
   const wizardRef = useRef<HTMLDivElement>(null)
-  const zIndex = useRef(300)
+  const [zIndex, setZIndex] = useState(300)
 
   const bringToFront = useCallback(() => {
-    zIndex.current = Math.max(zIndex.current, 300)
+    setZIndex(z => Math.max(z, 300))
   }, [])
 
   useEffect(() => {
@@ -83,9 +83,13 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [scriptSelectedIds, setScriptSelectedIds] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    if (!open) { setWindowState('normal'); setPos(null); setStep('configure'); setReport(null); setScript([]); setError(null); setProgress(null); setCompareId(null); setSectionCounts({}); setSelectedIds(new Set()); setScriptSelectedIds(new Set()) }
-  }, [open])
+  const [lastOpen, setLastOpen] = useState(open)
+  if (lastOpen !== open) {
+    setLastOpen(open)
+    if (!open) {
+      setWindowState('normal'); setPos(null); setStep('configure'); setReport(null); setScript([]); setError(null); setProgress(null); setCompareId(null); setSectionCounts({}); setSelectedIds(new Set()); setScriptSelectedIds(new Set())
+    }
+  }
 
   useEffect(() => {
     if (!comparing || !compareId) return
@@ -316,7 +320,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
               left: pos ? `${pos.x}px` : '50%',
               top: pos ? `${pos.y}px` : '10%',
               transform: pos ? 'none' : 'translateX(-50%)',
-              zIndex: zIndex.current,
+              zIndex,
             }}
             onClick={bringToFront}
           >

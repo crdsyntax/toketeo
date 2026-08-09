@@ -91,8 +91,10 @@ export function ResultsPanel({
   return (
     <div
       className={cn(
-        "border border-border bg-card flex flex-col transition-all duration-200",
-        isResultsPanelVisible ? "flex-1 min-h-[100px] overflow-hidden" : "h-9 shrink-0 overflow-visible"
+        "border border-border bg-card flex flex-col",
+        isResultsPanelVisible
+          ? "flex-1 min-h-[100px] overflow-hidden"
+          : "h-9 shrink-0 overflow-visible transition-all duration-200"
       )}
       onClick={() => { setShowExportMenu(false); setShowLimitMenu(false); }}
     >
