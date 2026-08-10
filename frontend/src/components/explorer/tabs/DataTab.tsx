@@ -17,8 +17,12 @@ import {
   Table2,
   Rows3,
   FileJson,
+  Eye,
+  PenLine,
+  Trash2,
+  Eraser,
 } from 'lucide-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type {
   QueryResult,
   DatabaseObject,
@@ -37,6 +41,13 @@ import { Button } from '@/components/ui/Button';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { DataListView } from './DataListView';
+import {
+  generateDeleteByIds,
+  generateSelectByIds,
+  generateUpdateByIds,
+  parseInputValue,
+} from '@/lib/sqlGenerator';
+import { toast } from 'react-hot-toast';
 
 interface DataTabProps {
   selectedItem: DatabaseObject;
@@ -136,6 +147,13 @@ export function DataTab({
   const [reviewPos, setReviewPos] = useState<{ top: number; left: number } | null>(null);
   const editingCellRef = useRef<HTMLTableCellElement | null>(null);
 
+  // Multi-row selection (indices into `sortedRows`)
+  const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
+  const [batchModal, setBatchModal] = useState<'update' | 'truncate' | null>(null);
+  const [batchColumn, setBatchColumn] = useState<string>('');
+  const [batchValue, setBatchValue] = useState<string>('');
+  const [truncateColumns, setTruncateColumns] = useState<string[]>([]);
+
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const storeConnection = useAppStore((state) => state.activeConnection);
   const activeConnection = connection ?? storeConnection;
@@ -211,28 +229,111 @@ export function DataTab({
     });
   };
 
-  const sortedRows = queryData?.rows
-    ? [...queryData.rows].sort((a, b) => {
-        if (!sortState) return 0;
-        const aVal = a[sortState.column];
-        const bVal = b[sortState.column];
-        if (aVal === null || aVal === undefined) return 1;
-        if (bVal === null || bVal === undefined) return -1;
-        let cmp: number;
-        const aIsNum = typeof aVal === 'number';
-        const bIsNum = typeof bVal === 'number';
-        if (aIsNum && bIsNum) {
-          cmp = aVal - bVal;
-        } else if (typeof aVal === 'string' && typeof bVal === 'string') {
-          cmp = aVal.localeCompare(bVal);
-        } else {
-          const aStr = typeof aVal === 'object' ? JSON.stringify(aVal) : String(aVal);
-          const bStr = typeof bVal === 'object' ? JSON.stringify(bVal) : String(bVal);
-          cmp = aStr.localeCompare(bStr);
-        }
-        return sortState.direction === 'desc' ? -cmp : cmp;
-      })
-    : queryData?.rows ?? [];
+  const sortedRows = useMemo(() => {
+    if (!queryData?.rows) return [];
+    if (!sortState) return [...queryData.rows];
+    return [...queryData.rows].sort((a, b) => {
+      const aVal = a[sortState.column];
+      const bVal = b[sortState.column];
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+      let cmp: number;
+      const aIsNum = typeof aVal === 'number';
+      const bIsNum = typeof bVal === 'number';
+      if (aIsNum && bIsNum) {
+        cmp = aVal - bVal;
+      } else if (typeof aVal === 'string' && typeof bVal === 'string') {
+        cmp = aVal.localeCompare(bVal);
+      } else {
+        const aStr = typeof aVal === 'object' ? JSON.stringify(aVal) : String(aVal);
+        const bStr = typeof bVal === 'object' ? JSON.stringify(bVal) : String(bVal);
+        cmp = aStr.localeCompare(bStr);
+      }
+      return sortState.direction === 'desc' ? -cmp : cmp;
+    });
+  }, [queryData, sortState]);
+
+  const primaryKeys = useMemo(() => queryData?.primary_keys ?? [], [queryData]);
+
+  const selectedRows = useMemo(
+    () => [...selectedRowIndexes].map((i) => sortedRows[i]).filter(Boolean),
+    [selectedRowIndexes, sortedRows],
+  );
+
+  // Reset the selection whenever a new result set is loaded.
+  const [prevQueryData, setPrevQueryData] = useState<QueryResult | null>(queryData);
+  if (queryData !== prevQueryData) {
+    setPrevQueryData(queryData);
+    setSelectedRowIndexes(new Set());
+    setBatchModal(null);
+    setTruncateColumns([]);
+    setBatchValue('');
+  }
+
+  const toggleRowSelection = useCallback((index: number) => {
+    setSelectedRowIndexes((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
+  const clearRowSelection = useCallback(() => setSelectedRowIndexes(new Set()), []);
+
+  const handleBatchSelect = useCallback(() => {
+    if (!queryData || selectedRows.length === 0) return;
+    const sql = generateSelectByIds(selectedItem.name, selectedRows, primaryKeys, activeConnection?.type);
+    if (!sql) {
+      toast.error('No primary key / identity columns available to identify the selected rows');
+      return;
+    }
+    setSqlPreview({ isOpen: true, sql, title: `Select by IDs (${selectedRows.length} row${selectedRows.length > 1 ? 's' : ''})` });
+  }, [queryData, selectedRows, primaryKeys, selectedItem.name, activeConnection?.type, setSqlPreview]);
+
+  const handleBatchDelete = useCallback(() => {
+    if (!queryData || selectedRows.length === 0) return;
+    const sql = generateDeleteByIds(selectedItem.name, selectedRows, primaryKeys, activeConnection?.type);
+    if (!sql) {
+      toast.error('No primary key / identity columns available to identify the selected rows');
+      return;
+    }
+    setSqlPreview({ isOpen: true, sql, title: `Delete by IDs (${selectedRows.length} row${selectedRows.length > 1 ? 's' : ''})` });
+  }, [queryData, selectedRows, primaryKeys, selectedItem.name, activeConnection?.type, setSqlPreview]);
+
+  const handleBatchUpdate = useCallback(() => {
+    if (!queryData || selectedRows.length === 0 || !batchColumn) return;
+    const sql = generateUpdateByIds(
+      selectedItem.name,
+      selectedRows,
+      primaryKeys,
+      [{ column: batchColumn, value: parseInputValue(batchValue) }],
+      activeConnection?.type,
+    );
+    if (!sql) {
+      toast.error('No primary key / identity columns available to identify the selected rows');
+      return;
+    }
+    setBatchModal(null);
+    setSqlPreview({ isOpen: true, sql, title: `Update by IDs (${selectedRows.length} row${selectedRows.length > 1 ? 's' : ''})` });
+  }, [queryData, selectedRows, primaryKeys, selectedItem.name, activeConnection?.type, batchColumn, batchValue, setBatchModal, setSqlPreview]);
+
+  const handleBatchTruncate = useCallback(() => {
+    if (!queryData || selectedRows.length === 0 || truncateColumns.length === 0) return;
+    const sql = generateUpdateByIds(
+      selectedItem.name,
+      selectedRows,
+      primaryKeys,
+      truncateColumns.map((c) => ({ column: c, value: null })),
+      activeConnection?.type,
+    );
+    if (!sql) {
+      toast.error('No primary key / identity columns available to identify the selected rows');
+      return;
+    }
+    setBatchModal(null);
+    setSqlPreview({ isOpen: true, sql, title: `Set NULL (${truncateColumns.length} column${truncateColumns.length > 1 ? 's' : ''}, ${selectedRows.length} row${selectedRows.length > 1 ? 's' : ''})` });
+  }, [queryData, selectedRows, primaryKeys, selectedItem.name, activeConnection?.type, truncateColumns, setBatchModal, setSqlPreview]);
 
   const handleResizeStart = (col: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -630,6 +731,55 @@ export function DataTab({
           <p className="text-xs font-mono">{executionError}</p>
         </div>
       )}
+      {selectedRows.length > 0 && !isMongo && selectedItem.type === 'table' && (
+        <div className="px-4 py-1.5 border-b border-border bg-primary/5 flex items-center gap-1 flex-wrap shrink-0">
+          <span className="text-xs font-black text-primary uppercase tracking-wider mr-1">
+            {selectedRows.length} row{selectedRows.length > 1 ? 's' : ''} selected
+          </span>
+          <div className="w-px h-4 bg-border mx-1" />
+          <button
+            onClick={handleBatchSelect}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[var(--ch-text-11)] font-bold uppercase tracking-wide bg-background border border-border/60 text-foreground hover:border-primary/50 hover:text-primary transition-colors"
+            title="Generate SELECT using the selected primary keys"
+          >
+            <Eye className="w-3 h-3" />
+            Select
+          </button>
+          <button
+            onClick={() => { setBatchModal('update'); setContextMenu(null); }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[var(--ch-text-11)] font-bold uppercase tracking-wide bg-background border border-border/60 text-foreground hover:border-primary/50 hover:text-primary transition-colors"
+            title="Generate UPDATE for the selected rows"
+          >
+            <PenLine className="w-3 h-3" />
+            Update
+          </button>
+          <button
+            onClick={() => { setBatchModal('truncate'); setContextMenu(null); }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[var(--ch-text-11)] font-bold uppercase tracking-wide bg-background border border-border/60 text-foreground hover:border-primary/50 hover:text-primary transition-colors"
+            title="Set the chosen fields to NULL on the selected rows"
+          >
+            <Eraser className="w-3 h-3" />
+            Set Null
+          </button>
+          <button
+            onClick={handleBatchDelete}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[var(--ch-text-11)] font-bold uppercase tracking-wide bg-background border border-border/60 text-destructive hover:border-destructive/60 hover:bg-destructive/10 transition-colors"
+            title="Generate DELETE for the selected rows"
+          >
+            <Trash2 className="w-3 h-3" />
+            Delete
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={clearRowSelection}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Clear selection"
+          >
+            <X className="w-3 h-3" />
+            Clear
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center p-4 space-y-4">
@@ -701,15 +851,28 @@ export function DataTab({
                 {sortedRows.map((row, i) => (
                   <tr
                     key={i}
-                    className={`${i === selectedRowIndex ? 'bg-muted' : 'border-b border-border/50 hover:bg-muted/30'} whitespace-nowrap`}
+                    className={cn(
+                      "whitespace-nowrap",
+                      selectedRowIndexes.has(i) || i === selectedRowIndex
+                        ? 'bg-primary/10'
+                        : 'border-b border-border/50 hover:bg-muted/30'
+                    )}
                     onClick={(e) => { e.stopPropagation(); setSelectedRowIndex(i); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.pageX, y: e.pageY, row, rowIndex: i });
                     }}
                   >
-                    <td className="p-2 border-r cursor-pointer border-border text-center text-muted-foreground">
-                      {i + 1}
+                    <td className="p-2 border-r border-border text-center text-muted-foreground select-none cursor-pointer">
+                      <span
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          toggleRowSelection(i);
+                        }}
+                        title="Double-click to select row"
+                      >
+                        {i + 1}
+                      </span>
                     </td>
                     {queryData.columns.map((col) => {
                       const value = row[col];
@@ -892,6 +1055,112 @@ export function DataTab({
           onDiscard={discardPendingEdit}
           position={reviewPos}
         />
+      )}
+
+      {/* Batch action modal: UPDATE / SET NULL for the selected rows */}
+      {batchModal && queryData && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center bg-black/40"
+          onClick={() => setBatchModal(null)}
+        >
+          <div
+            className="bg-card border border-border/60 rounded-xl shadow-2xl shadow-black/50 w-[440px] max-h-[80vh] overflow-auto p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold flex items-center gap-2">
+                {batchModal === 'update' ? (
+                  <><PenLine className="w-4 h-4 text-primary" /> Update {selectedRows.length} selected row{selectedRows.length > 1 ? 's' : ''}</>
+                ) : (
+                  <><Eraser className="w-4 h-4 text-primary" /> Set fields to NULL ({selectedRows.length} row{selectedRows.length > 1 ? 's' : ''})</>
+                )}
+              </h4>
+              <button
+                onClick={() => setBatchModal(null)}
+                className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {batchModal === 'update' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[var(--ch-text-10)] text-muted-foreground font-semibold uppercase tracking-wider mb-1">
+                    Column
+                  </label>
+                  <select
+                    value={batchColumn}
+                    onChange={(e) => setBatchColumn(e.target.value)}
+                    className="w-full bg-muted/30 border border-border/50 rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Select a column...</option>
+                    {queryData.columns.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[var(--ch-text-10)] text-muted-foreground font-semibold uppercase tracking-wider mb-1">
+                    Value
+                  </label>
+                  <input
+                    value={batchValue}
+                    onChange={(e) => setBatchValue(e.target.value)}
+                    placeholder="New value (empty = NULL)"
+                    className="w-full bg-muted/30 border border-border/50 rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <button
+                  onClick={handleBatchUpdate}
+                  disabled={!batchColumn}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FileCode className="w-3.5 h-3.5" />
+                  Generate SQL
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  The selected fields will be set to <span className="font-mono font-bold text-foreground">NULL</span> on all selected rows.
+                </p>
+                <div className="grid grid-cols-2 gap-1 max-h-56 overflow-auto">
+                  {queryData.columns
+                    .filter((c) => !primaryKeys.includes(c))
+                    .map((c) => (
+                      <label
+                        key={c}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={truncateColumns.includes(c)}
+                          onChange={(e) => {
+                            setTruncateColumns((prev) =>
+                              e.target.checked
+                                ? [...prev, c]
+                                : prev.filter((x) => x !== c)
+                            );
+                          }}
+                          className="accent-[var(--ch-primary)] cursor-pointer"
+                        />
+                        <span className="truncate">{c}</span>
+                      </label>
+                    ))}
+                </div>
+                <button
+                  onClick={handleBatchTruncate}
+                  disabled={truncateColumns.length === 0}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FileCode className="w-3.5 h-3.5" />
+                  Generate SQL
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Phase 9: Inline SQL Preview Panel */}

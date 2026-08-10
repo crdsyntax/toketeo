@@ -1,4 +1,4 @@
-import { Plus, Edit2, Shield, ChevronDown, Server, Wifi, Loader2, AlertTriangle, LayoutGrid, Zap, Terminal, Bot, Sparkles } from 'lucide-react'
+import { Plus, Edit2, Shield, ChevronDown, Server, Wifi, Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Connection, DumpObjects, DumpSelection } from '@/types/database'
 import { DatabaseType, DatabaseObjectType, ExplorerTab, ExecutionStatus } from '@/types/database'
@@ -18,7 +18,6 @@ import { SchemaContextMenu } from './SchemaContextMenu'
 import { CreateSchemaModal } from './CreateSchemaModal'
 import { Button } from '@/components/ui/Button'
 import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
-import { useAssistantStore } from '@/store/assistantStore'
 import toast from 'react-hot-toast'
 
 interface ConnectionsSidebarProps {
@@ -53,55 +52,6 @@ function pseudoPing(id: string) {
   let h = 0
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
   return 4 + (h % 12)
-}
-
-function SchemaObjectCounts({ conn, activeDatabaseName }: { conn: Connection | null; activeDatabaseName?: string | null }) {
-  const schema = activeDatabaseName ?? conn?.database ?? conn?.defaultDatabase
-  const isSql = conn && conn.type !== DatabaseType.REDIS && conn.type !== DatabaseType.MONGODB
-  const { data } = useQuery({
-    queryKey: ['schema-object-counts', conn?.id, schema],
-    queryFn: async () => {
-      if (!conn || !schema || !isSql) return null
-      const [tables, views, procedures, functions, triggers] = await Promise.all([
-        schemaService.getTables(conn.id, schema),
-        schemaService.getViews(conn.id, schema),
-        schemaService.getProcedures(conn.id, schema),
-        schemaService.getFunctions(conn.id, schema),
-        schemaService.getTriggers(conn.id, schema),
-      ])
-      let indexes = 0
-      if (tables.length <= 30) {
-        const perTable = await Promise.all(tables.map((t) => schemaService.getIndexes(conn.id, t.name, schema)))
-        indexes = perTable.reduce((sum, list) => sum + list.length, 0)
-      }
-      return { tables: tables.length, indexes, procedures: procedures.length, views: views.length, functions: functions.length, triggers: triggers.length }
-    },
-    enabled: !!conn && !!schema && !!isSql,
-    staleTime: 30 * 1000,
-  })
-  if (!isSql) return null
-  const rows = [
-    { label: 'tables', count: data?.tables ?? 0, icon: LayoutGrid },
-    { label: 'indexes', count: data?.indexes ?? 0, icon: Zap },
-    { label: 'procedures', count: data?.procedures ?? 0, icon: Terminal },
-  ]
-  return (
-    <div className="pt-3 px-2 space-y-1 border-t border-border/60 mt-3">
-      <div className="flex items-center justify-between px-2 pb-1">
-        <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-          Schema Objects
-        </span>
-        <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-      </div>
-      {rows.map(({ label, count, icon: Icon }) => (
-        <div key={label} className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-muted/50 transition-colors cursor-pointer select-none">
-          <Icon className="w-3.5 h-3.5 text-muted-foreground/70" />
-          <span className="text-xs font-medium text-foreground/80">{label}</span>
-          <span className="text-xs font-semibold text-muted-foreground ml-auto font-mono">{count}</span>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect, onSelectSchema, onSelectDatabase, onSelectRedisNamespace, onToggleDefault, onSchemaContextMenu, onLoaded }: { conn: Connection, activeConnection: Connection | null, activeDatabaseName?: string | null, onSelect: (c: Connection, s: string) => void, onSelectSchema?: (c: Connection, dbName: string, s: string) => void, onSelectDatabase?: (c: Connection, dbName: string) => void, onSelectRedisNamespace?: (c: Connection, dbName: string, namespace: string) => void, onToggleDefault?: (c: Connection, s: string) => void, onSchemaContextMenu: (e: React.MouseEvent, conn: Connection, schema: string) => void, onLoaded?: () => void }) {
@@ -182,7 +132,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
   const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds)
   const setActiveConnection = useAppStore((state) => state.setActiveConnection)
   const connectionErrors = useAppStore((state) => state.connectionErrors)
-  const setShowAssistant = useAssistantStore((s) => s.setShowAssistant)
   const navigate = useNavigate()
   const location = useLocation()
   const [activeDatabaseName, setActiveDatabaseName] = useState<string | null>(null)
@@ -718,7 +667,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             )
           })}
         </div>
-        <SchemaObjectCounts conn={activeConnection} activeDatabaseName={activeDatabaseName} />
         {contextMenu.visible && contextMenu.connId && connectedConnectionIds.includes(contextMenu.connId) && (
           <ConnectionContextMenu
             x={contextMenu.x}
@@ -796,32 +744,6 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             }}
           />
         )}
-      </div>
-      <div className="border-t border-border p-3 shrink-0 bg-gradient-to-b from-background to-muted/40">
-        <div className="rounded-xl border border-border/80 bg-muted/40 p-3 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-purple-500/15 text-purple-400">
-                <Bot className="w-3.5 h-3.5" />
-              </span>
-              <span className="text-xs font-bold text-foreground">AI Copilot</span>
-            </div>
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">
-              <span className="w-1 h-1 rounded-full bg-emerald-400" />
-              Ready
-            </span>
-          </div>
-          <p className="text-[11px] text-muted-foreground leading-snug">
-            Generate queries & optimize schemas with built-in AI.
-          </p>
-          <button
-            onClick={() => setShowAssistant(true)}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Ask AI Assistant
-          </button>
-        </div>
       </div>
       <div
         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-accent/40 active:bg-accent/60 transition-colors z-10"

@@ -1,10 +1,15 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { DatabaseObject, QueryResult } from '@/types/database'
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType, DatabaseType } from '@/types/database'
-import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy, Trash2, Plus } from 'lucide-react'
+import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy, Trash2, Plus, Send, ClipboardCopy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ContextMenu } from '@/components/ui/ContextMenu'
 import { CreateObjectModal } from './CreateObjectModal'
+import { schemaService } from '@/services/schema.service'
+import { generateTableTemplates, type SqlTemplateAction } from '@/lib/sqlGenerator'
+import { useAppStore } from '@/store/useAppStore'
+import { toast } from 'react-hot-toast'
 
 interface SidebarProps {
   sidebarTab: SidebarTab
@@ -39,6 +44,39 @@ export function Sidebar({
   const isRedis = dbType === DatabaseType.REDIS
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: { name: string; type: DatabaseObjectType } } | null>(null);
   const [createModalType, setCreateModalType] = useState<DatabaseObjectType | null>(null)
+  const navigate = useNavigate()
+  const openTab = useAppStore((s) => s.openTab)
+
+  const SQL_TEMPLATE_ACTIONS: { action: SqlTemplateAction; label: string }[] = [
+    { action: 'select', label: 'Select' },
+    { action: 'insert', label: 'Create' },
+    { action: 'update', label: 'Update' },
+    { action: 'delete', label: 'Delete' },
+  ]
+
+  const handleTableSqlAction = async (
+    action: SqlTemplateAction,
+    target: 'editor' | 'clipboard',
+  ) => {
+    if (!contextMenu || !connectionId) return
+    const { name } = contextMenu.item
+    try {
+      const cols = await schemaService.getColumns(connectionId, name, currentSchema)
+      const columns = cols.map((c) => c.name)
+      const pks = cols.filter((c) => c.isPrimaryKey).map((c) => c.name)
+      const sql = generateTableTemplates(name, dbType, columns, pks)[action]
+      if (target === 'clipboard') {
+        await navigator.clipboard.writeText(sql)
+        toast.success(`${action.toUpperCase()} SQL copied to clipboard`)
+      } else {
+        openTab(`${name} ${action}`, sql, connectionId)
+        navigate('/query')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate SQL'
+      toast.error(message)
+    }
+  }
 
   const sidebarTabToObjectType = (tab: SidebarTab): DatabaseObjectType => {
     switch (tab) {
@@ -260,7 +298,25 @@ export function Sidebar({
                   }
                 ] : [])
               ]
-            }
+            },
+            ...(!isMongoDB && !isRedis && contextMenu.item.type === DatabaseObjectType.TABLE && connectionId ? [
+              {
+                title: 'Send to SQL Editor',
+                items: SQL_TEMPLATE_ACTIONS.map(({ action, label }) => ({
+                  label,
+                  icon: <Send className="w-3.5 h-3.5" />,
+                  onClick: () => handleTableSqlAction(action, 'editor')
+                }))
+              },
+              {
+                title: 'Copy to Clipboard',
+                items: SQL_TEMPLATE_ACTIONS.map(({ action, label }) => ({
+                  label,
+                  icon: <ClipboardCopy className="w-3.5 h-3.5" />,
+                  onClick: () => handleTableSqlAction(action, 'clipboard')
+                }))
+              }
+            ] : [])
           ]}
         />
       )}

@@ -100,10 +100,10 @@ export const schemaService = {
     return await tauriApi.invoke<ReferencedByKeyResponse[]>('get_referenced_by_keys', { id, table, schema })
   },
 
-  generateSafeDeleteSql: async (id: string, table: string, schema?: string) => {
+  generateSafeDeleteSql: async (id: string, table: string, schema?: string, whereClause?: string) => {
     return await tauriApi.invoke<string>('generate_safe_delete_sql', {
       id,
-      input: { table, schema },
+      input: { table, schema, whereClause },
     })
   },
 

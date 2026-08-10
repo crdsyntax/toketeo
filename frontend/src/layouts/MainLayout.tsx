@@ -12,6 +12,9 @@ import { GamificationModal } from '@/components/gamification/GamificationModal'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { listen } from '@tauri-apps/api/event'
 import { toast } from 'react-hot-toast'
+import { Environment } from '@/types/database'
+import { AlertTriangle, CheckCircle, Loader2, RotateCcw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export default function MainLayout() {
   const queryClient = useQueryClient()
@@ -172,9 +175,6 @@ export default function MainLayout() {
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
       <AppHeader
-        onCommit={handleCommit}
-        onRollback={handleRollback}
-        isTransacting={isTransacting}
         onOpenGamification={() => setIsGamificationModalOpen(true)}
       />
 
@@ -195,6 +195,36 @@ export default function MainLayout() {
           </div>
         </main>
       </div>
+
+      {activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION && (
+        <div className="h-10 border-t border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-destructive/10 border border-destructive/20 rounded-md">
+            <AlertTriangle className="w-3 h-3 text-destructive" />
+            <span className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-destructive">Production</span>
+          </div>
+          <div className="flex items-center gap-0.5 bg-surface border border-border rounded-md p-0.5">
+            <button
+              onClick={handleRollback}
+              disabled={isTransacting}
+              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded transition-all duration-200 disabled:opacity-50"
+              title="Rollback Transaction"
+            >
+              <RotateCcw className={cn("w-3 h-3", isTransacting && "animate-spin")} />
+              Rollback
+            </button>
+            <div className="w-px h-3 bg-border" />
+            <button
+              onClick={handleCommit}
+              disabled={isTransacting}
+              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-accent hover:bg-accent-muted rounded transition-all duration-200 disabled:opacity-50"
+              title="Commit Transaction"
+            >
+              {isTransacting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+              {isTransacting ? 'Committing...' : 'Commit'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <ConnectionModal 
         key={editingConnection?.id || 'new'}

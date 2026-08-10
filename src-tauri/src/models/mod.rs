@@ -219,6 +219,12 @@ pub struct SqlGenerationInput {
 pub struct SafeDeleteInput {
     pub table: String,
     pub schema: Option<String>,
+    /// Optional WHERE clause of the original DELETE (e.g. `id IN (252, 236)`).
+    /// When present, the safe delete script only removes the dependent rows
+    /// referencing the rows matched by this clause instead of wiping the
+    /// referencing tables entirely.
+    #[serde(default)]
+    pub where_clause: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -61,8 +61,17 @@ function isSchemaChangingQuery(sql: string): boolean {
 }
 
 function extractTableFromQuery(query: string): string | null {
-  const match = query.match(/DELETE\s+FROM\s+[`'"']?(\w+)[`'"']?/i)
+  const match = query.match(/DELETE\s+FROM\s+[`'"`"]?(\w+)[`'"`"]?/i)
   return match ? match[1] : null
+}
+
+/** Extract the raw WHERE clause of a DELETE statement (without the leading WHERE keyword). */
+function extractWhereClauseFromDelete(query: string): string | null {
+  const match = query.match(/DELETE\s+FROM\s+[`'"`"]?\w+[`'"`"]?\s+WHERE\s+([\s\S]+)$/i)
+  if (!match) return null
+  let clause = match[1].trim()
+  if (clause.endsWith(';')) clause = clause.slice(0, -1).trimEnd()
+  return clause || null
 }
 
 const tryParseJson = (v: string): unknown => {
@@ -671,6 +680,7 @@ export function useQueryEditor() {
                 targetConnection.id,
                 table,
                 targetConnection.database,
+                extractWhereClauseFromDelete(raw) ?? undefined,
               )
               setSafeDeleteSuggestion(safeSql)
             } catch {
@@ -853,6 +863,7 @@ export function useQueryEditor() {
               targetConnection.id,
               table,
               targetConnection.database,
+              extractWhereClauseFromDelete(sqlSnippet) ?? undefined,
             )
             setSafeDeleteSuggestion(safeSql)
           } catch {

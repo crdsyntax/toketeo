@@ -1,11 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutGrid, Terminal, FileText, PanelLeftClose, PanelLeftOpen,
-  CheckCircle, Loader2, RotateCcw, AlertTriangle, GitBranch, Palette,
-  CalendarClock, Sparkles, Flame, Shield, Star, Gauge
+  GitBranch, Palette, CalendarClock, Sparkles, Flame, Shield, Star, Gauge
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Environment, DatabaseType } from '@/types/database'
+import { DatabaseType } from '@/types/database'
 import { useAppStore } from '@/store/useAppStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
@@ -42,26 +41,24 @@ const navGroups: NavItem[][] = [
 ]
 
 interface AppHeaderProps {
-  onCommit: () => void
-  onRollback: () => void
-  isTransacting: boolean
   onOpenGamification: () => void
 }
 
-export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamification }: AppHeaderProps) {
+export function AppHeader({ onOpenGamification }: AppHeaderProps) {
   const location = useLocation()
   const { activeConnection, isSidebarOpen, toggleSidebar } = useAppStore()
   const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
   const { level, streak } = useGamificationStore()
-  const isProduction = activeConnection?.environment?.toLowerCase() === Environment.PRODUCTION
   const activeEngineType = activeConnection?.type ?? null
 
   const enginePills: DatabaseType[] = [
     DatabaseType.POSTGRES,
+    DatabaseType.MARIADB,
     DatabaseType.MYSQL,
     DatabaseType.MONGODB,
-    DatabaseType.REDIS,
+    DatabaseType.SQLSERVER,
     DatabaseType.SQLITE,
+    DatabaseType.REDIS,
   ]
 
   return (
@@ -147,39 +144,8 @@ export function AppHeader({ onCommit, onRollback, isTransacting, onOpenGamificat
         ))}
       </nav>
 
-      {/* Right: Production status + Commit/Rollback + Gamification */}
+      {/* Right: Engine pills + Gamification */}
       <div className="flex items-center gap-2">
-        {isProduction && (
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-destructive/10 border border-destructive/20 rounded-md">
-            <AlertTriangle className="w-3 h-3 text-destructive" />
-            <span className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-destructive">Production</span>
-          </div>
-        )}
-
-        {isProduction && activeConnection && (
-          <div className="flex items-center gap-0.5 bg-surface border border-border rounded-md p-0.5">
-            <button
-              onClick={onRollback}
-              disabled={isTransacting}
-              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded transition-all duration-200 disabled:opacity-50"
-              title="Rollback Transaction"
-            >
-              <RotateCcw className={cn("w-3 h-3", isTransacting && "animate-spin")} />
-              Rollback
-            </button>
-            <div className="w-px h-3 bg-border" />
-            <button
-              onClick={onCommit}
-              disabled={isTransacting}
-              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-accent hover:bg-accent-muted rounded transition-all duration-200 disabled:opacity-50"
-              title="Commit Transaction"
-            >
-              {isTransacting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-              {isTransacting ? 'Committing...' : 'Commit'}
-            </button>
-          </div>
-        )}
-
         <div className="hidden lg:flex items-center gap-0.5 p-0.5 bg-surface border border-border rounded-lg">
           {enginePills.map((type) => {
             const config = getEngineConfig(type)

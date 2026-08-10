@@ -888,6 +888,7 @@ pub async fn generate_safe_delete_sql(
         &input.table,
         input.schema.as_deref(),
         &referenced_by,
+        input.where_clause.as_deref(),
     ))
 }
 

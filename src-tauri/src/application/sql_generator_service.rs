@@ -89,77 +89,97 @@ impl SqlGeneratorService {
     /// Generate a safe delete SQL script that first deletes from tables with
     /// foreign keys referencing the target table, then deletes from the target table.
     /// Wraps everything in a transaction.
+    ///
+    /// When `where_clause` is provided (the WHERE of the original DELETE, e.g.
+    /// `id IN (252, 236)`), the dependent-table deletes are filtered to only
+    /// remove the rows referencing the target rows matched by that clause:
+    /// `DELETE FROM ref WHERE fk IN (SELECT pk FROM target WHERE <clause>);`.
+    /// Without it (deleting the whole table), dependent tables are cleared.
     pub fn generate_safe_delete(
         db_type: DbType,
         table: &str,
         schema: Option<&str>,
         referenced_by: &[serde_json::Value],
+        where_clause: Option<&str>,
     ) -> String {
         let (q_open, q_close) = Self::get_quotes(db_type);
+        let qualified = |name: &str| {
+            format!(
+                "{}{}{}",
+                q_open,
+                Self::escape_identifier(name, q_close),
+                q_close
+            )
+        };
+        let target_qualified = if let Some(s) = schema {
+            format!("{}.{}", qualified(s), qualified(table))
+        } else {
+            qualified(table)
+        };
         let mut parts = Vec::new();
 
         parts.push("BEGIN;".to_string());
         parts.push(String::new());
 
-        // Deduplicate referencing tables
-        let mut seen = std::collections::BTreeSet::new();
-        let mut referenced_tables = Vec::new();
-
+        // Group referencing columns per table (composite FKs yield several rows).
+        let mut refs: std::collections::BTreeMap<String, Vec<(String, String)>> =
+            std::collections::BTreeMap::new();
         for fk in referenced_by {
             if let Some(table_name) = fk.get("referencingTable").and_then(|v| v.as_str()) {
-                if seen.insert(table_name.to_string()) {
-                    referenced_tables.push(table_name.to_string());
-                }
+                let column = fk
+                    .get("columnName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let referenced_column = fk
+                    .get("referencingColumn")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                refs.entry(table_name.to_string())
+                    .or_default()
+                    .push((column, referenced_column));
             }
         }
 
-        if !referenced_tables.is_empty() {
-            parts.push("-- Step 1: Delete dependent tables".to_string());
-            for ref_table in &referenced_tables {
-                let qualified = if let Some(s) = schema {
-                    format!(
-                        "{}{}{}.{}{}{}",
-                        q_open,
-                        Self::escape_identifier(s, q_close),
-                        q_close,
-                        q_open,
-                        Self::escape_identifier(ref_table, q_close),
-                        q_close,
-                    )
+        let wcl = where_clause.map(str::trim).filter(|c| !c.is_empty());
+
+        if !refs.is_empty() {
+            parts.push("-- Step 1: Delete dependent rows".to_string());
+            for (ref_table, cols) in &refs {
+                let ref_qualified = qualified(ref_table);
+                if let Some(wcl) = wcl {
+                    // Only delete the dependent rows referencing the rows
+                    // matched by the original WHERE clause.
+                    if cols.len() == 1 {
+                        let (fk_col, pk_col) = &cols[0];
+                        parts.push(format!(
+                            "DELETE FROM {} WHERE {} IN (SELECT {} FROM {} WHERE {});",
+                            ref_qualified,
+                            qualified(fk_col),
+                            qualified(pk_col),
+                            target_qualified,
+                            wcl,
+                        ));
+                    } else {
+                        parts.push(format!(
+                            "-- WARNING: {} references {} via a composite FK that cannot be filtered safely; skipping",
+                            ref_table, table,
+                        ));
+                    }
                 } else {
-                    format!(
-                        "{}{}{}",
-                        q_open,
-                        Self::escape_identifier(ref_table, q_close),
-                        q_close,
-                    )
-                };
-                parts.push(format!("DELETE FROM {};", qualified));
+                    parts.push(format!("DELETE FROM {};", ref_qualified));
+                }
             }
             parts.push(String::new());
         }
 
-        let target_qualified = if let Some(s) = schema {
-            format!(
-                "{}{}{}.{}{}{}",
-                q_open,
-                Self::escape_identifier(s, q_close),
-                q_close,
-                q_open,
-                Self::escape_identifier(table, q_close),
-                q_close,
-            )
+        parts.push("-- Step 2: Delete target rows".to_string());
+        if let Some(wcl) = wcl {
+            parts.push(format!("DELETE FROM {} WHERE {};", target_qualified, wcl));
         } else {
-            format!(
-                "{}{}{}",
-                q_open,
-                Self::escape_identifier(table, q_close),
-                q_close,
-            )
-        };
-
-        parts.push("-- Step 2: Delete target table".to_string());
-        parts.push(format!("DELETE FROM {};", target_qualified));
+            parts.push(format!("DELETE FROM {};", target_qualified));
+        }
         parts.push(String::new());
         parts.push("COMMIT;".to_string());
 
