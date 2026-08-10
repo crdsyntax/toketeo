@@ -126,6 +126,8 @@ impl DbDriver for SqliteDriver {
             rows_affected: 0,
 
             next_cursor: None,
+
+            graph: None,
         })
     }
 

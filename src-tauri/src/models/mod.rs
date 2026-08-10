@@ -188,10 +188,16 @@ pub struct QueryResult {
         rename = "nextCursor"
     )]
     pub next_cursor: Option<String>,
+    /// Resultado de grafo (solo conexiones Neo4j). Ausente para motores
+    /// relacionales: las respuestas tabulares (`columns`/`rows`) no cambian.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph: Option<GraphResult>,
 }
 
 /// Nodo de grafo neutral (DTO propio, sin tipos del crate del driver).
-/// `id` es el `elementId` de Neo4j (D2 del plan de integración).
+/// `id` es el `elementId` de Neo4j (D2 del plan de integración). Mientras
+/// `neo4rs` no exponga `element_id` (0.9-rc), se usa el `id(n)` numérico de
+/// Bolt con warning de degradación para Neo4j 5.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphNode {
@@ -200,7 +206,7 @@ pub struct GraphNode {
     pub properties: std::collections::HashMap<String, serde_json::Value>,
 }
 
-/// Relación de grafo neutral. `source`/`target` son elementIds de nodos.
+/// Relación de grafo neutral. `source`/`target` son ids de nodos.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRelationship {
@@ -506,6 +512,60 @@ mod tests {
         let ssh: SshConfig = serde_json::from_str(json).unwrap();
         assert_eq!(ssh.auth_type, SshAuthType::Password);
         assert_eq!(ssh.password.unwrap().expose_secret(), "ssh-pass");
+    }
+}
+
+#[cfg(test)]
+mod graph_result_serialization_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn base_result() -> QueryResult {
+        QueryResult {
+            columns: vec!["n".into()],
+            rows: vec![],
+            execution_time_ms: 5,
+            primary_keys: None,
+            rows_affected: 0,
+            next_cursor: None,
+            graph: None,
+        }
+    }
+
+    #[test]
+    fn graph_field_is_omitted_when_absent() {
+        let json = serde_json::to_value(base_result()).unwrap();
+        assert!(
+            json.get("graph").is_none(),
+            "graph must be omitted when None"
+        );
+    }
+
+    #[test]
+    fn graph_field_roundtrips_when_present() {
+        let mut props = HashMap::new();
+        props.insert("name".to_string(), serde_json::json!("alice"));
+        let result = QueryResult {
+            graph: Some(GraphResult {
+                nodes: vec![GraphNode {
+                    id: "4:abc:1".into(),
+                    labels: vec!["Person".into()],
+                    properties: props,
+                }],
+                relationships: vec![],
+                paths: vec![],
+            }),
+            ..base_result()
+        };
+
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["graph"]["nodes"][0]["id"], "4:abc:1");
+        assert_eq!(json["graph"]["nodes"][0]["labels"][0], "Person");
+        assert_eq!(json["graph"]["nodes"][0]["properties"]["name"], "alice");
+        assert!(json.get("relationships").is_none());
+
+        let back: QueryResult = serde_json::from_value(json).unwrap();
+        assert_eq!(back.graph.unwrap().nodes[0].labels, vec!["Person"]);
     }
 }
 

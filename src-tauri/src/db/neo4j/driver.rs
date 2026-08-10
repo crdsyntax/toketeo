@@ -99,6 +99,7 @@ impl DbDriver for Neo4jDriver {
             primary_keys: None,
             rows_affected: 0,
             next_cursor: None,
+            graph: None,
         })
     }
 

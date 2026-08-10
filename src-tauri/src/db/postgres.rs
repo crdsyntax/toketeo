@@ -114,6 +114,8 @@ impl DbDriver for PostgresDriver {
                     rows_affected: 0,
 
                     next_cursor: None,
+
+                    graph: None,
                 });
             }
 
@@ -153,6 +155,8 @@ impl DbDriver for PostgresDriver {
                 rows_affected: 0,
 
                 next_cursor: None,
+
+                graph: None,
             })
         } else {
             let result = sqlx::raw_sql(query).execute(&self.pool).await?;
@@ -164,6 +168,7 @@ impl DbDriver for PostgresDriver {
                 primary_keys: None,
                 rows_affected,
                 next_cursor: None,
+                graph: None,
             })
         }
     }
@@ -198,6 +203,7 @@ impl DbDriver for PostgresDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 });
             }
 
@@ -226,6 +232,7 @@ impl DbDriver for PostgresDriver {
                 primary_keys: None,
                 rows_affected: 0,
                 next_cursor: None,
+                graph: None,
             })
         } else {
             let result = qb.execute(&self.pool).await?;
@@ -237,6 +244,7 @@ impl DbDriver for PostgresDriver {
                 primary_keys: None,
                 rows_affected,
                 next_cursor: None,
+                graph: None,
             })
         }
     }
@@ -292,6 +300,7 @@ impl DbDriver for PostgresDriver {
                             primary_keys: None,
                             rows_affected: 0,
                             next_cursor: None,
+                            graph: None,
                         }))
                     } else {
                         let columns: Vec<String> = rows[0]
@@ -319,6 +328,7 @@ impl DbDriver for PostgresDriver {
                             primary_keys: None,
                             rows_affected: 0,
                             next_cursor: None,
+                            graph: None,
                         }))
                     }
                 }
@@ -336,6 +346,7 @@ impl DbDriver for PostgresDriver {
                         primary_keys: None,
                         rows_affected,
                         next_cursor: None,
+                        graph: None,
                     }))
                 }
                 Err(e) => Some(Err(e)),

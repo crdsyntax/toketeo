@@ -327,6 +327,8 @@ impl DbDriver for MongoDbDriver {
                 rows_affected: result.modified_count,
 
                 next_cursor: None,
+
+                graph: None,
             });
         }
 
@@ -430,6 +432,8 @@ impl DbDriver for MongoDbDriver {
                 rows_affected: 0,
 
                 next_cursor: None,
+
+                graph: None,
             });
         }
 
@@ -505,6 +509,8 @@ impl DbDriver for MongoDbDriver {
                         rows_affected: 0,
 
                         next_cursor: None,
+
+                        graph: None,
                     });
                 }
             }
@@ -537,6 +543,8 @@ impl DbDriver for MongoDbDriver {
                     rows_affected: 0,
 
                     next_cursor: None,
+
+                    graph: None,
                 });
             }
         }
@@ -550,6 +558,8 @@ impl DbDriver for MongoDbDriver {
             rows_affected: 0,
 
             next_cursor: None,
+
+            graph: None,
         })
     }
 
