@@ -488,6 +488,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "MGET" => {
@@ -507,6 +508,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SET" => {
@@ -522,6 +524,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "DEL" => {
@@ -538,6 +541,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "EXISTS" => {
@@ -554,6 +558,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "TYPE" => {
@@ -569,6 +574,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "TTL" => {
@@ -584,6 +590,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "PTTL" => {
@@ -599,6 +606,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "EXPIRE" => {
@@ -616,6 +624,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "PEXPIRE" => {
@@ -633,6 +642,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HGET" => {
@@ -648,6 +658,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HSET" => {
@@ -672,6 +683,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: affected as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HGETALL" => {
@@ -693,6 +705,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HDEL" => {
@@ -709,6 +722,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HEXISTS" => {
@@ -724,6 +738,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HLEN" => {
@@ -739,6 +754,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HKEYS" => {
@@ -757,6 +773,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HVALS" => {
@@ -775,6 +792,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LPUSH" => {
@@ -791,6 +809,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "RPUSH" => {
@@ -807,6 +826,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LPOP" => {
@@ -822,6 +842,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "RPOP" => {
@@ -837,6 +858,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LRANGE" => {
@@ -859,6 +881,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LLEN" => {
@@ -874,6 +897,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SADD" => {
@@ -890,6 +914,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SMEMBERS" => {
@@ -908,6 +933,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SISMEMBER" => {
@@ -923,6 +949,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SREM" => {
@@ -939,6 +966,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SCARD" => {
@@ -954,6 +982,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZADD" => {
@@ -978,6 +1007,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: affected as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZRANGE" => {
@@ -1008,6 +1038,7 @@ impl RedisDriver {
                         primary_keys: None,
                         rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                     })
                 } else {
                     let vals: Vec<RedisValue> = self.client.zrange(&tokens[1], start_idx, stop_idx, None, false, None, false).await
@@ -1022,6 +1053,7 @@ impl RedisDriver {
                         primary_keys: None,
                         rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                     })
                 }
             }
@@ -1053,6 +1085,7 @@ impl RedisDriver {
                         primary_keys: None,
                         rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                     })
                 } else {
                     let vals: Vec<RedisValue> = self.client.zrange(&tokens[1], start_idx, stop_idx, None, true, None, false).await
@@ -1067,6 +1100,7 @@ impl RedisDriver {
                         primary_keys: None,
                         rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                     })
                 }
             }
@@ -1084,6 +1118,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: count as u64,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZCARD" => {
@@ -1099,6 +1134,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZSCORE" => {
@@ -1114,6 +1150,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "INCR" | "DECR" | "INCRBY" | "DECRBY" => {
@@ -1145,6 +1182,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SETNX" => {
@@ -1160,6 +1198,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: if result { 1 } else { 0 },
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SETEX" => {
@@ -1180,6 +1219,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "GETDEL" => {
@@ -1195,6 +1235,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "GETSET" => {
@@ -1210,6 +1251,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "APPEND" => {
@@ -1225,6 +1267,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "STRLEN" => {
@@ -1240,6 +1283,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "PERSIST" => {
@@ -1255,6 +1299,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: if result { 1 } else { 0 },
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "EXPIREAT" => {
@@ -1272,6 +1317,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: if result { 1 } else { 0 },
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HMGET" => {
@@ -1291,6 +1337,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HMSET" => {
@@ -1311,6 +1358,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: (i - 2) as u64 / 2,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HSETNX" => {
@@ -1326,6 +1374,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: if result { 1 } else { 0 },
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HSTRLEN" => {
@@ -1341,6 +1390,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "HINCRBY" => {
@@ -1358,6 +1408,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LSET" => {
@@ -1375,6 +1426,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LTRIM" => {
@@ -1394,6 +1446,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "LINSERT" => {
@@ -1415,6 +1468,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SRANDMEMBER" => {
@@ -1440,6 +1494,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SPOP" => {
@@ -1465,6 +1520,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZRANGEBYSCORE" | "ZREVRANGEBYSCORE" => {
@@ -1505,6 +1561,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZRANK" | "ZREVRANK" => {
@@ -1524,6 +1581,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "ZINCRBY" => {
@@ -1541,6 +1599,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 1,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SCAN" => {
@@ -1580,6 +1639,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: Some(next_cursor),
+                    graph: None,
                 })
             }
             "KEYS" => {
@@ -1598,6 +1658,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "DBSIZE" => {
@@ -1610,6 +1671,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "PING" => {
@@ -1622,6 +1684,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "SELECT" => {
@@ -1640,6 +1703,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "INFO" => {
@@ -1683,6 +1747,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "RENAME" => {
@@ -1698,6 +1763,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "OBJECT" => {
@@ -1725,6 +1791,7 @@ impl RedisDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 })
             }
             "MULTI" | "EXEC" | "DISCARD" | "WATCH" => {

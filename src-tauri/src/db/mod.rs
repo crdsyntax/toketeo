@@ -15,6 +15,7 @@ pub enum DbType {
     Mongodb,
     Sqlserver,
     Redis,
+    Neo4j,
 }
 
 impl std::fmt::Display for DbType {
@@ -27,6 +28,7 @@ impl std::fmt::Display for DbType {
             DbType::Mongodb => "mongodb",
             DbType::Sqlserver => "sqlserver",
             DbType::Redis => "redis",
+            DbType::Neo4j => "neo4j",
         };
         write!(f, "{}", s)
     }
@@ -187,6 +189,11 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
         ))
     }
     async fn close(&self) -> AppResult<()>;
+    /// Expone las capacidades de grafo si el driver es un motor de grafos
+    /// (Neo4j). Default: este driver no tiene capacidades de grafo.
+    fn as_graph(&self) -> Option<&dyn GraphDriver> {
+        None
+    }
 }
 
 /// Capacidades del driver para sync.
@@ -194,9 +201,30 @@ pub trait CapabilityProvider: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
 }
 
+/// Capacidades de grafo (Neo4j). Trait separado de `DbDriver`: el core no
+/// asume que toda BD es relacional, ni obliga a motores relacionales a
+/// exponer capacidades de grafo en el trait base. Implementado solo por el
+/// driver Neo4j.
+#[async_trait]
+pub trait GraphDriver: Send + Sync {
+    fn db_type(&self) -> DbType;
+    async fn node_labels(&self) -> AppResult<Vec<String>>;
+    async fn relationship_types(&self) -> AppResult<Vec<String>>;
+    async fn graph_metadata(&self) -> AppResult<crate::models::GraphMetadata>;
+    async fn execute_cypher(
+        &self,
+        query: &str,
+        params: &[Option<String>],
+    ) -> AppResult<crate::models::GraphResult>;
+    async fn close(&self) -> AppResult<()>;
+}
+
+pub type BoxGraphDriver = Box<dyn GraphDriver>;
+
 pub mod common;
 pub mod mongodb;
 pub mod mysql;
+pub mod neo4j;
 pub mod postgres;
 pub mod redis;
 pub mod sqlite;

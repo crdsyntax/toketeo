@@ -49,6 +49,24 @@ impl From<mongodb::error::Error> for AppError {
     }
 }
 
+impl From<neo4rs::Error> for AppError {
+    fn from(err: neo4rs::Error) -> Self {
+        use neo4rs::Error as NeoError;
+        match err {
+            NeoError::AuthenticationError(_) => AppError::Auth(err.to_string()),
+            NeoError::IOError { .. }
+            | NeoError::ConnectionError
+            | NeoError::ConnectionClosed(_)
+            | NeoError::ProtocolMismatch(_)
+            | NeoError::UnsupportedVersion(_, _)
+            | NeoError::UrlParseError(_)
+            | NeoError::UnsupportedScheme(_)
+            | NeoError::InvalidDnsName(_) => AppError::Connection(err.to_string()),
+            _ => AppError::Database(err.to_string()),
+        }
+    }
+}
+
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> Self {
         AppError::Internal(err.to_string())

@@ -320,6 +320,8 @@ impl DbDriver for SqlServerDriver {
             rows_affected: 0,
 
             next_cursor: None,
+
+            graph: None,
         })
     }
 

@@ -438,13 +438,14 @@ export function ConnectionModal({
 
               <div className="space-y-3">
                 <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Database Engine</label>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-6 gap-2">
                   {[
                     { id: DatabaseType.MARIADB, label: 'MySQL' },
                     { id: DatabaseType.POSTGRES, label: 'Postgres' },
                     { id: DatabaseType.MONGODB, label: 'MongoDB' },
                     { id: DatabaseType.SQLSERVER, label: 'MSSQL' },
-                    { id: DatabaseType.REDIS, label: 'Redis' }
+                    { id: DatabaseType.REDIS, label: 'Redis' },
+                    { id: DatabaseType.NEO4J, label: 'Neo4j' }
                   ].map((engine) => (
                     <button
                       key={engine.id}
@@ -453,7 +454,8 @@ export function ConnectionModal({
                           engine.id === DatabaseType.POSTGRES ? 5432 : 
                           engine.id === DatabaseType.MONGODB ? 27017 : 
                           engine.id === DatabaseType.SQLSERVER ? 1433 :
-                          engine.id === DatabaseType.REDIS ? 6379 : 3306
+                          engine.id === DatabaseType.REDIS ? 6379 :
+                          engine.id === DatabaseType.NEO4J ? 7687 : 3306
                         setForm({ ...form, type: engine.id as DatabaseType, port: defaultPort })
                       }}
                       className={cn(
@@ -556,14 +558,14 @@ export function ConnectionModal({
               </div>
 
               <div className="space-y-2">
-                <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">{form.type === DatabaseType.REDIS ? 'Database (0-15)' : 'Default Schema'}</label>
+                <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">{form.type === DatabaseType.REDIS ? 'Database (0-15)' : form.type === DatabaseType.NEO4J ? 'Database' : 'Default Schema'}</label>
                 <div className="relative">
                   <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
                   <input 
                     className="w-full bg-background border border-border pl-10 pr-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                     value={form.database}
                     onChange={(e) => setForm({ ...form, database: e.target.value })}
-                    placeholder={form.type === DatabaseType.REDIS ? '0' : 'database_name'}
+                    placeholder={form.type === DatabaseType.REDIS ? '0' : form.type === DatabaseType.NEO4J ? 'neo4j' : 'database_name'}
                   />
                 </div>
               </div>

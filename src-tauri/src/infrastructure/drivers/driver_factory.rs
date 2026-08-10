@@ -1,5 +1,6 @@
 use crate::db::mongodb::MongoDbDriver;
 use crate::db::mysql::MySqlDriver;
+use crate::db::neo4j::driver::Neo4jDriver;
 use crate::db::postgres::PostgresDriver;
 use crate::db::redis::RedisDriver;
 use crate::db::sqlite::SqliteDriver;
@@ -16,6 +17,9 @@ impl DriverFactory {
         url: &str,
         transactional: bool,
         pool_config: Option<PoolConfig>,
+        user: &str,
+        password: Option<&str>,
+        database: Option<&str>,
     ) -> AppResult<Arc<dyn DbDriver>> {
         match db_type {
             DbType::Postgres => Ok(Arc::new(
@@ -30,6 +34,9 @@ impl DriverFactory {
                 RedisDriver::new(url, transactional, pool_config).await?,
             )),
             DbType::Sqlite => Ok(Arc::new(SqliteDriver::new(url).await?)),
+            DbType::Neo4j => Ok(Arc::new(
+                Neo4jDriver::new(url, user, password, database, pool_config.as_ref()).await?,
+            )),
         }
     }
 }

@@ -85,7 +85,7 @@ frontend/src/
 
 ## Fases de Implementación
 
-### Fase 0 — Contratos aditivos (sin refactor)
+### Fase 0 — Contratos aditivos (sin refactor) ✅ **Completada** (commits `51abd64` backend, `57a460f` frontend)
 
 **Nada de reestructurar `db/`.** Los drivers actuales (postgres, mysql, sqlite, sqlserver, mongodb, redis) no se mueven ni se tocan.
 
@@ -103,7 +103,7 @@ frontend/src/
 
 ---
 
-### Fase 1 — `Neo4jDriver` y conectividad
+### Fase 1 — `Neo4jDriver` y conectividad ✅ **Completada** (commits `3b7d32c` driver, `1378749` test Docker)
 
 Contrato de responsabilidades (decisiones D1/D2):
 
@@ -119,7 +119,7 @@ Contrato de responsabilidades (decisiones D1/D2):
 
 ---
 
-### Fase 2 — Modelo de resultados de grafo (neutral)
+### Fase 2 — Modelo de resultados de grafo (neutral) ✅ **Completada** (commits `39101c6` backend, `a9abc9b` frontend)
 
 - Normalización en `result.rs`: `ValueReceive::{Node, Relationship, Path, List, Map, Scalar}` → `GraphResult` (con topología de la query `RETURN`).
 - `QueryResult` se extiende con `graph?: GraphResult` (campo opcional — frontend `types/database.ts` y backend `models/mod.rs`), No acoplar el frontend a las estructuras de `neo4rs`.
@@ -243,9 +243,9 @@ Aunque se aplica en cada fase, traza un checklist común:
 
 Como Tech Leader, se fusionan estos packs (2 PRs de mayor contexto):
 
-**PR A (Core / integración de máquina):** F0 → F1 → F2 → F3 → F5 (con tests integrados Docker desde F1).
+**PR A (Core / integración de máquina):** F0 ✅ → F1 ✅ → F2 ✅ → F3 → F5 (con tests integrados Docker desde F1). **Pendiente:** F3 (introspección) y F5 (ejecución Cypher).
 
-**PR B (UX / interacción):** F4 (editor) → F6 (explorer) → F7 (assistant) → F8 (fixer) → F9 (gamif) → F10 (admin).
+**PR B (UX / interacción):** F4 (editor) → F6 (explorer) → F7 (assistant) → F8 (fixer) → F9 (gamif) → F10 (admin). **Sin empezar.**
 
 Con esto el Explorer (F6) **no se bloquea** detrás de Fases tardías técnicamente; solo se "declara" - nunca se reescribe.
 
@@ -266,10 +266,10 @@ Con esto el Explorer (F6) **no se bloquea** detrás de Fases tardías técnicame
 
 ## Criterios de Aceptación global (Definition of Done del proyecto)
 
-- [ ] Conexión Neo4j desde el mismo flujo de conexión que el resto (credenciales cifradas, túnel SSH transparente)
-- [ ] `DbType`/`DatabaseType` = `neo4j` en ambos lados; `GraphDriver` trait separado; drivers existentes intactos (test verdes)
-- [ ] Ejecución Cypher livrable: params tipados, pagination, cancel, EXPLAIN/PROFILE, auditoría
-- [ ] `QueryResult.graph` neutral (sin types de crate); vista Grafos React Flow funcionando
+- [x] Conexión Neo4j desde el mismo flujo de conexión que el resto (credenciales cifradas, túnel SSH transparente) — **F0–F1**
+- [x] `DbType`/`DatabaseType` = `neo4j` en ambos lados; `GraphDriver` trait separado; drivers existentes intactos (test verdes) — **F0**
+- [ ] Ejecución Cypher livrable: params tipados, pagination, cancel, EXPLAIN/PROFILE, auditoría — **F5**
+- [x] `QueryResult.graph` neutral (sin types de crate); vista Grafos React Flow funcionando — **F2** (vista básica; Graph Explorer completo en F6)
 - [ ] Editor CodeMirror con lenguaje Cypher + autocompletado del schema real
 - [ ] Assistant con contexto grafos y generación de Cypher correcta
 - [ ] Fixer de Cypher con sugerencias + permiso explícita

@@ -157,6 +157,8 @@ impl DbDriver for MockDriver {
                 rows_affected: 0,
 
                 next_cursor: None,
+
+                graph: None,
             });
         }
         Ok(QueryResult {
@@ -167,6 +169,8 @@ impl DbDriver for MockDriver {
             rows_affected: 1,
 
             next_cursor: None,
+
+            graph: None,
         })
     }
 

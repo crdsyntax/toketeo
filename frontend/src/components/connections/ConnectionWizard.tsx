@@ -11,6 +11,7 @@ const ENGINES = [
   { id: 'mongodb', name: 'MongoDB', icon: '🍃', color: 'text-green-500', dbType: DatabaseType.MONGODB },
   { id: 'mssql', name: 'SQL Server', icon: '🗄️', color: 'text-red-500', dbType: DatabaseType.SQLSERVER },
   { id: 'redis', name: 'Redis', icon: '⚡', color: 'text-amber-500', dbType: DatabaseType.REDIS },
+  { id: 'neo4j', name: 'Neo4j', icon: '🔗', color: 'text-emerald-500', dbType: DatabaseType.NEO4J },
 ]
 
 const ENGINE_MAP = Object.fromEntries(ENGINES.map(e => [e.id, e]))
@@ -42,6 +43,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
     mongodb: '27017',
     mssql: '1433',
     redis: '6379',
+    neo4j: '7687',
   }
 
   const buildPayload = (): CreateConnectionDto => {
@@ -54,7 +56,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
       port: parseInt(port || defaultPorts[engine!], 10),
       user: engine === DatabaseType.REDIS ? '' : user,
       password,
-      database,
+      database: engine === 'neo4j' ? (database || 'neo4j') : database,
       authEnabled: true,
       authSource: '',
       replicaSet: '',
@@ -210,6 +212,12 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
                   <div>
                     <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Database (0-15)</label>
                     <input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="0"
+                      className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+                  </div>
+                ) : engine === 'neo4j' ? (
+                  <div>
+                    <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground mb-1 block">Database</label>
+                    <input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="neo4j"
                       className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   </div>
                 ) : (

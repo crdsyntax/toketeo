@@ -43,6 +43,7 @@ export enum DatabaseType {
   SQLSERVER = 'sqlserver',
   SQLITE = 'sqlite',
   REDIS = 'redis',
+  NEO4J = 'neo4j',
 }
 
 export enum Environment {
@@ -71,6 +72,31 @@ export interface SshConfig {
 export type DbValue = string | number | boolean | null | undefined;
 export type DbRow = Record<string, DbValue>;
 
+export interface GraphNode {
+  id: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
+export interface GraphRelationship {
+  id: string;
+  type: string;
+  source: string;
+  target: string;
+  properties: Record<string, unknown>;
+}
+
+export interface GraphPath {
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+}
+
+export interface GraphResult {
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+  paths: GraphPath[];
+}
+
 export interface QueryResult {
   columns: string[];
   rows: DbRow[];
@@ -82,6 +108,7 @@ export interface QueryResult {
   hasMore?: boolean;
   primary_keys?: string[];
   nextCursor?: string;
+  graph?: GraphResult;
 }
 
 export interface TableColumn {

@@ -239,4 +239,4 @@ toketeo/
 
 ## ✒️ Author
 
-**crdsyntax** — *Backend development* — [GitHub](https://github.com/crdsyntax)
+**crdsyntax** — *Banckend development* — [GitHub](https://github.com/crdsyntax)

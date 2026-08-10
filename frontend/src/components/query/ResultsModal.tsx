@@ -19,6 +19,7 @@ import { ExecutionStatus } from '@/types/database';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { ResultsPanelTable } from './panels/results/ResultsPanelTable';
+import { GraphResultsPanel } from './panels/results/GraphResultsPanel';
 import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { VisualizePanel } from './panels/VisualizePanel';
 
@@ -239,6 +240,11 @@ export function ResultsModal({
         <div className="flex-1 overflow-hidden relative flex flex-col">
           {viewMode === 'json' ? (
             <JsonResultsView rows={sortedRows} />
+          ) : activeTab?.results?.graph &&
+            (activeTab.results.graph.nodes.length > 0 ||
+              activeTab.results.graph.relationships.length > 0 ||
+              activeTab.results.graph.paths.length > 0) ? (
+            <GraphResultsPanel graph={activeTab.results.graph} />
           ) : viewMode === 'visualize' ? (
             <VisualizePanel sortedRows={sortedRows} />
           ) : (

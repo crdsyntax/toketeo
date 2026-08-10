@@ -117,13 +117,31 @@ impl ExplorerService {
                             rows_affected: 0,
 
                             next_cursor: None,
+
+                            graph: None,
                         });
                     }
                 }
             }
         }
 
-        let result = if use_schema_context {
+        let result = if let Some(graph) = driver.as_graph() {
+            // Conexiones de grafo (Neo4j): el resultado viaja como GraphResult
+            // neutral; las respuestas tabulares no aplican a este motor.
+            let graph_start = std::time::Instant::now();
+            graph
+                .execute_cypher(&final_query, &[])
+                .await
+                .map(|graph_result| QueryResult {
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    execution_time_ms: graph_start.elapsed().as_millis() as u64,
+                    primary_keys: None,
+                    rows_affected: 0,
+                    next_cursor: None,
+                    graph: Some(graph_result),
+                })
+        } else if use_schema_context {
             if let Some(ref s) = schema {
                 driver.execute_with_schema(&final_query, s).await
             } else {

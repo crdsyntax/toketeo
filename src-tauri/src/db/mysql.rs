@@ -177,6 +177,8 @@ impl DbDriver for MySqlDriver {
                     rows_affected: 0,
 
                     next_cursor: None,
+
+                    graph: None,
                 });
             }
 
@@ -204,6 +206,8 @@ impl DbDriver for MySqlDriver {
                 rows_affected: 0,
 
                 next_cursor: None,
+
+                graph: None,
             })
         } else {
             let result = if trimmed_query.contains(';') {
@@ -222,6 +226,7 @@ impl DbDriver for MySqlDriver {
                         primary_keys: None,
                         rows_affected,
                         next_cursor: None,
+                        graph: None,
                     })
                 }
                 Err(e) => Err(e.into()),
@@ -258,6 +263,7 @@ impl DbDriver for MySqlDriver {
                     primary_keys: None,
                     rows_affected: 0,
                     next_cursor: None,
+                    graph: None,
                 });
             }
 
@@ -284,6 +290,7 @@ impl DbDriver for MySqlDriver {
                 primary_keys: None,
                 rows_affected: 0,
                 next_cursor: None,
+                graph: None,
             })
         } else {
             let result = qb.execute(&self.pool).await?;
@@ -295,6 +302,7 @@ impl DbDriver for MySqlDriver {
                 primary_keys: None,
                 rows_affected,
                 next_cursor: None,
+                graph: None,
             })
         }
     }
@@ -350,6 +358,7 @@ impl DbDriver for MySqlDriver {
                             primary_keys: None,
                             rows_affected: 0,
                             next_cursor: None,
+                            graph: None,
                         }))
                     } else {
                         let columns: Vec<String> = rows[0]
@@ -375,6 +384,7 @@ impl DbDriver for MySqlDriver {
                             primary_keys: None,
                             rows_affected: 0,
                             next_cursor: None,
+                            graph: None,
                         }))
                     }
                 }
@@ -396,6 +406,7 @@ impl DbDriver for MySqlDriver {
                         primary_keys: None,
                         rows_affected,
                         next_cursor: None,
+                        graph: None,
                     }))
                 }
                 Err(e) => Some(Err(e)),

@@ -176,6 +176,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     [DatabaseType.SQLSERVER]: false,
     [DatabaseType.SQLITE]: false,
     [DatabaseType.REDIS]: false,
+    [DatabaseType.NEO4J]: false,
   })
   const queryClient = useQueryClient()
   const { setActiveConnectionDatabase, addTab, addExplorerTab, updateExplorerTab, setExplorerState } = useAppStore()
@@ -201,6 +202,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
       [DatabaseType.SQLSERVER]: [],
       [DatabaseType.SQLITE]: [],
       [DatabaseType.REDIS]: [],
+      [DatabaseType.NEO4J]: [],
     }
     connections.forEach((conn) => {
       if (groups[conn.type]) {

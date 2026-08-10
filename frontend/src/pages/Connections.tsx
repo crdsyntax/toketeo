@@ -52,6 +52,7 @@ export default function Connections() {
       [DatabaseType.SQLSERVER]: 0,
       [DatabaseType.SQLITE]: 0,
       [DatabaseType.REDIS]: 0,
+      [DatabaseType.NEO4J]: 0,
     }
     connections.forEach((conn) => {
       if (counts[conn.type] !== undefined) {
