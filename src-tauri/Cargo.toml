@@ -61,6 +61,11 @@ sha2 = "0.10"
 raw-window-handle = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+[dev-dependencies]
+testcontainers = "0.28"
+tokio = { version = "1.43.0", features = ["full"] }
+futures = "0.3"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Security_Credentials_UI",
