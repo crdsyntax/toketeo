@@ -9,6 +9,7 @@ import { ResultsPanelHeader } from './results/ResultsPanelHeader';
 import { ResultsPanelError } from './results/ResultsPanelError';
 import { ResultsPanelTable } from './results/ResultsPanelTable';
 import { ResultsPanelSkeleton } from './results/ResultsPanelSkeleton';
+import { GraphResultsPanel } from './results/GraphResultsPanel';
 import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { VisualizePanel } from './VisualizePanel';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
@@ -136,6 +137,11 @@ export function ResultsPanel({
                 </div>
               )}
             </>
+          ) : activeTab?.results?.graph &&
+            (activeTab.results.graph.nodes.length > 0 ||
+              activeTab.results.graph.relationships.length > 0 ||
+              activeTab.results.graph.paths.length > 0) ? (
+            <GraphResultsPanel graph={activeTab.results.graph} />
           ) : activeTab?.results && sortedRows.length > 0 ? (
             <>
               {viewMode === 'json' ? (
