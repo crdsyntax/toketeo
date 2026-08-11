@@ -2,6 +2,8 @@
 
 **Toketeo** is a cross-platform database client built with **Rust + Tauri** and **React**. It turns everyday database administration into an RPG-like progression system — execute queries, earn XP, level up, unlock perks, and complete quests while managing your databases.
 
+## Download windows version at : https://toketeo.crdsyntax.workers.dev/
+
 ![Toketeo Logo](./frontend/public/principal.png)
 
 ---
