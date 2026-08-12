@@ -59,6 +59,36 @@ pub trait DataWriter: Send + Sync {
         primary_keys: &[String],
         rows: &[serde_json::Value],
     ) -> AppResult<UpsertResult>;
+
+    /// Crea una columna en una tabla del target si no existe (reconciliación de
+    /// esquema en caliente durante el sync). `column_type` es un tipo agnóstico
+    /// al dialecto ("text", "bigint", "double", "boolean", "json") que cada
+    /// driver traduce a su dialecto. Default: no soportado.
+    async fn add_column(
+        &self,
+        _table: &str,
+        _schema: Option<&str>,
+        _column: &str,
+        _column_type: &str,
+    ) -> AppResult<()> {
+        Err(AppError::Validation(
+            "add_column is not supported for this database type".into(),
+        ))
+    }
+
+    /// Relaja la restricción NOT NULL de una columna del target (reconciliación
+    /// de esquema en caliente cuando el source trae NULLs en una columna que el
+    /// target tiene NOT NULL). Default: no soportado.
+    async fn drop_not_null(
+        &self,
+        _table: &str,
+        _schema: Option<&str>,
+        _column: &str,
+    ) -> AppResult<()> {
+        Err(AppError::Validation(
+            "drop_not_null is not supported for this database type".into(),
+        ))
+    }
 }
 
 /// Resultado de un upsert batch: filas afectadas + filas omitidas (duplicados en MongoDB).
@@ -229,7 +259,7 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_connections: 5,
+            max_connections: 2,
             idle_timeout: Some(Duration::from_secs(600)),
             acquire_timeout: Duration::from_secs(30),
             max_lifetime: Some(Duration::from_secs(28800)),
@@ -273,6 +303,27 @@ impl DataWriter for std::sync::Arc<dyn DbDriver> {
             .upsert_rows(table, schema, columns, primary_keys, rows)
             .await
     }
+
+    async fn add_column(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+        column_type: &str,
+    ) -> AppResult<()> {
+        (**self)
+            .add_column(table, schema, column, column_type)
+            .await
+    }
+
+    async fn drop_not_null(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+    ) -> AppResult<()> {
+        (**self).drop_not_null(table, schema, column).await
+    }
 }
 
 impl From<&crate::models::DbConnectionConfig> for Option<PoolConfig> {
@@ -288,7 +339,7 @@ impl From<&crate::models::DbConnectionConfig> for Option<PoolConfig> {
         }
 
         Some(PoolConfig {
-            max_connections: if max > 0 { max as u32 } else { 5 },
+            max_connections: if max > 0 { max as u32 } else { 2 },
             idle_timeout: if idle > 0 {
                 Some(Duration::from_secs(idle as u64))
             } else {

@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::application::sync::planner::fk_order::FkOrderer;
 use crate::application::sync::strategies::SyncEvent;
 use crate::application::sync::sync_service::SyncService;
 use crate::db::DbDriver;
@@ -111,8 +112,33 @@ impl SyncExecutionService {
                 pipeline.tables.len(),
             );
 
+            // Detect the correct source schema before PK/FK metadata queries
+            // so they run against the right schema (the configured one may be
+            // the database name instead of the actual schema).
+            if let Some(schema) = SyncService::detect_source_schema(
+                source_driver.as_ref(),
+                &pipeline.tables,
+                pipeline.source_schema.as_deref(),
+            )
+            .await
+            {
+                pipeline.source_schema = Some(schema);
+            } else {
+                tracing::error!(
+                    "[sync] Could not detect source schema for pipeline '{}' — the pipeline will abort",
+                    pipeline.name
+                );
+            }
+
             // Auto-detect primary keys for tables that don't have them.
             Self::auto_detect_primary_keys(&mut pipeline, source_driver.as_ref()).await;
+
+            // Reorder tables by FK dependencies (parents before children) to
+            // avoid foreign key violations during data load.
+            Self::order_tables_by_fk(&mut pipeline, source_driver.as_ref()).await;
+
+            // Warn when keyset pagination would run on a non-indexed PK.
+            Self::validate_keyset_indexes(&pipeline, source_driver.as_ref()).await;
 
             let pipeline_result = SyncService::execute_pipeline(
                 &pipeline,
@@ -241,6 +267,75 @@ impl SyncExecutionService {
                     }
                 }
             }
+        }
+    }
+
+    /// Warn when the keyset pagination PK has no index on the source. Keyset
+    /// pagination (`WHERE pk > $1 ORDER BY pk LIMIT $2`) degrades to full scans
+    /// + sorts when the PK column is not indexed, making syncs O(n²). Read-only.
+    pub async fn validate_keyset_indexes(pipeline: &SyncPipeline, source: &dyn DbDriver) {
+        for table in &pipeline.tables {
+            let Some(pk) = table
+                .primary_key
+                .as_ref()
+                .and_then(|p| p.first())
+                .filter(|p| !p.is_empty())
+            else {
+                continue;
+            };
+
+            let indexes = source
+                .fetch_indexes(&table.source_table, pipeline.source_schema.clone())
+                .await;
+            let Ok(indexes) = indexes else { continue };
+
+            let pk_indexed = indexes.iter().any(|idx| {
+                idx.get("column")
+                    .and_then(|v| v.as_str())
+                    .map(|c| c.eq_ignore_ascii_case(pk))
+                    .unwrap_or(false)
+            });
+
+            if !pk_indexed {
+                tracing::warn!(
+                    "[sync] Table '{}': primary key '{}' has no index on the source — keyset pagination may be very slow. Consider adding an index.",
+                    table.source_table,
+                    pk,
+                );
+            }
+        }
+    }
+
+    /// Reorder `pipeline.tables` according to the source FK dependency graph
+    /// (parents before children). Never fails: if FK metadata is unavailable it
+    /// keeps the original order. Shared by the async runner and the assistant's
+    /// blocking `sync` tool.
+    pub async fn order_tables_by_fk(pipeline: &mut SyncPipeline, source: &dyn DbDriver) {
+        match FkOrderer::order_tables(
+            pipeline.tables.clone(),
+            source,
+            pipeline.source_schema.as_deref(),
+        )
+        .await
+        {
+            Ok(ordered) => {
+                if ordered
+                    .iter()
+                    .map(|t| &t.source_table)
+                    .ne(pipeline.tables.iter().map(|t| &t.source_table))
+                {
+                    tracing::info!(
+                        "[sync] Pipeline '{}': tables reordered by FK dependencies",
+                        pipeline.name
+                    );
+                }
+                pipeline.tables = ordered;
+            }
+            Err(e) => tracing::error!(
+                "[sync] FK ordering failed for pipeline '{}' — keeping original order: {}",
+                pipeline.name,
+                e
+            ),
         }
     }
 }

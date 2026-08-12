@@ -101,6 +101,10 @@ export function generateRowsWhereClause(
 ): string {
   const singleKey = resolveSingleKey(rows, primaryKeys)
   if (singleKey) {
+    // Una sola fila → igualdad simple (`id = :id`); varias → `IN (...)`
+    if (rows.length === 1) {
+      return `${quoteIdent(singleKey, dbType)} = ${formatSqlValue(rows[0][singleKey])}`
+    }
     const values = rows.map((r) => formatSqlValue(r[singleKey]))
     return `${quoteIdent(singleKey, dbType)} IN (${values.join(', ')})`
   }

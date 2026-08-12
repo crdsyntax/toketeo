@@ -55,6 +55,10 @@ interface ResultsModalProps {
   clearResults: () => void;
   isInteracting: boolean;
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
+  selectedRowIndexes: Set<number>;
+  setSelectedRowIndexes: Dispatch<SetStateAction<Set<number>>>;
+  selectionAnchor: number | null;
+  setSelectionAnchor: Dispatch<SetStateAction<number | null>>;
 }
 
 export function ResultsModal({
@@ -76,8 +80,11 @@ export function ResultsModal({
   clearResults,
   isInteracting,
   setContextMenuSql,
+  selectedRowIndexes,
+  setSelectedRowIndexes,
+  selectionAnchor,
+  setSelectionAnchor,
 }: ResultsModalProps) {
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
 
   if (!isOpen || !activeTab?.results) return null;
@@ -251,8 +258,10 @@ export function ResultsModal({
               setEditingCell={setEditingCell}
               handleSave={handleSave}
               setContextMenuSql={setContextMenuSql}
-              selectedRowIndex={selectedRowIndex}
-              setSelectedRowIndex={setSelectedRowIndex}
+              selectedRowIndexes={selectedRowIndexes}
+              setSelectedRowIndexes={setSelectedRowIndexes}
+              selectionAnchor={selectionAnchor}
+              setSelectionAnchor={setSelectionAnchor}
               setShowExportMenu={() => {}}
               setShowLimitMenu={() => {}}
             />

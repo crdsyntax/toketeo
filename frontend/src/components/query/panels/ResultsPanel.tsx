@@ -41,6 +41,10 @@ interface ResultsPanelProps {
   updateTabResults: (tabId: string, updates: Partial<QueryTab>) => void;
   handlePageChange: (page: number) => void;
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
+  selectedRowIndexes: Set<number>;
+  setSelectedRowIndexes: React.Dispatch<React.SetStateAction<Set<number>>>;
+  selectionAnchor: number | null;
+  setSelectionAnchor: React.Dispatch<React.SetStateAction<number | null>>;
   queryLimit: number;
   setQueryLimit: (limit: number) => void;
   safeDeleteSuggestion: string | null;
@@ -70,6 +74,10 @@ export function ResultsPanel({
   updateTabResults,
   handlePageChange,
   setContextMenuSql,
+  selectedRowIndexes,
+  setSelectedRowIndexes,
+  selectionAnchor,
+  setSelectionAnchor,
   queryLimit,
   setQueryLimit,
   safeDeleteSuggestion,
@@ -81,7 +89,6 @@ export function ResultsPanel({
   scriptLiveRunning,
   onShowScriptSummary,
 }: ResultsPanelProps) {
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showLimitMenu, setShowLimitMenu] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
@@ -154,8 +161,10 @@ export function ResultsPanel({
                   setEditingCell={setEditingCell}
                   handleSave={handleSave}
                   setContextMenuSql={setContextMenuSql}
-                  selectedRowIndex={selectedRowIndex}
-                  setSelectedRowIndex={setSelectedRowIndex}
+                  selectedRowIndexes={selectedRowIndexes}
+                  setSelectedRowIndexes={setSelectedRowIndexes}
+                  selectionAnchor={selectionAnchor}
+                  setSelectionAnchor={setSelectionAnchor}
                   setShowExportMenu={setShowExportMenu}
                   setShowLimitMenu={setShowLimitMenu}
                 />

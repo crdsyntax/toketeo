@@ -391,6 +391,18 @@ impl AppState {
         }
     }
 
+    pub async fn is_transactional(&self, id: &str) -> AppResult<bool> {
+        let conns = self.connections.read().await;
+        if let Some(session) = conns.get(id) {
+            Ok(session.transactional)
+        } else {
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
+        }
+    }
+
     pub async fn begin_transaction(&self, id: &str) -> AppResult<()> {
         let db_type;
         let driver;

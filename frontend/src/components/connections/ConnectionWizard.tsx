@@ -61,7 +61,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
       directConnection: true,
       ssl: 'false',
       readOnly: false,
-      maxPoolSize: 5,
+      maxPoolSize: 2,
       idleTimeout: 600,
       acquireTimeout: 30,
       maxLifetime: 28800,

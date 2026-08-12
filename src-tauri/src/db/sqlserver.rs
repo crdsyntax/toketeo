@@ -314,6 +314,7 @@ impl DbDriver for SqlServerDriver {
 
         Ok(QueryResult {
             columns,
+            column_types: None,
             rows,
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
@@ -775,6 +776,34 @@ impl DataWriter for SqlServerDriver {
             affected: total_affected,
             skipped: 0,
         })
+    }
+
+    async fn add_column(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+        column_type: &str,
+    ) -> AppResult<()> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.[{}]", quote_ss(s), quote_ss(table))
+        } else {
+            quote_ss(table)
+        };
+        let sql_type = match column_type {
+            "bigint" => "BIGINT",
+            "double" => "FLOAT",
+            "boolean" => "BIT",
+            _ => "NVARCHAR(MAX)",
+        };
+        let sql = format!(
+            "ALTER TABLE {} ADD {} {}",
+            table_ref,
+            quote_ss(column),
+            sql_type
+        );
+        self.execute(&sql).await?;
+        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Play } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -61,6 +61,10 @@ export default function QueryEditor() {
     pendingEdit,
     confirmPendingEdit,
     discardPendingEdit,
+    selectedRowIndexes,
+    setSelectedRowIndexes,
+    selectionAnchor,
+    setSelectionAnchor,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,
@@ -77,6 +81,7 @@ export default function QueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    handleExecuteRowSql,
     updateTabViewState,
     queryLimit,
     setQueryLimit,
@@ -214,6 +219,23 @@ export default function QueryEditor() {
           </div>
           <hr className="border-border/50 my-1" />
           <div className="space-y-0.5">
+            {!isMongo && (
+              <>
+                <button
+                  onClick={() => handleExecuteRowSql()}
+                  className="w-full text-left px-2.5 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-150 flex items-center gap-2"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Execute</span>
+                  {selectedRowIndexes.size > 1 && (
+                    <span className="ml-auto text-[var(--ch-text-10)] text-muted-foreground font-mono">
+                      {selectedRowIndexes.size} rows
+                    </span>
+                  )}
+                </button>
+                <hr className="border-border/50 my-1" />
+              </>
+            )}
             {SQL_ACTIONS.map((action) => (
               <button
                 key={action}
@@ -300,6 +322,10 @@ export default function QueryEditor() {
         draggingRef={draggingRef}
         resizingRef={resizingRef}
         setContextMenuSql={setContextMenuSql}
+        selectedRowIndexes={selectedRowIndexes}
+        setSelectedRowIndexes={setSelectedRowIndexes}
+        selectionAnchor={selectionAnchor}
+        setSelectionAnchor={setSelectionAnchor}
       />
 
       <QueryMenus 
@@ -407,6 +433,10 @@ export default function QueryEditor() {
                 discardPendingEdit={discardPendingEdit}
                 handlePageChange={handlePageChange}
                 setContextMenuSql={setContextMenuSql}
+                selectedRowIndexes={selectedRowIndexes}
+                setSelectedRowIndexes={setSelectedRowIndexes}
+                selectionAnchor={selectionAnchor}
+                setSelectionAnchor={setSelectionAnchor}
                 queryLimit={queryLimit}
                 setQueryLimit={setQueryLimit}
                 safeDeleteSuggestion={safeDeleteSuggestion}

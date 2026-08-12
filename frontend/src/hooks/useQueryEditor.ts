@@ -18,7 +18,9 @@ import { assistantService } from '@/services/assistant.service'
 import type { SqlFixResult } from '@/types/assistant'
 import { listen } from '@tauri-apps/api/event'
 import { splitSqlStatements } from '@/lib/sqlScript'
+import { extractStatementAtCursor } from '@/lib/sql-statement'
 import type { ScriptErrorPrompt } from '@/components/query/ScriptErrorModal'
+import { generateRowsWhereClause, quoteIdent, quoteTableName } from '@/lib/sqlGenerator'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -230,6 +232,8 @@ export function useQueryEditor() {
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
   const [pendingEdit, setPendingEdit] = useState<{ rowIndex: number; column: string; prevValue: DbValue; nextValue: DbValue } | null>(null)
   const [isInteracting, setIsInteracting] = useState(false)
+  const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set())
+  const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null)
   const lastExecutedSqlRef = useRef('')
   const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
   const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
@@ -398,7 +402,7 @@ export function useQueryEditor() {
         ? prev.map(s => s.phase === 'running' || s.phase === 'pending' ? { ...s, phase: 'skipped' as const } : s)
         : prev)
       updateTabResults(activeTab.id, {
-        status: report.rolledBack ? ExecutionStatus.ERROR : report.failed > 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.SUCCESS,
+        status: report.rolledBack ? ExecutionStatus.ERROR : ExecutionStatus.SUCCESS,
         error: report.rolledBack
           ? `Script cancelled: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped — transaction rolled back.`
           : report.failed > 0
@@ -409,6 +413,8 @@ export function useQueryEditor() {
 
       if (report.rolledBack) {
         toast.error(`Script rolled back: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped`)
+      } else if (report.pendingCommit) {
+        toast.success(`Script completed: ${report.ok} ok — changes pending. Press Commit on the bottom bar to apply.`)
       } else if (report.failed > 0) {
         toast(`Script completed: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped`, { icon: '⚠️' })
       } else {
@@ -530,6 +536,8 @@ export function useQueryEditor() {
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number, overrideSql?: string) => {
     const raw = overrideSql?.trim() ?? activeTab?.query
     if (!raw) return
+    setSelectedRowIndexes(new Set())
+    setSelectionAnchor(null)
     const targetConnectionId = activeTab.connectionId || activeConnection?.id;
     const targetConnection = activeConnection && activeConnection.id === targetConnectionId
       ? activeConnection
@@ -721,43 +729,15 @@ export function useQueryEditor() {
     if (!mainSel.empty) {
       sqlSnippet = view.state.sliceDoc(mainSel.from, mainSel.to)
     } else {
-      const activeLine = view.state.doc.lineAt(cursorPos)
-      const lineText = activeLine.text.trim()
-      const lineSemicolonIndex = lineText.indexOf(';')
-
-      if (lineSemicolonIndex >= 0) {
-        sqlSnippet = lineText.slice(0, lineSemicolonIndex + 1).trim()
-      } else {
-        // Execute the statement at the cursor: the text bounded by the previous ';'
-        // (or start of file) and the next ';' at/after the cursor (or end of file).
-        let start = 0
-        for (let i = cursorPos - 1; i >= 0; i--) {
-          if (fullText[i] === ';') {
-            start = i + 1
-            break
-          }
-        }
-
-        let end = fullText.length - 1
-        for (let i = cursorPos; i < fullText.length; i++) {
-          if (fullText[i] === ';') {
-            end = i
-            break
-          }
-        }
-
-        sqlSnippet = fullText.slice(start, end + 1).trim()
-
-        // Cursor over blank whitespace (e.g. right after a trailing ';'): fall
-        // back to the preceding statement so Ctrl+Enter still runs the finished query.
-        if (!sqlSnippet) {
-          start = fullText.lastIndexOf(';', Math.max(0, start - 2)) + 1
-          sqlSnippet = fullText.slice(start, end + 1).trim()
-        }
-      }
+      // Execute the statement at the cursor: the text bounded by the previous ';'
+      // (or start of file) and the next ';' at/after the cursor (or end of file),
+      // falling back to the preceding statement when the cursor sits on blank space.
+      sqlSnippet = extractStatementAtCursor(fullText, cursorPos)
     }
 
     if (!sqlSnippet) return
+    setSelectedRowIndexes(new Set())
+    setSelectionAnchor(null)
 
     const targetConnectionId = activeTab.connectionId || activeConnection?.id;
     const targetConnection = activeConnection && activeConnection.id === targetConnectionId
@@ -1190,6 +1170,55 @@ export function useQueryEditor() {
     })
   }, [activeTab?.results?.rows, sortConfig])
 
+  /** Execute a SELECT that targets the right-clicked row (plus any multi-selected rows). */
+  const handleExecuteRowSql = useCallback(async () => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return;
+
+    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+    let tableName = tableNameMatch ? tableNameMatch[1] : null
+    if (!tableName) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot execute: Table name not found in query.',
+      })
+      setContextMenuSql(null)
+      return
+    }
+
+    if (tableName.startsWith('`') || tableName.startsWith('"') || tableName.startsWith('[')) {
+      tableName = tableName.slice(1, -1)
+    }
+
+    const selectedRows = [...selectedRowIndexes]
+      .map((i) => sortedRows[i])
+      .filter((r): r is DbRow => Boolean(r))
+    const rows = selectedRows.length > 0 ? selectedRows : [contextMenuSql.row]
+
+    const where = generateRowsWhereClause(rows, activeTab.results.primary_keys ?? [], targetConnection.type)
+    if (!where) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot execute: No primary key / identity columns available to identify the selected rows.',
+      })
+      setContextMenuSql(null)
+      return
+    }
+
+    const quotedTable = tableName.includes('.')
+      ? tableName.split('.').map((part) => quoteIdent(part, targetConnection.type)).join('.')
+      : quoteTableName(tableName, targetConnection.type)
+    const sql = `SELECT * FROM ${quotedTable} WHERE ${where};`
+
+    setContextMenuSql(null)
+    await handleExecuteAll(1, undefined, sql)
+  }, [contextMenuSql, activeTab, activeConnection, connections, selectedRowIndexes, sortedRows, handleExecuteAll, updateTabResults])
+
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc'
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -1271,6 +1300,10 @@ export function useQueryEditor() {
     pendingEdit,
     confirmPendingEdit,
     discardPendingEdit,
+    selectedRowIndexes,
+    setSelectedRowIndexes,
+    selectionAnchor,
+    setSelectionAnchor,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,
@@ -1289,6 +1322,7 @@ export function useQueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    handleExecuteRowSql,
     updateTabViewState,
     updateTabMongoFilter,
     updateTabEditorMode,

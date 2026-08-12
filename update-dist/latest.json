@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.5_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUxWRGNVMmVLT2E5OHF6eSs4ampHQzVTRWxzYlNHdW5lOHQvKzBzMnIvUmluV3lwakVYc292TG5TTUt4Q0Y0OEZtYmtQdEthUDYrZTZDY2FNcnAwS0E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MjM4NTc0CWZpbGU6VG9rZXRlb18wLjQuNV94NjRfZW4tVVMubXNpCm44ZGtJZEtrWFlFNTMzV1k3T2UzcVJCdzU1eUJaeG1udW4zQTdxRFdNdjVTdkV5SGxnMUxLdlVsaXpZQnBndlNIcWVPcFBsc3BtQWpMTk1qK3lXeUJRPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.7_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUlkY1NRdEd2ZnJUaFZuQ2MwMVdDTlEvYlplenY3cm9hd0FjUER6WWU2anV1S3F4NmJ2Snc0dSs1WDZQdmlqanZnbXh5bEt2QTBLSFZkQk1DdzFxV1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTA5MzQwCWZpbGU6VG9rZXRlb18wLjQuN194NjRfZW4tVVMubXNpClpzZzBoaHNRQldCR3NiRk9LM2N4UTNTYjA0VCtWeS9VNkxyQm5DRGl5ZEhienNjcWJMZHU4eHJWNk1BOFhYRTNON1NiOEs3ZzhjVGxXNE00bllpT0JBPT0K"
                                          }
                   },
-    "pub_date":  "2026-08-09T01:22:54Z",
-    "version":  "0.4.5",
-    "notes":  "v0.4.5 - Fix SQL editor scroll (CodeMirror wrapper height), connections panel scroll, ResultPanel resize"
+    "pub_date":  "2026-08-12T04:35:40Z",
+    "version":  "0.4.7",
+    "notes":  "v0.4.7 - Cross-DB sync: FK topological ordering, auto-create missing columns / drop NOT NULL on target, enum casts on upsert, central null-byte sanitization, robust source-schema detection, reltuples count + keyset index checks. Explorer: smart cell editors (enum select, boolean switch, date/time NOW() via context menu), numeric(10,4) and pgvector display, sidebar collapses only on double-click, connect no longer opens Explorer. Query editor: fixed malformed SELECT WHERE, single-row \u0027=\u0027 vs IN in batch actions, generated SQL sent to editor with current connection/schema."
 }

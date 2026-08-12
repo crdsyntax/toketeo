@@ -483,6 +483,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("GET failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -502,6 +503,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["key".into(), "value".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -517,6 +519,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SET failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -533,6 +536,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("DEL failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["deleted".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"deleted": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -549,6 +553,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("EXISTS failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["exists".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"exists": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -564,6 +569,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("TYPE failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["type".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"type": key_type})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -579,6 +585,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("TTL failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["ttl".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"ttl": ttl})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -594,6 +601,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("PTTL failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["pttl".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"pttl": pttl})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -611,6 +619,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("EXPIRE failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -628,6 +637,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("PEXPIRE failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -643,6 +653,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HGET failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -667,6 +678,7 @@ impl RedisDriver {
                 }
                 Ok(QueryResult {
                     columns: vec!["affected".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"affected": affected})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -688,6 +700,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["field".into(), "value".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -704,6 +717,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HDEL failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["deleted".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"deleted": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -719,6 +733,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HEXISTS failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["exists".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"exists": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -734,6 +749,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HLEN failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["hlen".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"hlen": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -752,6 +768,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["field".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -770,6 +787,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -786,6 +804,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("LPUSH failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["length".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"length": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -802,6 +821,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("RPUSH failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["length".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"length": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -817,6 +837,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("LPOP failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -832,6 +853,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("RPOP failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -854,6 +876,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["index".into(), "value".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -869,6 +892,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("LLEN failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["llen".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"llen": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -885,6 +909,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SADD failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["added".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"added": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -903,6 +928,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["member".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -918,6 +944,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SISMEMBER failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["member_exists".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"member_exists": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -934,6 +961,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SREM failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["removed".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"removed": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -949,6 +977,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SCARD failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["scard".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"scard": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -973,6 +1002,7 @@ impl RedisDriver {
                 }
                 Ok(QueryResult {
                     columns: vec!["added".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"added": affected})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1003,6 +1033,7 @@ impl RedisDriver {
                     }
                     Ok(QueryResult {
                         columns: vec!["member".into(), "score".into()],
+                        column_types: None,
                         rows,
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -1017,6 +1048,7 @@ impl RedisDriver {
                     }).collect();
                     Ok(QueryResult {
                         columns: vec!["member".into()],
+                        column_types: None,
                         rows,
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -1048,6 +1080,7 @@ impl RedisDriver {
                     }
                     Ok(QueryResult {
                         columns: vec!["member".into(), "score".into()],
+                        column_types: None,
                         rows,
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -1062,6 +1095,7 @@ impl RedisDriver {
                     }).collect();
                     Ok(QueryResult {
                         columns: vec!["member".into()],
+                        column_types: None,
                         rows,
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -1079,6 +1113,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("ZREM failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["removed".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"removed": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1094,6 +1129,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("ZCARD failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["zcard".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"zcard": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1109,6 +1145,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("ZSCORE failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["score".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"score": Self::redis_value_to_json(&score)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1140,6 +1177,7 @@ impl RedisDriver {
                 .map_err(|e| AppError::Database(format!("{} failed: {}", cmd, e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1155,6 +1193,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SETNX failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1175,6 +1214,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("SETEX failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1190,6 +1230,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("GETDEL failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1205,6 +1246,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("GETSET failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1220,6 +1262,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("APPEND failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["length".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"length": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1235,6 +1278,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("STRLEN failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["length".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"length": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1250,6 +1294,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("PERSIST failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1267,6 +1312,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("EXPIREAT failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1286,6 +1332,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["field".into(), "value".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1306,6 +1353,7 @@ impl RedisDriver {
                 }
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1321,6 +1369,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HSETNX failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1336,6 +1385,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HSTRLEN failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["length".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"length": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1353,6 +1403,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("HINCRBY failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["value".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"value": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1370,6 +1421,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("LSET failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1389,6 +1441,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("LTRIM failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1410,6 +1463,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("LINSERT failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["length".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"length": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1435,6 +1489,7 @@ impl RedisDriver {
                 };
                 Ok(QueryResult {
                     columns: vec!["member".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1460,6 +1515,7 @@ impl RedisDriver {
                 };
                 Ok(QueryResult {
                     columns: vec!["member".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1500,6 +1556,7 @@ impl RedisDriver {
                 }
                 Ok(QueryResult {
                     columns: if with_scores { vec!["member".into(), "score".into()] } else { vec!["member".into()] },
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1519,6 +1576,7 @@ impl RedisDriver {
                 .map_err(|e| AppError::Database(format!("{} failed: {}", cmd, e)))?;
                 Ok(QueryResult {
                     columns: vec!["rank".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"rank": result})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1536,6 +1594,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("ZINCRBY failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["score".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"score": score})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1575,6 +1634,7 @@ impl RedisDriver {
 
                 Ok(QueryResult {
                     columns: vec!["key".into(), "namespace".into(), "cursor".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1593,6 +1653,7 @@ impl RedisDriver {
                 }).collect();
                 Ok(QueryResult {
                     columns: vec!["key".into(), "namespace".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1605,6 +1666,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("DBSIZE failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["dbsize".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"dbsize": count})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1617,6 +1679,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("PING failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": Self::redis_value_to_json(&result)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1635,6 +1698,7 @@ impl RedisDriver {
                 self.db.store(db_num, Ordering::Relaxed);
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1678,6 +1742,7 @@ impl RedisDriver {
 
                 Ok(QueryResult {
                     columns: vec!["key".into(), "value".into()],
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1693,6 +1758,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("RENAME failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["result".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"result": "OK"})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -1720,6 +1786,7 @@ impl RedisDriver {
                     .map_err(|e| AppError::Database(format!("DUMP failed: {}", e)))?;
                 Ok(QueryResult {
                     columns: vec!["dump".into()],
+                    column_types: None,
                     rows: vec![serde_json::json!({"dump": Self::redis_value_to_json(&val)})],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,

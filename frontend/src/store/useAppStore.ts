@@ -190,17 +190,11 @@ export const useAppStore = create<AppState>()(
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
       setActiveConnection: (connection) => set((state) => {
-        const updatedTabs = state.tabs.map(tab => {
-          if (!tab.connectionId && connection) {
-            return { ...tab, connectionId: connection.id }
-          }
-          return tab
-        })
         const switchingConnection = connection && connection.id !== state.activeConnection?.id
         const explorer = switchingConnection
           ? { ...state.explorer, activeExplorerTabId: null }
           : state.explorer
-        return { activeConnection: connection, tabs: updatedTabs, explorer }
+        return { activeConnection: connection, explorer }
       }),
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null

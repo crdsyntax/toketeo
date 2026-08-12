@@ -109,6 +109,7 @@ impl ExplorerService {
                         .await?;
                         return Ok(QueryResult {
                             columns: vec!["message".to_string()],
+                            column_types: None,
                             rows: vec![
                                 serde_json::json!({"message": format!("Switched to db {}", use_db), "db": use_db}),
                             ],
@@ -1234,8 +1235,14 @@ impl ExplorerService {
 
         let driver = state.get_connection(id).await?;
 
-        // Begin transaction for atomic restore when possible (Postgres DDL is transactional)
-        let _ = driver.execute("BEGIN").await;
+        // On a transactional session (production) the restore runs INSIDE the
+        // session transaction: no own BEGIN/COMMIT, so nothing persists until
+        // the user presses Commit. Otherwise begin an atomic restore when
+        // possible (Postgres DDL is transactional).
+        let transactional = state.is_transactional(id).await.unwrap_or(false);
+        if !transactional {
+            let _ = driver.execute("BEGIN").await;
+        }
 
         let file = File::open(file_path)
             .await
@@ -1274,7 +1281,9 @@ impl ExplorerService {
         }
 
         if !errors.is_empty() {
-            let _ = driver.execute("ROLLBACK").await;
+            if !transactional {
+                let _ = driver.execute("ROLLBACK").await;
+            }
             return Err(AppError::Internal(format!(
                 "Restore completed with {} error(s). First error: {}",
                 errors.len(),
@@ -1282,7 +1291,9 @@ impl ExplorerService {
             )));
         }
 
-        let _ = driver.execute("COMMIT").await;
+        if !transactional {
+            let _ = driver.execute("COMMIT").await;
+        }
         Ok(())
     }
 

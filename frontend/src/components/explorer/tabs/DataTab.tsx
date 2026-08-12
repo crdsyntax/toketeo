@@ -21,18 +21,22 @@ import {
   PenLine,
   Trash2,
   Eraser,
+  Clock,
 } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type {
   QueryResult,
   DatabaseObject,
   DbRow,
   DbValue,
+  CellValue,
+  ColumnResponse,
   Connection,
 } from '@/types/database';
 import { ExecutionStatus, Environment, DatabaseType } from '@/types/database';
 import { ModelExportModal } from '../ModelExportModal';
-import { ContextMenu } from '@/components/ui/ContextMenu';
+import { ContextMenu, type ContextMenuGroup } from '@/components/ui/ContextMenu';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type DataTabViewMode } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
@@ -52,6 +56,7 @@ import { toast } from 'react-hot-toast';
 interface DataTabProps {
   selectedItem: DatabaseObject;
   connection?: Connection | null;
+  columns?: ColumnResponse[];
   isLoading: boolean;
   executionStatus: ExecutionStatus;
   executionError: string | null;
@@ -62,9 +67,10 @@ interface DataTabProps {
   setPage: (updater: (p: number) => number) => void;
   handleExecute: () => void;
   handleCancel: () => void;
-  updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
+  updateCell: (row: DbRow, column: string, newValue: CellValue) => void;
   filter: string;
   setFilter: (f: string) => void;
+  currentSchema?: string;
 }
 
 /** State for the visual diff confirmation panel. */
@@ -85,6 +91,7 @@ interface SqlPreviewState {
 export function DataTab({
   selectedItem,
   connection,
+  columns,
   isLoading,
   executionStatus,
   executionError,
@@ -98,12 +105,12 @@ export function DataTab({
   updateCell,
   filter,
   setFilter,
+  currentSchema,
 }: DataTabProps) {
   const [editingCell, setEditingCell] = useState<{
     rowIndex: number;
     column: string;
   } | null>(null);
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [selectedCell, setSelectedCell] = useState<{
     rowIndex: number;
     column: string;
@@ -131,6 +138,8 @@ export function DataTab({
     y: number;
     row: DbRow;
     rowIndex: number;
+    column?: string;
+    dateTime?: boolean;
   } | null>(null);
 
   // Phase 9 — Inline SQL preview panel (replaces SqlGeneratorModal)
@@ -149,6 +158,7 @@ export function DataTab({
 
   // Multi-row selection (indices into `sortedRows`)
   const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
+  const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null);
   const [batchModal, setBatchModal] = useState<'update' | 'truncate' | null>(null);
   const [batchColumn, setBatchColumn] = useState<string>('');
   const [batchValue, setBatchValue] = useState<string>('');
@@ -156,7 +166,10 @@ export function DataTab({
 
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const storeConnection = useAppStore((state) => state.activeConnection);
+  const openTab = useAppStore((state) => state.openTab);
+  const setActiveConnectionDatabase = useAppStore((state) => state.setActiveConnectionDatabase);
   const activeConnection = connection ?? storeConnection;
+  const navigate = useNavigate();
   const isMongo = activeConnection?.type === DatabaseType.MONGODB;
   const [showAdvancedMongo, setShowAdvancedMongo] = useState(false);
   const sqlPreviewRef = useRef<HTMLDivElement>(null);
@@ -255,6 +268,41 @@ export function DataTab({
 
   const primaryKeys = useMemo(() => queryData?.primary_keys ?? [], [queryData]);
 
+  // Metadata de columnas para edición inteligente:
+  //  - enum → <select> con las opciones registradas
+  //  - boolean/tinyint(1) → switch
+  //  - date/time → acción de menú contextual "Set NOW()"
+  const columnMeta = useMemo(() => {
+    const map: Record<string, ColumnResponse> = {};
+    for (const c of columns ?? []) map[c.name] = c;
+    return map;
+  }, [columns]);
+
+  const enumValuesFor = (col: string): string[] => columnMeta[col]?.enumValues ?? [];
+
+  const isBooleanColumn = (col: string): boolean => {
+    const t = (columnMeta[col]?.type ?? '').toLowerCase();
+    return t === 'boolean' || t === 'bool' || t === 'tinyint(1)';
+  };
+
+  const isDateTimeColumn = (col: string): boolean => {
+    const t = (columnMeta[col]?.type ?? '').toLowerCase();
+    return t.includes('date') || t.includes('time');
+  };
+
+  /** Tipo completo de la columna (p.ej. numeric(10,4), vector(768)) si la
+   *  metadata está disponible; si no, el tipo corto del result set. */
+  const columnTypeDisplay = (col: string, idx: number): string =>
+    columnMeta[col]?.type || queryData?.columnTypes?.[idx] || '';
+
+  /** Representación on/off para columnas booleanas según el motor. */
+  const booleanRepr = (col: string): { on: string; off: string } => {
+    const t = (columnMeta[col]?.type ?? '').toLowerCase();
+    return t === 'boolean' || t === 'bool'
+      ? { on: 'true', off: 'false' }
+      : { on: '1', off: '0' };
+  };
+
   const selectedRows = useMemo(
     () => [...selectedRowIndexes].map((i) => sortedRows[i]).filter(Boolean),
     [selectedRowIndexes, sortedRows],
@@ -265,6 +313,7 @@ export function DataTab({
   if (queryData !== prevQueryData) {
     setPrevQueryData(queryData);
     setSelectedRowIndexes(new Set());
+    setSelectionAnchor(null);
     setBatchModal(null);
     setTruncateColumns([]);
     setBatchValue('');
@@ -278,6 +327,29 @@ export function DataTab({
       return next;
     });
   }, []);
+
+  const handleRowClick = useCallback((e: React.MouseEvent, index: number) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedRowIndexes((prev) => {
+        const next = new Set(prev);
+        if (next.has(index)) next.delete(index);
+        else next.add(index);
+        return next;
+      });
+      setSelectionAnchor(index);
+    } else if (e.shiftKey) {
+      const anchor = selectionAnchor ?? index;
+      const [from, to] = anchor <= index ? [anchor, index] : [index, anchor];
+      setSelectedRowIndexes((prev) => {
+        const next = new Set(prev);
+        for (let idx = from; idx <= to; idx++) next.add(idx);
+        return next;
+      });
+    } else {
+      setSelectedRowIndexes(new Set([index]));
+      setSelectionAnchor(index);
+    }
+  }, [selectionAnchor]);
 
   const clearRowSelection = useCallback(() => setSelectedRowIndexes(new Set()), []);
 
@@ -529,12 +601,57 @@ export function DataTab({
             data: contextMenu.row,
           },
         });
-        // Phase 9: show inline preview panel
-        setSqlPreview({ isOpen: true, sql, title: `Generated ${action}` });
+        setContextMenu(null);
+        // Enviar la consulta al SQL editor en un nuevo script, ligado a la
+        // conexión/esquema actuales.
+        if (currentSchema && storeConnection?.id === activeConnection.id) {
+          setActiveConnectionDatabase(currentSchema);
+        }
+        openTab(`Generated ${action} — ${selectedItem.name}`, sql, activeConnection.id);
+        navigate('/query');
       }
     } catch (e) {
       console.error('Failed to generate SQL:', e);
     }
+  };
+
+
+  const buildMenuGroups = (
+    menu: NonNullable<typeof contextMenu>,
+  ): ContextMenuGroup[] => {
+    const groups: ContextMenuGroup[] = [];
+    if (menu.column && menu.dateTime) {
+      groups.push({
+        title: 'Cell Actions',
+        items: [
+          {
+            label: 'Set NOW()',
+            icon: <Clock className="w-3.5 h-3.5" />,
+            onClick: () => updateCell(menu.row, menu.column!, { __expr: 'NOW()' }),
+          },
+        ],
+      });
+    }
+    groups.push({
+      title: isMongo ? 'Schema Query Actions' : 'SQL Actions',
+      items: SQL_ACTIONS.map((action) => ({
+        label: `Generate ${action}`,
+        shortcut: `⌘${action[0]}`,
+        icon: <FileCode className="w-3.5 h-3.5" />,
+        onClick: () => handleGenerateSql(action),
+      })),
+    });
+    groups.push({
+      title: 'Row Actions',
+      items: [
+        {
+          label: 'Export Model...',
+          icon: <Code className="w-3.5 h-3.5" />,
+          onClick: () => setModelModalOpen(true),
+        },
+      ],
+    });
+    return groups;
   };
 
 
@@ -576,27 +693,7 @@ export function DataTab({
           x={contextMenu.x}
           y={contextMenu.y}
           onDismiss={() => setContextMenu(null)}
-          groups={[
-            {
-              title: isMongo ? 'Schema Query Actions' : 'SQL Actions',
-              items: SQL_ACTIONS.map(action => ({
-                label: `Generate ${action}`,
-                shortcut: `⌘${action[0]}`,
-                icon: <FileCode className="w-3.5 h-3.5" />,
-                onClick: () => handleGenerateSql(action)
-              }))
-            },
-            {
-              title: 'Row Actions',
-              items: [
-                {
-                  label: 'Export Model...',
-                  icon: <Code className="w-3.5 h-3.5" />,
-                  onClick: () => { setModelModalOpen(true); setContextMenu(null); }
-                }
-              ]
-            }
-          ]}
+          groups={buildMenuGroups(contextMenu)}
         />
       )}
 
@@ -816,7 +913,7 @@ export function DataTab({
                   <th className="p-2 font-bold bg-muted/50 border-r border-border text-center w-10">
                     #
                   </th>
-                  {queryData.columns.map((col) => (
+                  {queryData.columns.map((col, colIdx) => (
                     <th
                       key={col}
                       className="p-2 font-bold bg-muted/50 truncate border-r border-border last:border-0 relative select-none cursor-pointer hover:bg-muted/70 transition-colors group"
@@ -825,7 +922,14 @@ export function DataTab({
                       onClick={() => handleSortToggle(col)}
                     >
                       <div className="flex items-center gap-1 pr-4">
-                        <span className="truncate">{col}</span>
+                        <span className="flex flex-col min-w-0">
+                          <span className="truncate leading-tight">{col}</span>
+                          {columnTypeDisplay(col, colIdx) && (
+                            <span className="text-[10px] font-normal text-muted-foreground/70 truncate leading-tight">
+                              {columnTypeDisplay(col, colIdx)}
+                            </span>
+                          )}
+                        </span>
                         {sortState?.column === col ? (
                           sortState.direction === 'asc' ? (
                             <ChevronUp className="w-3 h-3 shrink-0 text-primary" />
@@ -853,11 +957,11 @@ export function DataTab({
                     key={i}
                     className={cn(
                       "whitespace-nowrap",
-                      selectedRowIndexes.has(i) || i === selectedRowIndex
+                      selectedRowIndexes.has(i)
                         ? 'bg-primary/10'
                         : 'border-b border-border/50 hover:bg-muted/30'
                     )}
-                    onClick={(e) => { e.stopPropagation(); setSelectedRowIndex(i); }}
+                    onClick={(e) => { e.stopPropagation(); handleRowClick(e, i); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.pageX, y: e.pageY, row, rowIndex: i });
@@ -888,6 +992,18 @@ export function DataTab({
                           style={{ width: columnWidths[col] ?? DEFAULT_COL_WIDTH, minWidth: 80, maxWidth: 600 }}
                           onClick={(e) => { e.stopPropagation(); setSelectedCell({ rowIndex: i, column: col }); }}
                           onDoubleClick={() => handleStartEdit(i, col, value)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setContextMenu({
+                              x: e.pageX,
+                              y: e.pageY,
+                              row,
+                              rowIndex: i,
+                              column: col,
+                              dateTime: isDateTimeColumn(col),
+                            });
+                          }}
                           title="Double-click to edit"
                         >
                           {editingCell?.rowIndex === i &&
@@ -896,13 +1012,56 @@ export function DataTab({
                               className="flex items-center gap-1 bg-background"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <input
-                                autoFocus
-                                className="w-full bg-muted border border-border px-1 py-0.5 rounded outline-none"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onKeyDown={(e) => onInputKeyDown(e, row)}
-                              />
+                              {enumValuesFor(col).length > 0 ? (
+                                <select
+                                  autoFocus
+                                  className="w-full bg-muted border border-border px-1 py-0.5 rounded outline-none text-xs"
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onKeyDown={(e) => onInputKeyDown(e, row)}
+                                >
+                                  <option value="">NULL</option>
+                                  {[editValue, ...enumValuesFor(col)]
+                                    .filter((v, idx, arr) => v !== '' && arr.indexOf(v) === idx)
+                                    .map((v) => (
+                                      <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                              ) : isBooleanColumn(col) ? (
+                                (() => {
+                                  const repr = booleanRepr(col);
+                                  const isOn = editValue === repr.on;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditValue(isOn ? repr.off : repr.on);
+                                      }}
+                                      className={cn(
+                                        "relative inline-flex items-center h-5 w-9 rounded-full transition-colors cursor-pointer shrink-0",
+                                        isOn ? "bg-primary" : "bg-muted"
+                                      )}
+                                      title={isOn ? repr.on : repr.off}
+                                    >
+                                      <span
+                                        className={cn(
+                                          "inline-block w-3.5 h-3.5 bg-background rounded-full transition-transform",
+                                          isOn ? "translate-x-[18px]" : "translate-x-0.5"
+                                        )}
+                                      />
+                                    </button>
+                                  );
+                                })()
+                              ) : (
+                                <input
+                                  autoFocus
+                                  className="w-full bg-muted border border-border px-1 py-0.5 rounded outline-none"
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onKeyDown={(e) => onInputKeyDown(e, row)}
+                                />
+                              )}
                               <button
                                 type="button"
                                 onClick={(e) => {

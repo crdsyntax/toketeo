@@ -18,6 +18,7 @@ import { SchemaContextMenu } from './SchemaContextMenu'
 import { CreateSchemaModal } from './CreateSchemaModal'
 import { Button } from '@/components/ui/Button'
 import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
+import { openScriptTabForConnection } from '@/lib/connectionScript'
 import toast from 'react-hot-toast'
 
 interface ConnectionsSidebarProps {
@@ -405,15 +406,18 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     setSelectedConnId(conn.id)
     if (connectedConnectionIds.includes(conn.id)) {
       setActiveConnection(conn)
+      openScriptTabForConnection(conn.id)
       return
     }
     connectingRef.current.add(conn.id)
     setConnectingId(conn.id)
     try {
+      // Conectar NO abre el explorer: solo expande la conexión para mostrar
+      // sus esquemas/bases. El explorer se abre únicamente con doble-click
+      // sobre un esquema (Postgres) o una base de datos (SQL/Mongo/Redis).
       await onConnect(conn)
-      if (conn.defaultDatabase) {
-        await handleSchemaDoubleClick(conn, conn.defaultDatabase);
-      }
+      setExpandedConnId(conn.id)
+      setLoadingConnId(conn.id)
     } catch (e) {
       toast.error(`Failed to connect: ${e instanceof Error ? e.message : 'Unknown error'}`)
     } finally {

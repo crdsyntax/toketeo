@@ -6,7 +6,7 @@ import type {
   ForeignKeyResponse,
   ConstraintResponse,
   DbRow,
-  DbValue,
+  CellValue,
   Connection,
 } from '@/types/database';
 import { ExecutionStatus, ExplorerTab, DatabaseObjectType } from '@/types/database';
@@ -55,7 +55,7 @@ interface ObjectDetailProps {
   setPage: (updater: (p: number) => number) => void;
   handleExecute: () => void;
   handleCancel: () => void;
-  updateCell: (row: DbRow, column: string, newValue: DbValue) => void;
+  updateCell: (row: DbRow, column: string, newValue: CellValue) => void;
   refreshExplorerData: () => void;
   isLoadingDDL: boolean;
   errorDDL: Error | null;
@@ -445,6 +445,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
               <DataTab
                 selectedItem={selectedItem}
                 connection={activeConnection}
+                columns={columns}
                 isLoading={isLoadingData}
                 executionStatus={executionStatus}
                 executionError={executionError}
@@ -458,6 +459,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
                 updateCell={updateCell}
                 filter={filter}
                 setFilter={setFilter}
+                currentSchema={currentSchema}
               />
             )
           )}

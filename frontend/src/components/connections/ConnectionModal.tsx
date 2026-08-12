@@ -34,7 +34,7 @@ const INITIAL_FORM: CreateConnectionDto = {
   directConnection: true,
   ssl: 'false',
   readOnly: false,
-  maxPoolSize: 5,
+  maxPoolSize: 2,
   idleTimeout: 600,
   acquireTimeout: 30,
   maxLifetime: 28800,
@@ -219,7 +219,7 @@ export function ConnectionModal({
           directConnection: fullConnection.directConnection ?? true,
           ssl: fullConnection.ssl || 'false',
           readOnly: fullConnection.readOnly ?? false,
-          maxPoolSize: fullConnection.maxPoolSize ?? 5,
+          maxPoolSize: fullConnection.maxPoolSize ?? 2,
           idleTimeout: fullConnection.idleTimeout ?? 600,
           acquireTimeout: fullConnection.acquireTimeout ?? 30,
           maxLifetime: fullConnection.maxLifetime ?? 28800,
@@ -249,7 +249,7 @@ export function ConnectionModal({
           directConnection: editingConnection.directConnection ?? true,
           ssl: editingConnection.ssl || 'false',
           readOnly: editingConnection.readOnly ?? false,
-          maxPoolSize: editingConnection.maxPoolSize ?? 5,
+          maxPoolSize: editingConnection.maxPoolSize ?? 2,
           idleTimeout: editingConnection.idleTimeout ?? 600,
           acquireTimeout: editingConnection.acquireTimeout ?? 30,
           maxLifetime: editingConnection.maxLifetime ?? 28800,
@@ -694,7 +694,7 @@ export function ConnectionModal({
                       type="number"
                       min="0"
                       className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
-                      value={form.maxPoolSize ?? 5}
+                      value={form.maxPoolSize ?? 2}
                       onChange={(e) => setForm({ ...form, maxPoolSize: parseInt(e.target.value) || 0 })}
                     />
                   </div>

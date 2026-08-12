@@ -158,8 +158,19 @@ export function ColumnsTab({
                         {columnTypes.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     ) : (
-                      <span className="font-mono text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tighter truncate block max-w-[120px]">
+                      <span
+                        className="font-mono text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tighter truncate block max-w-[120px]"
+                        title={col.enumValues?.length ? `${col.type}\n\n${col.enumValues.join(', ')}` : col.type}
+                      >
                         {col.type}
+                      </span>
+                    )}
+                    {!isEditing && col.enumValues && col.enumValues.length > 0 && (
+                      <span
+                        className="block text-[10px] text-primary/80 truncate max-w-[140px] mt-0.5"
+                        title={col.enumValues.join(', ')}
+                      >
+                        enum: {col.enumValues.join(', ')}
                       </span>
                     )}
                   </td>

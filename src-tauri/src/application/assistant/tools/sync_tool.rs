@@ -577,7 +577,18 @@ impl SyncTool {
             .get_or_connect_driver(&pipeline.target_connection_id)
             .await?;
 
+        if let Some(schema) = SyncService::detect_source_schema(
+            source.as_ref(),
+            &pipeline.tables,
+            pipeline.source_schema.as_deref(),
+        )
+        .await
+        {
+            pipeline.source_schema = Some(schema);
+        }
+
         SyncExecutionService::auto_detect_primary_keys(&mut pipeline, source.as_ref()).await;
+        SyncExecutionService::order_tables_by_fk(&mut pipeline, source.as_ref()).await;
 
         let pipeline_id = pipeline.id.clone().unwrap_or_default();
         state

@@ -16,8 +16,10 @@ interface ResultsPanelTableProps {
   setEditingCell: (cell: { rowIndex: number; column: string; value: DbValue } | null) => void;
   handleSave: () => void;
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
-  selectedRowIndex: number | null;
-  setSelectedRowIndex: React.Dispatch<React.SetStateAction<number | null>>;
+  selectedRowIndexes: Set<number>;
+  setSelectedRowIndexes: React.Dispatch<React.SetStateAction<Set<number>>>;
+  selectionAnchor: number | null;
+  setSelectionAnchor: React.Dispatch<React.SetStateAction<number | null>>;
   setShowExportMenu: (v: boolean) => void;
   setShowLimitMenu: (v: boolean) => void;
 }
@@ -31,14 +33,39 @@ export function ResultsPanelTable({
   setEditingCell,
   handleSave,
   setContextMenuSql,
-  selectedRowIndex,
-  setSelectedRowIndex,
+  selectedRowIndexes,
+  setSelectedRowIndexes,
+  selectionAnchor,
+  setSelectionAnchor,
   setShowExportMenu,
   setShowLimitMenu,
 }: ResultsPanelTableProps) {
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
   const resultsFontSize = useAppStore((s) => s.resultsFontSize);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  const handleRowClick = (e: React.MouseEvent, index: number) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedRowIndexes((prev) => {
+        const next = new Set(prev);
+        if (next.has(index)) next.delete(index);
+        else next.add(index);
+        return next;
+      });
+      setSelectionAnchor(index);
+    } else if (e.shiftKey) {
+      const anchor = selectionAnchor ?? index;
+      const [from, to] = anchor <= index ? [anchor, index] : [index, anchor];
+      setSelectedRowIndexes((prev) => {
+        const next = new Set(prev);
+        for (let idx = from; idx <= to; idx++) next.add(idx);
+        return next;
+      });
+    } else {
+      setSelectedRowIndexes(new Set([index]));
+      setSelectionAnchor(index);
+    }
+  };
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
@@ -62,18 +89,26 @@ export function ResultsPanelTable({
             <th className="p-2.5 font-bold text-muted-foreground border-r border-border/60 w-12 min-w-[3rem] max-w-[3rem] text-center shrink-0 bg-muted select-none">
               #
             </th>
-            {activeTab.results!.columns.map((col: string) => {
+            {activeTab.results!.columns.map((col: string, colIdx: number) => {
               const isSorted = sortConfig?.key === col;
+              const colType = activeTab.results!.columnTypes?.[colIdx];
               return (
                 <th
                   key={col}
                   onClick={() => requestSort(col)}
                   className="p-2.5 font-bold text-muted-foreground border-r border-border/60 w-[250px] max-w-[250px] bg-muted cursor-pointer hover:bg-muted-foreground/10 hover:text-foreground transition-colors select-none"
                 >
-                  <div className="flex items-center justify-between group">
-                    <span className="truncate">{col}</span>
+                  <div className="flex items-center justify-between gap-2 group">
+                    <span className="flex flex-col min-w-0">
+                      <span className="truncate leading-tight">{col}</span>
+                      {colType && (
+                        <span className="text-[10px] font-normal text-muted-foreground/70 truncate leading-tight">
+                          {colType}
+                        </span>
+                      )}
+                    </span>
                     <div className={cn(
-                      "p-1 rounded-md transition-colors",
+                      "p-1 rounded-md transition-colors shrink-0",
                       isSorted ? "bg-primary/10 text-primary" : "text-muted-foreground/40 group-hover:text-muted-foreground group-hover:bg-background"
                     )}>
                       {isSorted ? (
@@ -99,7 +134,7 @@ export function ResultsPanelTable({
           {virtualItems.map((virtualRow) => {
             const row = sortedRows[virtualRow.index];
             const i = virtualRow.index;
-            const isSelected = i === selectedRowIndex;
+            const isSelected = selectedRowIndexes.has(i);
 
             return (
               <tr
@@ -110,8 +145,7 @@ export function ResultsPanelTable({
                   "transition-colors duration-150 group h-9",
                   isSelected ? 'bg-primary/5 hover:bg-primary/5' : 'hover:bg-muted/20'
                 )}
-                onClick={() => setSelectedRowIndex(i)}
-                onDoubleClick={() => setSelectedRowIndex(i)}
+                onClick={(e) => handleRowClick(e, i)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setContextMenuSql({ x: e.pageX, y: e.pageY, row });
@@ -132,7 +166,8 @@ export function ResultsPanelTable({
                     <td
                       key={col}
                       onDoubleClick={() => {
-                        setSelectedRowIndex(i);
+                        setSelectedRowIndexes(new Set([i]));
+                        setSelectionAnchor(i);
                         setEditingCell({ rowIndex: i, column: col, value: row[col] });
                       }}
                       className={cn(

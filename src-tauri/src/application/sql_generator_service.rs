@@ -16,7 +16,7 @@ impl SqlGeneratorService {
         let where_clause: Vec<String> = context
             .primary_keys
             .iter()
-            .map(|(k, v)| format!("{}{} = {}", q_open, k, Self::format_value(v)))
+            .map(|(k, v)| format!("{}{}{} = {}", q_open, k, q_close, Self::format_value(v)))
             .collect();
 
         let sql = format!(
@@ -281,9 +281,36 @@ impl SqlGeneratorService {
             serde_json::Value::Null => "NULL".to_string(),
             serde_json::Value::Bool(b) => b.to_string(),
             serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::String(s) => format!("'{}'", s.replace("'", "''")),
-            _ => format!("'{}'", value.to_string().replace("'", "''")),
+            serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+            serde_json::Value::Object(map) => {
+                // Expresión SQL segura vía { "__expr": "NOW()" } (menú
+                // contextual de celdas de fecha/hora). Solo se permite una
+                // allowlist estricta para evitar inyección.
+                if let Some(expr) = map.get("__expr").and_then(|v| v.as_str()) {
+                    let e = expr.trim();
+                    if Self::is_safe_sql_expr(e) {
+                        return e.to_string();
+                    }
+                }
+                format!("'{}'", value.to_string().replace('\'', "''"))
+            }
+            _ => format!("'{}'", value.to_string().replace('\'', "''")),
         }
+    }
+
+    /// Allowlist de expresiones SQL inofensivas permitidas vía `{ "__expr" }`.
+    fn is_safe_sql_expr(expr: &str) -> bool {
+        matches!(
+            expr.to_ascii_lowercase().as_str(),
+            "now"
+                | "now()"
+                | "current_timestamp"
+                | "current_timestamp()"
+                | "current_date"
+                | "current_date()"
+                | "current_time"
+                | "current_time()"
+        )
     }
 
     fn escape_identifier(identifier: &str, q_close: &str) -> String {
@@ -332,11 +359,48 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_select_where_uses_closed_quotes() {
+        let ctx = mock_context();
+        let sql = SqlGeneratorService::generate_select(DbType::Postgres, &ctx);
+        // El WHERE debe ser `"id" = 1`, nunca `"id = 1` (comilla sin cerrar).
+        assert!(sql.contains(r#""id" = 1"#), "malformed WHERE: {sql}");
+        assert!(!sql.contains(r#""id ="#), "unclosed quote in WHERE: {sql}");
+    }
+
+    #[test]
     fn test_generate_update_mariadb() {
         let ctx = mock_context();
         let sql = SqlGeneratorService::generate_update(DbType::Mariadb, &ctx);
         assert!(sql.contains("`users`"));
         assert!(sql.contains("`name` = 'test'"));
         assert!(sql.contains("WHERE `id` = 1"));
+    }
+
+    #[test]
+    fn format_value_emits_safe_sql_expressions() {
+        assert_eq!(
+            SqlGeneratorService::format_value(&serde_json::json!({ "__expr": "NOW()" })),
+            "NOW()"
+        );
+        assert_eq!(
+            SqlGeneratorService::format_value(
+                &serde_json::json!({ "__expr": "current_timestamp" })
+            ),
+            "current_timestamp"
+        );
+    }
+
+    #[test]
+    fn format_value_quotes_unsafe_expressions() {
+        // Una expresión fuera de la allowlist NO se emite cruda.
+        assert_eq!(
+            SqlGeneratorService::format_value(&serde_json::json!({ "__expr": "DROP TABLE users" })),
+            "'{\"__expr\":\"DROP TABLE users\"}'"
+        );
+        // Objetos sin __expr se serializan como literal.
+        assert_eq!(
+            SqlGeneratorService::format_value(&serde_json::json!({ "a": 1 })),
+            "'{\"a\":1}'"
+        );
     }
 }

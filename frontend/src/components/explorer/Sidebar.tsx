@@ -2,10 +2,11 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { DatabaseObject, QueryResult } from '@/types/database'
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseObjectType, DatabaseType } from '@/types/database'
-import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy, Trash2, Plus, Send, ClipboardCopy } from 'lucide-react'
+import { Table2, Eye, Terminal, Zap, Search, RefreshCw as RefreshIcon, ChevronRight, Binary, Database, Copy, Trash2, Plus, Send, ClipboardCopy, Check, Link2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ContextMenu } from '@/components/ui/ContextMenu'
 import { CreateObjectModal } from './CreateObjectModal'
+import { JoinQueryModal } from './JoinQueryModal'
 import { schemaService } from '@/services/schema.service'
 import { generateTableTemplates, type SqlTemplateAction } from '@/lib/sqlGenerator'
 import { useAppStore } from '@/store/useAppStore'
@@ -42,10 +43,65 @@ export function Sidebar({
 }: SidebarProps) {
   const isMongoDB = dbType === DatabaseType.MONGODB
   const isRedis = dbType === DatabaseType.REDIS
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: { name: string; type: DatabaseObjectType } } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: { name: string; type: DatabaseObjectType }; selected: string[] } | null>(null);
   const [createModalType, setCreateModalType] = useState<DatabaseObjectType | null>(null)
+  const [selectedTables, setSelectedTables] = useState<string[]>([])
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null)
+  const [joinModalTables, setJoinModalTables] = useState<string[]>([])
   const navigate = useNavigate()
   const openTab = useAppStore((s) => s.openTab)
+
+  const isMultiSelectTab = sidebarTab === SidebarTab.TABLES && !isMongoDB && !isRedis
+
+  // Multi-selection is scoped to the current schema/tab: reset when either changes.
+  const selectionScope = `${sidebarTab}|${currentSchema ?? ''}|${connectionId ?? ''}`
+  const [selectionScopeState, setSelectionScopeState] = useState(selectionScope)
+  if (selectionScopeState !== selectionScope) {
+    setSelectionScopeState(selectionScope)
+    setSelectedTables([])
+    setSelectionAnchor(null)
+  }
+
+  const selectObject = (item: DatabaseObject) => {
+    setSelectedItem(item)
+    setPage(0)
+    setSocketResults(null)
+    setExecutionStatus(ExecutionStatus.IDLE)
+    setExecutionError(null)
+    setParamsValues({})
+    setActiveTab((item.type === DatabaseObjectType.TABLE || item.type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL)
+  }
+
+  const handleItemClick = (e: React.MouseEvent, name: string, item: DatabaseObject) => {
+    if (!isMultiSelectTab) {
+      selectObject(item)
+      return
+    }
+    if (e.shiftKey && selectionAnchor) {
+      const anchorIdx = filteredItems.findIndex((i) => i.name === selectionAnchor)
+      const clickIdx = filteredItems.findIndex((i) => i.name === name)
+      if (anchorIdx >= 0 && clickIdx >= 0) {
+        const [from, to] = anchorIdx < clickIdx ? [anchorIdx, clickIdx] : [clickIdx, anchorIdx]
+        const range = filteredItems.slice(from, to + 1).map((i) => i.name)
+        setSelectedTables(range)
+        selectObject(item)
+        return
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedTables((prev) => {
+        const next = prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+        if (next.length === 0) return [name]
+        return next
+      })
+      setSelectionAnchor((prev) => prev ?? name)
+      selectObject(item)
+      return
+    }
+    setSelectedTables([name])
+    setSelectionAnchor(null)
+    selectObject(item)
+  }
 
   const SQL_TEMPLATE_ACTIONS: { action: SqlTemplateAction; label: string }[] = [
     { action: 'select', label: 'Select' },
@@ -203,8 +259,19 @@ export function Sidebar({
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="px-2 py-1 text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-wider">
-                Results ({filteredItems?.length || 0})
+              <div className="flex items-center justify-between">
+                <div className="px-2 py-1 text-[var(--ch-text-10)] font-bold text-muted-foreground uppercase tracking-wider">
+                  Results ({filteredItems?.length || 0})
+                </div>
+                {isMultiSelectTab && selectedTables.length > 1 && (
+                  <button
+                    onClick={() => { setSelectedTables([]); setSelectionAnchor(null) }}
+                    className="px-2 py-1 text-[var(--ch-text-10)] text-xs font-bold text-primary border border-primary/30 bg-primary/10 hover:bg-primary/20 transition-colors flex items-center gap-1"
+                    title="Clear selection"
+                  >
+                    {selectedTables.length} selected <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
               {filteredItems?.map((item) => {
                 let type: DatabaseObjectType
@@ -218,22 +285,28 @@ export function Sidebar({
                 return (
                   <button 
                     key={item.name} 
-                    onClick={() => {
-                      setSelectedItem({ name: item.name, type })
-                      setPage(0)
-                      setSocketResults(null)
-                      setExecutionStatus(ExecutionStatus.IDLE)
-                      setExecutionError(null)
-                      setParamsValues({})
-                      setActiveTab((type === DatabaseObjectType.TABLE || type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL)
+                    onClick={(e) => {
+                      handleItemClick(e, item.name, { name: item.name, type })
                     }} 
+                    onDoubleClick={() => {
+                      // Doble-click: seleccionar y colapsar el sidebar para
+                      // maximizar la vista de datos. Un click simple NO colapsa.
+                      if (!isCollapsed && onToggle) onToggle()
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      setContextMenu({ x: e.pageX, y: e.pageY, item: { name: item.name, type } });
+                      const effective = isMultiSelectTab && selectedTables.includes(item.name) && selectedTables.length > 1
+                        ? selectedTables
+                        : [item.name];
+                      if (!isMultiSelectTab || !selectedTables.includes(item.name)) {
+                        setSelectedTables(effective)
+                        setSelectionAnchor(item.name)
+                      }
+                      setContextMenu({ x: e.pageX, y: e.pageY, item: { name: item.name, type }, selected: effective });
                     }}
                     className={cn(
                       "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
-                      (selectedItem?.name === item.name) ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                      (selectedItem?.name === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "bg-primary/10 text-primary" : "hover:bg-muted"
                     )}
                   >
                     {isRedis && sidebarTab === SidebarTab.TABLES
@@ -242,11 +315,15 @@ export function Sidebar({
                       ? <Database className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-orange-400" : "text-muted-foreground")} />
                       : (() => {
                           const Icon = getTabIcon(sidebarTab)
-                          return <Icon className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-primary" : "text-muted-foreground")} />
+                          return <Icon className={cn("w-3.5 h-3.5", (selectedItem?.name === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "text-primary" : "text-muted-foreground")} />
                         })()
                     }
                     <span className="truncate flex-1">{item.name}</span>
-                    <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+                    {isMultiSelectTab && selectedTables.includes(item.name) ? (
+                      <Check className="w-3 h-3 text-primary" />
+                    ) : (
+                      <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+                    )}
                   </button>
                 );
               })}
@@ -261,6 +338,25 @@ export function Sidebar({
           y={contextMenu.y}
           onDismiss={() => setContextMenu(null)}
           groups={[
+            ...(contextMenu.selected.length >= 2 && connectionId ? [
+              {
+                title: 'Send to Editor',
+                items: [
+                  {
+                    label: `SELECT * JOIN (${contextMenu.selected.length} tables)`,
+                    icon: <Link2 className="w-3.5 h-3.5" />,
+                    onClick: () => {
+                      const ordered = [...contextMenu.selected].sort((a, b) => {
+                        const ia = filteredItems.findIndex((i) => i.name === a)
+                        const ib = filteredItems.findIndex((i) => i.name === b)
+                        return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib)
+                      })
+                      setJoinModalTables(ordered)
+                    }
+                  }
+                ]
+              }
+            ] : []),
             {
               title: isRedis ? 'Key Actions' : contextMenu.item.type,
               items: [
@@ -330,6 +426,17 @@ export function Sidebar({
           dbType={dbType}
           connectionId={connectionId}
           onCreated={handleRefetch}
+        />
+      )}
+
+      {joinModalTables.length >= 2 && connectionId && (
+        <JoinQueryModal
+          open={joinModalTables.length >= 2}
+          onClose={() => setJoinModalTables([])}
+          connectionId={connectionId}
+          schema={currentSchema}
+          dbType={dbType}
+          tables={joinModalTables}
         />
       )}
     </div>

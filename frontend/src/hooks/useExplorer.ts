@@ -10,6 +10,7 @@ import type {
   DatabaseObject,
   QueryResult,
   DbValue,
+  CellValue,
   DbRow,
 } from '@/types/database';
 import {
@@ -295,7 +296,9 @@ export function useExplorer() {
         });
       }
 
-      setIsSidebarCollapsed(true);
+      // Nota: el sidebar NO se colapsa al seleccionar (para poder hacer
+      // multi-selección sin perder la vista). Se colapsa solo con doble-click
+      // desde el propio Sidebar.
     },
     [
       resolvedConnection,
@@ -729,7 +732,7 @@ export function useExplorer() {
   });
 
   const updateCell = useCallback(
-    (row: DbRow, column: string, newValue: DbValue) => {
+    (row: DbRow, column: string, newValue: CellValue) => {
       if (!selectedItem || !resolvedConnection) return;
 
       if (resolvedConnection.environment === Environment.PRODUCTION) {
@@ -742,6 +745,11 @@ export function useExplorer() {
       const primaryKeys = columns
         ?.filter((col) => col.isPrimaryKey)
         .map((col) => col.name) ?? [];
+
+      const isExpr =
+        typeof newValue === 'object' &&
+        newValue !== null &&
+        '__expr' in newValue;
 
       tauriApi
         .invoke('update_cell', {
@@ -770,7 +778,10 @@ export function useExplorer() {
           : prevRows.indexOf(row);
         if (matchedIndex === -1) return prev;
         const newRows = [...prevRows];
-        newRows[matchedIndex] = { ...prevRows[matchedIndex], [column]: newValue };
+        const optimisticValue: DbValue = isExpr
+          ? (newValue as { __expr: string }).__expr
+          : (newValue as DbValue);
+        newRows[matchedIndex] = { ...prevRows[matchedIndex], [column]: optimisticValue };
         return { ...prev, rows: newRows } as QueryResult;
       });
     },

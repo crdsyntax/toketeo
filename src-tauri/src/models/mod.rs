@@ -176,6 +176,10 @@ impl fmt::Debug for SshConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct QueryResult {
     pub columns: Vec<String>,
+    /// DB engine type names for each column (e.g. "int4", "varchar") when the
+    /// driver exposes them; used by the UI to render name + type headers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_types: Option<Vec<String>>,
     pub rows: Vec<serde_json::Value>,
     #[serde(rename = "executionTime")]
     pub execution_time_ms: u64,
