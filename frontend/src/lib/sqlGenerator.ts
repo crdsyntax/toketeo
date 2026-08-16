@@ -38,6 +38,34 @@ export function parseInputValue(raw: string): DbValue {
   return trimmed
 }
 
+/**
+ * PostgreSQL / SQL Server / SQLite tratan `"..."` como identificador, no como
+ * string literal. Para el input de filtro del DataTab (p.ej. el usuario escribe
+ * `order_number = "OU12-PX7RLT"`), se convierte cada `"token"` a `'token'` salvo
+ * cuando el token coincide con una columna de la tabla (ahí se conserva como
+ * identificador). MySQL/MariaDB (comillas dobles = string) y MongoDB (JSON) se
+ * devuelven intactos.
+ */
+export function normalizeFilterQuotes(
+  filter: string,
+  columnNames: string[],
+  dbType?: DatabaseType,
+): string {
+  if (!filter.includes('"')) return filter
+  if (
+    dbType === DatabaseType.MYSQL ||
+    dbType === DatabaseType.MARIADB ||
+    dbType === DatabaseType.MONGODB
+  ) {
+    return filter
+  }
+  const lowerCols = new Set(columnNames.map((c) => c.toLowerCase()))
+  return filter.replace(/"([^"]*)"/g, (match, token: string) => {
+    if (lowerCols.has(token.toLowerCase())) return match
+    return `'${token.replace(/'/g, "''")}'`
+  })
+}
+
 export interface TableSqlTemplates {
   select: string
   insert: string

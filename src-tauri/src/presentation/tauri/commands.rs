@@ -1134,6 +1134,16 @@ pub async fn drop_constraint(
 }
 
 #[tauri::command]
+pub async fn truncate_tables(
+    id: String,
+    schema: Option<String>,
+    tables: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::TruncateTablesResult> {
+    ExplorerService::truncate_tables(&state, &id, schema, tables).await
+}
+
+#[tauri::command]
 pub async fn rename_foreign_key(
     id: String,
     table: String,

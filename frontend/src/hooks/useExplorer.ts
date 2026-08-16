@@ -5,6 +5,7 @@ import { schemaService } from '@/services/schema.service';
 import { connectionService } from '@/services/connection.service';
 import { useAppStore } from '@/store/useAppStore';
 import { tauriApi } from '@/lib/api';
+import { normalizeFilterQuotes } from '@/lib/sqlGenerator';
 import { toast } from 'react-hot-toast';
 import type {
   DatabaseObject,
@@ -25,6 +26,7 @@ import {
 export function useExplorer() {
   const {
     activeConnection,
+    lastExplorerContext,
     explorer,
     explorerTabs,
     setExplorerState,
@@ -45,30 +47,37 @@ export function useExplorer() {
     ? explorerTabs[activeExplorerTabId]
     : null;
 
-  // When there are no explorer tabs open (all closed), the explorer must be
-  // cleared: resolve no connection so the sidebar stops fetching/displaying
-  // the residual objects of the last connection.
-  const hasExplorerTabs = Object.keys(explorerTabs).length > 0;
-
   // Each explorer tab carries its own connection context (connectionId +
   // database). All operations below resolve against the ACTIVE tab's
-  // connection, falling back to the global activeConnection only when the tab
-  // has no connection (legacy) or it can't be found.
-  // Once the connections list has loaded, an activeConnection that is no
+  // connection, falling back to the global activeConnection when no tabs are
+  // open, when the tab has no connection (legacy) or when it can't be found.
+  // Resolving against activeConnection (instead of null) when all tabs are
+  // closed keeps the sidebar showing the last connection's objects instead of
+  // requiring a manual refresh.
+  // activeConnection is intentionally NOT persisted, so after a reload it is
+  // null. The persisted lastExplorerContext (set whenever a tab is opened or
+  // closed) provides the fallback in that case, so the sidebar still shows the
+  // last connection's objects.
+  // Once the connections list has loaded, a fallback connection that is no
   // longer in the list (deleted/ghost) is treated as null so the explorer
   // never surfaces a connection that no longer exists. While the list is
-  // still loading, the activeConnection is trusted to avoid a flicker.
+  // still loading, the fallback is trusted to avoid a flicker.
   const resolvedConnection = useMemo(() => {
-    if (!hasExplorerTabs) return null;
-    const tabConnId = activeTabState?.connectionId;
+    const hasExplorerTabs = Object.keys(explorerTabs).length > 0;
+    const tabConnId = hasExplorerTabs ? activeTabState?.connectionId : undefined;
     const tabMatch = tabConnId ? connections.find((c) => c.id === tabConnId) : undefined;
     if (tabMatch) return tabMatch;
-    const activeIsGhost =
-      activeConnection !== null &&
+    const fallback =
+      activeConnection ??
+      (lastExplorerContext
+        ? connections.find((c) => c.id === lastExplorerContext.connectionId) ?? null
+        : null);
+    if (!fallback) return null;
+    const fallbackIsGhost =
       !connectionsLoading &&
-      !connections.some((c) => c.id === activeConnection.id);
-    return activeIsGhost ? null : activeConnection;
-  }, [hasExplorerTabs, activeTabState?.connectionId, connections, connectionsLoading, activeConnection]);
+      !connections.some((c) => c.id === fallback.id);
+    return fallbackIsGhost ? null : fallback;
+  }, [explorerTabs, activeTabState?.connectionId, connections, connectionsLoading, activeConnection, lastExplorerContext]);
 
   const {
     selectedItem,
@@ -162,7 +171,10 @@ export function useExplorer() {
     [activeExplorerTabId, updateExplorerTab],
   );
 
-  const currentSchema = activeTabState?.database || activeConnection?.database;
+  const currentSchema =
+    activeTabState?.database ||
+    activeConnection?.database ||
+    lastExplorerContext?.database;
 
   const handleSetPageSize = useCallback(
     (size: number) => {
@@ -241,9 +253,14 @@ export function useExplorer() {
 
   const handleSelectItem = useCallback(
     (item: DatabaseObject) => {
-      if (!resolvedConnection) return;
+      // Tras desconectar/volver a conectar, los explorer tabs se limpian y
+      // `resolvedConnection` puede ser null; se cae a `activeConnection` para
+      // que el doble-click siga abriendo/recargando la tabla. Una vez creado el
+      // tab, `resolvedConnection` se resuelve y dispara la carga de datos.
+      const conn = resolvedConnection ?? activeConnection;
+      if (!conn) return;
 
-      const tabId = `${resolvedConnection.id}:${currentSchema || 'default'}:${item.name}`;
+      const tabId = `${conn.id}:${currentSchema || 'default'}:${item.name}`;
       const nextActiveTab =
         item.type === DatabaseObjectType.TABLE ||
         item.type === DatabaseObjectType.VIEW
@@ -253,6 +270,7 @@ export function useExplorer() {
       if (explorerTabs[tabId]) {
         updateExplorerTab(tabId, {
           executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
           socketResults: null,
         });
         setExplorerState({ activeExplorerTabId: tabId });
@@ -267,7 +285,7 @@ export function useExplorer() {
         removeExplorerTab(activeExplorerTabId);
         addExplorerTab({
           id: tabId,
-          connectionId: resolvedConnection.id,
+          connectionId: conn.id,
           database: currentSchema || '',
           selectedItem: item,
           activeTab: nextActiveTab,
@@ -282,7 +300,7 @@ export function useExplorer() {
       } else {
         addExplorerTab({
           id: tabId,
-          connectionId: resolvedConnection.id,
+          connectionId: conn.id,
           database: currentSchema || '',
           selectedItem: item,
           activeTab: nextActiveTab,
@@ -302,6 +320,7 @@ export function useExplorer() {
     },
     [
       resolvedConnection,
+      activeConnection,
       currentSchema,
       explorerTabs,
       activeExplorerTabId,
@@ -809,6 +828,14 @@ export function useExplorer() {
           const store = useAppStore.getState();
           const tabId = activeExplorerTabId ?? store.explorer.activeExplorerTabId;
           const currentFilter = tabId ? store.explorerTabs[tabId]?.filter ?? '' : '';
+          // Normaliza comillas dobles → simples para motores donde "..." es un
+          // identificador (Postgres/SQL Server/SQLite), usando las columnas de
+          // la tabla para no convertir identificadores reales.
+          const normalizedFilter = normalizeFilterQuotes(
+            currentFilter,
+            (columns ?? []).map((c) => c.name),
+            resolvedConnection.type as DatabaseType,
+          );
 
           const result = await schemaService.executeExplorer({
             connectionId: resolvedConnection.id,
@@ -818,7 +845,7 @@ export function useExplorer() {
             page: page + 1,
             pageSize: pageSize,
             params: useParams ? paramValues : undefined,
-            filter: currentFilter,
+            filter: normalizedFilter,
           });
 
           if (activeExplorerTabId) {
@@ -851,6 +878,7 @@ export function useExplorer() {
       currentSchema,
       updateExplorerTab,
       activeExplorerTabId,
+      columns,
     ],
   );
 

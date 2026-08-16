@@ -138,6 +138,7 @@ pub fn run() {
             commands::drop_foreign_key,
             commands::rename_foreign_key,
             commands::drop_constraint,
+            commands::truncate_tables,
             commands::switch_schema,
             commands::export_connection,
             commands::export_all_connections,

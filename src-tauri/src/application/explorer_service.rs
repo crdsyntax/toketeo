@@ -1415,6 +1415,369 @@ impl ExplorerService {
         }
     }
 
+    /// Truncate a set of tables in foreign-key-safe order (children first).
+    /// Returns the execution order, the generated SQL, per-table outcomes and
+    /// warnings. Execution is engine-specific:
+    /// - Postgres: single `TRUNCATE TABLE a, b` statement (FK-aware).
+    /// - MySQL/MariaDB: `SET FOREIGN_KEY_CHECKS = 0; TRUNCATE ...; SET FOREIGN_KEY_CHECKS = 1;`.
+    /// - SQLite: `DELETE FROM` per table in order (no TRUNCATE in SQLite).
+    /// - SQL Server: disables incoming FK constraints (selected set only),
+    ///   truncates, then re-enables them.
+    pub async fn truncate_tables(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        tables: Vec<String>,
+    ) -> AppResult<crate::models::TruncateTablesResult> {
+        use crate::models::{TruncateTableOutcome, TruncateTablesResult};
+        use std::collections::{HashMap, HashSet, VecDeque};
+
+        const MAX_TABLES: usize = 100;
+
+        if tables.is_empty() {
+            return Err(AppError::Validation(
+                "No tables selected to truncate".into(),
+            ));
+        }
+        if tables.len() > MAX_TABLES {
+            return Err(AppError::Validation(format!(
+                "Cannot truncate more than {} tables in a single operation (got {}).",
+                MAX_TABLES,
+                tables.len()
+            )));
+        }
+
+        let driver = state.get_connection(id).await?;
+        let db_type = driver.db_type();
+
+        if matches!(
+            db_type,
+            crate::db::DbType::Mongodb | crate::db::DbType::Redis
+        ) {
+            return Err(AppError::Validation(
+                "TRUNCATE is not supported for this database type".into(),
+            ));
+        }
+
+        // Dedupe preserving selection order.
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut unique: Vec<String> = Vec::new();
+        for t in tables {
+            if seen.insert(t.clone()) {
+                unique.push(t);
+            }
+        }
+        let index: HashMap<String, usize> = unique
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.clone(), i))
+            .collect();
+
+        // Build the FK graph among the selected tables. Edge child -> parent
+        // means the child must be truncated before the parent.
+        let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); unique.len()];
+        let mut in_degree = vec![0usize; unique.len()];
+
+        for (i, table) in unique.iter().enumerate() {
+            let fks = driver.fetch_foreign_keys(table, schema.clone()).await?;
+            for fk in fks {
+                let parent = fk
+                    .get("referencedTable")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| fk.get("referencedTableName").and_then(|v| v.as_str()))
+                    .or_else(|| fk.get("table").and_then(|v| v.as_str()));
+                if let Some(parent) = parent {
+                    if let Some(&p) = index.get(parent) {
+                        if p != i && !adjacency[i].contains(&p) {
+                            adjacency[i].push(p);
+                            in_degree[p] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Detect tables outside the selection that reference selected tables.
+        // These are left intact and foreign key enforcement stays ON so the
+        // engine rejects truncating any referenced parent instead of orphaning
+        // data (MySQL would otherwise allow it silently with FK checks off).
+        let mut unselected_refs: Vec<String> = Vec::new();
+        for table in &unique {
+            let referenced_by = driver
+                .fetch_referenced_by_keys(table, schema.clone())
+                .await?;
+            for rk in referenced_by {
+                if let Some(referencing) = rk.get("referencingTable").and_then(|v| v.as_str()) {
+                    if !index.contains_key(referencing) {
+                        unselected_refs.push(format!("{referencing} references {table}"));
+                    }
+                }
+            }
+        }
+        let has_unselected_refs = !unselected_refs.is_empty();
+
+        // Topological sort (Kahn): children (in-degree 0) come first.
+        let mut warnings: Vec<String> = Vec::new();
+        if has_unselected_refs {
+            warnings.push(format!(
+                "These tables are not selected but reference selected tables. They are left intact and foreign key enforcement stays on, so the database may reject truncating the referenced parents:\n- {}",
+                unselected_refs.join("\n- ")
+            ));
+        }
+        let mut order: Vec<String> = Vec::new();
+        let mut queue: VecDeque<usize> = (0..unique.len()).filter(|&i| in_degree[i] == 0).collect();
+        let mut placed = vec![false; unique.len()];
+
+        while let Some(i) = queue.pop_front() {
+            order.push(unique[i].clone());
+            placed[i] = true;
+            for &p in &adjacency[i] {
+                in_degree[p] -= 1;
+                if in_degree[p] == 0 {
+                    queue.push_back(p);
+                }
+            }
+        }
+
+        // Tables not reached by the sort participate in an FK cycle.
+        let remaining: Vec<usize> = (0..unique.len()).filter(|&i| !placed[i]).collect();
+        if !remaining.is_empty() {
+            let cycle: Vec<String> = remaining.iter().map(|&i| unique[i].clone()).collect();
+            warnings.push(format!(
+                "Circular foreign key dependency detected between: {}. Order between them is not guaranteed.",
+                cycle.join(", ")
+            ));
+            order.extend(remaining.into_iter().map(|i| unique[i].clone()));
+        }
+
+        // Identifier quoting per engine.
+        let (q_open, q_close, q_esc) = match db_type {
+            crate::db::DbType::Postgres => ("\"", "\"", "\"\""),
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => ("`", "`", "``"),
+            crate::db::DbType::Sqlserver => ("[", "]", "]]"),
+            _ => ("\"", "\"", "\"\""), // SQLite
+        };
+
+        let quote_table = |name: &str| -> String {
+            let quoted = format!("{}{}{}", q_open, name.replace(q_close, q_esc), q_close);
+            match schema.as_ref() {
+                Some(s) if !s.is_empty() && db_type != crate::db::DbType::Sqlite => format!(
+                    "{}{}{}.{}",
+                    q_open,
+                    s.replace(q_close, q_esc),
+                    q_close,
+                    quoted
+                ),
+                _ => quoted,
+            }
+        };
+
+        let make_outcome =
+            |table: &str, ok: bool, error: Option<String>, rows_affected: Option<u64>| {
+                TruncateTableOutcome {
+                    table: table.to_string(),
+                    ok,
+                    error,
+                    rows_affected,
+                }
+            };
+
+        let mut statements: Vec<String> = Vec::new();
+        let mut outcomes: Vec<TruncateTableOutcome> = Vec::new();
+
+        match db_type {
+            crate::db::DbType::Postgres => {
+                if has_unselected_refs {
+                    // Fall back to per-table statements so the engine decides
+                    // table by table (children succeed, referenced parents fail).
+                    for t in &order {
+                        let sql = format!("TRUNCATE TABLE {}", quote_table(t));
+                        statements.push(sql.clone());
+                        match Self::execute_query(state, id, &sql, schema.clone()).await {
+                            Ok(res) => {
+                                outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                            }
+                            Err(e) => {
+                                outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                            }
+                        }
+                    }
+                } else {
+                    let quoted: Vec<String> = order.iter().map(|t| quote_table(t)).collect();
+                    let sql = format!("TRUNCATE TABLE {}", quoted.join(", "));
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(res) => {
+                            for t in &order {
+                                outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                            }
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            for t in &order {
+                                outcomes.push(make_outcome(t, false, Some(msg.clone()), None));
+                            }
+                        }
+                    }
+                }
+            }
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                if has_unselected_refs {
+                    // Per-table so the engine decides. FK checks stay ON so a
+                    // referenced parent is rejected instead of orphaning rows
+                    // in the unselected referencing tables.
+                    for t in &order {
+                        let sql = format!("TRUNCATE TABLE {}", quote_table(t));
+                        statements.push(sql.clone());
+                        match Self::execute_query(state, id, &sql, schema.clone()).await {
+                            Ok(res) => {
+                                outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                            }
+                            Err(e) => {
+                                outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                            }
+                        }
+                    }
+                } else {
+                    let mut parts = vec!["SET FOREIGN_KEY_CHECKS = 0".to_string()];
+                    for t in &order {
+                        parts.push(format!("TRUNCATE TABLE {}", quote_table(t)));
+                    }
+                    parts.push("SET FOREIGN_KEY_CHECKS = 1".to_string());
+                    let sql = parts.join("; ");
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(_) => {
+                            for t in &order {
+                                outcomes.push(make_outcome(t, true, None, None));
+                            }
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            for t in &order {
+                                outcomes.push(make_outcome(t, false, Some(msg.clone()), None));
+                            }
+                        }
+                    }
+                }
+            }
+            crate::db::DbType::Sqlite => {
+                for t in &order {
+                    let sql = format!("DELETE FROM {}", quote_table(t));
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(res) => {
+                            outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                        }
+                        Err(e) => outcomes.push(make_outcome(t, false, Some(e.to_string()), None)),
+                    }
+                }
+            }
+            crate::db::DbType::Sqlserver => {
+                // Incoming FK constraints from selected children (needed to
+                // TRUNCATE a referenced table).
+                let mut disable_map: HashMap<String, Vec<String>> = HashMap::new();
+                for table in &order {
+                    let referenced_by = driver
+                        .fetch_referenced_by_keys(table, schema.clone())
+                        .await?;
+                    let mut names: Vec<String> = Vec::new();
+                    for rk in referenced_by {
+                        let referencing = rk.get("referencingTable").and_then(|v| v.as_str());
+                        let fk = rk.get("constraintName").and_then(|v| v.as_str());
+                        if let (Some(r), Some(f)) = (referencing, fk) {
+                            if index.contains_key(r) {
+                                names.push(f.to_string());
+                            }
+                        }
+                    }
+                    if !names.is_empty() {
+                        disable_map.insert(table.clone(), names);
+                    }
+                }
+
+                for t in &order {
+                    let full = quote_table(t);
+                    let names = disable_map.get(t).cloned().unwrap_or_default();
+
+                    // 1. Disable incoming FK constraints.
+                    let mut disabled: Vec<String> = Vec::new();
+                    let mut disable_failed = false;
+                    for fk in &names {
+                        let sql = format!(
+                            "ALTER TABLE {} NOCHECK CONSTRAINT {}",
+                            full,
+                            crate::db::quote_identifier(&db_type, fk)
+                        );
+                        statements.push(sql.clone());
+                        match Self::execute_query(state, id, &sql, schema.clone()).await {
+                            Ok(_) => disabled.push(fk.clone()),
+                            Err(e) => {
+                                disable_failed = true;
+                                outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                                break;
+                            }
+                        }
+                    }
+
+                    if disable_failed {
+                        // Best-effort re-enable of what was disabled.
+                        for fk in &disabled {
+                            let sql = format!(
+                                "ALTER TABLE {} WITH CHECK CHECK CONSTRAINT {}",
+                                full,
+                                crate::db::quote_identifier(&db_type, fk)
+                            );
+                            statements.push(sql.clone());
+                            let _ = Self::execute_query(state, id, &sql, schema.clone()).await;
+                        }
+                        continue;
+                    }
+
+                    // 2. Truncate.
+                    let sql = format!("TRUNCATE TABLE {}", full);
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(res) => {
+                            outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                        }
+                        Err(e) => {
+                            outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                        }
+                    }
+
+                    // 3. Re-enable constraints (best effort).
+                    for fk in &names {
+                        let sql = format!(
+                            "ALTER TABLE {} WITH CHECK CHECK CONSTRAINT {}",
+                            full,
+                            crate::db::quote_identifier(&db_type, fk)
+                        );
+                        statements.push(sql.clone());
+                        let _ = Self::execute_query(state, id, &sql, schema.clone()).await;
+                    }
+                }
+            }
+            _ => {
+                return Err(AppError::Validation(
+                    "TRUNCATE is not supported for this database type".into(),
+                ))
+            }
+        }
+
+        // Invalidate cached metadata for the affected tables.
+        for t in &unique {
+            Self::invalidate_metadata_cache(state, id, t, schema.as_deref()).await;
+        }
+
+        Ok(TruncateTablesResult {
+            order,
+            statements,
+            outcomes,
+            warnings,
+        })
+    }
+
     /// Verify dump file integrity: count statements vs expected tables.
     pub fn verify_dump_integrity(
         file_path: &str,

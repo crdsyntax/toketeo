@@ -218,6 +218,27 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
+/// Resultado de truncar un set de tablas respetando el orden impuesto por las
+/// claves foráneas (hijas antes que padres). `order` es el orden de ejecución,
+/// `statements` el SQL generado y `outcomes` el resultado por tabla.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncateTablesResult {
+    pub order: Vec<String>,
+    pub statements: Vec<String>,
+    pub outcomes: Vec<TruncateTableOutcome>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncateTableOutcome {
+    pub table: String,
+    pub ok: bool,
+    pub error: Option<String>,
+    pub rows_affected: Option<u64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeDeleteInput {

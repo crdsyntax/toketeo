@@ -167,6 +167,20 @@ export interface ReferencedByKeyResponse {
   referencingColumn: string;
 }
 
+export interface TruncateTableOutcome {
+  table: string;
+  ok: boolean;
+  error?: string | null;
+  rowsAffected?: number | null;
+}
+
+export interface TruncateTablesResult {
+  order: string[];
+  statements: string[];
+  outcomes: TruncateTableOutcome[];
+  warnings: string[];
+}
+
 export interface ConstraintResponse {
   name: string;
   type: string;

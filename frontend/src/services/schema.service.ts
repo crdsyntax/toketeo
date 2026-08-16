@@ -12,6 +12,7 @@ import type {
   DumpObjects,
   SchemaDiagramData,
   IntegrityResult,
+  TruncateTablesResult,
 } from '@/types/database'
 import type { QueryHistoryEntry } from '@/store/useAppStore'
 
@@ -98,6 +99,10 @@ export const schemaService = {
 
   getReferencedByKeys: async (id: string, table: string, schema?: string) => {
     return await tauriApi.invoke<ReferencedByKeyResponse[]>('get_referenced_by_keys', { id, table, schema })
+  },
+
+  truncateTables: async (id: string, schema: string | undefined, tables: string[]): Promise<TruncateTablesResult> => {
+    return await tauriApi.invoke<TruncateTablesResult>('truncate_tables', { id, schema, tables })
   },
 
   generateSafeDeleteSql: async (id: string, table: string, schema?: string, whereClause?: string) => {

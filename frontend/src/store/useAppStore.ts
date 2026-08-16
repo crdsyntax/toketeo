@@ -104,6 +104,8 @@ interface AppState {
   activeConnection: Connection | null
   setActiveConnection: (connection: Connection | null) => void
   setActiveConnectionDatabase: (database: string) => void
+  lastExplorerContext: { connectionId: string; database: string } | null
+  setLastExplorerContext: (ctx: { connectionId: string; database: string } | null) => void
   connectedConnectionIds: string[]
   setConnectedConnection: (id: string) => void
   removeConnectedConnection: (id: string) => void
@@ -191,14 +193,29 @@ export const useAppStore = create<AppState>()(
       activeConnection: null,
       setActiveConnection: (connection) => set((state) => {
         const switchingConnection = connection && connection.id !== state.activeConnection?.id
-        const explorer = switchingConnection
-          ? { ...state.explorer, activeExplorerTabId: null }
-          : state.explorer
-        return { activeConnection: connection, explorer }
+        if (!switchingConnection) {
+          return { activeConnection: connection }
+        }
+        // When switching to a different connection, focus its most recent
+        // explorer tab (if any) instead of leaving a tab of the previous
+        // connection active. That prevents the explorer from silently jumping
+        // back to the old connection later when its tabs get closed.
+        const connTabs = Object.values(state.explorerTabs).filter(
+          (t) => t.connectionId === connection?.id,
+        )
+        return {
+          activeConnection: connection,
+          explorer: {
+            ...state.explorer,
+            activeExplorerTabId: connTabs.length > 0 ? connTabs[connTabs.length - 1].id : null,
+          },
+        }
       }),
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
       })),
+      lastExplorerContext: null,
+      setLastExplorerContext: (ctx) => set({ lastExplorerContext: ctx }),
       connectedConnectionIds: [],
       setConnectedConnection: (id) => set((state) => {
         if (state.connectedConnectionIds.includes(id)) return state
@@ -229,29 +246,67 @@ export const useAppStore = create<AppState>()(
       })),
       addExplorerTab: (tab) => set((state) => ({
         explorerTabs: { ...state.explorerTabs, [tab.id]: tab },
-        explorer: { ...state.explorer, activeExplorerTabId: tab.id }
+        explorer: { ...state.explorer, activeExplorerTabId: tab.id },
+        lastExplorerContext: { connectionId: tab.connectionId, database: tab.database },
       })),
       updateExplorerTab: (id, updates) => set((state) => {
         if (!state.explorerTabs[id]) return state
+        const updated = { ...state.explorerTabs[id], ...updates }
         return {
           explorerTabs: {
             ...state.explorerTabs,
-            [id]: { ...state.explorerTabs[id], ...updates }
-          }
+            [id]: updated
+          },
+          lastExplorerContext:
+            updates.database !== undefined || updates.connectionId !== undefined
+              ? { connectionId: updated.connectionId, database: updated.database }
+              : state.lastExplorerContext,
         }
       }),
       removeExplorerTab: (id) => set((state) => {
         const remainingTabs = Object.fromEntries(
           Object.entries(state.explorerTabs).filter(([tabId]) => tabId !== id)
         )
+        const removed = state.explorerTabs[id]
+        const removedConnId = removed?.connectionId
+
         let nextActiveId = state.explorer.activeExplorerTabId
         if (nextActiveId === id) {
           const tabIds = Object.keys(remainingTabs)
-          nextActiveId = tabIds.length > 0 ? tabIds[tabIds.length - 1] : null
+          if (tabIds.length === 0) {
+            nextActiveId = null
+          } else if (removedConnId) {
+            // Prefer staying in the connection the user was working with.
+            // Otherwise closing the last tab of connection A would activate a
+            // stale tab left over from another connection (e.g. a previous
+            // session) and the explorer would jump back to that connection.
+            const sameConnTabs = tabIds.filter(
+              (tid) => remainingTabs[tid].connectionId === removedConnId,
+            )
+            nextActiveId =
+              sameConnTabs.length > 0 ? sameConnTabs[sameConnTabs.length - 1] : null
+          } else {
+            nextActiveId = tabIds[tabIds.length - 1]
+          }
         }
+
+        // Keep the connection context the user was working with so the explorer
+        // sidebar keeps showing its objects after the last tab is closed (it
+        // survives reloads because activeConnection itself is not persisted).
+        const lastExplorerContext =
+          nextActiveId === null && removedConnId
+            ? { connectionId: removedConnId, database: removed?.database ?? '' }
+            : nextActiveId && remainingTabs[nextActiveId]?.connectionId
+              ? {
+                  connectionId: remainingTabs[nextActiveId].connectionId,
+                  database: remainingTabs[nextActiveId].database,
+                }
+              : state.lastExplorerContext
+
         return {
           explorerTabs: remainingTabs,
-          explorer: { ...state.explorer, activeExplorerTabId: nextActiveId }
+          explorer: { ...state.explorer, activeExplorerTabId: nextActiveId },
+          lastExplorerContext,
         }
       }),
       removeExplorerTabsForConnection: (connectionId) => set((state) => {
@@ -378,6 +433,7 @@ export const useAppStore = create<AppState>()(
         accentPalette: state.accentPalette,
         accessToken: state.accessToken,
         activeConnection: null,
+        lastExplorerContext: state.lastExplorerContext,
         tabs: state.tabs.map(tab => ({ ...tab, results: null })),
         activeTabId: state.activeTabId,
         panels: state.panels,
@@ -395,7 +451,7 @@ export const useAppStore = create<AppState>()(
         ),
         queryHistory: state.queryHistory,
       }),
-      version: 4,
+      version: 5,
       migrate: (persistedState: unknown, version: number) => {
         const persisted = persistedState as Record<string, unknown> & { version?: number };
         if (version < 1) {
@@ -424,6 +480,18 @@ export const useAppStore = create<AppState>()(
               const [connId, db] = id.split(':')
               if (!tab.connectionId && connId) tab.connectionId = connId
               if (!tab.database && db) tab.database = db
+            }
+          }
+        }
+        if (version < 5) {
+          const tabs = persisted.explorerTabs as Record<string, ExplorerTabState> | undefined
+          if (!persisted.lastExplorerContext && tabs) {
+            const tab = Object.values(tabs).find((t) => t.connectionId)
+            if (tab) {
+              persisted.lastExplorerContext = {
+                connectionId: tab.connectionId,
+                database: tab.database || '',
+              }
             }
           }
         }

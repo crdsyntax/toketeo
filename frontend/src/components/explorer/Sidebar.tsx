@@ -11,6 +11,7 @@ import { schemaService } from '@/services/schema.service'
 import { generateTableTemplates, type SqlTemplateAction } from '@/lib/sqlGenerator'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from 'react-hot-toast'
+import { TruncateTablesModal } from './TruncateTablesModal'
 
 interface SidebarProps {
   sidebarTab: SidebarTab
@@ -47,7 +48,9 @@ export function Sidebar({
   const [createModalType, setCreateModalType] = useState<DatabaseObjectType | null>(null)
   const [selectedTables, setSelectedTables] = useState<string[]>([])
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null)
+  const [highlightedObject, setHighlightedObject] = useState<string | null>(null)
   const [joinModalTables, setJoinModalTables] = useState<string[]>([])
+  const [truncateModalTables, setTruncateModalTables] = useState<string[]>([])
   const navigate = useNavigate()
   const openTab = useAppStore((s) => s.openTab)
 
@@ -60,6 +63,7 @@ export function Sidebar({
     setSelectionScopeState(selectionScope)
     setSelectedTables([])
     setSelectionAnchor(null)
+    setHighlightedObject(null)
   }
 
   const selectObject = (item: DatabaseObject) => {
@@ -72,9 +76,11 @@ export function Sidebar({
     setActiveTab((item.type === DatabaseObjectType.TABLE || item.type === DatabaseObjectType.VIEW) ? ExplorerTab.DATA : ExplorerTab.DDL)
   }
 
-  const handleItemClick = (e: React.MouseEvent, name: string, item: DatabaseObject) => {
+  const handleItemClick = (e: React.MouseEvent, name: string) => {
+    // Single click only selects/highlights the row. Opening and loading the
+    // object (data, columns, DDL) happens on double-click only.
     if (!isMultiSelectTab) {
-      selectObject(item)
+      setHighlightedObject(name)
       return
     }
     if (e.shiftKey && selectionAnchor) {
@@ -84,7 +90,6 @@ export function Sidebar({
         const [from, to] = anchorIdx < clickIdx ? [anchorIdx, clickIdx] : [clickIdx, anchorIdx]
         const range = filteredItems.slice(from, to + 1).map((i) => i.name)
         setSelectedTables(range)
-        selectObject(item)
         return
       }
     }
@@ -95,12 +100,10 @@ export function Sidebar({
         return next
       })
       setSelectionAnchor((prev) => prev ?? name)
-      selectObject(item)
       return
     }
     setSelectedTables([name])
     setSelectionAnchor(null)
-    selectObject(item)
   }
 
   const SQL_TEMPLATE_ACTIONS: { action: SqlTemplateAction; label: string }[] = [
@@ -286,11 +289,13 @@ export function Sidebar({
                   <button 
                     key={item.name} 
                     onClick={(e) => {
-                      handleItemClick(e, item.name, { name: item.name, type })
+                      handleItemClick(e, item.name)
                     }} 
                     onDoubleClick={() => {
-                      // Doble-click: seleccionar y colapsar el sidebar para
-                      // maximizar la vista de datos. Un click simple NO colapsa.
+                      // Doble-click: abrir el objeto (carga datos/columnas/DDL) y
+                      // colapsar el sidebar para maximizar la vista. El click
+                      // simple solo selecciona/resalta.
+                      selectObject({ name: item.name, type })
                       if (!isCollapsed && onToggle) onToggle()
                     }}
                     onContextMenu={(e) => {
@@ -306,23 +311,23 @@ export function Sidebar({
                     }}
                     className={cn(
                       "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
-                      (selectedItem?.name === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                      (selectedItem?.name === item.name || highlightedObject === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "bg-primary/10 text-primary" : "hover:bg-muted"
                     )}
                   >
                     {isRedis && sidebarTab === SidebarTab.TABLES
-                      ? <Zap className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-amber-400" : "text-muted-foreground")} />
+                      ? <Zap className={cn("w-3.5 h-3.5", (selectedItem?.name === item.name || highlightedObject === item.name) ? "text-amber-400" : "text-muted-foreground")} />
                       : isMongoDB && sidebarTab === SidebarTab.TABLES
-                      ? <Database className={cn("w-3.5 h-3.5", selectedItem?.name === item.name ? "text-orange-400" : "text-muted-foreground")} />
+                      ? <Database className={cn("w-3.5 h-3.5", (selectedItem?.name === item.name || highlightedObject === item.name) ? "text-orange-400" : "text-muted-foreground")} />
                       : (() => {
                           const Icon = getTabIcon(sidebarTab)
-                          return <Icon className={cn("w-3.5 h-3.5", (selectedItem?.name === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "text-primary" : "text-muted-foreground")} />
+                          return <Icon className={cn("w-3.5 h-3.5", (selectedItem?.name === item.name || highlightedObject === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "text-primary" : "text-muted-foreground")} />
                         })()
                     }
                     <span className="truncate flex-1">{item.name}</span>
                     {isMultiSelectTab && selectedTables.includes(item.name) ? (
                       <Check className="w-3 h-3 text-primary" />
                     ) : (
-                      <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
+                      <ChevronRight className={cn("w-3 h-3 transition-opacity", (selectedItem?.name === item.name || highlightedObject === item.name) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} />
                     )}
                   </button>
                 );
@@ -353,6 +358,17 @@ export function Sidebar({
                       })
                       setJoinModalTables(ordered)
                     }
+                  }
+                ]
+              },
+              {
+                title: 'Danger Zone',
+                items: [
+                  {
+                    label: `Truncate (${contextMenu.selected.length} tables)`,
+                    icon: <Trash2 className="w-3.5 h-3.5" />,
+                    variant: 'destructive' as const,
+                    onClick: () => setTruncateModalTables([...contextMenu.selected])
                   }
                 ]
               }
@@ -439,6 +455,15 @@ export function Sidebar({
           tables={joinModalTables}
         />
       )}
+
+      <TruncateTablesModal
+        open={truncateModalTables.length > 0}
+        onClose={() => setTruncateModalTables([])}
+        connectionId={connectionId}
+        schema={currentSchema}
+        tables={truncateModalTables}
+        onCompleted={handleRefetch}
+      />
     </div>
   )
 }
