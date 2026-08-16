@@ -191,26 +191,14 @@ export const useAppStore = create<AppState>()(
       accessToken: null,
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
-      setActiveConnection: (connection) => set((state) => {
-        const switchingConnection = connection && connection.id !== state.activeConnection?.id
-        if (!switchingConnection) {
-          return { activeConnection: connection }
-        }
-        // When switching to a different connection, focus its most recent
-        // explorer tab (if any) instead of leaving a tab of the previous
-        // connection active. That prevents the explorer from silently jumping
-        // back to the old connection later when its tabs get closed.
-        const connTabs = Object.values(state.explorerTabs).filter(
-          (t) => t.connectionId === connection?.id,
-        )
-        return {
-          activeConnection: connection,
-          explorer: {
-            ...state.explorer,
-            activeExplorerTabId: connTabs.length > 0 ? connTabs[connTabs.length - 1].id : null,
-          },
-        }
-      }),
+      setActiveConnection: (connection) => {
+        // Selecting a connection in the sidebar must NOT change the explorer's
+        // active tab: the explorer follows its own tabs (see useExplorer
+        // resolvedConnection). Rewriting activeExplorerTabId here would
+        // deselect the connection the user is currently browsing in the
+        // explorer and force them to re-pick connection/db/schema.
+        return set({ activeConnection: connection })
+      },
       setActiveConnectionDatabase: (database) => set((state) => ({
         activeConnection: state.activeConnection ? { ...state.activeConnection, database } : null
       })),

@@ -206,24 +206,26 @@ describe('store tab flow', () => {
     expect(state.lastExplorerContext).toEqual({ connectionId: 'a', database: 'db' })
   })
 
-  it('switching the active connection focuses its own most recent explorer tab', () => {
+  it('selecting a different connection does not deselect the active explorer tab', () => {
     resetStore()
     useAppStore.getState().addExplorerTab(fullTab('a:db:users', 'a', 'db', 'users'))
-    useAppStore.getState().addExplorerTab(fullTab('b:db:orders', 'b', 'db', 'orders'))
-
     useAppStore.getState().setActiveConnection({ id: 'b', database: 'db' } as never)
 
-    expect(useAppStore.getState().explorer.activeExplorerTabId).toBe('b:db:orders')
+    const state = useAppStore.getState()
+    expect(state.activeConnection?.id).toBe('b')
+    // the explorer keeps the tab the user was browsing (A), it must not jump to B
+    expect(state.explorer.activeExplorerTabId).toBe('a:db:users')
+    expect(state.lastExplorerContext).toEqual({ connectionId: 'a', database: 'db' })
   })
 
-  it('switching the active connection to one without tabs clears the active tab but keeps the other tabs', () => {
+  it('selecting another connection keeps the active tab when that connection has no tabs', () => {
     resetStore()
     useAppStore.getState().addExplorerTab(fullTab('a:db:users', 'a', 'db', 'users'))
 
     useAppStore.getState().setActiveConnection({ id: 'b', database: 'db' } as never)
 
     const state = useAppStore.getState()
-    expect(state.explorer.activeExplorerTabId).toBeNull()
+    expect(state.explorer.activeExplorerTabId).toBe('a:db:users')
     expect(Object.keys(state.explorerTabs)).toEqual(['a:db:users'])
   })
 })
