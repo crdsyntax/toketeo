@@ -192,3 +192,23 @@ export function generateUpdateByIds(
     .join(', ')
   return `UPDATE ${quoteTableName(table, dbType)} SET ${set} WHERE ${where};`
 }
+
+/**
+ * Generate a multi-row `INSERT INTO ... VALUES (...), (...)` using the union
+ * of columns present in the given rows. Missing cells become NULL.
+ */
+export function generateInsertRows(
+  table: string,
+  rows: DbRow[],
+  dbType?: DatabaseType,
+): string {
+  if (rows.length === 0) return ''
+  const columns = Array.from(new Set(rows.flatMap((r) => Object.keys(r))))
+  if (columns.length === 0) return ''
+  const colList = columns.map((c) => quoteIdent(c, dbType)).join(', ')
+  const valueList = rows
+    .map((row) => columns.map((c) => formatSqlValue(row[c])).join(', '))
+    .map((v) => `(${v})`)
+    .join(', ')
+  return `INSERT INTO ${quoteTableName(table, dbType)} (${colList}) VALUES ${valueList};`
+}

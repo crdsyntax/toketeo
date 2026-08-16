@@ -30,6 +30,7 @@ export function useExplorer() {
     explorer,
     explorerTabs,
     setExplorerState,
+    setActiveConnection,
     addExplorerTab,
     updateExplorerTab,
     removeExplorerTab,
@@ -40,6 +41,8 @@ export function useExplorer() {
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   });
+
+  const connectedConnectionIds = useAppStore((s) => s.connectedConnectionIds);
 
   const { search, sidebarTab, activeExplorerTabId } = explorer;
 
@@ -114,6 +117,34 @@ export function useExplorer() {
     (s: string) => setExplorerState({ search: s }),
     [setExplorerState],
   );
+
+  const switchExplorerConnection = useCallback(
+    (connection: typeof activeConnection) => {
+      if (!connection) return;
+      // Restore the database the user was browsing on this connection: the raw
+      // connection object often has no `database` (e.g. MongoDB picks it per
+      // session), so carry over the lastExplorerContext when it belongs to it.
+      const ctxMatches =
+        lastExplorerContext?.connectionId === connection.id
+          ? lastExplorerContext.database
+          : undefined;
+      setActiveConnection({
+        ...connection,
+        database: connection.database || ctxMatches || undefined,
+      });
+      const connTabs = Object.values(explorerTabs).filter(
+        (t) => t.connectionId === connection.id,
+      );
+      setExplorerState({
+        // Focus the connection's most recent tab so the explorer actually
+        // switches. When the connection has no open tabs yet, clear the active
+        // tab so the sidebar falls back to showing the new connection's objects.
+        activeExplorerTabId:
+          connTabs.length > 0 ? connTabs[connTabs.length - 1].id : null,
+      });
+    },
+    [setActiveConnection, explorerTabs, setExplorerState, lastExplorerContext],
+  );
   const setSidebarTab = useCallback(
     (tab: SidebarTab) => setExplorerState({ sidebarTab: tab }),
     [setExplorerState],
@@ -171,10 +202,19 @@ export function useExplorer() {
     [activeExplorerTabId, updateExplorerTab],
   );
 
+  // Only fall back to the persisted lastExplorerContext when it belongs to the
+  // connection we are actually resolving. Otherwise a Mongo connection (which
+  // typically has no `database` field) would inherit the schema of whatever
+  // connection was browsed last (e.g. Postgres 'public') and the sidebar would
+  // query the wrong database after closing the last tab.
   const currentSchema =
     activeTabState?.database ||
     activeConnection?.database ||
-    lastExplorerContext?.database;
+    (resolvedConnection &&
+    lastExplorerContext &&
+    lastExplorerContext.connectionId === resolvedConnection.id
+      ? lastExplorerContext.database
+      : undefined);
 
   const handleSetPageSize = useCallback(
     (size: number) => {
@@ -1029,5 +1069,8 @@ export function useExplorer() {
     activeExplorerTabId,
     removeExplorerTab,
     setExplorerState,
+    connections,
+    connectedConnectionIds,
+    switchExplorerConnection,
   };
 }

@@ -1,4 +1,4 @@
-import { Sparkles, Play } from 'lucide-react';
+import { Sparkles, Play, Copy } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -81,6 +81,8 @@ export default function QueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    handleCopyRows,
+    handleCopyCell,
     handleExecuteRowSql,
     updateTabViewState,
     queryLimit,
@@ -132,6 +134,7 @@ export default function QueryEditor() {
   const isMongo = targetConnection?.type === DatabaseType.MONGODB
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
+  const MONGO_ACTIONS: string[] = ['FIND', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
   const containerRef = useRef<HTMLDivElement>(null)
   const splitterRef = useRef({ isDragging: false, startY: 0, startHeight: 60 })
@@ -215,7 +218,7 @@ export default function QueryEditor() {
           style={{ top: contextMenuSql.y, left: contextMenuSql.x }}
         >
           <div className="px-2 py-1 text-[var(--ch-text-10)] font-semibold text-muted-foreground uppercase tracking-wider select-none">
-            {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
+            {isMongo ? 'Mongo Actions' : 'SQL Actions'}
           </div>
           <hr className="border-border/50 my-1" />
           <div className="space-y-0.5">
@@ -236,7 +239,7 @@ export default function QueryEditor() {
                 <hr className="border-border/50 my-1" />
               </>
             )}
-            {SQL_ACTIONS.map((action) => (
+            {(isMongo ? MONGO_ACTIONS : SQL_ACTIONS).map((action) => (
               <button
                 key={action}
                 onClick={() => handleGenerateSql(action.toLowerCase())}
@@ -248,6 +251,19 @@ export default function QueryEditor() {
                 </span>
               </button>
             ))}
+            <hr className="border-border/50 my-1" />
+            <button
+              onClick={() => handleCopyRows()}
+              className="w-full text-left px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent-muted hover:text-accent transition-colors duration-150 flex items-center justify-between font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <Copy className="w-3.5 h-3.5" />
+                {selectedRowIndexes.size > 1 ? 'Copy Rows' : 'Copy Row'}
+              </span>
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono">
+                {selectedRowIndexes.size > 1 ? `${selectedRowIndexes.size} rows` : 'JSON'}
+              </span>
+            </button>
           </div>
         </div>
       )}
@@ -326,6 +342,8 @@ export default function QueryEditor() {
         setSelectedRowIndexes={setSelectedRowIndexes}
         selectionAnchor={selectionAnchor}
         setSelectionAnchor={setSelectionAnchor}
+        isMongo={isMongo}
+        handleCopyCell={handleCopyCell}
       />
 
       <QueryMenus 
@@ -449,6 +467,8 @@ export default function QueryEditor() {
                 onShowScriptSummary={() => {
                   if (scriptSummary) setSeenReportId(null);
                 }}
+                isMongo={isMongo}
+                handleCopyCell={handleCopyCell}
               />
             </div>
           )}

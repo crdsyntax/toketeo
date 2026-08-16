@@ -1,11 +1,11 @@
-import { useRef } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import type { QueryTab } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
-import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
-import { formatCellValue } from '@/lib/formatCellValue';
+import { ArrowUp, ArrowDown, ArrowUpDown, Copy, Check } from 'lucide-react';
+import { formatCellValue, formatEditValue } from '@/lib/formatCellValue';
 
 interface ResultsPanelTableProps {
   activeTab: QueryTab;
@@ -22,6 +22,7 @@ interface ResultsPanelTableProps {
   setSelectionAnchor: React.Dispatch<React.SetStateAction<number | null>>;
   setShowExportMenu: (v: boolean) => void;
   setShowLimitMenu: (v: boolean) => void;
+  handleCopyCell?: (row: DbRow, column: string) => void;
 }
 
 export function ResultsPanelTable({
@@ -39,10 +40,28 @@ export function ResultsPanelTable({
   setSelectionAnchor,
   setShowExportMenu,
   setShowLimitMenu,
+  handleCopyCell,
 }: ResultsPanelTableProps) {
   const editorFontFamily = useAppStore((s) => s.editorFontFamily);
   const resultsFontSize = useAppStore((s) => s.resultsFontSize);
   const parentRef = useRef<HTMLDivElement>(null);
+  const copiedTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editingCell) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setEditingCell(null);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [editingCell, setEditingCell, handleSave]);
 
   const handleRowClick = (e: React.MouseEvent, index: number) => {
     if (e.ctrlKey || e.metaKey) {
@@ -65,6 +84,22 @@ export function ResultsPanelTable({
       setSelectedRowIndexes(new Set([index]));
       setSelectionAnchor(index);
     }
+  };
+
+  const copyCellValue = (row: DbRow, col: string, i: number) => {
+    const text = row[col] === null || row[col] === undefined
+      ? ''
+      : typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col]);
+    navigator.clipboard.writeText(text);
+    const key = `${i}:${col}`;
+    const existing = copiedTimers.current.get(key);
+    if (existing) clearTimeout(existing);
+    setCopiedCellKey(key);
+    copiedTimers.current.set(key, setTimeout(() => {
+      setCopiedCellKey(prev => prev === key ? null : prev);
+      copiedTimers.current.delete(key);
+    }, 1500));
+    handleCopyCell?.(row, col);
   };
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -155,7 +190,20 @@ export function ResultsPanelTable({
                   "p-2.5 border-r border-border/60 text-center w-12 min-w-[3rem] cursor-pointer select-none transition-colors",
                   isSelected ? "text-primary font-bold bg-primary/5" : "text-muted-foreground/60 bg-muted/10 group-hover:bg-transparent"
                 )}>
-                  {i + 1}
+                  <span
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRowIndexes((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      });
+                    }}
+                    title="Double-click to select row"
+                  >
+                    {i + 1}
+                  </span>
                 </td>
 
                 {activeTab.results!.columns.map((col: string) => {
@@ -179,7 +227,7 @@ export function ResultsPanelTable({
                         <input
                           autoFocus
                           className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
-                          value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}
+                          value={formatEditValue(editingCell.value)}
                           onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
@@ -196,11 +244,31 @@ export function ResultsPanelTable({
                           }}
                         />
                       ) : (
-                        isNull ? (
-                          <span className="inline-block bg-muted/60 border border-border/80 rounded-sm px-1.5 py-0.5 text-[var(--ch-text-10)] text-muted-foreground/70 italic select-none">
-                            NULL
-                          </span>
-                        ) : (formatCellValue(row[col]))
+                        <div className="flex items-center gap-1">
+                          {isNull ? (
+                            <span className="inline-block bg-muted/60 border border-border/80 rounded-sm px-1.5 py-0.5 text-[var(--ch-text-10)] text-muted-foreground/70 italic select-none">
+                              NULL
+                            </span>
+                          ) : (
+                            <span className="truncate flex-1 min-w-0">{formatCellValue(row[col])}</span>
+                          )}
+                          {isSelected && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyCellValue(row, col, i);
+                              }}
+                              className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                              title="Copy to clipboard"
+                            >
+                              {copiedCellKey === `${i}:${col}` ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                         )}
                     </td>
                   );

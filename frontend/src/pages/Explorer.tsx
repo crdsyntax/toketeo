@@ -3,6 +3,8 @@ import { Sidebar } from '@/components/explorer/Sidebar'
 import { ObjectDetail } from '@/components/explorer/ObjectDetail'
 import { useExplorer } from '@/hooks/useExplorer'
 import { ExecutionStatus, DatabaseType } from '@/types/database'
+import { getEngineConfig } from '@/lib/engine-icons'
+import { cn } from '@/lib/utils'
 
 export default function Explorer() {
   const {
@@ -68,6 +70,9 @@ export default function Explorer() {
     activeExplorerTabId,
     removeExplorerTab,
     setExplorerState,
+    connections,
+    connectedConnectionIds,
+    switchExplorerConnection,
   } = useExplorer()
 
   if (!activeConnection) {
@@ -86,6 +91,36 @@ export default function Explorer() {
   
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
+      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar border border-border rounded-xl bg-card px-2 py-1.5 shrink-0">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-2 shrink-0">
+          Connections
+        </span>
+        {connections
+          .filter((conn) => connectedConnectionIds.includes(conn.id))
+          .map((conn) => {
+            const config = getEngineConfig(conn.type)
+            const EngineIcon = config.icon
+            const isActive = activeConnection?.id === conn.id
+            return (
+              <button
+                key={conn.id}
+                onClick={() => switchExplorerConnection(conn)}
+                title={isActive ? `${conn.name} (active)` : `Switch to ${conn.name}`}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors',
+                  isActive
+                    ? 'bg-accent-muted ring-1 ring-accent/30 text-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <span className={cn('flex items-center justify-center w-5 h-5 rounded', config.bgClass)}>
+                  <EngineIcon className={cn('w-3 h-3', config.textClass)} />
+                </span>
+                <span className="truncate max-w-[160px]">{conn.name}</span>
+              </button>
+            )
+          })}
+      </div>
       <div className="flex-1 flex gap-6 relative overflow-hidden">
         {showParamModal && (
           <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4">

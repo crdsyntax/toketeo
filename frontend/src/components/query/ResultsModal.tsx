@@ -59,6 +59,8 @@ interface ResultsModalProps {
   setSelectedRowIndexes: Dispatch<SetStateAction<Set<number>>>;
   selectionAnchor: number | null;
   setSelectionAnchor: Dispatch<SetStateAction<number | null>>;
+  isMongo?: boolean;
+  handleCopyCell?: (row: DbRow, column: string) => void;
 }
 
 export function ResultsModal({
@@ -84,8 +86,16 @@ export function ResultsModal({
   setSelectedRowIndexes,
   selectionAnchor,
   setSelectionAnchor,
+  isMongo = false,
+  handleCopyCell,
 }: ResultsModalProps) {
-  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>(isMongo ? 'json' : 'table');
+
+  const [prevIsMongo, setPrevIsMongo] = useState(isMongo);
+  if (isMongo !== prevIsMongo) {
+    setPrevIsMongo(isMongo);
+    if (isMongo) setViewMode('json');
+  }
 
   if (!isOpen || !activeTab?.results) return null;
 
@@ -264,6 +274,7 @@ export function ResultsModal({
               setSelectionAnchor={setSelectionAnchor}
               setShowExportMenu={() => {}}
               setShowLimitMenu={() => {}}
+              handleCopyCell={handleCopyCell}
             />
           )}
 

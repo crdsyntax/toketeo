@@ -55,6 +55,8 @@ interface ResultsPanelProps {
   scriptLive: ScriptLiveStatement[] | null;
   scriptLiveRunning: boolean;
   onShowScriptSummary: () => void;
+  isMongo?: boolean;
+  handleCopyCell?: (row: DbRow, column: string) => void;
 }
 
 export function ResultsPanel({
@@ -88,10 +90,18 @@ export function ResultsPanel({
   scriptLive,
   scriptLiveRunning,
   onShowScriptSummary,
+  isMongo = false,
+  handleCopyCell,
 }: ResultsPanelProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showLimitMenu, setShowLimitMenu] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>(isMongo ? 'json' : 'table');
+
+  const [prevIsMongo, setPrevIsMongo] = useState(isMongo);
+  if (isMongo !== prevIsMongo) {
+    setPrevIsMongo(isMongo);
+    if (isMongo) setViewMode('json');
+  }
 
   const isResultsPanelVisible = panels?.results ?? false;
 
@@ -167,6 +177,7 @@ export function ResultsPanel({
                   setSelectionAnchor={setSelectionAnchor}
                   setShowExportMenu={setShowExportMenu}
                   setShowLimitMenu={setShowLimitMenu}
+                  handleCopyCell={handleCopyCell}
                 />
               )}
               {activeTab?.status === ExecutionStatus.EXECUTING && (

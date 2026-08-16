@@ -20,7 +20,8 @@ import { listen } from '@tauri-apps/api/event'
 import { splitSqlStatements } from '@/lib/sqlScript'
 import { extractStatementAtCursor } from '@/lib/sql-statement'
 import type { ScriptErrorPrompt } from '@/components/query/ScriptErrorModal'
-import { generateRowsWhereClause, quoteIdent, quoteTableName } from '@/lib/sqlGenerator'
+import { generateRowsWhereClause, quoteIdent, quoteTableName, generateSelectByIds, generateDeleteByIds, generateUpdateByIds, generateInsertRows } from '@/lib/sqlGenerator'
+import { generateMongoCommand, extractMongoCollection, type MongoAction } from '@/lib/mongoGenerator'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -1097,63 +1098,6 @@ export function useQueryEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  const handleGenerateSql = useCallback(async (action: string) => {
-    if (!contextMenuSql || !activeTab?.results) return;
-
-    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
-    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
-      ? activeConnection
-      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
-    if (!targetConnection) return;
-
-    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
-    let tableName = tableNameMatch ? tableNameMatch[1] : null
-    
-    if (!tableName) {
-      updateTabResults(activeTab.id, { 
-        status: ExecutionStatus.ERROR, 
-        error: 'Cannot generate SQL: Table name not found in query.' 
-      })
-      setContextMenuSql(null)
-      return
-    }
-
-    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
-        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
-    }
-
-    const pks = activeTab.results.primary_keys || [];
-    const primary_keys = pks.reduce(
-      (acc, pk) => {
-        if (contextMenuSql.row[pk] !== undefined) acc[pk] = contextMenuSql.row[pk];
-        return acc;
-      },
-      {} as Record<string, DbValue>,
-    );
-
-    try {
-      if (action === 'json') {
-        const jsonStr = JSON.stringify(contextMenuSql.row, null, 2);
-        setSqlModal({ isOpen: true, sql: jsonStr });
-      } else {
-        const sql = await tauriApi.invoke<string>('generate_sql', {
-          id: targetConnection.id,
-          action,
-          context: {
-            table: tableName,
-            primary_keys,
-            data: contextMenuSql.row,
-          },
-        });
-        setSqlModal({ isOpen: true, sql });
-      }
-    } catch (e) {
-      console.error('Failed to generate SQL:', e);
-    } finally {
-      setContextMenuSql(null);
-    }
-  }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults]);
-
   const sortedRows = useMemo(() => {
     const rows = activeTab?.results?.rows;
     if (!rows) return []
@@ -1169,6 +1113,130 @@ export function useQueryEditor() {
       return 0
     })
   }, [activeTab?.results?.rows, sortConfig])
+
+  const handleGenerateSql = useCallback(async (action: string) => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return;
+
+    const isMongo = targetConnection.type === DatabaseType.MONGODB;
+
+    // Reutiliza la selección múltiple del resultsPanel: si hay filas
+    // seleccionadas se generan consultas para todas; si no, para la fila
+    // sobre la que se hizo click derecho.
+    const selectedRows = [...selectedRowIndexes]
+      .map((i) => sortedRows[i])
+      .filter((r): r is DbRow => Boolean(r))
+    const rows = selectedRows.length > 0 ? selectedRows : [contextMenuSql.row]
+
+    try {
+      if (action === 'json') {
+        const jsonStr = JSON.stringify(rows.length > 1 ? rows : rows[0], null, 2);
+        setSqlModal({ isOpen: true, sql: jsonStr });
+      } else if (isMongo) {
+        const collection = extractMongoCollection(activeTab.query)
+        if (!collection) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Cannot generate Mongo command: Collection name not found in query.',
+          })
+          setContextMenuSql(null)
+          return
+        }
+        const mongoSql = generateMongoCommand(collection, action as MongoAction, rows)
+        setSqlModal({ isOpen: true, sql: mongoSql });
+      } else {
+        const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+        const tableName = tableNameMatch ? tableNameMatch[1] : null
+
+        if (!tableName) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Cannot generate SQL: Table name not found in query.',
+          })
+          setContextMenuSql(null)
+          return
+        }
+
+        const pks = activeTab.results.primary_keys || [];
+
+        // Reutiliza los generadores del DataTab (sqlGenerator.ts): soportan
+        // una o varias filas. UPDATE usa los valores no-PK del primer registro.
+        let sql = ''
+        switch (action) {
+          case 'select':
+            sql = generateSelectByIds(tableName, rows, pks, targetConnection.type)
+            break
+          case 'delete':
+            sql = generateDeleteByIds(tableName, rows, pks, targetConnection.type)
+            break
+          case 'insert':
+            sql = generateInsertRows(tableName, rows, targetConnection.type)
+            break
+          case 'update': {
+            const assignments = Object.entries(rows[0] ?? {})
+              .filter(([k]) => !pks.includes(k))
+              .map(([k, v]) => ({ column: k, value: v as DbValue }))
+            sql = generateUpdateByIds(tableName, rows, pks, assignments, targetConnection.type)
+            break
+          }
+          default:
+            sql = ''
+        }
+        if (!sql) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Cannot generate SQL: No primary key / identity columns available to identify the selected rows.',
+          })
+          setContextMenuSql(null)
+          return
+        }
+        setSqlModal({ isOpen: true, sql });
+      }
+    } catch (e) {
+      console.error('Failed to generate SQL:', e);
+    } finally {
+      setContextMenuSql(null);
+    }
+  }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults, selectedRowIndexes, sortedRows]);
+
+  /** Copy the right-clicked row (or all selected rows) to the clipboard as JSON. */
+  const handleCopyRows = useCallback(async () => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const selectedRows = [...selectedRowIndexes]
+      .map((i) => sortedRows[i])
+      .filter((r): r is DbRow => Boolean(r))
+    const rows = selectedRows.length > 0 ? selectedRows : [contextMenuSql.row]
+
+    try {
+      const text = rows.length > 1 ? JSON.stringify(rows, null, 2) : JSON.stringify(rows[0], null, 2)
+      await navigator.clipboard.writeText(text)
+      toast.success(rows.length > 1 ? `Copied ${rows.length} rows as JSON` : 'Copied row as JSON')
+    } catch (e) {
+      console.error('Failed to copy rows:', e)
+    } finally {
+      setContextMenuSql(null)
+    }
+  }, [contextMenuSql, activeTab, selectedRowIndexes, sortedRows])
+
+  /** Copy a single cell value to the clipboard. */
+  const handleCopyCell = useCallback(async (row: DbRow, column: string) => {
+    try {
+      const value = row[column]
+      const text = value === null || value === undefined
+        ? ''
+        : typeof value === 'object' ? JSON.stringify(value) : String(value)
+      await navigator.clipboard.writeText(text)
+      toast.success(`Copied ${column}`)
+    } catch (e) {
+      console.error('Failed to copy cell:', e)
+    }
+  }, [])
 
   /** Execute a SELECT that targets the right-clicked row (plus any multi-selected rows). */
   const handleExecuteRowSql = useCallback(async () => {
@@ -1322,6 +1390,8 @@ export function useQueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    handleCopyRows,
+    handleCopyCell,
     handleExecuteRowSql,
     updateTabViewState,
     updateTabMongoFilter,

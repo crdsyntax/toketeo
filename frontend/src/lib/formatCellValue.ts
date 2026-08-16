@@ -49,3 +49,26 @@ export function formatCellValue(value: DbValue): string {
 
   return strVal;
 }
+
+/** String representation used as the editable value of an inline cell editor.
+ *  ObjectId (`{ $oid }`) and Mongo date (`{ $date }`) values are flattened to
+ *  their scalar payload so the user edits the raw string instead of seeing
+ *  `[object Object]`. Any other object is JSON stringified. */
+export function formatEditValue(value: DbValue): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (obj.$oid) return String(obj.$oid);
+    if (obj.$date !== undefined) {
+      const d = obj.$date;
+      if (typeof d === 'string' || typeof d === 'number') return String(d);
+      if (d && typeof d === 'object') {
+        const numLong = (d as Record<string, unknown>).$numberLong;
+        if (numLong !== undefined) return String(numLong);
+      }
+      return JSON.stringify(d);
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+}

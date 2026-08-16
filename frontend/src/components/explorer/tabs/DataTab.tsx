@@ -40,7 +40,7 @@ import { ContextMenu, type ContextMenuGroup } from '@/components/ui/ContextMenu'
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type DataTabViewMode } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
-import { formatCellValue } from '@/lib/formatCellValue';
+import { formatCellValue, formatEditValue } from '@/lib/formatCellValue';
 import { Button } from '@/components/ui/Button';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 import { JsonResultsView } from '@/components/ui/JsonResultsView';
@@ -451,7 +451,7 @@ export function DataTab({
   ) => {
     if (selectedItem.type !== 'table') return;
     setEditingCell({ rowIndex, column });
-    setEditValue(value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value));
+    setEditValue(formatEditValue(value));
   };
 
   /**
