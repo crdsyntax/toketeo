@@ -211,6 +211,44 @@ pub async fn delete_connection(id: String, state: State<'_, AppState>) -> AppRes
 }
 
 #[tauri::command]
+pub async fn get_database_credential(
+    id: String,
+    database: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<crate::models::DatabaseCredential>> {
+    ConnectionService::get_database_credential(&state, &id, &database).await
+}
+
+#[tauri::command]
+pub async fn save_database_credential(
+    id: String,
+    database: String,
+    user: String,
+    password: String,
+    auth_source: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::save_database_credential(
+        &state,
+        &id,
+        &database,
+        &user,
+        &password,
+        &auth_source,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_database_credential(
+    id: String,
+    database: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::delete_database_credential(&state, &id, &database).await
+}
+
+#[tauri::command]
 pub async fn reveal_connection_secret(
     id: String,
     field: String,

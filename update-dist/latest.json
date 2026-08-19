@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.7_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUlkY1NRdEd2ZnJUaFZuQ2MwMVdDTlEvYlplenY3cm9hd0FjUER6WWU2anV1S3F4NmJ2Snc0dSs1WDZQdmlqanZnbXh5bEt2QTBLSFZkQk1DdzFxV1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTA5MzQwCWZpbGU6VG9rZXRlb18wLjQuN194NjRfZW4tVVMubXNpClpzZzBoaHNRQldCR3NiRk9LM2N4UTNTYjA0VCtWeS9VNkxyQm5DRGl5ZEhienNjcWJMZHU4eHJWNk1BOFhYRTNON1NiOEs3ZzhjVGxXNE00bllpT0JBPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.8_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUZhem9qZkdQY3JEM3A4ZmNobXFUZXRGUGQxWm1YaEFFZ3NKMXErZGNiMWsxSk5FZm4vK1RGdkh6WnFKbVJhUFlQNWQzUGNqK1J2UUh5UnZwWk5MNEFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2ODY0NjYzCWZpbGU6VG9rZXRlb18wLjQuOF94NjRfZW4tVVMubXNpClYrZXBONktFRHNiK2tLa1hvSlJiUjRJWkR5dEowbWlMRlNVWlRISGhROFZldjMyOUFjeHhjV3QydlBaODZ1aWtuUTZYR09GK3BmcWdIMUFzQktTU0JBPT0K"
                                          }
                   },
-    "pub_date":  "2026-08-12T04:35:40Z",
-    "version":  "0.4.7",
-    "notes":  "v0.4.7 - Cross-DB sync: FK topological ordering, auto-create missing columns / drop NOT NULL on target, enum casts on upsert, central null-byte sanitization, robust source-schema detection, reltuples count + keyset index checks. Explorer: smart cell editors (enum select, boolean switch, date/time NOW() via context menu), numeric(10,4) and pgvector display, sidebar collapses only on double-click, connect no longer opens Explorer. Query editor: fixed malformed SELECT WHERE, single-row \u0027=\u0027 vs IN in batch actions, generated SQL sent to editor with current connection/schema."
+    "pub_date":  "2026-08-16T07:17:43Z",
+    "version":  "0.4.8",
+    "notes":  "v0.4.8: Query editor results panel Mongo actions (find/update/insert/delete + JSON) via context menu; generate SELECT/UPDATE/INSERT/DELETE or Mongo commands from one or multiple selected rows; copy row(s) and per-cell copy; double-click row number toggles selection; explorer tab context fixes; JSON viewMode default for Mongo results; header tooltips."
 }

@@ -227,6 +227,14 @@ export interface Connection {
 
 export type CreateConnectionDto = Omit<Connection, 'id' | 'createdAt' | 'updatedAt'>
 
+export interface DatabaseCredential {
+  connectionId: string
+  database: string
+  user: string
+  password?: string
+  authSource?: string
+}
+
 export interface DumpSelection {
   tables: string[]
   views: string[]

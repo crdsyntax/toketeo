@@ -88,6 +88,38 @@ impl fmt::Debug for DbConnectionConfig {
     }
 }
 
+/// Per-database credentials override for a connection (currently used for
+/// MongoDB where each database may have its own user/password/authSource).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DatabaseCredential {
+    pub connection_id: Uuid,
+    pub database: String,
+    pub user: String,
+    #[serde(
+        serialize_with = "serialize_secret",
+        deserialize_with = "deserialize_secret"
+    )]
+    pub password: Option<SecretString>,
+    #[serde(rename = "authSource")]
+    pub auth_source: Option<String>,
+    #[serde(skip)]
+    pub password_enc: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub password_nonce: Option<Vec<u8>>,
+}
+
+impl fmt::Debug for DatabaseCredential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseCredential")
+            .field("connection_id", &self.connection_id)
+            .field("database", &self.database)
+            .field("user", &"***")
+            .field("password", &self.password)
+            .field("auth_source", &self.auth_source)
+            .finish()
+    }
+}
+
 impl DbConnectionConfig {
     pub fn strip_secrets(&mut self) {
         self.password = None;

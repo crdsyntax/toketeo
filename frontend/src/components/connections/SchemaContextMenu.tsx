@@ -1,5 +1,5 @@
 import { useState, useRef, forwardRef, type Ref } from 'react'
-import { Database, Upload, Download, ChevronDown, Trash2 } from 'lucide-react'
+import { Database, Upload, Download, ChevronDown, Trash2, KeyRound } from 'lucide-react'
 import { DatabaseType, type Connection } from '@/types/database'
 import type { QueryClient } from '@tanstack/react-query'
 import { schemaService } from '@/services/schema.service'
@@ -23,6 +23,7 @@ interface SchemaContextMenuProps {
   } | null) => void
   handleDumpClick: (conn: Connection, schema: string) => void
   handleRestoreClick: (conn: Connection, schema: string) => void
+  handleCredentialsClick: (conn: Connection, database: string) => void
   onCreateSchemaClick: () => void
 }
 
@@ -30,7 +31,7 @@ export const SchemaContextMenu = forwardRef<HTMLDivElement, SchemaContextMenuPro
   props: SchemaContextMenuProps,
   ref: Ref<HTMLDivElement>,
 ) => {
-  const { x, y, conn, schema, onClose, queryClient, setPromptModal, handleDumpClick, handleRestoreClick, onCreateSchemaClick } = props
+  const { x, y, conn, schema, onClose, queryClient, setPromptModal, handleDumpClick, handleRestoreClick, handleCredentialsClick, onCreateSchemaClick } = props
   const [submenuOpen, setSubmenuOpen] = useState(false)
   const submenuTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -70,20 +71,24 @@ export const SchemaContextMenu = forwardRef<HTMLDivElement, SchemaContextMenuPro
             onMouseEnter={openSubmenu}
             onMouseLeave={closeSubmenu}
           >
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
-              onClick={() => handleDumpClick(conn, schema)}
-            >
-              <Upload className="w-3.5 h-3.5 text-muted-foreground" />
-              Dump
-            </button>
-            <button
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
-              onClick={() => handleRestoreClick(conn, schema)}
-            >
-              <Download className="w-3.5 h-3.5 text-muted-foreground" />
-              Restore
-            </button>
+            {conn.type !== DatabaseType.MONGODB && conn.type !== DatabaseType.REDIS && (
+              <>
+                <button
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+                  onClick={() => handleDumpClick(conn, schema)}
+                >
+                  <Upload className="w-3.5 h-3.5 text-muted-foreground" />
+                  Dump
+                </button>
+                <button
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+                  onClick={() => handleRestoreClick(conn, schema)}
+                >
+                  <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                  Restore
+                </button>
+              </>
+            )}
             {conn.type === DatabaseType.POSTGRES && (
               <>
                 <div className="border-t border-border my-1" />
@@ -163,6 +168,13 @@ export const SchemaContextMenu = forwardRef<HTMLDivElement, SchemaContextMenuPro
               >
                 <Download className="w-3.5 h-3.5 text-muted-foreground" />
                 Restore MongoDB
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+                onClick={() => handleCredentialsClick(conn, schema)}
+              >
+                <KeyRound className="w-3.5 h-3.5 text-muted-foreground" />
+                Credentials
               </button>
               <div className="border-t border-border my-1" />
               <button

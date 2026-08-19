@@ -5,7 +5,12 @@ import type { QueryTab } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
 import type { DbRow, DbValue } from '@/types/database';
 import { ArrowUp, ArrowDown, ArrowUpDown, Copy, Check } from 'lucide-react';
-import { formatCellValue, formatEditValue } from '@/lib/formatCellValue';
+import {
+  formatCellValue,
+  formatEditValue,
+  isDateLikeValue,
+  toDateTimeLocalInput,
+} from '@/lib/formatCellValue';
 
 interface ResultsPanelTableProps {
   activeTab: QueryTab;
@@ -224,25 +229,48 @@ export function ResultsPanelTable({
                       )}
                     >
                       {isEditing ? (
-                        <input
-                          autoFocus
-                          className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
-                          value={formatEditValue(editingCell.value)}
-                          onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleSave();
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setEditingCell(null);
-                            }
-                          }}
-                        />
+                        isDateLikeValue(row[col]) ? (
+                          <input
+                            autoFocus
+                            type="datetime-local"
+                            className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
+                            value={toDateTimeLocalInput(formatEditValue(editingCell.value))}
+                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSave();
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setEditingCell(null);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <input
+                            autoFocus
+                            className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
+                            value={formatEditValue(editingCell.value)}
+                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSave();
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setEditingCell(null);
+                              }
+                            }}
+                          />
+                        )
                       ) : (
                         <div className="flex items-center gap-1">
                           {isNull ? (

@@ -40,7 +40,13 @@ import { ContextMenu, type ContextMenuGroup } from '@/components/ui/ContextMenu'
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type DataTabViewMode } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
-import { formatCellValue, formatEditValue } from '@/lib/formatCellValue';
+import {
+  coerceEditedDateValue,
+  formatCellValue,
+  formatEditValue,
+  isDateLikeValue,
+  toDateTimeLocalInput,
+} from '@/lib/formatCellValue';
 import { Button } from '@/components/ui/Button';
 import { ReviewChangePanel } from '@/components/ui/ReviewChangePanel';
 import { JsonResultsView } from '@/components/ui/JsonResultsView';
@@ -78,7 +84,7 @@ interface PendingCellEdit {
   row: DbRow;
   column: string;
   prevValue: DbValue;
-  nextValue: string;
+  nextValue: DbValue;
 }
 
 /** State for the inline SQL preview panel. */
@@ -462,16 +468,17 @@ export function DataTab({
   const handleSaveEdit = (row: DbRow) => {
     if (!editingCell) return;
     const prevValue = row[editingCell.column];
+    const nextValue = coerceEditedDateValue(editValue, prevValue);
     // When the Review Change panel is disabled (Settings → Query Editor →
     // Inline edition), apply the edit immediately.
     if (!inlineEditReview) {
-      updateCell(row, editingCell.column, editValue);
+      updateCell(row, editingCell.column, nextValue);
       const newHistory = history.slice(0, historyIndex + 1);
       newHistory.push({
         row,
         col: editingCell.column,
         prev: prevValue,
-        next: editValue,
+        next: nextValue,
       });
       setHistory(newHistory);
       setHistoryIndex(newHistory.length - 1);
@@ -501,7 +508,7 @@ export function DataTab({
       row,
       column: editingCell.column,
       prevValue,
-      nextValue: editValue,
+      nextValue,
     });
     setEditingCell(null);
   };
@@ -509,14 +516,15 @@ export function DataTab({
   /** Phase 9 — Confirm a staged pending cell edit after visual diff review. */
   const confirmPendingEdit = () => {
     if (!pendingEdit) return;
-    updateCell(pendingEdit.row, pendingEdit.column, pendingEdit.nextValue);
+    const nextValue = pendingEdit.nextValue;
+    updateCell(pendingEdit.row, pendingEdit.column, nextValue);
     // Persist in undo/redo history
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push({
       row: pendingEdit.row,
       col: pendingEdit.column,
       prev: pendingEdit.prevValue,
-      next: pendingEdit.nextValue,
+      next: nextValue,
     });
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
@@ -1053,6 +1061,15 @@ export function DataTab({
                                     </button>
                                   );
                                 })()
+                              ) : isDateLikeValue(value) || isDateTimeColumn(col) ? (
+                                <input
+                                  autoFocus
+                                  type="datetime-local"
+                                  className="w-full bg-muted border border-border px-1 py-0.5 rounded outline-none"
+                                  value={toDateTimeLocalInput(formatEditValue(value))}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onKeyDown={(e) => onInputKeyDown(e, row)}
+                                />
                               ) : (
                                 <input
                                   autoFocus

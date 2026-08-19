@@ -411,6 +411,21 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        // Per-database credentials (MongoDB: each db may have its own auth)
+        let _ = sqlx::query(
+            "CREATE TABLE IF NOT EXISTS connection_database_credentials (
+                connection_id TEXT NOT NULL,
+                database TEXT NOT NULL,
+                user TEXT NOT NULL DEFAULT '',
+                password_enc BLOB,
+                password_nonce BLOB,
+                auth_source TEXT,
+                PRIMARY KEY (connection_id, database)
+            )",
+        )
+        .execute(&pool)
+        .await;
+
         Ok(Self {
             pool,
             master_key: RwLock::new(None),
@@ -755,6 +770,10 @@ impl Storage {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        sqlx::query("DELETE FROM connection_database_credentials WHERE connection_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -768,6 +787,82 @@ impl Storage {
         .bind(&config.ssh_enc)
         .bind(&config.ssh_nonce)
         .bind(&id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_database_credential(
+        &self,
+        connection_id: &str,
+        database: &str,
+    ) -> AppResult<Option<crate::models::DatabaseCredential>> {
+        let row = sqlx::query(
+            "SELECT connection_id, database, user, password_enc, password_nonce, auth_source
+             FROM connection_database_credentials
+             WHERE connection_id = ? AND database = ?",
+        )
+        .bind(connection_id)
+        .bind(database)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| crate::models::DatabaseCredential {
+            connection_id: r
+                .get::<String, _>("connection_id")
+                .parse()
+                .unwrap_or_else(|_| uuid::Uuid::nil()),
+            database: r.get::<String, _>("database"),
+            user: r.get::<String, _>("user"),
+            password: None,
+            auth_source: r
+                .try_get::<Option<String>, _>("auth_source")
+                .unwrap_or(None),
+            password_enc: r
+                .try_get::<Option<Vec<u8>>, _>("password_enc")
+                .unwrap_or(None),
+            password_nonce: r
+                .try_get::<Option<Vec<u8>>, _>("password_nonce")
+                .unwrap_or(None),
+        }))
+    }
+
+    pub async fn save_database_credential(
+        &self,
+        cred: &crate::models::DatabaseCredential,
+    ) -> AppResult<()> {
+        let id = cred.connection_id.to_string();
+        sqlx::query(
+            "INSERT INTO connection_database_credentials
+                (connection_id, database, user, password_enc, password_nonce, auth_source)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(connection_id, database) DO UPDATE SET
+                user = excluded.user,
+                password_enc = excluded.password_enc,
+                password_nonce = excluded.password_nonce,
+                auth_source = excluded.auth_source",
+        )
+        .bind(id)
+        .bind(&cred.database)
+        .bind(&cred.user)
+        .bind(&cred.password_enc)
+        .bind(&cred.password_nonce)
+        .bind(&cred.auth_source)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_database_credential(
+        &self,
+        connection_id: &str,
+        database: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            "DELETE FROM connection_database_credentials WHERE connection_id = ? AND database = ?",
+        )
+        .bind(connection_id)
+        .bind(database)
         .execute(&self.pool)
         .await?;
         Ok(())

@@ -22,6 +22,7 @@ import { extractStatementAtCursor } from '@/lib/sql-statement'
 import type { ScriptErrorPrompt } from '@/components/query/ScriptErrorModal'
 import { generateRowsWhereClause, quoteIdent, quoteTableName, generateSelectByIds, generateDeleteByIds, generateUpdateByIds, generateInsertRows } from '@/lib/sqlGenerator'
 import { generateMongoCommand, extractMongoCollection, type MongoAction } from '@/lib/mongoGenerator'
+import { coerceEditedDateValue } from '@/lib/formatCellValue'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -1022,20 +1023,21 @@ export function useQueryEditor() {
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
+    const row = activeTab?.results?.rows[editingCell.rowIndex]
+    const prevValue = row ? row[editingCell.column] : null
+    const nextValue = coerceEditedDateValue(String(editingCell.value ?? ''), prevValue)
     // When the Review Change panel is disabled (Settings â†’ Query Editor â†’
     // Inline edition), apply the edit immediately.
     if (!useAppStore.getState().inlineEditReview) {
-      await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
+      await updateCell(editingCell.rowIndex, editingCell.column, nextValue)
       return
     }
     // Stage the edit so the user can review the diff before committing.
-    const row = activeTab?.results?.rows[editingCell.rowIndex]
-    const prevValue = row ? row[editingCell.column] : null
     setPendingEdit({
       rowIndex: editingCell.rowIndex,
       column: editingCell.column,
       prevValue,
-      nextValue: editingCell.value,
+      nextValue,
     })
     setEditingCell(null)
   }, [editingCell, updateCell, activeTab])

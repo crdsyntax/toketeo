@@ -16,6 +16,7 @@ import { PromptModal } from './PromptModal'
 import { ConnectionContextMenu } from './ConnectionContextMenu'
 import { SchemaContextMenu } from './SchemaContextMenu'
 import { CreateSchemaModal } from './CreateSchemaModal'
+import { DatabaseCredentialsModal } from './DatabaseCredentialsModal'
 import { Button } from '@/components/ui/Button'
 import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
 import { openScriptTabForConnection } from '@/lib/connectionScript'
@@ -119,6 +120,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     onConfirm: (value: string) => void
   } | null>(null)
   const [showCreateSchema, setShowCreateSchema] = useState<{ conn: Connection; schema: string } | null>(null)
+  const [credentialsTarget, setCredentialsTarget] = useState<{ conn: Connection; database: string } | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Record<DatabaseType, boolean>>({
     [DatabaseType.POSTGRES]: false,
     [DatabaseType.MARIADB]: false,
@@ -172,6 +174,11 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     } catch (e) {
       toast.error(`Failed to fetch objects: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
+  }
+
+  const handleCredentialsClick = (conn: Connection, database: string) => {
+    setSchemaMenu(null)
+    setCredentialsTarget({ conn, database })
   }
 
   const handleRestoreClick = async (conn: Connection, schema: string) => {
@@ -698,6 +705,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
             setPromptModal={setPromptModal}
             handleDumpClick={handleDumpClick}
             handleRestoreClick={handleRestoreClick}
+            handleCredentialsClick={handleCredentialsClick}
             onCreateSchemaClick={() => setShowCreateSchema({ conn: schemaMenu.conn, schema: schemaMenu.schema })}
           />
         )}
@@ -745,6 +753,18 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
               queryClient.invalidateQueries({ queryKey: ['databases', showCreateSchema.conn.id] })
               queryClient.invalidateQueries({ queryKey: ['schemas', showCreateSchema.conn.id] })
               setShowCreateSchema(null)
+            }}
+          />
+        )}
+
+        {credentialsTarget && (
+          <DatabaseCredentialsModal
+            connId={credentialsTarget.conn.id}
+            connName={credentialsTarget.conn.name}
+            database={credentialsTarget.database}
+            onClose={() => setCredentialsTarget(null)}
+            onSaved={() => {
+              queryClient.invalidateQueries({ queryKey: ['databases', credentialsTarget.conn.id] })
             }}
           />
         )}

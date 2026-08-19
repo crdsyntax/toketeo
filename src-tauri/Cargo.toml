@@ -1,6 +1,6 @@
 [package]
 name = "toketeo"
-version = "0.4.8"
+version = "0.4.9"
 description = "Toketeo Database Client and Administration Panel"
 authors = ["crdsyntax"]
 edition = "2021"
