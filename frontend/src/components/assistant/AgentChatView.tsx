@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { ArrowUp, AlertTriangle, Table2, ThumbsUp, ThumbsDown, ArrowUpToLine, ChevronDown, Sparkles, Check } from 'lucide-react'
+import { ArrowUp, AlertTriangle, Table2, ThumbsUp, ThumbsDown, ArrowUpToLine, ChevronDown, Sparkles, Check, Eraser } from 'lucide-react'
 import { useAgentChat, type UseAgentChatOptions } from '@/hooks/useAgentChat'
 import { cn } from '@/lib/utils'
 import type { ModelInfo } from '@/types/assistant'
@@ -58,32 +58,97 @@ function groupModels(models: ModelInfo[]): { key: string; label: string; models:
   return sections
 }
 
-function MarkdownContent({ content }: { content: string }) {
-  const html = useMemo(() => {
-    // Simple markdown to HTML converter
-    const result = content
-      // Code blocks
-      .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="bg-[#1a1a1a] border border-[#333] rounded-lg p-3 my-2 whitespace-pre-wrap break-words"><code class="text-[13px] font-mono text-[#e6edf3]">$2</code></pre>')
-      // Inline code
-      .replace(/`([^`]+)`/g, '<code class="bg-[#1a1a1a] border border-[#333] rounded px-1.5 py-0.5 text-[13px] font-mono text-[#e6edf3]">$1</code>')
-      // Bold
-      .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
-      // Italic
-      .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
-      // Headers
-      .replace(/^### (.+)$/gm, '<h3 class="text-sm font-semibold text-foreground mt-4 mb-2">$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2 class="text-base font-semibold text-foreground mt-4 mb-2">$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1 class="text-lg font-semibold text-foreground mt-4 mb-2">$1</h1>')
-      // Lists
-      .replace(/^- (.+)$/gm, '<li class="ml-4 text-[13px] text-[#b4b4b4]">$1</li>')
-      .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-[13px] text-[#b4b4b4]">$2</li>')
-      // Paragraphs
-      .replace(/\n\n/g, '</p><p class="mb-3">')
-      // Line breaks
-      .replace(/\n/g, '<br/>')
+function markdownToHtml(content: string): string {
+  const escapeHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-    return `<p class="mb-0">${result}</p>`
-  }, [content])
+  // Extract fenced code blocks first so their content is not processed.
+  const codeBlocks: string[] = []
+  let text = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, _lang, code) => {
+    codeBlocks.push(
+      `<pre class="bg-[#1a1a1a] border border-[#333] rounded-lg p-3 my-2 whitespace-pre-wrap break-words"><code class="text-[13px] font-mono text-[#e6edf3]">${escapeHtml(code)}</code></pre>`,
+    )
+    return `@@CODE${codeBlocks.length - 1}@@`
+  })
+
+  const lines = text.split('\n')
+  const out: string[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    // GFM table: header row + separator row (| --- | --- |)
+    if (
+      line.trim().startsWith('|') &&
+      i + 1 < lines.length &&
+      /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])
+    ) {
+      const parseRow = (row: string) =>
+        row
+          .trim()
+          .replace(/^\||\|$/g, '')
+          .split('|')
+          .map((c) => c.trim())
+      const headers = parseRow(line)
+      i += 2
+      const bodyRows: string[][] = []
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        bodyRows.push(parseRow(lines[i]))
+        i++
+      }
+      out.push(
+        `<div class="my-2 overflow-x-hidden"><table class="w-full border-collapse text-[12px]">` +
+          `<thead><tr>${headers
+            .map(
+              (h) =>
+                `<th class="border border-[#333] bg-[#1a1a1a] px-2 py-1 text-left font-semibold text-[#ccc]">${h}</th>`,
+            )
+            .join('')}</tr></thead>` +
+          `<tbody>${bodyRows
+            .map(
+              (r) =>
+                `<tr>${r
+                  .map(
+                    (c) =>
+                      `<td class="border border-[#333] px-2 py-1 align-top">${c}</td>`,
+                  )
+                  .join('')}</tr>`,
+            )
+            .join('')}</tbody></table></div>`,
+      )
+      continue
+    }
+    out.push(line)
+    i++
+  }
+  text = out.join('\n')
+
+  const result = text
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code class="bg-[#1a1a1a] border border-[#333] rounded px-1.5 py-0.5 text-[13px] font-mono text-[#e6edf3]">$1</code>')
+    // Bold
+    .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+    // Italic
+    .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3 class="text-sm font-semibold text-foreground mt-4 mb-2">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-base font-semibold text-foreground mt-4 mb-2">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-lg font-semibold text-foreground mt-4 mb-2">$1</h1>')
+    // Lists
+    .replace(/^- (.+)$/gm, '<li class="ml-4 text-[13px] text-[#b4b4b4]">$1</li>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-[13px] text-[#b4b4b4]">$2</li>')
+    // Paragraphs
+    .replace(/\n\n/g, '</p><p class="mb-3">')
+    // Line breaks
+    .replace(/\n/g, '<br/>')
+
+  return `<p class="mb-0">${result}</p>`.replace(
+    /@@CODE(\d+)@@/g,
+    (_, idx) => codeBlocks[Number(idx)] ?? '',
+  )
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const html = useMemo(() => markdownToHtml(content), [content])
 
   return (
     <div
@@ -127,6 +192,7 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
     handleSend,
     handleFeedback,
     loadInEditor,
+    clearConversation,
     confirmPending,
   } = useAgentChat({ onBeforeSend })
 
@@ -340,6 +406,17 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
           </button>
         </div>
         <div className="flex items-center gap-2 mt-2 px-1">
+          {messages.length > 0 && (
+            <button
+              onClick={clearConversation}
+              disabled={isStreaming}
+              className="flex items-center gap-1.5 text-[11px] text-[#888] hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Limpiar conversación (borra también el historial guardado)"
+            >
+              <Eraser className="w-3 h-3" />
+              Limpiar
+            </button>
+          )}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setShowModelDropdown(!showModelDropdown)}

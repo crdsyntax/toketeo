@@ -12,7 +12,17 @@ pub struct AuditEntry {
     pub execution_time_ms: u64,
     pub status: String,
     pub error: Option<String>,
+    /// Who executed the query: 'user' | 'assistant' | 'monitor'.
+    #[serde(default = "default_origin")]
+    pub origin: String,
 }
+
+fn default_origin() -> String {
+    "user".to_string()
+}
+
+pub const ORIGIN_USER: &str = "user";
+pub const ORIGIN_ASSISTANT: &str = "assistant";
 
 pub struct AuditService;
 
@@ -25,6 +35,29 @@ impl AuditService {
         status: String,
         error: Option<String>,
     ) -> AppResult<()> {
+        Self::log_query_with_origin(
+            state,
+            connection_id,
+            query,
+            execution_time_ms,
+            status,
+            error,
+            ORIGIN_USER,
+        )
+        .await
+    }
+
+    /// Same as [log_query] but attributes the entry to a specific origin so
+    /// the audit log can show whether a statement was run by the assistant.
+    pub async fn log_query_with_origin(
+        state: &AppState,
+        connection_id: String,
+        query: String,
+        execution_time_ms: u64,
+        status: String,
+        error: Option<String>,
+        origin: &str,
+    ) -> AppResult<()> {
         let entry = AuditEntry {
             id: None,
             connection_id,
@@ -33,6 +66,7 @@ impl AuditService {
             execution_time_ms,
             status,
             error,
+            origin: origin.to_string(),
         };
 
         state.storage.save_audit_log(entry).await
@@ -57,10 +91,12 @@ mod tests {
             execution_time_ms: 10,
             status: "success".into(),
             error: None,
+            origin: ORIGIN_ASSISTANT.into(),
         };
 
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("test-id"));
         assert!(json.contains("SELECT 1"));
+        assert!(json.contains("assistant"));
     }
 }

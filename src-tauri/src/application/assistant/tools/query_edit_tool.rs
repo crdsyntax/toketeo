@@ -154,7 +154,8 @@ impl AssistantTool for QueryEditTool {
             }
         };
 
-        match ExplorerService::execute_query(state, cid, &sql, None).await {
+        match ExplorerService::execute_query_with_origin(state, cid, &sql, None, "assistant").await
+        {
             Ok(result) => Ok(ToolResult {
                 ok: true,
                 data: Some(serde_json::json!({

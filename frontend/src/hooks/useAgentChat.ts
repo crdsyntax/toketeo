@@ -299,7 +299,9 @@ export function useAgentChat(options?: UseAgentChatOptions) {
           messageId,
           activeConn.id,
           feedback,
-          'openai',
+          // Tag the knowledge case with the DATABASE engine of the connection
+          // (not the LLM provider) so the Library filters match.
+          activeConn.type,
         ),
       )
       .catch(() => undefined)
@@ -392,6 +394,18 @@ export function useAgentChat(options?: UseAgentChatOptions) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(input) }
   }, [handleSend, input, setInput])
 
+  /** Clear the conversation in memory AND its persisted history. */
+  const clearConversation = useCallback(() => {
+    const store = useAssistantStore.getState()
+    store.clearMessages()
+    store.setLiveMessage(null)
+    store.setPendingConfirmation(null)
+    const conn = useAppStore.getState().activeConnection
+    if (conn) {
+      assistantService.clearMessages(conn.id).catch(() => undefined)
+    }
+  }, [])
+
   return {
     messages,
     addMessage,
@@ -408,6 +422,7 @@ export function useAgentChat(options?: UseAgentChatOptions) {
     handleSend,
     handleFeedback,
     loadInEditor,
+    clearConversation,
     confirmPending: useCallback(() => {
       const p = useAssistantStore.getState().pendingConfirmation
       if (!p) return

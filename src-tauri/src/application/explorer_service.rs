@@ -35,6 +35,18 @@ impl ExplorerService {
         query: &str,
         schema: Option<String>,
     ) -> AppResult<QueryResult> {
+        Self::execute_query_with_origin(state, id, query, schema, "user").await
+    }
+
+    /// Same as [execute_query] but attributes the audit entry to `origin`
+    /// (e.g. "assistant") so the audit log can distinguish who ran it.
+    pub async fn execute_query_with_origin(
+        state: &AppState,
+        id: &str,
+        query: &str,
+        schema: Option<String>,
+        origin: &str,
+    ) -> AppResult<QueryResult> {
         let is_read_only = state.is_read_only(id).await.unwrap_or(false);
         if is_read_only && Self::is_destructive_query(query) {
             return Err(AppError::Validation(
@@ -136,13 +148,14 @@ impl ExplorerService {
 
         match result {
             Ok(result) => {
-                let _ = AuditService::log_query(
+                let _ = AuditService::log_query_with_origin(
                     state,
                     id.to_string(),
                     query.to_string(),
                     start.elapsed().as_millis() as u64,
                     "success".to_string(),
                     None,
+                    origin,
                 )
                 .await;
 
@@ -157,13 +170,14 @@ impl ExplorerService {
                 Ok(result)
             }
             Err(e) => {
-                let _ = AuditService::log_query(
+                let _ = AuditService::log_query_with_origin(
                     state,
                     id.to_string(),
                     query.to_string(),
                     start.elapsed().as_millis() as u64,
                     "error".to_string(),
                     Some(e.to_string()),
+                    origin,
                 )
                 .await;
                 Err(e)

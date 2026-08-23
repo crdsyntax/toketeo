@@ -3,14 +3,26 @@ use crate::models::assistant::KnowledgeCase;
 use crate::storage::Storage;
 use std::sync::Arc;
 
+use super::embeddings::{build_semantic_document, kind_of, EmbeddingProvider};
+use super::vector_index::VectorIndex;
+
+/// Result of a hybrid (lexical + vector) knowledge retrieval.
+pub struct HybridSearch {
+    /// QA-style cases ranked by combined score, descending. Errors excluded.
+    pub qa: Vec<(KnowledgeCase, f64)>,
+    /// Error cases relevant to the query, ranked descending.
+    pub errors: Vec<KnowledgeCase>,
+}
+
 pub struct KnowledgeEngine;
 
 impl KnowledgeEngine {
     /// Search knowledge cases by text similarity (LIKE-based).
+    /// `engine` filters by tag when provided (`None` = all engines).
     pub async fn search(
         storage: &Storage,
         query: &str,
-        engine: &str,
+        engine: Option<&str>,
         limit: i64,
     ) -> AppResult<Vec<KnowledgeCase>> {
         storage.search_knowledge(query, engine, limit).await
@@ -49,7 +61,9 @@ impl KnowledgeEngine {
     ) -> AppResult<(String, bool)> {
         let question = format!("[error] {error}");
         // Dedupe: skip if an identical error is already stored.
-        let existing = storage.search_knowledge(&question, "error", 20).await?;
+        let existing = storage
+            .search_knowledge(&question, Some("error"), 20)
+            .await?;
         if let Some(case) = existing.into_iter().find(|c| c.question == question) {
             return Ok((case.id, false));
         }
@@ -81,6 +95,110 @@ impl KnowledgeEngine {
             }
         }
         Ok(removed)
+    }
+
+    /// Hybrid retrieval: lexical (LIKE candidates + word overlap) ∪ vector
+    /// (brute-force cosine over the in-memory embedding index), fused with a
+    /// max-score. Replaces the old "load 500 cases every turn" strategy: the
+    /// lexical side only fetches LIKE-matched candidates and the vector side
+    /// is served entirely from memory.
+    ///
+    /// `query_embedding` is `None` when no embedding provider is available —
+    /// the search then degrades gracefully to lexical-only.
+    pub async fn hybrid_search<F>(
+        storage: &Arc<Storage>,
+        vectors: &VectorIndex,
+        question: &str,
+        threshold: f64,
+        embed_query: F,
+    ) -> AppResult<HybridSearch>
+    where
+        F: std::future::Future<Output = Option<Vec<f32>>>,
+    {
+        // Significant words drive the lexical candidate fetch.
+        let words: Vec<String> = question
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.chars().count() >= 4)
+            .take(8)
+            .map(String::from)
+            .collect();
+
+        // Lexical candidates (QA + errors) and the query embedding are fetched
+        // concurrently — the embedding round-trip must not add serial latency.
+        let (qa_candidates, error_candidates, query_embedding) = tokio::join!(
+            storage.search_knowledge_by_words(&words, None, 200),
+            storage.search_knowledge_by_words(&words, Some("error"), 50),
+            embed_query,
+        );
+        let qa_candidates = qa_candidates.unwrap_or_default();
+        let error_candidates = error_candidates.unwrap_or_default();
+        // ── Lexical scoring ──
+        let mut scores: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+        for (case, score) in Self::find_similar_scored(question, &qa_candidates, threshold) {
+            scores.insert(case.id.clone(), score);
+        }
+        for (case, score) in Self::find_similar_scored(question, &error_candidates, 0.6) {
+            scores.insert(case.id.clone(), score);
+        }
+
+        // ── Vector scoring (fused via max) ──
+        if let Some(embedding) = query_embedding {
+            if !embedding.is_empty() {
+                for hit in vectors.search(&embedding, 15) {
+                    let normalized = ((hit.similarity + 1.0) / 2.0) as f64;
+                    scores
+                        .entry(hit.knowledge_id)
+                        .and_modify(|s| *s = (*s).max(normalized))
+                        .or_insert(normalized);
+                }
+            }
+        }
+
+        // ── Hydrate and partition ──
+        let ids: Vec<String> = scores.keys().cloned().collect();
+        let cases = storage.get_knowledge_cases_by_ids(&ids).await?;
+        let mut qa: Vec<(KnowledgeCase, f64)> = vec![];
+        let mut errors: Vec<KnowledgeCase> = vec![];
+        for case in cases {
+            let Some(score) = scores.get(&case.id).copied() else {
+                continue;
+            };
+            if kind_of(&case) == super::embeddings::KnowledgeKind::Error {
+                if score >= 0.6 {
+                    errors.push(case);
+                }
+            } else if score >= threshold {
+                qa.push((case, score));
+            }
+        }
+        qa.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        qa.truncate(10);
+        errors.truncate(5);
+
+        Ok(HybridSearch { qa, errors })
+    }
+
+    /// Index a knowledge case into the embeddings store + in-memory index.
+    /// Fails softly: indexing problems never break the recording flow.
+    pub async fn index_case(
+        storage: &Arc<Storage>,
+        vectors: &VectorIndex,
+        provider: &EmbeddingProvider,
+        case: &KnowledgeCase,
+    ) {
+        let doc = build_semantic_document(case);
+        let Ok(vector) = provider.embed_one(doc).await else {
+            return; // graceful degradation: case stays lexical-only
+        };
+        let kind = kind_of(case);
+        if storage
+            .upsert_knowledge_embedding(&case.id, kind.as_str(), &vector)
+            .await
+            .is_ok()
+        {
+            vectors.insert(case.id.clone(), kind, vector);
+        }
     }
 
     /// Find similar existing cases based on keyword overlap.

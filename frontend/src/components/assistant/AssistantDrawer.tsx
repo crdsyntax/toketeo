@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { Sparkles, X, MessageSquarePlus, MessageSquare } from 'lucide-react'
 import { useAssistantStore } from '@/store/assistantStore'
+import { useAppStore } from '@/store/useAppStore'
+import { assistantService } from '@/services/assistant.service'
 import { AgentChatView } from './AgentChatView'
 
 /**
@@ -37,10 +39,19 @@ export function AssistantDrawer() {
           <span className="text-xs font-semibold text-foreground truncate">AI Assistant</span>
         </div>
         <div className="flex items-center gap-1">
-          {/* Continue the current conversation (visual state indicator). */}
+          {/* Start a fresh conversation: clear memory + persisted history. */}
           {hasMessages && (
             <button
-              onClick={() => useAssistantStore.getState().clearMessages()}
+              onClick={() => {
+                const store = useAssistantStore.getState()
+                store.clearMessages()
+                store.setLiveMessage(null)
+                store.setPendingConfirmation(null)
+                const conn = useAppStore.getState().activeConnection
+                if (conn) {
+                  assistantService.clearMessages(conn.id).catch(() => undefined)
+                }
+              }}
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
               title="New conversation"
             >

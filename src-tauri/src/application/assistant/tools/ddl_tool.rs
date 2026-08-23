@@ -232,7 +232,8 @@ impl AssistantTool for DdlTool {
             return missing("Incomplete arguments for the requested action");
         }
 
-        let result = ExplorerService::execute_query(state, cid, &sql, schema).await;
+        let result =
+            ExplorerService::execute_query_with_origin(state, cid, &sql, schema, "assistant").await;
         match result {
             Ok(r) => Ok(ToolResult {
                 ok: true,

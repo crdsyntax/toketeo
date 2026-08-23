@@ -69,6 +69,7 @@ pub struct AppState {
     pub schema_engine: SchemaEngine,
     pub tool_engine: ToolEngine,
     pub script_store: ScriptPromptStore,
+    pub knowledge_vectors: Arc<crate::application::assistant::knowledge::VectorIndex>,
 }
 
 impl AppState {
@@ -89,7 +90,32 @@ impl AppState {
             schema_engine: SchemaEngine::new(300),
             tool_engine: Self::init_tools(),
             script_store: ScriptPromptStore::new(),
+            knowledge_vectors: Arc::new(
+                crate::application::assistant::knowledge::VectorIndex::default(),
+            ),
         }
+    }
+
+    /// Spawn a background task that indexes a freshly recorded knowledge case
+    /// (embed its semantic document, persist it and update the in-memory
+    /// index). Fails softly when no embedding provider is configured.
+    pub fn spawn_index_knowledge(
+        storage: &Arc<Storage>,
+        vectors: &Arc<crate::application::assistant::knowledge::VectorIndex>,
+        case: crate::models::assistant::KnowledgeCase,
+    ) {
+        let storage = Arc::clone(storage);
+        let vectors = Arc::clone(vectors);
+        tokio::spawn(async move {
+            use crate::application::assistant::knowledge::{EmbeddingProvider, KnowledgeEngine};
+            let Ok(configs) = storage.load_provider_configs().await else {
+                return;
+            };
+            let Some(provider) = configs.first().and_then(EmbeddingProvider::from_config) else {
+                return;
+            };
+            KnowledgeEngine::index_case(&storage, &vectors, &provider, &case).await;
+        });
     }
 
     fn init_tools() -> ToolEngine {

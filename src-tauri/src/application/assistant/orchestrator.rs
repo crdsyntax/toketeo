@@ -5,7 +5,9 @@ use crate::application::assistant::learning::memory_engine::MemoryEngine;
 use crate::application::assistant::prompt::prompt_builder::PromptBuilder;
 use crate::application::assistant::tools::workspace_tool::render_ui_context_prompt;
 use crate::error::AppResult;
-use crate::models::assistant::{AiRequest, AssistantTurn, ChatMessage, SchemaContext, TokenUsage};
+use crate::models::assistant::{
+    AiRequest, AiResponse, AssistantTurn, ChatMessage, SchemaContext, TokenUsage,
+};
 use crate::models::assistant::{ProviderConfig, UiContext};
 use crate::state::AppState;
 
@@ -24,6 +26,187 @@ pub struct ChatOrchestrator<'a> {
 }
 
 const MAX_TOOL_ROUNDS: usize = 12;
+
+/// Retries for transient provider failures (5xx / 429 / network blips).
+const PROVIDER_MAX_RETRIES: u32 = 2;
+
+fn is_transient_provider_error(err: &crate::error::AppError) -> bool {
+    let msg = err.to_string().to_lowercase();
+    const MARKERS: [&str; 14] = [
+        "500",
+        "502",
+        "503",
+        "504",
+        "429",
+        "service unavailable",
+        "bad gateway",
+        "internal server error",
+        "rate limit",
+        "too many requests",
+        "timed out",
+        "timeout",
+        "connection reset",
+        "temporarily unavailable",
+    ];
+    MARKERS.iter().any(|m| msg.contains(m))
+}
+
+/// Call the provider with automatic retries on transient errors. Before each
+/// retry the partially streamed content is wiped (`clear_content`) and a
+/// status line tells the user what is happening — no more dead turns on 503.
+async fn complete_with_retry(
+    adapter: &dyn crate::application::assistant::adapters::AiAdapter,
+    request: &AiRequest,
+    on_delta: &(dyn Fn(&str) + Send + Sync),
+    events: Option<ChatEventEmitter<'_>>,
+) -> AppResult<AiResponse> {
+    let mut attempt = 0u32;
+    loop {
+        match adapter.complete_streaming(request.clone(), on_delta).await {
+            Ok(resp) => return Ok(resp),
+            Err(e) if attempt < PROVIDER_MAX_RETRIES && is_transient_provider_error(&e) => {
+                attempt += 1;
+                if let Some(emit) = events {
+                    emit(serde_json::json!({ "event": "clear_content" }));
+                    emit(serde_json::json!({
+                        "event": "status",
+                        "message": format!(
+                            "Proveedor no disponible ({e}); reintentando ({attempt}/{PROVIDER_MAX_RETRIES})…"
+                        ),
+                    }));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(800 * (1 << attempt))).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+#[cfg(test)]
+mod dump_tests {
+    #[test]
+    fn transient_provider_errors_are_detected() {
+        use crate::error::AppError;
+        for msg in [
+            "OpenCode returned 503 Service Unavailable: overloaded",
+            "OpenAI returned 429: rate limit exceeded",
+            "DeepSeek returned 502 Bad Gateway",
+            "request timed out after 30s",
+            "connection reset by peer",
+        ] {
+            assert!(
+                super::is_transient_provider_error(&AppError::Internal(msg.to_string())),
+                "should be transient: {msg}"
+            );
+        }
+        for msg in [
+            "Invalid API key (401)",
+            "model not found",
+            "Embedding parse failed: unexpected token",
+        ] {
+            assert!(
+                !super::is_transient_provider_error(&AppError::Internal(msg.to_string())),
+                "should NOT be transient: {msg}"
+            );
+        }
+        // 500 contains "500" — but a 401 message must not match "40" patterns.
+        assert!(super::is_transient_provider_error(&AppError::Internal(
+            "provider returned 500: oops".into()
+        )));
+        assert!(!super::is_transient_provider_error(&AppError::Internal(
+            "provider returned 400: bad request shape".into()
+        )));
+    }
+
+    use super::strip_pseudo_tool_dump;
+
+    #[test]
+    fn clean_answer_passes_through() {
+        let (cleaned, sql) = strip_pseudo_tool_dump("Respuesta normal del modelo.");
+        assert_eq!(cleaned, "Respuesta normal del modelo.");
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn pseudo_dump_is_stripped_and_sql_rescued() {
+        let content = "Encontré 11 tablas derivadas. Ejecuto el conteo.\n\
+                       Query\n\
+                       connection_id\n\
+                       5d692c53-ed8f-4fe4-a3bf-325354238c6d\n\
+                       sql\n\
+                       SELECT 'orders' AS tabla, COUNT(*) FROM orders;\n\
+                       schema\n\
+                       public\n\
+                       confirm_destructive\n\
+                       true";
+        let (cleaned, sql) = strip_pseudo_tool_dump(content);
+        assert_eq!(cleaned, "Encontré 11 tablas derivadas. Ejecuto el conteo.");
+        let sql = sql.unwrap();
+        assert!(sql.starts_with("SELECT 'orders'"));
+        assert!(!sql.contains("schema"));
+        assert!(!sql.contains("confirm_destructive"));
+    }
+
+    #[test]
+    fn sql_keyword_in_prose_does_not_trigger() {
+        // The key must be a bare line; prose containing the word is untouched.
+        let content = "El campo connection_id es obligatorio en la herramienta.";
+        let (cleaned, sql) = strip_pseudo_tool_dump(content);
+        assert_eq!(cleaned, content);
+        assert!(sql.is_none());
+    }
+}
+
+/// Some models emit tool invocations as plain text instead of using the
+/// function-calling mechanism (e.g. a block starting with `Query`,
+/// `connection_id`, `sql`, …). Detect that dump in a final answer, remove it
+/// and rescue the SQL so the user still gets a "Load in editor" action.
+fn strip_pseudo_tool_dump(content: &str) -> (String, Option<String>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let is_key = |l: &str| -> bool {
+        let t = l.trim().trim_end_matches(':').to_lowercase();
+        matches!(
+            t.as_str(),
+            "query" | "connection_id" | "sql" | "schema" | "confirm_destructive" | "database"
+        )
+    };
+
+    // Find the start of the dump: a bare `connection_id` key line.
+    let Some(start_idx) = lines.iter().position(|l| {
+        l.trim()
+            .trim_end_matches(':')
+            .eq_ignore_ascii_case("connection_id")
+    }) else {
+        return (content.to_string(), None);
+    };
+    // The dump usually begins one line earlier with the tool name ("query").
+    let dump_start = if start_idx > 0 && is_key(lines[start_idx - 1]) {
+        start_idx - 1
+    } else {
+        start_idx
+    };
+
+    // Rescue the SQL: the value lines after a bare `sql` key line.
+    let sql = lines
+        .iter()
+        .skip(dump_start)
+        .position(|l| l.trim().trim_end_matches(':').eq_ignore_ascii_case("sql"))
+        .map(|sql_key_rel| {
+            let from = dump_start + sql_key_rel + 1;
+            let mut collected: Vec<&str> = vec![];
+            for l in &lines[from..] {
+                if is_key(l) && !l.trim().is_empty() {
+                    break;
+                }
+                collected.push(l);
+            }
+            collected.join("\n").trim().to_string()
+        })
+        .filter(|s| !s.is_empty());
+
+    let cleaned: String = lines[..dump_start].join("\n").trim_end().to_string();
+    (cleaned, sql)
+}
 
 /// Callback used to stream progress events (answer deltas, tool status) to the
 /// frontend during a chat turn. The Tauri command layer adapts this to an
@@ -139,38 +322,33 @@ impl<'a> ChatOrchestrator<'a> {
             None => system_prompt,
         };
 
-        // ── Knowledge-first retrieval ──
-        // Before calling the LLM, search the validated knowledge library for
-        // high-confidence prior answers. Short-circuit on a very-high-confidence
-        // positive hit (≥ 0.9 word overlap); otherwise inject candidates below
-        // the threshold as suggestions the user can pick from.
-        // Error cases (engine = "error") are excluded from suggestions and
-        // instead injected into the prompt as known past errors below.
-        let global_cases = self
-            .state
-            .storage
-            .list_knowledge_global(500)
-            .await
-            .unwrap_or_default();
-        let scored = KnowledgeEngine::find_similar_scored(self.question, &global_cases, 0.5);
-        let scored: Vec<_> = scored
-            .into_iter()
-            .filter(|(c, _)| c.engine != "error")
-            .collect();
-
-        // Known past errors relevant to this question become prompt context so
-        // the model can recognize recurring failures and propose proven fixes.
-        let error_cases = self
-            .state
-            .storage
-            .list_knowledge_all("error", 100)
-            .await
-            .unwrap_or_default();
+        // ── Knowledge-first retrieval (hybrid: lexical ∪ vector) ──
+        // Before calling the LLM, search the knowledge library for
+        // high-confidence prior answers. Lexical candidates come from a cheap
+        // LIKE query; semantic recall comes from the in-memory embedding index
+        // (skipped when no provider is configured). Scores are fused with max.
+        // Short-circuit on a very-high-confidence positive hit (≥ 0.9);
+        // error cases are injected into the prompt as known past errors.
+        let embed_query = async {
+            let provider = crate::application::assistant::knowledge::EmbeddingProvider::from_config(
+                self.config,
+            );
+            match provider {
+                Some(p) => p.embed_one(self.question.to_string()).await.ok(),
+                None => None,
+            }
+        };
+        let hybrid = KnowledgeEngine::hybrid_search(
+            &self.state.storage,
+            &self.state.knowledge_vectors,
+            self.question,
+            0.5,
+            embed_query,
+        )
+        .await?;
+        let scored = &hybrid.qa;
         let known_errors: Vec<&crate::models::assistant::KnowledgeCase> =
-            KnowledgeEngine::find_similar(self.question, &error_cases, 0.6)
-                .into_iter()
-                .take(3)
-                .collect();
+            hybrid.errors.iter().take(3).collect();
 
         let system_prompt = if known_errors.is_empty() {
             system_prompt
@@ -329,7 +507,7 @@ impl<'a> ChatOrchestrator<'a> {
                     emit(serde_json::json!({ "event": "delta", "text": text }));
                 }
             };
-            match adapter.complete_streaming(request, &on_delta).await {
+            match complete_with_retry(adapter.as_ref(), &request, &on_delta, self.events).await {
                 Ok(response) => {
                     total_prompt = total_prompt.saturating_add(response.usage.prompt_tokens);
                     total_completion =
@@ -395,18 +573,33 @@ impl<'a> ChatOrchestrator<'a> {
                                 "message": format!("Ejecutando herramienta '{}'…", tc.name),
                             }));
                         }
-                        let exec = self
-                            .state
-                            .tool_engine
-                            .execute_with_confirmation(
+                        // Hard timeout per tool: a hanging driver/network call
+                        // must never freeze the whole chat turn. On timeout the
+                        // model receives an error result and can narrate it.
+                        let exec = match tokio::time::timeout(
+                            std::time::Duration::from_secs(120),
+                            self.state.tool_engine.execute_with_confirmation(
                                 &tc.name,
                                 tool_args,
                                 driver.as_deref(),
                                 self.state,
                                 self.confirm_destructive,
                                 Some(self.connection_id),
-                            )
-                            .await;
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(res) => res,
+                            Err(_) => Ok(crate::models::assistant::ToolResult {
+                                ok: false,
+                                data: None,
+                                requires_confirmation: false,
+                                message: Some(format!(
+                                    "Tool '{}' timed out after 120s and was cancelled.",
+                                    tc.name
+                                )),
+                            }),
+                        };
                         let result_text = match exec {
                             Ok(r) => {
                                 if r.requires_confirmation {
@@ -485,8 +678,13 @@ impl<'a> ChatOrchestrator<'a> {
                                 emit(serde_json::json!({ "event": "delta", "text": text }));
                             }
                         };
-                        if let Ok(final_resp) =
-                            adapter.complete_streaming(final_request, &on_delta).await
+                        if let Ok(final_resp) = complete_with_retry(
+                            adapter.as_ref(),
+                            &final_request,
+                            &on_delta,
+                            self.events,
+                        )
+                        .await
                         {
                             last_response = Some(final_resp);
                         }
@@ -519,14 +717,18 @@ impl<'a> ChatOrchestrator<'a> {
             model: self.config.model.clone().unwrap_or_default(),
         });
 
-        // Try to extract a fenced ```sql block from the final answer so the UI
-        // can surface a "Run SQL" affordance even outside of tool responses.
-        let sql = extract_sql_block(&response.content);
+        let sql_from_fenced = extract_sql_block(&response.content);
+        let (answer_text, sql) = match strip_pseudo_tool_dump(&response.content) {
+            (cleaned, Some(rescued)) if !rescued.is_empty() => {
+                (cleaned, sql_from_fenced.or(Some(rescued)))
+            }
+            (cleaned, _) => (cleaned, sql_from_fenced),
+        };
 
         self.save_message(
             &turn_id,
             "assistant",
-            response.content.clone(),
+            answer_text.clone(),
             sql.clone(),
             tool_used.clone(),
         )
@@ -534,7 +736,7 @@ impl<'a> ChatOrchestrator<'a> {
 
         Ok(AssistantTurn {
             turn_id,
-            answer: response.content,
+            answer: answer_text,
             sql,
             tool_used,
             source,

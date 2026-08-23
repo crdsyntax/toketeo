@@ -1,17 +1,17 @@
 use crate::error::AppResult;
-use crate::storage::Storage;
-use std::sync::Arc;
+use crate::state::AppState;
 
 pub struct LearningEngine;
 
 impl LearningEngine {
     /// Record positive feedback: save as knowledge case + update message feedback.
     pub async fn record_positive(
-        storage: &Arc<Storage>,
+        state: &AppState,
         message_id: &str,
         connection_id: &str,
         engine: &str,
     ) -> AppResult<()> {
+        let storage = state.storage.clone();
         storage
             .update_assistant_feedback(message_id, "positive")
             .await?;
@@ -26,18 +26,27 @@ impl LearningEngine {
                     if pos > 0 {
                         let question = &messages[pos - 1].content;
                         // Dedupe: skip if this exact QA pair is already stored.
-                        let existing = storage.search_knowledge(question, engine, 20).await?;
+                        let existing = storage.search_knowledge(question, Some(engine), 20).await?;
                         if existing
                             .iter()
                             .any(|c| c.rating == "positive" && c.sql_text == *sql)
                         {
                             return Ok(());
                         }
-                        let _ =
+                        let id =
                             crate::application::assistant::knowledge::KnowledgeEngine::record_case(
-                                storage, question, sql, engine, "positive",
+                                &storage, question, sql, engine, "positive",
                             )
                             .await;
+                        if let Ok(id) = id {
+                            if let Ok(Some(case)) = storage.get_knowledge_case(&id).await {
+                                AppState::spawn_index_knowledge(
+                                    &storage,
+                                    &state.knowledge_vectors,
+                                    case,
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -48,13 +57,14 @@ impl LearningEngine {
 
     /// Record negative feedback: save as knowledge with "negative" rating + update feedback.
     pub async fn record_negative(
-        storage: &Arc<Storage>,
+        state: &AppState,
         message_id: &str,
         connection_id: &str,
         engine: &str,
         _rejection_reason: Option<&str>,
         accepted_sql: Option<&str>,
     ) -> AppResult<()> {
+        let storage = state.storage.clone();
         storage
             .update_assistant_feedback(message_id, "negative")
             .await?;
@@ -67,11 +77,20 @@ impl LearningEngine {
                 if let Some(pos) = idx {
                     if pos > 0 {
                         let question = &messages[pos - 1].content;
-                        let _ =
+                        let id =
                             crate::application::assistant::knowledge::KnowledgeEngine::record_case(
-                                storage, question, sql, engine, "negative",
+                                &storage, question, sql, engine, "negative",
                             )
                             .await;
+                        if let Ok(id) = id {
+                            if let Ok(Some(case)) = storage.get_knowledge_case(&id).await {
+                                AppState::spawn_index_knowledge(
+                                    &storage,
+                                    &state.knowledge_vectors,
+                                    case,
+                                );
+                            }
+                        }
                     }
                 }
             }

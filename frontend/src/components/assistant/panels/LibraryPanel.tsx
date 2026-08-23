@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Star, Search, Copy, Check, FileCode, Loader2 } from 'lucide-react'
+import { BookOpen, Star, Search, Copy, Check, FileCode, Loader2, DatabaseZap } from 'lucide-react'
 import { assistantService } from '@/services/assistant.service'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
@@ -10,14 +10,21 @@ export function LibraryPanel() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const activeConnection = useAppStore((s) => s.activeConnection)
+  const [indexStats, setIndexStats] = useState<{ total: number; indexed: number } | null>(null)
 
-  const engine = activeConnection?.type ?? 'mysql'
+  const loadIndexStats = async () => {
+    try {
+      const [total, indexed] = await assistantService.knowledgeIndexStats()
+      setIndexStats({ total, indexed })
+    } catch { /* silent */ }
+  }
 
   const loadAll = async () => {
     setLoading(true)
     try {
-      const list = await assistantService.listKnowledge(engine)
+      // List across ALL engines — each case shows its engine chip, and cases
+      // may be tagged with any database engine.
+      const list = await assistantService.listKnowledge(null)
       setCases(list)
     } catch { /* silent */ }
     setLoading(false)
@@ -30,7 +37,7 @@ export function LibraryPanel() {
     }
     setLoading(true)
     try {
-      const results = await assistantService.searchKnowledge(search, engine, 50)
+      const results = await assistantService.searchKnowledge(search, null, 50)
       setCases(results)
     } catch { /* silent */ }
     setLoading(false)
@@ -60,13 +67,15 @@ export function LibraryPanel() {
     ;(async () => {
       setLoading(true)
       try {
-        const list = await assistantService.listKnowledge(engine)
+        const list = await assistantService.listKnowledge(null)
         if (!cancelled) setCases(list)
       } catch { /* silent */ }
       if (!cancelled) setLoading(false)
+      if (!cancelled) await loadIndexStats()
     })()
-    return () => { cancelled = true }
-  }, [engine])
+    const t = setInterval(() => { void loadIndexStats() }, 15000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [])
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -96,6 +105,20 @@ export function LibraryPanel() {
         <span className="text-xs font-semibold text-foreground">Knowledge Library</span>
         <span className="text-[var(--ch-text-10)] text-muted-foreground ml-auto">
           {cases.length} {cases.length === 1 ? 'case' : 'cases'}
+          {indexStats && indexStats.total > 0 && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded',
+                indexStats.indexed >= indexStats.total
+                  ? 'text-green-600 bg-green-500/10'
+                  : 'text-amber-600 bg-amber-500/10',
+              )}
+              title="Casos indexados semánticamente (búsqueda vectorial)"
+            >
+              <DatabaseZap className="w-3 h-3" />
+              {indexStats.indexed}/{indexStats.total}
+            </span>
+          )}
         </span>
       </div>
 

@@ -134,7 +134,7 @@ impl PromptBuilder {
             "11. Consider performance: prefer JOINs over subqueries when possible.".to_string(),
         );
         parts.push("12. If the user refers to the connection that is currently active in the app, call tools WITHOUT a connection_id — the active connection is used automatically. Only pass connection_id when the user asks for a DIFFERENT connection.".to_string());
-        parts.push("13. When a tool reports that a connection is not active or that an operation needs approval, reply to the user with a single natural-language question (e.g. \"¿Conecto la conexión X?\" or \"¿Procedo con Y?\") and STOP calling tools until the user confirms. NEVER mention confirm_destructive, requires_confirmation, tool names, JSON payloads, or any internal mechanism.".to_string());
+        parts.push("13. When a tool reports that a connection is not active or that an operation needs approval, reply to the user with a single natural-language question (e.g. \"¿Conecto la conexión X?\" or \"¿Procedo con Y?\") and STOP calling tools until the user confirms. NEVER mention confirm_destructive, requires_confirmation, tool names, JSON payloads, or any internal mechanism. NEVER invent UI mechanisms that do not exist: there are no popups or dialogs for confirmations — the user confirms inside this same conversation.".to_string());
         parts.push("14. After a tool succeeds, reply ONLY with the requested data (e.g. the rows, counts or files) formatted readably — never raw JSON, never the tool output itself. If the operation failed, say briefly why it failed and suggest what the user could try next.".to_string());
         parts.push(
             "15. Stay strictly inside the scope the user named: if they mention a connection, \
@@ -161,6 +161,23 @@ impl PromptBuilder {
              (any UPDATE/DELETE/TRUNCATE), FIRST propose creating a backup of the affected \
              table(s) with the `backup` tool and wait for the user's approval. Only after the \
              backup completes (or the user declines) proceed with the modification."
+                .to_string(),
+        );
+        parts.push(
+            "19. NARRATE PROGRESS — never go silent between actions. After every tool result, \
+             briefly tell the user what happened and what you will do next, in their language \
+             (e.g. \"Encontré 3 tablas relacionadas: orders, order_items, payments. Voy a \
+             contar los registros de cada una.\"). If a tool fails or times out, say so \
+             immediately and offer alternatives instead of retrying silently."
+                .to_string(),
+        );
+        parts.push(
+            "20. TOOL CALLS ARE NOT TEXT — when you want to run a tool, invoke it through the \
+             function-calling mechanism ONLY. NEVER write a tool invocation as plain text \
+             (no \"Query:\", \"connection_id: …\", \"sql: …\" blocks, no pseudo-JSON of \
+             arguments inside your reply). Text like that does NOTHING: the tool will not run \
+             and the user sees garbage. If you already wrote it by mistake, stop and emit the \
+             real tool call instead."
                 .to_string(),
         );
 
