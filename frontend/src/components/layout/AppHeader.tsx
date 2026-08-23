@@ -6,6 +6,7 @@ import {
 import { cn } from '@/lib/utils'
 import { DatabaseType } from '@/types/database'
 import { useAppStore } from '@/store/useAppStore'
+import { useAssistantStore } from '@/store/assistantStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
 import { getEngineConfig } from '@/lib/engine-icons'
@@ -49,6 +50,7 @@ export function AppHeader({ onOpenGamification }: AppHeaderProps) {
   const { activeConnection, isSidebarOpen, toggleSidebar } = useAppStore()
   const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
   const { level, streak } = useGamificationStore()
+  const showAssistant = useAssistantStore((s) => s.showAssistant)
   const activeEngineType = activeConnection?.type ?? null
 
   const enginePills: DatabaseType[] = [
@@ -166,6 +168,19 @@ export function AppHeader({ onOpenGamification }: AppHeaderProps) {
             )
           })}
         </div>
+
+        <button
+          onClick={() => useAssistantStore.getState().setShowAssistant(!showAssistant)}
+          className={cn(
+            'p-1.5 rounded-lg transition-all duration-200',
+            showAssistant
+              ? 'bg-accent-muted text-accent'
+              : 'text-muted-foreground hover:bg-accent-muted hover:text-accent'
+          )}
+          title="AI Assistant (Ctrl+I)"
+        >
+          <Sparkles className="w-4 h-4" />
+        </button>
 
         <NotificationBell />
 

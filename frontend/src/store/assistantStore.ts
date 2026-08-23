@@ -29,6 +29,8 @@ interface AssistantState {
   schemaCache: SchemaCache
   isStreaming: boolean
   pendingConfirmation: { question: string } | null
+  /** In-progress streamed answer (deltas + tool status) shown while isStreaming. */
+  liveMessage: { content: string; status: string | null } | null
 
   setActiveTab: (tab: AssistantTab) => void
   addMessage: (msg: AssistantMessage) => void
@@ -41,6 +43,7 @@ interface AssistantState {
   updateMessageFeedback: (id: string, feedback: 'positive' | 'negative') => void
   setStreaming: (streaming: boolean) => void
   setPendingConfirmation: (pending: { question: string } | null) => void
+  setLiveMessage: (live: { content: string; status: string | null } | null) => void
 }
 
 export const useAssistantStore = create<AssistantState>()(
@@ -54,6 +57,7 @@ export const useAssistantStore = create<AssistantState>()(
       schemaCache: { tables: [], columns: {} },
       isStreaming: false,
       pendingConfirmation: null,
+      liveMessage: null,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
@@ -70,6 +74,7 @@ export const useAssistantStore = create<AssistantState>()(
       })),
       setStreaming: (streaming) => set({ isStreaming: streaming }),
       setPendingConfirmation: (pending) => set({ pendingConfirmation: pending }),
+      setLiveMessage: (liveMessage) => set({ liveMessage }),
     }),
     {
       name: 'toketeo-assistant-storage',

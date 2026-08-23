@@ -191,6 +191,49 @@ pub struct AssistantTurn {
     pub source: String,
     pub requires_confirmation: bool,
     pub usage: Option<TokenUsage>,
+    /// Optional UI action the frontend must perform after this turn
+    /// (e.g. export the active tab results, focus a tab). Produced by the
+    /// workspace tool and surfaced here by the orchestrator.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<serde_json::Value>,
+}
+
+/// One SQL editor tab as reported by the frontend UI context.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UiOpenTab {
+    pub id: String,
+    pub name: String,
+    pub connection_id: Option<String>,
+    #[serde(default)]
+    pub sql_preview: String,
+    #[serde(default)]
+    pub has_results: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub is_active: bool,
+}
+
+/// Snapshot of the user's current UI state, sent with every chat turn so the
+/// agent can reason about what the user is looking at.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UiContext {
+    #[serde(default)]
+    pub route: String,
+    #[serde(default)]
+    pub module: String,
+    #[serde(default)]
+    pub active_connection_id: Option<String>,
+    #[serde(default)]
+    pub database: Option<String>,
+    #[serde(default)]
+    pub open_tabs: Vec<UiOpenTab>,
+    #[serde(default)]
+    pub explorer_tabs: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub last_tab_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

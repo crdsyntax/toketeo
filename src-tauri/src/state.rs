@@ -117,6 +117,7 @@ impl AppState {
         use crate::application::assistant::tools::schema_tool::SchemaTool;
         use crate::application::assistant::tools::sync_tool::SyncTool;
         use crate::application::assistant::tools::transaction_tool::TransactionTool;
+        use crate::application::assistant::tools::workspace_tool::WorkspaceTool;
 
         let mut engine = ToolEngine::new();
         engine.register(Box::new(SchemaTool));
@@ -143,6 +144,7 @@ impl AppState {
         engine.register(Box::new(JobsTool));
         engine.register(Box::new(DiagramsTool));
         engine.register(Box::new(AppSettingsTool));
+        engine.register(Box::new(WorkspaceTool));
         engine
     }
 

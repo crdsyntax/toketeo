@@ -3,9 +3,10 @@ use crate::application::assistant::context::relevance::RelevanceFilter;
 use crate::application::assistant::knowledge::KnowledgeEngine;
 use crate::application::assistant::learning::memory_engine::MemoryEngine;
 use crate::application::assistant::prompt::prompt_builder::PromptBuilder;
+use crate::application::assistant::tools::workspace_tool::render_ui_context_prompt;
 use crate::error::AppResult;
-use crate::models::assistant::ProviderConfig;
 use crate::models::assistant::{AiRequest, AssistantTurn, ChatMessage, SchemaContext, TokenUsage};
+use crate::models::assistant::{ProviderConfig, UiContext};
 use crate::state::AppState;
 
 /// Orchestrates a single assistant chat turn: builds context (schema, history,
@@ -18,17 +19,27 @@ pub struct ChatOrchestrator<'a> {
     question: &'a str,
     config: &'a ProviderConfig,
     confirm_destructive: bool,
+    ui_context: Option<&'a UiContext>,
+    events: Option<ChatEventEmitter<'a>>,
 }
 
 const MAX_TOOL_ROUNDS: usize = 12;
 
+/// Callback used to stream progress events (answer deltas, tool status) to the
+/// frontend during a chat turn. The Tauri command layer adapts this to an
+/// ipc::Channel, keeping this module decoupled from Tauri.
+pub type ChatEventEmitter<'a> = &'a (dyn Fn(serde_json::Value) + Send + Sync);
+
 impl<'a> ChatOrchestrator<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         state: &'a AppState,
         connection_id: &'a str,
         question: &'a str,
         config: &'a ProviderConfig,
         confirm_destructive: bool,
+        ui_context: Option<&'a UiContext>,
+        events: Option<ChatEventEmitter<'a>>,
     ) -> Self {
         Self {
             state,
@@ -36,19 +47,12 @@ impl<'a> ChatOrchestrator<'a> {
             question,
             config,
             confirm_destructive,
+            ui_context,
+            events,
         }
     }
 
     pub async fn run(self) -> AppResult<AssistantTurn> {
-        // One-off cleanup: previously auto-recorded tool results polluted the
-        // knowledge library; purge them so knowledge-first retrieval never
-        // suggests raw JSON payloads again.
-        if let Ok(removed) = KnowledgeEngine::purge_tool_cases(&self.state.storage).await {
-            if removed > 0 {
-                tracing::info!("Purged {removed} polluted tool-result knowledge cases");
-            }
-        }
-
         let driver = if self.connection_id.is_empty() {
             None
         } else {
@@ -128,12 +132,20 @@ impl<'a> ChatOrchestrator<'a> {
             .map(|(n, i)| (n.as_str(), i.as_str()))
             .collect();
         let system_prompt = PromptBuilder::build_system_prompt(&ctx, &prefs, &conn_slice);
+        // Surface the user's current workspace (module, open tabs, errors) so
+        // the model can act on what the user is looking at.
+        let system_prompt = match self.ui_context {
+            Some(ui) => format!("{system_prompt}\n\n{}", render_ui_context_prompt(ui)),
+            None => system_prompt,
+        };
 
         // ── Knowledge-first retrieval ──
         // Before calling the LLM, search the validated knowledge library for
         // high-confidence prior answers. Short-circuit on a very-high-confidence
         // positive hit (≥ 0.9 word overlap); otherwise inject candidates below
         // the threshold as suggestions the user can pick from.
+        // Error cases (engine = "error") are excluded from suggestions and
+        // instead injected into the prompt as known past errors below.
         let global_cases = self
             .state
             .storage
@@ -141,6 +153,45 @@ impl<'a> ChatOrchestrator<'a> {
             .await
             .unwrap_or_default();
         let scored = KnowledgeEngine::find_similar_scored(self.question, &global_cases, 0.5);
+        let scored: Vec<_> = scored
+            .into_iter()
+            .filter(|(c, _)| c.engine != "error")
+            .collect();
+
+        // Known past errors relevant to this question become prompt context so
+        // the model can recognize recurring failures and propose proven fixes.
+        let error_cases = self
+            .state
+            .storage
+            .list_knowledge_all("error", 100)
+            .await
+            .unwrap_or_default();
+        let known_errors: Vec<&crate::models::assistant::KnowledgeCase> =
+            KnowledgeEngine::find_similar(self.question, &error_cases, 0.6)
+                .into_iter()
+                .take(3)
+                .collect();
+
+        let system_prompt = if known_errors.is_empty() {
+            system_prompt
+        } else {
+            let mut section = String::from(
+                "\n## Known past errors in this app\n\
+                 The user has hit these errors before. If the current question \
+                 relates to one of them, explain the cause and reuse what worked:\n",
+            );
+            for case in &known_errors {
+                let error_text = case
+                    .question
+                    .strip_prefix("[error] ")
+                    .unwrap_or(&case.question);
+                section.push_str(&format!("- Error: \"{error_text}\"\n"));
+                if !case.sql_text.trim().is_empty() {
+                    section.push_str(&format!("  Context: {}\n", case.sql_text));
+                }
+            }
+            format!("{system_prompt}\n{section}")
+        };
 
         if let Some((case, score)) = scored
             .iter()
@@ -176,6 +227,7 @@ impl<'a> ChatOrchestrator<'a> {
                 source: "knowledge".to_string(),
                 requires_confirmation: false,
                 usage: None,
+                action: None,
             });
         }
 
@@ -207,6 +259,7 @@ impl<'a> ChatOrchestrator<'a> {
                 source: "knowledge".to_string(),
                 requires_confirmation: false,
                 usage: None,
+                action: None,
             });
         }
 
@@ -257,6 +310,9 @@ impl<'a> ChatOrchestrator<'a> {
         let mut executed_signatures: std::collections::HashSet<String> =
             std::collections::HashSet::new();
         let mut loop_detected = false;
+        // Side-effectful UI actions requested by the workspace tool are
+        // surfaced to the frontend on the returned turn.
+        let mut ui_action: Option<serde_json::Value> = None;
 
         for _round in 0..MAX_TOOL_ROUNDS {
             let request = AiRequest {
@@ -266,11 +322,28 @@ impl<'a> ChatOrchestrator<'a> {
                 temperature: 0.3,
                 max_tokens: Some(4096),
             };
-            match adapter.complete(request).await {
+            // Stream answer deltas to the frontend as they arrive.
+            let events = self.events;
+            let on_delta = move |text: &str| {
+                if let Some(emit) = events {
+                    emit(serde_json::json!({ "event": "delta", "text": text }));
+                }
+            };
+            match adapter.complete_streaming(request, &on_delta).await {
                 Ok(response) => {
                     total_prompt = total_prompt.saturating_add(response.usage.prompt_tokens);
                     total_completion =
                         total_completion.saturating_add(response.usage.completion_tokens);
+
+                    // A round that produces tool calls means its streamed text was
+                    // only intermediate reasoning (or leaked tool-call arguments),
+                    // never part of the answer. Tell the frontend to drop it so
+                    // the visible reply only keeps meaningful content.
+                    if !response.tool_calls.is_empty() {
+                        if let Some(emit) = self.events {
+                            emit(serde_json::json!({ "event": "clear_content" }));
+                        }
+                    }
 
                     if response.tool_calls.is_empty() {
                         last_response = Some(response);
@@ -308,15 +381,30 @@ impl<'a> ChatOrchestrator<'a> {
                             });
                             continue;
                         }
+                        // Give context-aware tools access to the user's
+                        // workspace snapshot for this turn.
+                        let mut tool_args = tc.arguments.clone();
+                        if let Some(ui) = self.ui_context {
+                            if let Ok(ui_val) = serde_json::to_value(ui) {
+                                tool_args["ui_context"] = ui_val;
+                            }
+                        }
+                        if let Some(emit) = self.events {
+                            emit(serde_json::json!({
+                                "event": "status",
+                                "message": format!("Ejecutando herramienta '{}'…", tc.name),
+                            }));
+                        }
                         let exec = self
                             .state
                             .tool_engine
                             .execute_with_confirmation(
                                 &tc.name,
-                                tc.arguments.clone(),
+                                tool_args,
                                 driver.as_deref(),
                                 self.state,
                                 self.confirm_destructive,
+                                Some(self.connection_id),
                             )
                             .await;
                         let result_text = match exec {
@@ -324,15 +412,46 @@ impl<'a> ChatOrchestrator<'a> {
                                 if r.requires_confirmation {
                                     requires_confirmation = true;
                                 }
+                                // Stream the executed action so the frontend can
+                                // reflect side effects in real time (e.g. a
+                                // connection opened by the agent shows up
+                                // immediately in the sidebar).
+                                if let Some(emit) = self.events {
+                                    emit(serde_json::json!({
+                                        "event": "tool",
+                                        "name": tc.name,
+                                        "ok": r.ok,
+                                        "message": r.message,
+                                        "data": r.data,
+                                    }));
+                                }
+                                if tc.name == "workspace" {
+                                    if let Some(action) =
+                                        r.data.as_ref().and_then(|d| d.get("action"))
+                                    {
+                                        ui_action = Some(action.clone());
+                                    }
+                                }
                                 serde_json::to_string(&r).unwrap_or_else(|_| "{}".to_string())
                             }
-                            Err(e) => serde_json::json!({
-                                "ok": false,
-                                "message": e.to_string(),
-                                "requires_confirmation": false,
-                                "data": null,
-                            })
-                            .to_string(),
+                            Err(e) => {
+                                if let Some(emit) = self.events {
+                                    emit(serde_json::json!({
+                                        "event": "tool",
+                                        "name": tc.name,
+                                        "ok": false,
+                                        "message": e.to_string(),
+                                        "data": null,
+                                    }));
+                                }
+                                serde_json::json!({
+                                    "ok": false,
+                                    "message": e.to_string(),
+                                    "requires_confirmation": false,
+                                    "data": null,
+                                })
+                                .to_string()
+                            }
                         };
                         if tool_used.is_none() {
                             let _tn = tc.name.clone();
@@ -360,7 +479,15 @@ impl<'a> ChatOrchestrator<'a> {
                             temperature: 0.3,
                             max_tokens: Some(4096),
                         };
-                        if let Ok(final_resp) = adapter.complete(final_request).await {
+                        let events = self.events;
+                        let on_delta = move |text: &str| {
+                            if let Some(emit) = events {
+                                emit(serde_json::json!({ "event": "delta", "text": text }));
+                            }
+                        };
+                        if let Ok(final_resp) =
+                            adapter.complete_streaming(final_request, &on_delta).await
+                        {
                             last_response = Some(final_resp);
                         }
                         break;
@@ -375,6 +502,7 @@ impl<'a> ChatOrchestrator<'a> {
                         source: "error".to_string(),
                         requires_confirmation: false,
                         usage: None,
+                        action: None,
                     });
                 }
             }
@@ -416,6 +544,7 @@ impl<'a> ChatOrchestrator<'a> {
                 completion_tokens: total_completion,
                 total_tokens: total_prompt.saturating_add(total_completion),
             }),
+            action: ui_action,
         })
     }
 

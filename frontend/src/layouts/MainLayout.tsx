@@ -16,6 +16,7 @@ import { Environment } from '@/types/database'
 import { AlertTriangle, CheckCircle, Loader2, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { openScriptTabForConnection } from '@/lib/connectionScript'
+import { AssistantDrawer } from '@/components/assistant/AssistantDrawer'
 
 export default function MainLayout() {
   const queryClient = useQueryClient()
@@ -277,6 +278,8 @@ export default function MainLayout() {
           onReconnected={handleReconnected}
         />
       )}
+
+      <AssistantDrawer />
     </div>
   )
 }

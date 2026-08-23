@@ -1,4 +1,4 @@
-import { Sparkles, Play, Copy } from 'lucide-react';
+import { Play, Copy } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -10,17 +10,14 @@ import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { ScriptErrorModal } from '@/components/query/ScriptErrorModal';
 import { ScriptSummaryModal } from '@/components/query/ScriptSummaryModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
-import { AssistantLayout } from '@/components/assistant/AssistantLayout';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
 import { NewScriptModal } from '@/components/query/NewScriptModal';
-import { useAssistantStore } from '@/store/assistantStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
 import { useEffect, useRef, useState } from 'react';
 import { ExecutionStatus, DatabaseType } from '@/types/database';
 import { useQuery } from '@tanstack/react-query';
 import { connectionService } from '@/services/connection.service';
-import { cn } from '@/lib/utils';
 
 export default function QueryEditor() {
   const { data: connections = [] } = useQuery({
@@ -108,8 +105,6 @@ export default function QueryEditor() {
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [seenReportId, setSeenReportId] = useState<string | null>(null);
-  const showAssistant = useAssistantStore((s) => s.showAssistant);
-  const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
   const targetConnection = (connections.find(c => c.id === currentConnectionId) || activeConnection || null);
 
@@ -121,14 +116,11 @@ export default function QueryEditor() {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
         setShowShortcuts(true)
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
-        e.preventDefault()
-        setShowAssistant(!showAssistant)
-      }
+      // Ctrl/Cmd+I is handled globally by the AssistantDrawer.
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [showAssistant, setShowAssistant])
+  }, [])
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
   const isMongo = targetConnection?.type === DatabaseType.MONGODB
@@ -356,20 +348,7 @@ export default function QueryEditor() {
         togglePanel={togglePanel}
       />
 
-      <button
-        onClick={() => setShowAssistant(!showAssistant)}
-        className={cn(
-          "fixed bottom-4 right-4 z-50 w-9 h-9 rounded-lg flex items-center justify-center shadow-lg transition-all",
-          showAssistant
-            ? "bg-primary text-primary-foreground shadow-primary/25"
-            : "bg-background/80 backdrop-blur text-muted-foreground hover:text-foreground border border-border"
-        )}
-        title="Toggle Assistant (⌘I)"
-      >
-        <Sparkles className="w-4 h-4" />
-      </button>
-
-      <EditorTabs 
+      <EditorTabs
         tabs={tabs}
         activeTabId={activeTabId}
         setActiveTabId={setActiveTabId}
@@ -473,12 +452,6 @@ export default function QueryEditor() {
             </div>
           )}
         </div>
-
-        {showAssistant && (
-          <div className="w-80 2xl:w-96 border-l border-border shrink-0 overflow-hidden">
-            <AssistantLayout />
-          </div>
-        )}
       </div>
 
       {showShortcuts && <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />}

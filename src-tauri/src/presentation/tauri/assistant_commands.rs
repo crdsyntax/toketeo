@@ -6,7 +6,7 @@ use crate::application::assistant::tools::recommendation_engine::RecommendationE
 use crate::error::AppResult;
 use crate::models::assistant::{
     AssistantTurn, KnowledgeCase, ModelInfo, Preference, ProviderConfig, ProviderInfo,
-    SqlFixResult, TestResult, ToolDescriptor, ToolResult,
+    SqlFixResult, TestResult, ToolDescriptor, ToolResult, UiContext,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -121,6 +121,8 @@ pub async fn assistant_chat(
     connection_id: String,
     question: String,
     confirm_destructive: bool,
+    ui_context: Option<UiContext>,
+    on_event: tauri::ipc::Channel<serde_json::Value>,
     state: State<'_, AppState>,
 ) -> AppResult<AssistantTurn> {
     let configs = state.storage.load_provider_configs().await?;
@@ -136,8 +138,14 @@ pub async fn assistant_chat(
                 source: "stub".to_string(),
                 requires_confirmation: false,
                 usage: None,
+                action: None,
             })
         }
+    };
+    // Adapt the Tauri channel into the orchestrator's emitter callback so the
+    // application layer stays decoupled from Tauri types.
+    let emitter = move |value: serde_json::Value| {
+        let _ = on_event.send(value);
     };
 
     ChatOrchestrator::new(
@@ -146,6 +154,8 @@ pub async fn assistant_chat(
         &question,
         &config,
         confirm_destructive,
+        ui_context.as_ref(),
+        Some(&emitter),
     )
     .run()
     .await
@@ -220,6 +230,19 @@ pub async fn assistant_record_case(
     state: State<'_, AppState>,
 ) -> AppResult<String> {
     KnowledgeEngine::record_case(&state.storage, &question, &sql_text, &engine, &rating).await
+}
+
+/// Record an application error into the agent's knowledge library so it can
+/// learn from it (deduplicated by exact error message). Fire-and-forget from
+/// the frontend; returns (id, created).
+#[tauri::command]
+pub async fn assistant_record_error(
+    error: String,
+    context: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<(String, bool)> {
+    KnowledgeEngine::record_error_case(&state.storage, &error, context.as_deref().unwrap_or(""))
+        .await
 }
 
 // ── Feedback ──
@@ -306,6 +329,7 @@ pub async fn assistant_execute_tool(
             driver.as_deref(),
             &state,
             confirm_destructive,
+            Some(&connection_id),
         )
         .await
 }

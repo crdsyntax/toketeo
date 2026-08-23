@@ -25,6 +25,14 @@ impl LearningEngine {
                 if let Some(pos) = idx {
                     if pos > 0 {
                         let question = &messages[pos - 1].content;
+                        // Dedupe: skip if this exact QA pair is already stored.
+                        let existing = storage.search_knowledge(question, engine, 20).await?;
+                        if existing
+                            .iter()
+                            .any(|c| c.rating == "positive" && c.sql_text == *sql)
+                        {
+                            return Ok(());
+                        }
                         let _ =
                             crate::application::assistant::knowledge::KnowledgeEngine::record_case(
                                 storage, question, sql, engine, "positive",

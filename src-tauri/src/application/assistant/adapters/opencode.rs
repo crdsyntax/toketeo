@@ -150,6 +150,43 @@ impl AiAdapter for OpenCodeAdapter {
         openai_format::parse_response(&data, &self.model)
     }
 
+    async fn complete_streaming(
+        &self,
+        req: AiRequest,
+        on_delta: openai_format::OnDelta<'_>,
+    ) -> AppResult<AiResponse> {
+        let messages = openai_format::build_messages(&req.system, &req.messages);
+        let tools = openai_format::build_tools(&req.tools);
+
+        let body = serde_json::json!({
+            "model": self.model_raw,
+            "messages": messages,
+            "tools": tools,
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+        });
+
+        // Free models are served by the free tier endpoint (no API key needed).
+        let is_free = self.is_free_model();
+        let base_url = if is_free {
+            self.free_base_url.clone()
+        } else {
+            self.base_url.clone()
+        };
+        let api_key = if is_free { None } else { Some(&self.api_key) };
+
+        openai_format::complete_streaming(
+            &self.client,
+            &base_url,
+            api_key.map(|k| k.as_str()),
+            "OpenCode",
+            &body,
+            &self.model_raw,
+            on_delta,
+        )
+        .await
+    }
+
     async fn list_models(&self) -> AppResult<Vec<ModelInfo>> {
         // Two endpoints: the configured one (Zen Go plan, paid models) and the
         // free tier one, which also exposes the `-free` models and the rest of

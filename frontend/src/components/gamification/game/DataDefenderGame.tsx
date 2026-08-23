@@ -1,275 +1,258 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { X, RotateCcw, Trophy, Trash2 } from 'lucide-react'
 import { useGamificationStore } from '@/store/gamificationStore'
-import {
-  X, Play, RotateCcw, Gamepad2, Heart, Zap, Sword, Wand2, Map as MapIcon,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { VIEW_H, VIEW_W } from './constants'
-import { GameEngine } from './engine'
-import { MAPS } from './maps'
-import { renderFrame } from './renderer'
-import type { Difficulty, Phase } from './types'
+import { useCampaignStore, } from './campaignStore'
+import { IntroCinematic } from './IntroCinematic'
+import { MapScreen } from './MapScreen'
+import { NodeBrief } from './NodeBrief'
+import { PuzzleFlow } from './PuzzleModal'
+import { LEVEL1_NODES } from './content/level1'
+import type { Lang } from './types'
 
-const DIFF_STYLE: Record<Difficulty, string> = {
-  easy: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-  medium: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-  hard: 'border-red-500/40 bg-red-500/10 text-red-300',
-}
+type View = 'map' | 'brief' | 'flow' | 'victory'
+
+const NODE_CLEAR_BONUS = 250
+const BOSS_CLEAR_BONUS = 1000
 
 export function DataDefenderGame({ onClose }: { onClose: () => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const engineRef = useRef<GameEngine | null>(null)
-  const phaseRef = useRef<Phase>('menu')
-
-  const [phase, setPhase] = useState<Phase>('menu')
-  const [selectedMap, setSelectedMap] = useState(MAPS[0].id)
-  const [finalScore, setFinalScore] = useState(0)
-  const [xpEarned, setXpEarned] = useState(0)
-  const [weaponLabel, setWeaponLabel] = useState<'sword' | 'staff'>('sword')
+  const [view, setView] = useState<View>('map')
+  const [activeNode, setActiveNode] = useState(0)
+  const [earned, setEarned] = useState(0)
 
   const addXP = useGamificationStore((s) => s.addXP)
+  const completed = useCampaignStore((s) => s.completedNodes)
+  const nodePos = useCampaignStore((s) => s.nodePos)
+  const lang = useCampaignStore((s) => s.lang)
+  const setNodePos = useCampaignStore((s) => s.setNodePos)
+  const completeNode = useCampaignStore((s) => s.completeNode)
+  const nodePuzzleIndex = useCampaignStore((s) => s.nodePuzzleIndex)
+  const setNodePuzzleIndex = useCampaignStore((s) => s.setNodePuzzleIndex)
+  const introSeen = useCampaignStore((s) => s.introSeen)
+  const setIntroSeen = useCampaignStore((s) => s.setIntroSeen)
+  const [forceIntro, setForceIntro] = useState(false)
+  const resetCampaign = useCampaignStore((s) => s.resetCampaign)
+
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
   }, [onClose])
 
+  const handleArrive = useCallback((index: number) => {
+    setNodePos(index)
+    setActiveNode(index)
+    setView('brief')
+  }, [setNodePos])
+
+  const handleArriveRef = useRef(handleArrive)
+  const viewRefCurrent = useRef({ view, nodePos })
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.imageSmoothingEnabled = false
+    handleArriveRef.current = handleArrive
+    viewRefCurrent.current = { view, nodePos }
+  }, [handleArrive, view, nodePos])
 
-    const engine = new GameEngine(selectedMap, {
-      onPhase: (p) => {
-        phaseRef.current = p
-        setPhase(p)
-      },
-      onScore: (score, xp) => {
-        setFinalScore(score)
-        setXpEarned(xp)
-      },
-      addXP,
-    })
-    engineRef.current = engine
-
-    let raf = 0
-    let last = performance.now()
-    let lastWeapon = engine.getWeapon()
-    const loop = (now: number) => {
-      const dt = Math.min(50, now - last)
-      last = now
-      engine.update(dt)
-      const w = engine.getWeapon()
-      if (w !== lastWeapon) {
-        lastWeapon = w
-        setWeaponLabel(w)
-      }
-      renderFrame(ctx, engine, phaseRef.current, now)
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-
-    const GAME_KEYS = new Set([
-      'arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ',
-      'w', 'a', 's', 'd', 'j', 'k', 'x', 'z', 'q', 'tab', '1', '2',
-    ])
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      if (key === 'escape') {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         e.stopPropagation()
         onCloseRef.current()
         return
       }
-      if (key === 'tab') e.preventDefault()
-      if (phaseRef.current === 'playing' && GAME_KEYS.has(key)) e.preventDefault()
-      engine.keyDown(key, e.repeat)
+      const viewRef = viewRefCurrent.current
+      if ((e.key === 'Enter' || e.key === ' ') && viewRef.view === 'map') {
+        e.preventDefault()
+        handleArriveRef.current(viewRef.nodePos)
+      }
     }
-    const onKeyUp = (e: KeyboardEvent) => {
-      engine.keyUp(e.key.toLowerCase())
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const t = (en: string, es: string) => (lang === 'en' ? en : es)
+  const allDone = LEVEL1_NODES.every((n) => completed.includes(n.id))
+
+  const handleSolved = (xp: number, solvedCount: number) => {
+    addXP(xp, 'Data Defender')
+    setEarned((e) => e + xp)
+    const node = LEVEL1_NODES[activeNode]
+    if (solvedCount >= node.puzzles.length) {
+      const bonus = node.isBoss ? BOSS_CLEAR_BONUS : NODE_CLEAR_BONUS
+      addXP(bonus, 'Data Defender')
+      setEarned((e) => e + bonus)
+      completeNode(node.id)
+      setNodePuzzleIndex(node.id, 0)
+      if (node.isBoss) setView('victory')
+      else setView('map')
+    } else {
+      setNodePuzzleIndex(node.id, solvedCount)
     }
-    const onBlur = () => engine.clearKeys()
-
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    window.addEventListener('blur', onBlur)
-
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
-      window.removeEventListener('blur', onBlur)
-      engineRef.current = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- engine recreated only on mount; maps via selectMap
-  }, [addXP])
-
-  const selectMap = (id: string) => {
-    setSelectedMap(id)
-    engineRef.current?.loadMap(id)
-    phaseRef.current = 'menu'
-    setPhase('menu')
   }
 
-  const start = () => engineRef.current?.start()
-  const currentMap = MAPS.find((m) => m.id === selectedMap) ?? MAPS[0]
-
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative rounded-xl border border-border bg-card p-4 shadow-2xl">
-        <button
-          onClick={onClose}
-          className="absolute -top-3 -right-3 z-10 rounded-full border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="relative max-h-[96vh] w-[min(1400px,98vw)] overflow-hidden rounded-lg border-4 border-black bg-[#0b0b0d] shadow-[8px_8px_0_rgba(143,29,29,0.5)]">
+        <div className="flex items-center gap-3 border-b-4 border-black bg-[#101014] px-5 py-3">
+          <span className="text-2xl font-black uppercase tracking-[0.3em] text-[#e7e0d0]">
+            DATA DEFENDER
+          </span>
+          <span className="hidden text-sm font-bold uppercase tracking-widest text-[#6a6a74] sm:inline">
+            {t('Case: The Quesera Murders', 'Caso: Los asesinatos de la Quesera')}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => useCampaignStore.getState().setLang(lang === 'en' ? 'es' : 'en')}
+              className="border-2 border-black bg-[#232329] px-3 py-1.5 text-xs font-black uppercase tracking-widest text-[#e7e0d0] shadow-[2px_2px_0_#000]"
+            >
+              {lang}
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="close"
+              className="border-2 border-black bg-[#232329] p-2 text-[#e7e0d0] shadow-[2px_2px_0_#000] hover:bg-[#8f1d1d]"
+            >
+              <X className="h-4 w-4" strokeWidth={3} />
+            </button>
+          </div>
+        </div>
 
-        <div className="relative" style={{ width: VIEW_W, height: VIEW_H }}>
-          <canvas ref={canvasRef} width={VIEW_W} height={VIEW_H} className="rounded-lg" />
-
-          {phase === 'menu' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 px-6 overflow-y-auto">
-              <div className="flex items-center gap-2 text-primary">
-                <Gamepad2 className="w-7 h-7" />
-                <h2 className="text-2xl font-black tracking-widest">DATA DEFENDER</h2>
-              </div>
-              <p className="text-xs text-muted-foreground text-center max-w-md">
-                Side-scrolling penance. Walk, jump, and strike with blade or void staff.
-              </p>
-
-              <div className="w-full max-w-xl grid grid-cols-2 gap-2 mt-1">
-                {MAPS.map((m) => (
+        <div className="max-h-[calc(96vh-72px)] overflow-y-auto p-6">
+          {!introSeen || forceIntro ? (
+            <IntroCinematic
+              key={lang}
+              lang={lang}
+              onFinish={() => {
+                setIntroSeen(true)
+                setForceIntro(false)
+              }}
+            />
+          ) : view === 'map' ? (
+            <>
+              <MapScreen
+                nodes={LEVEL1_NODES}
+                completed={completed}
+                nodePos={nodePos}
+                lang={lang}
+                onArrive={handleArrive}
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#55555e]">
+                  {t('Click a node or press Enter to investigate · Esc to leave', 'Clic en un nodo o Enter para investigar · Esc para salir')}
+                </p>
+                <div className="flex shrink-0 items-center gap-2">
                   <button
-                    key={m.id}
-                    onClick={() => selectMap(m.id)}
-                    className={cn(
-                      'text-left rounded-lg border p-3 transition-all',
-                      selectedMap === m.id
-                        ? 'border-primary bg-primary/15 shadow-[0_0_16px_rgba(139,92,246,0.25)]'
-                        : 'border-border/60 bg-black/30 hover:border-primary/40',
-                    )}
+                    onClick={() => setForceIntro(true)}
+                    className="border-2 border-black bg-[#232329] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[#8a8a94] shadow-[2px_2px_0_#000] hover:text-[#e7e0d0]"
                   >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-sm font-bold flex items-center gap-1.5">
-                        <MapIcon className="w-3.5 h-3.5 text-primary" />
-                        {m.name}
-                      </span>
-                      <span className={cn('text-[var(--ch-text-9)] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border', DIFF_STYLE[m.difficulty])}>
-                        {m.difficulty}
-                      </span>
-                    </div>
-                    <p className="text-[var(--ch-text-10)] text-muted-foreground line-clamp-2">{m.subtitle}</p>
-                    <p className="text-[var(--ch-text-9)] text-muted-foreground/60 mt-1 font-mono">
-                      {m.enemies.length} foes · {m.lives}♥ · +{m.clearBonus} clear
-                    </p>
+                    {t('▶ Intro', '▶ Intro')}
                   </button>
-                ))}
+                  <ResetButton
+                    lang={lang}
+                    onReset={() => {
+                      resetCampaign()
+                      setView('map')
+                      setActiveNode(0)
+                      setEarned(0)
+                    }}
+                  />
+                </div>
               </div>
+            </>
+          ) : null}
 
-              <div className="flex items-center gap-3 text-[var(--ch-text-10)] text-muted-foreground/70 font-mono mt-1">
-                <span>A/D move</span>
-                <span>Space jump</span>
-                <span>J strike</span>
-                <span>Q weapon</span>
-              </div>
+          {view === 'brief' && (
+            <NodeBrief
+              node={LEVEL1_NODES[activeNode]}
+              lang={lang}
+              onStart={() => setView('flow')}
+              onBack={() => setView('map')}
+            />
+          )}
 
-              <div className="flex items-center gap-2 text-[var(--ch-text-11)] text-muted-foreground">
-                {weaponLabel === 'sword' ? (
-                  <><Sword className="w-3.5 h-3.5" /> Blade — close slash</>
-                ) : (
-                  <><Wand2 className="w-3.5 h-3.5" /> Staff — void orb</>
+          {view === 'flow' && (
+            <PuzzleFlow
+              key={LEVEL1_NODES[activeNode].id}
+              node={LEVEL1_NODES[activeNode]}
+              lang={lang}
+              startAt={nodePuzzleIndex[LEVEL1_NODES[activeNode].id] ?? 0}
+              onSolved={handleSolved}
+              onAbandon={() => setView('map')}
+            />
+          )}
+
+          {view === 'victory' && (
+            <div className="flex flex-col items-center gap-4 py-12 text-center">
+              <Trophy className="h-14 w-14 text-[#c9a227]" strokeWidth={2} />
+              <h2 className="text-3xl font-black uppercase tracking-[0.2em] text-[#e7e0d0]">
+                {t('The Bone Court rests', 'La Corte de Huesos descansa')}
+              </h2>
+              <p className="max-w-md text-sm leading-relaxed text-[#9a9aa4]">
+                {t(
+                  'The Deadlock King crumbles into committed rows. Aldous Vex swings at dawn. Nullville sleeps — until the next migration.',
+                  'El Rey del Deadlock se deshace en filas confirmadas. Aldous Vex será ahorcado al alba. Nullville duerme — hasta la siguiente migración.',
                 )}
-                <span className="text-muted-foreground/40">·</span>
-                <span className="text-primary font-semibold">{currentMap.name}</span>
-              </div>
-
-              <button
-                onClick={start}
-                className="mt-1 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                Begin Penance (Enter)
-              </button>
-            </div>
-          )}
-
-          {phase === 'over' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-lg bg-black/70">
-              <h2 className="text-3xl font-black tracking-widest text-red-500">PENANCE FAILED</h2>
-              <div className="flex items-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-500" />
-                  <span className="font-bold">Score: {finalScore}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-primary" />
-                  <span className="font-bold">+{xpEarned} XP</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 mt-2">
-                <button
-                  onClick={start}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90"
-                >
-                  <RotateCcw className="w-4 h-4" /> Retry (R)
-                </button>
-                <button
-                  onClick={() => { phaseRef.current = 'menu'; setPhase('menu') }}
-                  className="rounded-lg border border-border px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-                >
-                  Maps
-                </button>
-                <button
-                  onClick={onClose}
-                  className="rounded-lg border border-border px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
-
-          {phase === 'won' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-lg bg-black/70">
-              <h2 className="text-3xl font-black tracking-widest text-primary">PENANCE COMPLETE</h2>
-              <p className="text-sm text-muted-foreground">
-                {currentMap.name} cleared · +{currentMap.clearBonus} bonus
               </p>
-              <div className="flex items-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-500" />
-                  <span className="font-bold">Score: {finalScore}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-primary" />
-                  <span className="font-bold">+{xpEarned} XP</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 mt-2">
+              <p className="font-mono text-xs font-bold uppercase tracking-widest text-[#c9a227]">
+                +{earned} XP · Level 1 clear
+              </p>
+              <div className="flex items-center gap-3 pt-2">
                 <button
-                  onClick={start}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90"
+                  onClick={() => {
+                    resetCampaign()
+                    setView('map')
+                  }}
+                  className="flex items-center gap-2 border-2 border-black bg-[#232329] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-[#e7e0d0] shadow-[3px_3px_0_#000]"
                 >
-                  <RotateCcw className="w-4 h-4" /> Again (R)
+                  <RotateCcw className="h-3.5 w-3.5" /> {t('New game +', 'Nueva partida +')}
                 </button>
-                <button
-                  onClick={() => { phaseRef.current = 'menu'; setPhase('menu') }}
-                  className="rounded-lg border border-border px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-                >
-                  Maps
-                </button>
-                <button
-                  onClick={onClose}
-                  className="rounded-lg border border-border px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-                >
-                  Close
-                </button>
+                {allDone && (
+                  <button
+                    onClick={onClose}
+                    className="border-2 border-black bg-[#8f1d1d] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-[#e7e0d0] shadow-[3px_3px_0_#000]"
+                  >
+                    {t('Leave', 'Salir')}
+                  </button>
+                )}
               </div>
             </div>
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+function ResetButton({ lang, onReset }: { lang: Lang; onReset: () => void }) {
+  const [armed, setArmed] = useState(false)
+
+  useEffect(() => {
+    if (!armed) return
+    const timer = window.setTimeout(() => setArmed(false), 4000)
+    return () => window.clearTimeout(timer)
+  }, [armed])
+
+  return (
+    <button
+      onClick={() => {
+        if (armed) {
+          onReset()
+          setArmed(false)
+        } else {
+          setArmed(true)
+        }
+      }}
+      className={`flex shrink-0 items-center gap-1.5 border-2 border-black px-2.5 py-1 text-[10px] font-black uppercase tracking-widest shadow-[2px_2px_0_#000] transition-colors ${
+        armed
+          ? 'animate-pulse bg-[#e02626] text-[#fff]'
+          : 'bg-[#232329] text-[#8a8a94] hover:bg-[#8f1d1d] hover:text-[#e7e0d0]'
+      }`}
+    >
+      <Trash2 className="h-3 w-3" />
+      {armed
+        ? lang === 'en'
+          ? 'Sure? Click again'
+          : '¿Seguro? Clic otra vez'
+        : lang === 'en'
+          ? 'Reset progress'
+          : 'Reiniciar progreso'}
+    </button>
   )
 }

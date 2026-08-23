@@ -38,6 +38,35 @@ impl KnowledgeEngine {
         Ok(id)
     }
 
+    /// Record an application error into the knowledge library so the agent can
+    /// learn from it and recognize recurrences. Deduplicates by exact error
+    /// message within the "error" engine. Returns the case id and whether the
+    /// case was newly created.
+    pub async fn record_error_case(
+        storage: &Arc<Storage>,
+        error: &str,
+        context: &str,
+    ) -> AppResult<(String, bool)> {
+        let question = format!("[error] {error}");
+        // Dedupe: skip if an identical error is already stored.
+        let existing = storage.search_knowledge(&question, "error", 20).await?;
+        if let Some(case) = existing.into_iter().find(|c| c.question == question) {
+            return Ok((case.id, false));
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        let case = KnowledgeCase {
+            id: id.clone(),
+            question,
+            sql_text: context.to_string(),
+            engine: "error".to_string(),
+            rating: "unrated".to_string(),
+            used_count: 0,
+            favorite: false,
+        };
+        storage.save_knowledge_case(&case).await?;
+        Ok((id, true))
+    }
+
     /// Remove knowledge cases that were previously auto-recorded from tool
     /// results (question prefixed with `[tool:`). Those polluted the library
     /// with raw JSON payloads that are never useful as validated SQL answers.

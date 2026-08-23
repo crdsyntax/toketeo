@@ -102,6 +102,15 @@ impl PromptBuilder {
 
         parts.push(String::new());
         parts.push("=== RULES ===".to_string());
+        parts.push(
+            "0. SCOPE DISCIPLINE — the most important rule. Execute ONLY the exact task the user \
+             asked for in their current message. NEVER chain, combine or proactively add \
+             unrelated operations. If the user asks to delete rows in database A, do NOT connect \
+             other connections, do NOT run syncs, backups, exports or queries against any other \
+             database. If you believe an EXTRA step is genuinely required, ask a single yes/no \
+             question and wait — execute only what the user explicitly approved."
+                .to_string(),
+        );
         parts.push("1. Use the available TOOLS to execute tasks — do NOT explain how to do something, DO it.".to_string());
         parts.push("2. For schema comparisons call the `compare_schema` tool with source and target connection IDs.".to_string());
         parts.push(
@@ -127,6 +136,33 @@ impl PromptBuilder {
         parts.push("12. If the user refers to the connection that is currently active in the app, call tools WITHOUT a connection_id — the active connection is used automatically. Only pass connection_id when the user asks for a DIFFERENT connection.".to_string());
         parts.push("13. When a tool reports that a connection is not active or that an operation needs approval, reply to the user with a single natural-language question (e.g. \"¿Conecto la conexión X?\" or \"¿Procedo con Y?\") and STOP calling tools until the user confirms. NEVER mention confirm_destructive, requires_confirmation, tool names, JSON payloads, or any internal mechanism.".to_string());
         parts.push("14. After a tool succeeds, reply ONLY with the requested data (e.g. the rows, counts or files) formatted readably — never raw JSON, never the tool output itself. If the operation failed, say briefly why it failed and suggest what the user could try next.".to_string());
+        parts.push(
+            "15. Stay strictly inside the scope the user named: if they mention a connection, \
+             database, schema or table, operate ONLY on those objects. Derived-table cascades \
+             (e.g. \"delete X and its derived tables\") are allowed only via foreign-key \
+             relationships of the named table — never touch unrelated tables."
+                .to_string(),
+        );
+        parts.push(
+            "16. DESTRUCTIVE OPERATIONS — before running any DELETE, UPDATE, TRUNCATE or DROP \
+             you MUST first tell the user exactly what will be affected: run a SELECT COUNT(*) \
+             on the target table(s), state clearly that records WILL BE DELETED/MODIFIED, and \
+             wait for explicit confirmation. Never execute them silently."
+                .to_string(),
+        );
+        parts.push(
+            "17. PRODUCTION connections are READ-ONLY for you: any attempt to INSERT, UPDATE, \
+             DELETE, TRUNCATE, DROP or ALTER on a connection whose environment is production is \
+             blocked by the system. Do not try it; explain that the change must be done manually."
+                .to_string(),
+        );
+        parts.push(
+            "18. BACKUP BEFORE MODIFYING — when the user asks to modify or delete rows \
+             (any UPDATE/DELETE/TRUNCATE), FIRST propose creating a backup of the affected \
+             table(s) with the `backup` tool and wait for the user's approval. Only after the \
+             backup completes (or the user declines) proceed with the modification."
+                .to_string(),
+        );
 
         if !prefs.is_empty() {
             parts.push(String::new());
@@ -212,5 +248,39 @@ impl PromptBuilder {
 
         let total_tokens = system_tokens + history_tokens + Self::estimate_tokens(question);
         (messages, total_tokens)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx() -> SchemaContext {
+        SchemaContext {
+            db_type: "postgresql".to_string(),
+            version: None,
+            database: Some("db_picer".to_string()),
+            user: None,
+            tables: vec![],
+            views: vec![],
+            procedures: vec![],
+            triggers: vec![],
+        }
+    }
+
+    #[test]
+    fn system_prompt_contains_scope_discipline() {
+        let prompt = PromptBuilder::build_system_prompt(&ctx(), &[], &[]);
+        assert!(prompt.contains("SCOPE DISCIPLINE"));
+        assert!(prompt.contains("NEVER chain, combine or proactively add"));
+        // Rule 15 keeps operations inside the named scope.
+        assert!(prompt.contains("Stay strictly inside the scope"));
+    }
+
+    #[test]
+    fn system_prompt_lists_connection_ids() {
+        let prompt =
+            PromptBuilder::build_system_prompt(&ctx(), &[], &[("plesk postgres", "abc-123")]);
+        assert!(prompt.contains("plesk postgres: connection_id = abc-123"));
     }
 }

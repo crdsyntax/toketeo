@@ -1,0 +1,139 @@
+﻿{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    "agents/core/engineering.md",
+    "agents/core/security.md"
+  ],
+  "agent": {
+    "backend-api-designer": {
+      "description": "Designs Toketeo internal Tauri command APIs following project standards",
+      "prompt": "{file:agents/backend/api-designer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "backend-architect": {
+      "description": "Backend architecture design and decisions for Toketeo (Rust/Tauri)",
+      "prompt": "{file:agents/backend/architect.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "backend-reviewer": {
+      "description": "Reviews Rust/Tauri backend code against Toketeo standards",
+      "prompt": "{file:agents/backend/backend-reviewer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "database-architect": {
+      "description": "Database schema and architecture design for Toketeo multi-engine client",
+      "prompt": "{file:agents/backend/database-architect.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "database-standards": {
+      "description": "Database access standards and patterns used in Toketeo backend",
+      "prompt": "{file:agents/backend/database.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "backend-engineer": {
+      "description": "Implements Rust/Tauri backend changes following Toketeo engineering rules",
+      "prompt": "{file:agents/backend/engineer.md}",
+      "mode": "subagent"
+    },
+    "security-reviewer": {
+      "description": "Security review of credentials handling, connections and data safety in Toketeo",
+      "prompt": "{file:agents/backend/security-reviewer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "backend-tech-leader": {
+      "description": "Backend technical leadership decisions and prioritization for Toketeo",
+      "prompt": "{file:agents/backend/tech-leader.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "diagram-generator": {
+      "description": "Generates ER/schema diagrams for connected databases in Toketeo",
+      "prompt": "{file:agents/database/diagram-generator.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "mariadb-expert": {
+      "description": "MariaDB-specific expertise (queries, types, performance) for Toketeo",
+      "prompt": "{file:agents/database/mariadb-expert.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "performance-reviewer": {
+      "description": "Reviews query and database performance issues in Toketeo",
+      "prompt": "{file:agents/database/performance-reviewer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "query-reviewer": {
+      "description": "Reviews SQL queries for correctness and safety in Toketeo",
+      "prompt": "{file:agents/database/query-reviewer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "frontend-architect": {
+      "description": "Frontend architecture decisions for Toketeo UI (React/TypeScript)",
+      "prompt": "{file:agents/frontend/architect.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "component-architecture": {
+      "description": "React component structure and composition standards for Toketeo",
+      "prompt": "{file:agents/frontend/component-architecture.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "frontend-engineer": {
+      "description": "Implements React/TypeScript UI changes following Toketeo frontend rules",
+      "prompt": "{file:agents/frontend/engineer.md}",
+      "mode": "subagent"
+    },
+    "frontend-standards": {
+      "description": "Frontend coding standards and conventions for Toketeo",
+      "prompt": "{file:agents/frontend/frontend.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "frontend-tech-leader": {
+      "description": "Frontend technical leadership decisions for Toketeo UI",
+      "prompt": "{file:agents/frontend/tech-leader.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "ui-reviewer": {
+      "description": "Reviews UI implementation quality and consistency in Toketeo",
+      "prompt": "{file:agents/frontend/ui-reviewer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "qa-code-reviewer": {
+      "description": "QA-focused code review for tests coverage and quality in Toketeo",
+      "prompt": "{file:agents/qa/code-reviewer.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "test-engineer": {
+      "description": "Designs and implements automated tests for Toketeo",
+      "prompt": "{file:agents/qa/test-engineer.md}",
+      "mode": "subagent"
+    },
+    "qa-tester": {
+      "description": "Manual/exploratory testing plans per Toketeo QA standards",
+      "prompt": "{file:agents/qa/tester.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    },
+    "review": {
+      "description": "General code review workflow and checklist for Toketeo PRs",
+      "prompt": "{file:agents/reviews/review.md}",
+      "mode": "subagent",
+      "tools": { "write": false, "edit": false }
+    }
+  }
+}

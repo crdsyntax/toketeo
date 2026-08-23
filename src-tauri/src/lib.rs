@@ -62,6 +62,23 @@ pub fn run() {
             let known_hosts = state.known_hosts.clone();
             let storage_arc = state.storage.clone();
 
+            // One-off cleanup: previously auto-recorded tool results polluted
+            // the knowledge library; purge them once at startup (not per chat
+            // turn) so knowledge-first retrieval stays fast and clean.
+            let purge_storage = storage_arc.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(removed) =
+                    crate::application::assistant::knowledge::KnowledgeEngine::purge_tool_cases(
+                        &purge_storage,
+                    )
+                    .await
+                {
+                    if removed > 0 {
+                        tracing::info!("Purged {removed} polluted tool-result knowledge cases");
+                    }
+                }
+            });
+
             app.manage(state);
 
             let mut engine = Arc::new(JobEngine::new(storage_arc.clone(), known_hosts));
@@ -262,6 +279,7 @@ pub fn run() {
             commands::assistant_list_knowledge,
             commands::assistant_toggle_knowledge_favorite,
             commands::assistant_record_case,
+            commands::assistant_record_error,
             commands::assistant_record_feedback,
             commands::assistant_get_preferences,
             commands::assistant_set_preference,
