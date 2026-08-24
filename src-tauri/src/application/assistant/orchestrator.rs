@@ -51,20 +51,27 @@ fn is_transient_provider_error(err: &crate::error::AppError) -> bool {
     MARKERS.iter().any(|m| msg.contains(m))
 }
 
-/// Call the provider with automatic retries on transient errors. Before each
-/// retry the partially streamed content is wiped (`clear_content`) and a
-/// status line tells the user what is happening — no more dead turns on 503.
+/// Call the provider with automatic retries on transient errors. Each attempt
+/// is capped at 180s: a stalled SSE stream (no bytes, no [DONE]) must never
+/// hang the turn. Before each retry the partially streamed content is wiped
+/// (`clear_content`) and a status line tells the user what is happening.
 async fn complete_with_retry(
     adapter: &dyn crate::application::assistant::adapters::AiAdapter,
     request: &AiRequest,
     on_delta: &(dyn Fn(&str) + Send + Sync),
     events: Option<ChatEventEmitter<'_>>,
 ) -> AppResult<AiResponse> {
+    const ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
     let mut attempt = 0u32;
     loop {
-        match adapter.complete_streaming(request.clone(), on_delta).await {
-            Ok(resp) => return Ok(resp),
-            Err(e) if attempt < PROVIDER_MAX_RETRIES && is_transient_provider_error(&e) => {
+        let result = tokio::time::timeout(
+            ATTEMPT_TIMEOUT,
+            adapter.complete_streaming(request.clone(), on_delta),
+        )
+        .await;
+        match result {
+            Ok(Ok(resp)) => return Ok(resp),
+            Ok(Err(e)) if attempt < PROVIDER_MAX_RETRIES && is_transient_provider_error(&e) => {
                 attempt += 1;
                 if let Some(emit) = events {
                     emit(serde_json::json!({ "event": "clear_content" }));
@@ -77,7 +84,26 @@ async fn complete_with_retry(
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(800 * (1 << attempt))).await;
             }
-            Err(e) => return Err(e),
+            Ok(Err(e)) => return Err(e),
+            // Attempt timed out (stalled stream) → treat as transient.
+            Err(_) if attempt < PROVIDER_MAX_RETRIES => {
+                attempt += 1;
+                if let Some(emit) = events {
+                    emit(serde_json::json!({ "event": "clear_content" }));
+                    emit(serde_json::json!({
+                        "event": "status",
+                        "message": format!(
+                            "El proveedor no respondió en 180s; reintentando ({attempt}/{PROVIDER_MAX_RETRIES})…"
+                        ),
+                    }));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(800 * (1 << attempt))).await;
+            }
+            Err(_) => {
+                return Err(crate::error::AppError::Internal(
+                    "El proveedor no respondió (timeout de 180s por intento). Revisa tu conexión o cambia de proveedor en Settings → AI Providers.".to_string(),
+                ))
+            }
         }
     }
 }
@@ -154,6 +180,33 @@ mod dump_tests {
         let (cleaned, sql) = strip_pseudo_tool_dump(content);
         assert_eq!(cleaned, content);
         assert!(sql.is_none());
+    }
+
+    #[test]
+    fn screenshot_dump_with_multiline_sql_is_cleaned() {
+        // Exact shape observed in production: narration + bare-key dump with a
+        // multi-line SQL statement.
+        let content = "El listado de tablas se omitió por repetición. Voy a consultarlo directamente con SQL para encontrar orders y sus tablas derivadas (por claves foráneas) en db_picer.public.\n\
+                       query\n\
+                       connection_id\n\
+                       5d692c53-ed8f-4fe4-a3bf-325354238c6d\n\
+                       sql\n\
+                       SELECT\n\
+                       \ttc.table_name AS derived_table,\n\
+                       \tkcu.column_name AS fk_column,\n\
+                       \tcct.table_name AS referenced_table\n\
+                       FROM information_schema.table_constraints tc\n\
+                       JOIN information_schema.key_column_usage kcu\n\
+                       \tON tc.constraint_name = kcu.constraint_name\n\
+                       ORDER BY derived_table;";
+        let (cleaned, sql) = strip_pseudo_tool_dump(content);
+        assert!(cleaned.starts_with("El listado de tablas"));
+        assert!(!cleaned.contains("connection_id"));
+        assert!(!cleaned.contains("information_schema"));
+        let sql = sql.expect("sql should be rescued");
+        assert!(sql.starts_with("SELECT"));
+        assert!(sql.contains("information_schema.table_constraints"));
+        assert!(sql.ends_with("ORDER BY derived_table;"));
     }
 }
 
@@ -718,12 +771,25 @@ impl<'a> ChatOrchestrator<'a> {
         });
 
         let sql_from_fenced = extract_sql_block(&response.content);
-        let (answer_text, sql) = match strip_pseudo_tool_dump(&response.content) {
+        let (mut answer_text, sql) = match strip_pseudo_tool_dump(&response.content) {
             (cleaned, Some(rescued)) if !rescued.is_empty() => {
                 (cleaned, sql_from_fenced.or(Some(rescued)))
             }
             (cleaned, _) => (cleaned, sql_from_fenced),
         };
+
+        // Some models return an EMPTY final answer (e.g. after a tool was
+        // blocked pending confirmation). An empty bubble looks like a hang —
+        // synthesize a clear message instead.
+        if answer_text.trim().is_empty() {
+            answer_text = if requires_confirmation {
+                "⚠️ La operación quedó pendiente de tu confirmación. Presiona «Confirmar y continuar» para ejecutarla.".to_string()
+            } else if tool_used.is_some() {
+                "La herramienta se ejecutó pero el modelo no generó un resumen. Pregúntame por el resultado o reformula la acción.".to_string()
+            } else {
+                "No recibí respuesta del modelo. Vuelve a intentarlo.".to_string()
+            };
+        }
 
         self.save_message(
             &turn_id,

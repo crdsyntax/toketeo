@@ -167,6 +167,19 @@ function StreamStatus({ status }: { status: string }) {
   )
 }
 
+/** Detect multiple-choice options ("(A) …", "**B)** …", "A) …") in the last
+ * assistant message so they can be answered with one click. */
+function extractOptionLetters(content: string): string[] {
+  const letters = new Set<string>()
+  const re = /(?:^|\n|\s)\(?([A-D])[).:]\s|\((?:\*\*)?([A-D])(?:\*\*)?\)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    const letter = m[1] ?? m[2]
+    if (letter) letters.add(letter)
+  }
+  return [...letters].sort()
+}
+
 export interface AgentChatViewProps extends UseAgentChatOptions {
   /** Visual variant: full panel or compact drawer. */
   variant?: 'panel' | 'drawer'
@@ -349,7 +362,24 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
                     </div>
                   ) : (
                     /* Text message */
-                    <MarkdownContent content={msg.content} />
+                    <div>
+                      <MarkdownContent content={msg.content} />
+                      {/* Multiple-choice options (A/B/C...) → clickable chips */}
+                      {msg.role === 'assistant' && msg.id === messages[messages.length - 1]?.id && !isStreaming &&
+                        extractOptionLetters(msg.content).length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {extractOptionLetters(msg.content).map((letter) => (
+                              <button
+                                key={letter}
+                                onClick={() => handleSend(letter)}
+                                className="text-[12px] px-3 py-1.5 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-semibold"
+                              >
+                                {letter}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                    </div>
                   )}
                 </div>
               </div>

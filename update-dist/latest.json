@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.9_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUFPc3NlL1B4VWlqR3pZMzdKaVdEV2ZQSWNieVFaL2pmRjl6OU91OWsyU0lIVzdvb29uU3VZMGxlNHBzcjY5R3FDQkVFa0Ric2E5ODZtTG1DYkVhUFFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTM3MDM5CWZpbGU6VG9rZXRlb18wLjQuOV94NjRfZW4tVVMubXNpCnVVNE5NaDNGT0FqZFFtRTNCQ2Y5Q0YzdStpQ0FiY3drZW1OUWc5VFE3aDMrekdrZm9hdEt4UVNEdjM2UlVjb1dSZXVpSG83dncyTUFPb0RKZ1YwbUFnPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.0_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUt2TlUrN0Iwek1UN1RNdVRKb1M3eXZMNG5sNllxcDAvUGg1QkdpdS9GQjFKd1NubTZDMnJzQytBTFNZakI1UmF5MjFiQVBPQ1dLbFNrL0lrWS91clFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NDYwMzc3CWZpbGU6VG9rZXRlb18wLjUuMF94NjRfZW4tVVMubXNpCkd4U0g0amFhWVJuL2Jlb2VtZS9PSTFVY3FvWFRlZEJXbXZsWHFkUUgxRU5JK0NZMVlMUmx2REhRbFRUa0h3S1RhRGJyVkNQYmI4Zlk0aWNZam1pSUNBPT0K"
                                          }
                   },
-    "pub_date":  "2026-08-19T10:57:19Z",
-    "version":  "0.4.9",
-    "notes":  "v0.4.9: Per-database credentials for MongoDB (encrypted at rest, applied automatically on connect and database switch, Credentials entry in the database context menu); date-aware inline editing (datetime-local picker for date-like values in DataTab and query results, epoch-millis and { $date } values coerced back to their original shape on save, readable Mongo date display); formatCellValue unit tests; removed stale planning docs."
+    "pub_date":  "2026-08-23T04:46:17Z",
+    "version":  "0.5.0",
+    "notes":  "Agente rediseñado: disponible en toda la app (Ctrl+I), consciente del contexto (tabs, errores), streaming con reintentos, base de conocimiento hibrida (lexical + vectorial), guarda dura anti-escritura en produccion, backup obligatorio antes de operaciones destructivas y atribucion IA en el audit log."
 }
