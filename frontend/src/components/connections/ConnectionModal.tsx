@@ -163,15 +163,15 @@ export function ConnectionModal({
       autoLockTimer.current = setTimeout(async () => {
         try {
           await connectionService.lockSecrets()
-          toast('Revelado de contraseñas bloqueado por seguridad')
+          toast('Password reveal blocked for security')
         } catch {
           // Session may already be locked; nothing else to do.
         }
       }, 80_000)
 
-      toast.success('Contraseña copiada al portapapeles')
+      toast.success('Password copied to clipboard')
     } catch {
-      toast.error('No se pudo copiar la contraseña')
+      toast.error('Could not copy password')
     }
   }
 
@@ -392,7 +392,7 @@ export function ConnectionModal({
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8 scrollbar-thin">
           {isLoadingConnection ? (
             <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Cargando datos de conexión...
+              Loading connection data...
             </div>
           ) : activeTab === 'general' ? (
             <div className="space-y-6 animate-in slide-in-from-left-2 duration-300">
@@ -530,7 +530,7 @@ export function ConnectionModal({
                     <button
                       type="button"
                       onClick={() => copySecret('password')}
-                      title="Copiar contraseña"
+                      title="Copy password"
                       className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                     >
                       <Copy className="w-4 h-4" />
@@ -549,7 +549,7 @@ export function ConnectionModal({
                           }
                         }}
                       />
-                      Guardar contraseña
+                      Save password
                     </label>
                   )}
                 </div>
@@ -865,7 +865,7 @@ export function ConnectionModal({
                           <button
                             type="button"
                             onClick={() => copySecret('ssh_password')}
-                            title="Copiar contraseña SSH"
+                            title="Copy SSH password"
                             className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                           >
                             <Copy className="w-4 h-4" />
@@ -893,7 +893,7 @@ export function ConnectionModal({
                           <button
                             type="button"
                             onClick={() => copySecret('ssh_passphrase')}
-                            title="Copiar passphrase"
+                            title="Copy passphrase"
                             className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                           >
                             <Copy className="w-4 h-4" />

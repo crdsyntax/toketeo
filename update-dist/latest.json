@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.0_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUt2TlUrN0Iwek1UN1RNdVRKb1M3eXZMNG5sNllxcDAvUGg1QkdpdS9GQjFKd1NubTZDMnJzQytBTFNZakI1UmF5MjFiQVBPQ1dLbFNrL0lrWS91clFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NDYwMzc3CWZpbGU6VG9rZXRlb18wLjUuMF94NjRfZW4tVVMubXNpCkd4U0g0amFhWVJuL2Jlb2VtZS9PSTFVY3FvWFRlZEJXbXZsWHFkUUgxRU5JK0NZMVlMUmx2REhRbFRUa0h3S1RhRGJyVkNQYmI4Zlk0aWNZam1pSUNBPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.1_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU5FbHpuZzFxUE16UzRPTEhZcWRJRW5uVjRmNm1MSmF6QkE1OGNCRUNFeDdtYnI0MFRyVVAzdlNwa0J1alN4Zkk2RGdoQUowUUxzVkZ0NytmM3ZkY2cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NTM1MzE3CWZpbGU6VG9rZXRlb18wLjUuMV94NjRfZW4tVVMubXNpCjNPUWFCT2tDeUM4VGp6aUYwQ0RlMHpLZndQRlJLYWJ3Nmp3eHpuMmhKTEFQZVV1RDltT1dudEFyeHZjSThacktLTmJaUmpJeFFtc0Z0M1BHb05uaUF3PT0K"
                                          }
                   },
-    "pub_date":  "2026-08-23T04:46:17Z",
-    "version":  "0.5.0",
-    "notes":  "Agente rediseñado: disponible en toda la app (Ctrl+I), consciente del contexto (tabs, errores), streaming con reintentos, base de conocimiento hibrida (lexical + vectorial), guarda dura anti-escritura en produccion, backup obligatorio antes de operaciones destructivas y atribucion IA en el audit log."
+    "pub_date":  "2026-08-24T01:35:17Z",
+    "version":  "0.5.1",
+    "notes":  "Fixes del agente: timeout por intento del proveedor (ya no se cuelga el chat), respuestas vacias ahora muestran mensajes claros, opciones A/B/C clickeables y sanitizador de pseudo tool-calls con rescate de SQL."
 }

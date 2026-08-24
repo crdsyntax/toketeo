@@ -95,7 +95,7 @@ export function CompareSummary({
           <button onClick={onViewScript}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-semibold hover:opacity-90 transition-all">
             <FileCode className="w-3 h-3" />
-            Ver script de sincronización
+            View sync script
           </button>
           <button onClick={onReviewDiffs}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-foreground hover:bg-muted transition-colors">

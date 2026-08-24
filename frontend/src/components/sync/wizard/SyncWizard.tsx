@@ -22,10 +22,10 @@ interface SyncWizardProps {
 type WizardStep = 'connections' | 'tables' | 'preview' | 'schedule'
 
 const STEPS: { key: WizardStep; label: string; number: number }[] = [
-  { key: 'connections', label: 'Conexiones', number: 1 },
-  { key: 'tables', label: 'Tablas', number: 2 },
-  { key: 'preview', label: 'Vista previa', number: 3 },
-  { key: 'schedule', label: 'Programación', number: 4 },
+  { key: 'connections', label: 'Connections', number: 1 },
+  { key: 'tables', label: 'Tables', number: 2 },
+  { key: 'preview', label: 'Preview', number: 3 },
+  { key: 'schedule', label: 'Schedule', number: 4 },
 ]
 
 export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWizardProps) {
@@ -198,10 +198,10 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
             </div>
             <div>
               <span className="text-xs font-bold tracking-tight text-foreground uppercase">
-                {pipeline ? 'Editar' : 'Nueva'} Sincronización
+                {pipeline ? 'Edit' : 'New'} Sync
               </span>
               <span className="text-[var(--ch-text-9)] text-muted-foreground font-bold uppercase tracking-widest ml-3">
-                Paso {currentStep.number}/4 — {currentStep.label}
+                Step {currentStep.number}/4 — {currentStep.label}
               </span>
             </div>
           </div>
@@ -209,21 +209,21 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
             <button
               onClick={onMinimize}
               className="h-full px-2.5 hover:bg-muted text-muted-foreground transition-colors"
-              title="Minimizar"
+              title="Minimize"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={toggleMaximize}
               className="h-full px-2.5 hover:bg-muted text-muted-foreground transition-colors"
-              title={isMaximized ? 'Restaurar' : 'Maximizar'}
+              title={isMaximized ? 'Restore' : 'Maximize'}
             >
               {isMaximized ? <Copy className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
             <button
               onClick={onClose}
               className="h-full px-2.5 hover:bg-destructive hover:text-destructive-foreground transition-colors"
-              title="Cerrar"
+              title="Close"
             >
               <X className="w-4 h-4" />
             </button>
@@ -311,13 +311,13 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
                 onClick={goBack}
                 className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
               >
-                ← Anterior
+                ← Previous
               </button>
             )}
           </div>
           <div className="flex items-center gap-3">
             <button onClick={onClose} className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
-              Cancelar
+              Cancel
             </button>
             {isLast ? (
               <button
@@ -325,7 +325,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
                 disabled={saving || !canGoNext()}
                 className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
               >
-                {saving ? 'Guardando...' : 'Crear Sincronización'}
+                {saving ? 'Saving...' : 'Create Sync'}
               </button>
             ) : (
               <button
@@ -333,7 +333,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
                 disabled={!canGoNext()}
                 className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
               >
-                Siguiente →
+                Next →
               </button>
             )}
           </div>

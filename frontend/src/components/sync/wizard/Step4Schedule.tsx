@@ -16,7 +16,7 @@ export function Step4Schedule({
   return (
     <div className="space-y-6">
       <p className="text-[var(--ch-text-10)] text-muted-foreground">
-        Define cuándo se ejecutará esta sincronización. Puedes ejecutarla una vez ahora o programarla para que se repita automáticamente.
+        Define when this sync will run. You can run it once now or schedule it to repeat automatically.
       </p>
 
       <div className="space-y-3">
@@ -33,8 +33,8 @@ export function Step4Schedule({
             <Play className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs font-bold">Ejecutar una vez ahora</p>
-            <p className="text-[var(--ch-text-10)] text-muted-foreground">La sincronización se ejecutará inmediatamente después de crearla.</p>
+            <p className="text-xs font-bold">Run once now</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground">The sync will run immediately after being created.</p>
           </div>
         </label>
 
@@ -51,14 +51,14 @@ export function Step4Schedule({
             <Repeat className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs font-bold">Repetir automáticamente</p>
-            <p className="text-[var(--ch-text-10)] text-muted-foreground">Ejecutar cada: 1h · 6h · 12h · 24h · semanal</p>
+            <p className="text-xs font-bold">Repeat automatically</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground">Run every: 1h · 6h · 12h · 24h · weekly</p>
           </div>
         </label>
 
         {schedule === 'recurring' && (
           <div className="flex gap-2 pl-14">
-            {['1h', '6h', '12h', '24h', 'semanal'].map((opt) => (
+            {['1h', '6h', '12h', '24h', 'weekly'].map((opt) => (
               <button
                 key={opt}
                 className="px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wider border border-border bg-background hover:border-primary transition-all"
@@ -82,8 +82,8 @@ export function Step4Schedule({
             <Terminal className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs font-bold">Programación personalizada (CRON)</p>
-            <p className="text-[var(--ch-text-10)] text-muted-foreground">Para usuarios avanzados — define una expresión cron.</p>
+            <p className="text-xs font-bold">Custom schedule (CRON)</p>
+            <p className="text-[var(--ch-text-10)] text-muted-foreground">For advanced users — define a cron expression.</p>
           </div>
         </label>
 
@@ -93,7 +93,7 @@ export function Step4Schedule({
               className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
               value={cronExpression}
               onChange={(e) => onCronExpressionChange(e.target.value)}
-              placeholder="0 */6 * * * (cada 6 horas)"
+              placeholder="0 */6 * * * (every 6 hours)"
             />
           </div>
         )}
@@ -101,7 +101,7 @@ export function Step4Schedule({
 
       <div className="flex items-center gap-2 text-[var(--ch-text-10)] text-muted-foreground">
         <Clock className="w-3 h-3" />
-        Esta opción se puede configurar más adelante desde los ajustes de la sincronización.
+        This option can be configured later from the sync settings.
       </div>
     </div>
   )

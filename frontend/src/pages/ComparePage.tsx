@@ -332,10 +332,10 @@ export function ComparePage() {
           <Plug className="w-8 h-8 text-muted-foreground" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold mb-1">No hay conexiones activas</h2>
+          <h2 className="text-lg font-semibold mb-1">No active connections</h2>
           <p className="text-sm text-muted-foreground max-w-md">
-            Para comparar bases de datos necesitas al menos una conexi&oacute;n abierta.
-            Abre o crea una conexi&oacute;n desde el panel lateral o la p&aacute;gina de conexiones.
+            To compare databases you need at least one open connection.
+            Open or create a connection from the sidebar or the connections page.
           </p>
         </div>
         <Link
@@ -343,7 +343,7 @@ export function ComparePage() {
           className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium"
         >
           <Database className="w-4 h-4" />
-          Ir a Conexiones
+          Go to Connections
         </Link>
       </div>
     );
@@ -366,7 +366,7 @@ export function ComparePage() {
                 onClick={() => pause()}
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg hover:bg-muted text-xs font-medium"
               >
-                <Pause className="w-3.5 h-3.5" /> Pausar
+                <Pause className="w-3.5 h-3.5" /> Pause
               </button>
             )}
             {status === 'paused' && (
@@ -374,14 +374,14 @@ export function ComparePage() {
                 onClick={() => resume()}
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg hover:bg-muted text-xs font-medium"
               >
-                <Play className="w-3.5 h-3.5" /> Reanudar
+                <Play className="w-3.5 h-3.5" /> Resume
               </button>
             )}
             <button
               onClick={() => cancel()}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-destructive/40 text-destructive rounded-lg hover:bg-destructive/10 text-xs font-medium"
             >
-              <Square className="w-3.5 h-3.5" /> Detener
+              <Square className="w-3.5 h-3.5" /> Stop
             </button>
           </div>
         )}
@@ -396,7 +396,7 @@ export function ComparePage() {
               ) : (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
               )}
-              {status === 'paused' ? 'Pausado — ' : ''}
+              {status === 'paused' ? 'Paused — ' : ''}
               {progress.message}
             </span>
             {progress.total > 0 && (
@@ -466,9 +466,9 @@ export function ComparePage() {
       {tablesReady && (
         <div className="border border-border rounded-lg shrink-0 max-h-48 flex flex-col overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20">
-            <span className="text-xs font-medium">Tablas a comparar</span>
+            <span className="text-xs font-medium">Tables to compare</span>
             <span className="text-xs text-muted-foreground">
-              ({selectedTables.length} seleccionadas / {sourceTables.length})
+              ({selectedTables.length} selected / {sourceTables.length})
             </span>
             <div className="ml-auto flex items-center gap-1">
               <div className="relative">
@@ -476,7 +476,7 @@ export function ComparePage() {
                 <input
                   value={tableFilter}
                   onChange={(e) => setTableFilter(e.target.value)}
-                  placeholder="Filtrar..."
+                  placeholder="Filter..."
                   disabled={isRunning}
                   className="h-7 pl-7 pr-2 w-36 rounded border border-border bg-background text-xs"
                 />
@@ -486,20 +486,20 @@ export function ComparePage() {
                 disabled={isRunning || filteredSourceTables.length === 0}
                 className="flex items-center gap-1 px-2 py-1 text-xs hover:bg-muted rounded disabled:opacity-50"
               >
-                <CheckSquare className="w-3.5 h-3.5" /> Todas
+                <CheckSquare className="w-3.5 h-3.5" /> All
               </button>
               <button
                 onClick={deselectAll}
                 disabled={isRunning || selectedTables.length === 0}
                 className="flex items-center gap-1 px-2 py-1 text-xs hover:bg-muted rounded disabled:opacity-50"
               >
-                <SquareIcon className="w-3.5 h-3.5" /> Ninguna
+                <SquareIcon className="w-3.5 h-3.5" /> None
               </button>
               <button
                 onClick={rescanTables}
                 disabled={isRunning || loadingSourceTables || loadingTargetTables}
                 className="flex items-center gap-1 px-2 py-1 text-xs hover:bg-muted rounded disabled:opacity-50"
-                title="Reescanear tablas"
+                title="Rescan tables"
               >
                 <RefreshCw className={cn('w-3.5 h-3.5', (loadingSourceTables || loadingTargetTables) && 'animate-spin')} />
               </button>
@@ -508,11 +508,11 @@ export function ComparePage() {
           <div className="overflow-y-auto flex-1 p-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1">
             {loadingSourceTables || loadingTargetTables ? (
               <div className="col-span-full flex items-center justify-center py-4 text-xs text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" /> Cargando tablas...
+                <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading tables...
               </div>
             ) : filteredSourceTables.length === 0 ? (
               <div className="col-span-full text-center py-4 text-xs text-muted-foreground">
-                No hay tablas en el source
+                No tables in source
               </div>
             ) : (
               filteredSourceTables.map((name) => {
@@ -538,7 +538,7 @@ export function ComparePage() {
                       {name}
                     </span>
                     {missing && (
-                      <span className="ml-auto text-[var(--ch-text-10)] text-amber-600 shrink-0" title="No existe en target">
+                      <span className="ml-auto text-[var(--ch-text-10)] text-amber-600 shrink-0" title="Does not exist in target">
                         !
                       </span>
                     )}
@@ -555,13 +555,13 @@ export function ComparePage() {
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">
-              {missingOnTarget.length} tabla{missingOnTarget.length !== 1 ? 's' : ''} no existen en el target
+              {missingOnTarget.length} table{missingOnTarget.length !== 1 ? 's' : ''} missing in target
             </p>
             <p className="text-amber-600/80 mt-0.5">
               {missingOnTarget.slice(0, 8).join(', ')}
-              {missingOnTarget.length > 8 ? ` y ${missingOnTarget.length - 8} m&aacute;s` : ''}
-              . Se marcar&aacute;n como <strong>Missing</strong> en el schema compare.
-              No se incluir&aacute;n en data compare.
+              {missingOnTarget.length > 8 ? ` and ${missingOnTarget.length - 8} more` : ''}
+              . Will be marked as <strong>Missing</strong> in schema compare.
+              Will not be included in data compare.
             </p>
           </div>
         </div>
@@ -617,7 +617,7 @@ export function ComparePage() {
             onClick={clear}
             disabled={isRunning}
             className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg hover:bg-muted hover:text-destructive disabled:opacity-50 transition-colors text-sm font-medium"
-            title="Limpiar comparaci&oacute;n actual"
+            title="Clear current comparison"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -630,7 +630,7 @@ export function ComparePage() {
         )}
         {status === 'cancelled' && !error && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto">
-            Comparaci&oacute;n detenida por el usuario
+            Comparison stopped by user
           </div>
         )}
       </div>
@@ -656,7 +656,7 @@ export function ComparePage() {
           <button
             onClick={() => setFullscreenTab(activeTab)}
             className="ml-auto flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
-            title="Abrir en pantalla completa"
+            title="Open in fullscreen"
           >
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
@@ -698,10 +698,10 @@ export function ComparePage() {
             icon={<GitCompare className="w-8 h-8 mb-2 opacity-50" />}
             text={
               !sourceConnId || !targetConnId
-                ? 'Selecciona source y target'
+                ? 'Select source and target'
                 : selectedTables.length === 0
-                  ? 'Selecciona al menos una tabla para comparar'
-                  : 'Haz clic en "Compare Schema"'
+                  ? 'Select at least one table to compare'
+                  : 'Click on "Compare Schema"'
             }
           />
         )}
@@ -709,14 +709,14 @@ export function ComparePage() {
         {!loading && activeTab === 'data' && !dataReport && (
           <EmptyHint
             icon={<FileSpreadsheet className="w-8 h-8 mb-2 opacity-50" />}
-            text="Selecciona tablas que existan en ambos lados y haz clic en Compare Data"
+            text="Select tables that exist on both sides and click Compare Data"
           />
         )}
 
         {!loading && activeTab === 'script' && !syncScript && (
           <EmptyHint
             icon={<Code2 className="w-8 h-8 mb-2 opacity-50" />}
-            text='Ejecuta Schema Compare primero, luego "Generate Script"'
+            text='Run Schema Compare first, then "Generate Script"'
           />
         )}
       </div>
@@ -791,7 +791,7 @@ function ConnectionSide({
         disabled={disabled}
         className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm disabled:opacity-50"
       >
-        <option value="">Seleccionar conexi&oacute;n...</option>
+        <option value="">Select connection...</option>
         {connections.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name} ({c.type})
@@ -806,7 +806,7 @@ function ConnectionSide({
           </span>
           {loadingDbs ? (
             <div className="h-9 flex items-center px-3 text-xs text-muted-foreground">
-              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> Cargando...
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> Loading...
             </div>
           ) : (
             <select
@@ -831,7 +831,7 @@ function ConnectionSide({
           <span className="text-[var(--ch-text-10)] text-muted-foreground uppercase">Schema</span>
           {loadingSchemas ? (
             <div className="h-9 flex items-center px-3 text-xs text-muted-foreground">
-              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> Cargando schemas...
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> Loading schemas...
             </div>
           ) : (
             <select

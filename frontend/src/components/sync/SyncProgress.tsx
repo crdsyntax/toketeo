@@ -94,7 +94,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
       } else if (e.Completed) {
         onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
         onLogsChange((prev) => [
-          { type: 'phase' as const, table: '', message: 'Sincronización completada', time: new Date() },
+          { type: 'phase' as const, table: '', message: 'Sync completed', time: new Date() },
           ...prev,
         ].slice(0, 10))
       }
