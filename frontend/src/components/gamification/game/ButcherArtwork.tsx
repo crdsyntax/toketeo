@@ -121,28 +121,35 @@ function paintScene(ctx: Ctx, t: number): void {
     px(ctx, x - 2, 19, 3, 3, C.hook)
   }
 
-  const cloth = (x: number, y: number, w: number, hgt: number, base: string) => {
+  const meatSlab = (x: number, y: number, w: number, hgt: number) => {
     for (let r = 0; r < hgt; r++) {
-      const shrink = Math.round(r * 0.22)
-      px(ctx, x + shrink, y + r, w - shrink * 2, 1, base)
-      if (r % 7 === 3) px(ctx, x + shrink + 2, y + r, w - shrink * 2 - 5, 2, C.bloodDark)
-      if (r % 11 === 5) px(ctx, x + shrink + Math.floor(w / 2), y + r, 2, 4, C.blood)
+      const shrink = Math.round(r * 0.18)
+      const wob = Math.round(Math.sin(r * 0.55) * 1.5)
+      const rx = x + shrink + wob
+      const rw = w - shrink * 2
+      px(ctx, rx, y + r, rw, 1, r % 6 === 0 ? '#6e1414' : '#8f1d1d')
+      if (r % 4 === 1) px(ctx, rx + 2, y + r, Math.max(2, rw - 6), 1, '#b95454')
+      if (r % 7 === 3) px(ctx, rx + Math.floor(rw / 2), y + r, 3, 1, '#e8d8d0')
+      if (r % 9 === 5) px(ctx, rx, y + r, 2, 2, '#4a0e0e')
     }
-    px(ctx, x + w / 2 - 1, y - 4, 2, 4, C.hook)
+    px(ctx, x + Math.floor(w / 2) - 1, y - 4, 2, 4, C.hook)
+    for (let i = 0; i < 3; i++) px(ctx, x + 3 + Math.floor((i * (w - 6)) / 2), y + hgt, 1, 2 + i, C.blood)
   }
-  cloth(16, 21, 26, 62, C.clothA)
-  cloth(196, 21, 30, 78, C.clothB)
-  cloth(158, 21, 20, 44, C.clothC)
+  meatSlab(16, 21, 26, 62)
+  meatSlab(196, 21, 30, 78)
+  meatSlab(158, 21, 20, 44)
 
   px(ctx, 4, 64, 3, 152, C.shelfPost)
   px(ctx, 46, 64, 3, 152, C.shelfPost)
   for (const by of [76, 118, 160]) {
     px(ctx, 2, by, 50, 5, C.shelfBoard)
     const meatBlob = (mx: number, my: number, mw: number, mh: number) => {
-      px(ctx, mx, my, mw, mh, C.meat)
-      px(ctx, mx + 1, my + 1, mw - 3, 2, C.meatLight)
+      px(ctx, mx, my, mw, mh, '#8f1d1d')
+      px(ctx, mx + 1, my + 1, mw - 3, 2, '#c04a42')
+      px(ctx, mx + 3, my + 2, Math.max(3, mw - 8), 1, '#e0c8c0')
       px(ctx, mx + mw - 3, my + 2, 2, mh - 3, C.blood)
       px(ctx, mx + 2, my + mh - 2, mw - 5, 2, C.bloodDark)
+      px(ctx, mx + 2, my + 3, 2, 2, '#5c0f0f')
       if (rng() > 0.4) px(ctx, mx + mw / 2, my + mh, 1, 3 + Math.floor(rng() * 3), C.blood)
     }
     meatBlob(8, by - 9, 16, 9)
@@ -191,8 +198,6 @@ function paintScene(ctx: Ctx, t: number): void {
   px(ctx, 84, 106, 72, 46, C.shirt)
   ditherRect(ctx, 84, 142, 72, 12, '#101014')
 
-  drawText(ctx, 'PANTERA', 93, 114, 2, C.letter, '#000')
-
   px(ctx, 102, 84, 4, 24, C.apron)
   px(ctx, 126, 84, 4, 24, C.apron)
   px(ctx, 98, 106, 40, 96, C.apron)
@@ -200,7 +205,16 @@ function paintScene(ctx: Ctx, t: number): void {
   px(ctx, 98, 196, 40, 6, C.apronShade)
   px(ctx, 104, 168, 30, 12, C.apronShade)
 
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 12; i++) {
+    const sx = 99 + Math.floor(rng() * 33)
+    const sy = 108 + Math.floor(rng() * 86)
+    const sw = 4 + Math.floor(rng() * 9)
+    const sh = 3 + Math.floor(rng() * 7)
+    px(ctx, sx, sy, sw, sh, rng() > 0.45 ? C.blood : C.bloodBright)
+    px(ctx, sx + sw, sy + 1, 1, Math.max(1, sh - 2), C.bloodDark)
+    if (rng() > 0.5) px(ctx, sx - 1, sy + 2, 1, 2, C.bloodDark)
+  }
+  for (let i = 0; i < 150; i++) {
     const sx = 100 + Math.floor(rng() * 36)
     const sy = 110 + Math.floor(rng() * 88)
     const s = rng() > 0.85 ? 2 : 1
@@ -215,6 +229,8 @@ function paintScene(ctx: Ctx, t: number): void {
     px(ctx, 125 - (i % 2) * 5, 133 + i * 4, 2, 4, C.blood)
   }
   splatter(ctx, rng, 118, 145, 26, 34, 26)
+  for (let i = 0; i < 6; i++) px(ctx, 102 + i * 6, 202, 1, 2 + (i % 3), C.blood)
+  drawText(ctx, 'PANTERA', 93, 114, 2, C.letter, '#000')
 
   const armSeg = (x1: number, y1: number, x2: number, y2: number, th: number) => {
     const steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1))
@@ -245,6 +261,16 @@ function paintScene(ctx: Ctx, t: number): void {
   px(ctx, 40, 50, 10, 4, '#d8ccb8')
   px(ctx, 44, 47, 3, 5, C.tusk)
   px(ctx, 46, 45, 2, 4, C.tusk)
+  px(ctx, 30, 25, 12, 1, C.pigShade)
+  px(ctx, 31, 27, 14, 1, C.pigShade)
+  px(ctx, 40, 29, 8, 1, '#8d5f5a')
+  px(ctx, 51, 35, 2, 8, C.pigShade)
+  px(ctx, 55, 42, 2, 6, '#8d5f5a')
+  px(ctx, 27, 36, 2, 6, C.pigShade)
+  px(ctx, 29, 42, 3, 1, '#8d5f5a')
+  splatter(ctx, rng, 46, 34, 24, 13, 36)
+  px(ctx, 46, 50, 1, 7, C.bloodBright)
+  px(ctx, 61, 41, 2, 2, C.blood)
   splatter(ctx, rng, 44, 52, 22, 8, 22)
   px(ctx, 40, 56, 1, 8, C.blood)
   px(ctx, 50, 56, 1, 6, C.bloodBright)
@@ -256,9 +282,12 @@ function paintScene(ctx: Ctx, t: number): void {
   for (let i = 0; i < 4; i++) px(ctx, 161, 153 + i * 3, 12, 1, C.skinDark)
 
   px(ctx, 165, 164, 5, 18, C.handle)
-  px(ctx, 165, 167, 5, 1, '#301d10')
-  px(ctx, 165, 172, 5, 1, '#301d10')
+  for (let i = 0; i < 5; i++) px(ctx, 165, 165 + i * 3, 5, 1, i % 2 ? '#301d10' : '#5c3a22')
+  px(ctx, 165, 164, 5, 1, '#7a5230')
   px(ctx, 163, 163, 9, 4, '#6b4a2f')
+  px(ctx, 163, 163, 9, 1, '#8a5c36')
+  px(ctx, 164, 181, 7, 2, '#8a8f96')
+  px(ctx, 165, 183, 5, 1, '#55595f')
   px(ctx, 146, 166, 18, 24, C.steel)
   px(ctx, 146, 166, 18, 3, C.steelLight)
   px(ctx, 146, 186, 18, 3, C.steelLight)

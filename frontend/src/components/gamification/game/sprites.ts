@@ -25,7 +25,7 @@ const HERO_TIERS: Array<{ min: number; max: number; palette: HeroPalette }> = [
     max: 4,
     palette: {
       label: 'Data Novice',
-      colors: { c: '#3f3f47', d: '#2b2b31', t: '#8a8a94', s: '#c9a17a', e: '#ff5b5b', b: '#141418' },
+      colors: { c: '#3f3f47', d: '#2b2b31', t: '#8a8a94', s: '#c9a17a', e: '#ff5b5b', b: '#141418', v: '#5ac8e8' },
     },
   },
   {
@@ -33,7 +33,7 @@ const HERO_TIERS: Array<{ min: number; max: number; palette: HeroPalette }> = [
     max: 9,
     palette: {
       label: 'Query Scrapper',
-      colors: { c: '#5c4033', d: '#402c23', t: '#a9743a', s: '#c9a17a', e: '#ffb03a', b: '#181310' },
+      colors: { c: '#5c4033', d: '#402c23', t: '#a9743a', s: '#c9a17a', e: '#ffb03a', b: '#181310', v: '#ffd27a' },
     },
   },
   {
@@ -41,7 +41,7 @@ const HERO_TIERS: Array<{ min: number; max: number; palette: HeroPalette }> = [
     max: 14,
     palette: {
       label: 'Schema Explorer',
-      colors: { c: '#2f4a33', d: '#203320', t: '#6d8f4b', s: '#c9a17a', e: '#7fe066', b: '#10160f' },
+      colors: { c: '#2f4a33', d: '#203320', t: '#6d8f4b', s: '#c9a17a', e: '#7fe066', b: '#10160f', v: '#9fff8a' },
     },
   },
   {
@@ -49,7 +49,7 @@ const HERO_TIERS: Array<{ min: number; max: number; palette: HeroPalette }> = [
     max: 19,
     palette: {
       label: 'Query Knight',
-      colors: { c: '#39435c', d: '#272e40', t: '#aab4c8', s: '#c9a17a', e: '#66d9ff', b: '#0f1218' },
+      colors: { c: '#39435c', d: '#272e40', t: '#aab4c8', s: '#c9a17a', e: '#66d9ff', b: '#0f1218', v: '#7fd4ff' },
     },
   },
   {
@@ -57,7 +57,7 @@ const HERO_TIERS: Array<{ min: number; max: number; palette: HeroPalette }> = [
     max: 29,
     palette: {
       label: 'Database Artisan',
-      colors: { c: '#4a2f5c', d: '#332042', t: '#c9a227', s: '#c9a17a', e: '#e070ff', b: '#140f18' },
+      colors: { c: '#4a2f5c', d: '#332042', t: '#c9a227', s: '#c9a17a', e: '#e070ff', b: '#140f18', v: '#f09aff' },
     },
   },
   {
@@ -65,7 +65,7 @@ const HERO_TIERS: Array<{ min: number; max: number; palette: HeroPalette }> = [
     max: 9999,
     palette: {
       label: 'DBA Overlord',
-      colors: { c: '#571c23', d: '#381217', t: '#c9a227', s: '#c9a17a', e: '#ffffff', b: '#0d0507' },
+      colors: { c: '#571c23', d: '#381217', t: '#c9a227', s: '#c9a17a', e: '#ffffff', b: '#0d0507', v: '#ff5b5b' },
     },
   },
 ]
@@ -85,13 +85,13 @@ const HERO_A = [
   '....kkeeeeeekk..',
   '....kksssssskk..',
   '.....kkkkkkkk...',
-  '....kcccttccck..',
+  '....kcvcttcvck..',
   '...kccccccccck..',
   '..kccdtttdcck...',
   '.kdcccccccccck..',
   '.kdcccccccccck..',
   '.kkdcccccccdkk..',
-  '.kdbbccccbbdk...',
+  '.kdbbccvcbbdk...',
   '.kdbbk.kbbdk....',
   '.kdbbk.kbbdk....',
   '..kbbk.kbbk.....',
@@ -304,21 +304,71 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
 }
 
 function drawTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = '#6b4a2f'
+  ctx.fillStyle = '#4a3018'
   ctx.fillRect(x - 1, y - 3, 2, 4)
   const r = 3 + Math.floor(rng() * 2)
-  ctx.fillStyle = '#1e6b2e'
+  ctx.fillStyle = '#14511f'
   ctx.beginPath()
   ctx.arc(x, y - 5, r, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = '#3fa34d'
+  ctx.fillStyle = '#2c7a36'
   ctx.beginPath()
   ctx.arc(x - 1, y - 6, r - 1.4, 0, Math.PI * 2)
   ctx.fill()
 }
 
+function drawDeadTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
+  ctx.fillStyle = '#38281c'
+  ctx.fillRect(x - 1, y - 8, 2, 9)
+  ctx.fillRect(x - 4, y - 6, 3, 1)
+  ctx.fillRect(x - 5, y - 7, 2, 1)
+  ctx.fillRect(x + 1, y - 5, 3, 1)
+  ctx.fillRect(x + 3, y - 6, 1, 2)
+  if (rng() > 0.5) {
+    ctx.fillStyle = '#4c3626'
+    ctx.fillRect(x - 1, y - 8, 1, 9)
+  }
+}
+
+function drawCyberTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
+  ctx.fillStyle = '#2a1d14'
+  ctx.fillRect(x - 1, y - 3, 2, 4)
+  ctx.fillRect(x + 1, y - 1, 3, 1)
+  const r = 3 + Math.floor(rng() * 2)
+  ctx.fillStyle = '#0f3a18'
+  ctx.beginPath()
+  ctx.arc(x, y - 5, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#1c5c28'
+  ctx.beginPath()
+  ctx.arc(x - 1, y - 6, r - 1.4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#8f1d1d'
+  ctx.fillRect(x + 1, y - 6, 1, 1)
+  ctx.fillRect(x - 2, y - 4, 1, 1)
+  ctx.fillStyle = '#35e0d8'
+  ctx.fillRect(x, y - 7, 1, 1)
+}
+
+function drawGorePile(ctx: Ctx, x: number, y: number, rng: () => number): void {
+  ctx.fillStyle = '#4e0c0c'
+  ctx.fillRect(x - 2, y - 1, 5, 2)
+  ctx.fillStyle = '#8f1d1d'
+  ctx.fillRect(x - 1, y - 2, 3, 2)
+  ctx.fillStyle = '#b02424'
+  ctx.fillRect(x, y - 2, 1, 1)
+  if (rng() > 0.5) {
+    ctx.fillStyle = '#d8d0c0'
+    ctx.fillRect(x + 2, y - 2, 2, 1)
+  }
+  ctx.fillStyle = '#3a3f46'
+  ctx.fillRect(x - 3, y, 1, 1)
+  ctx.fillStyle = '#35e0d8'
+  ctx.fillRect(x + 3, y - 1, 1, 1)
+}
+
 function drawBush(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = rng() > 0.5 ? '#2c8a3c' : '#24733a'
+  ctx.fillStyle = rng() > 0.5 ? '#1f6b2c' : '#175426'
   ctx.beginPath()
   ctx.arc(x, y - 1, 2.2, 0, Math.PI * 2)
   ctx.fill()
@@ -356,63 +406,119 @@ function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
   ctx.fill()
 }
 
-function drawHouse(ctx: Ctx, x: number, y: number): void {
-  ctx.fillStyle = '#b98d64'
-  ctx.fillRect(x - 4, y - 4, 8, 5)
-  ctx.fillStyle = '#8f3b2f'
-  ctx.fillRect(x - 5, y - 6, 10, 2)
-  ctx.fillRect(x - 4, y - 7, 8, 1)
-  ctx.fillStyle = '#3a2417'
-  ctx.fillRect(x - 1, y - 2, 2, 3)
-  ctx.fillStyle = '#e8ecef'
-  ctx.fillRect(x + 1, y - 6, 1, 1)
+function drawCastle(ctx: Ctx, x: number, y: number): void {
+  ctx.fillStyle = '#5c6066'
+  ctx.fillRect(x - 24, y - 28, 10, 28)
+  ctx.fillRect(x + 14, y - 28, 10, 28)
+  ctx.fillStyle = '#4a4d53'
+  ctx.fillRect(x - 24, y - 28, 3, 28)
+  ctx.fillRect(x + 14, y - 28, 3, 28)
+  ctx.fillStyle = '#6e7278'
+  for (const tx of [x - 24, x + 14]) {
+    for (let i = 0; i < 3; i++) ctx.fillRect(tx + i * 4, y - 31, 2, 3)
+  }
+  for (let ry = y - 26; ry < y; ry += 6) {
+    ctx.fillStyle = '#4a4d53'
+    ctx.fillRect(x - 24, ry, 10, 1)
+    ctx.fillRect(x + 14, ry, 10, 1)
+  }
+
+  ctx.fillStyle = '#6a6e75'
+  ctx.fillRect(x - 13, y - 22, 26, 22)
+  ctx.fillStyle = '#54575e'
+  ctx.fillRect(x - 13, y - 22, 4, 22)
+  for (let i = 0; i < 5; i++) ctx.fillRect(x - 13 + i * 6, y - 25, 3, 3)
+  for (let ry = y - 20; ry < y; ry += 5) {
+    ctx.fillStyle = '#54575e'
+    ctx.fillRect(x - 13, ry, 26, 1)
+  }
+  ctx.fillStyle = '#8a8e95'
+  ctx.fillRect(x - 10, y - 21, 2, 1)
+  ctx.fillRect(x + 2, y - 14, 2, 1)
+  ctx.fillRect(x - 22, y - 12, 2, 1)
+  ctx.fillRect(x + 17, y - 18, 2, 1)
+
+  ctx.fillStyle = '#8f1d1d'
+  ctx.fillRect(x - 21, y - 41, 5, 4)
+  ctx.fillRect(x + 17, y - 41, 5, 4)
+  ctx.fillStyle = '#1c1c22'
+  ctx.fillRect(x - 19, y - 41, 1, 13)
+  ctx.fillRect(x + 19, y - 41, 1, 13)
+
+  const glow = (gx: number, gy: number) => {
+    ctx.fillStyle = 'rgba(160,20,20,0.22)'
+    ctx.fillRect(gx - 1, gy - 1, 6, 8)
+    ctx.fillStyle = '#e02626'
+    ctx.fillRect(gx, gy, 3, 5)
+    ctx.fillStyle = '#5c0f0f'
+    ctx.fillRect(gx + 1, gy + 1, 1, 3)
+  }
+  glow(x - 9, y - 17)
+  glow(x + 6, y - 17)
+  glow(x - 21, y - 24)
+  glow(x + 19, y - 24)
+  glow(x - 2, y - 20)
+
+  ctx.fillStyle = 'rgba(224,38,38,0.14)'
+  ctx.beginPath()
+  ctx.arc(x, y - 6, 9, Math.PI, 0)
+  ctx.fill()
+  ctx.fillStyle = '#141418'
+  ctx.beginPath()
+  ctx.arc(x, y - 6, 4, Math.PI, 0)
+  ctx.fill()
+  ctx.fillRect(x - 4, y - 6, 8, 6)
+  ctx.fillStyle = '#b02424'
+  ctx.fillRect(x - 2, y - 5, 4, 5)
+  ctx.fillStyle = '#5c0f0f'
+  ctx.fillRect(x - 1, y - 4, 2, 3)
 }
 
-function drawCastle(ctx: Ctx, x: number, y: number): void {
-  ctx.fillStyle = '#55555e'
-  ctx.fillRect(x - 8, y - 12, 16, 12)
-  ctx.fillStyle = '#45454d'
-  for (let i = 0; i < 4; i++) ctx.fillRect(x - 8 + i * 4, y - 14, 2, 2)
-  ctx.fillRect(x - 11, y - 16, 3, 16)
-  ctx.fillRect(x + 8, y - 16, 3, 16)
-  ctx.fillStyle = '#2a2a30'
+function drawMapLamp(ctx: Ctx, x: number, gy: number): void {
+  ctx.fillStyle = '#241c14'
+  ctx.fillRect(x, gy - 14, 2, 14)
+  ctx.fillRect(x - 1, gy - 1, 4, 2)
+  ctx.fillStyle = '#6b3a1e'
+  ctx.fillRect(x, gy - 9, 1, 2)
+  ctx.fillRect(x + 1, gy - 4, 1, 2)
+  ctx.fillStyle = '#241c14'
+  ctx.fillRect(x, gy - 16, 6, 2)
+  const lx = x + 5
+
+  const cone = ctx.createLinearGradient(0, gy - 14, 0, gy + 3)
+  cone.addColorStop(0, 'rgba(255,198,88,0.5)')
+  cone.addColorStop(1, 'rgba(255,198,88,0.04)')
+  ctx.fillStyle = cone
   ctx.beginPath()
-  ctx.arc(x, y - 3, 2.5, Math.PI, 0)
+  ctx.moveTo(lx - 1, gy - 14)
+  ctx.lineTo(lx + 1, gy - 14)
+  ctx.lineTo(lx + 8, gy + 3)
+  ctx.lineTo(lx - 8, gy + 3)
+  ctx.closePath()
   ctx.fill()
-  ctx.fillRect(x - 2.5, y - 3, 5, 3)
-  ctx.fillStyle = BRUTAL.bloodHot
-  ctx.fillRect(x - 10, y - 20, 4, 3)
-  ctx.fillStyle = '#3a3a40'
-  ctx.fillRect(x - 9, y - 22, 1, 6)
+
+  ctx.fillStyle = 'rgba(255,198,88,0.2)'
+  ctx.beginPath()
+  ctx.ellipse(lx, gy + 2, 8, 2, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = '#ffd27a'
+  ctx.fillRect(lx - 1, gy - 14, 2, 2)
 }
 
 export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void {
   const rng = mulberry32(20260102)
 
-  ctx.fillStyle = '#58a84e'
+  ctx.fillStyle = '#3e7a34'
   ctx.fillRect(0, 0, w, h)
-  for (let i = 0; i < 46; i++) {
-    ctx.fillStyle = rng() > 0.5 ? 'rgba(99,180,87,0.55)' : 'rgba(76,150,68,0.5)'
+  for (let i = 0; i < 56; i++) {
+    const r = rng()
+    ctx.fillStyle =
+      r > 0.66 ? 'rgba(56,118,48,0.55)' : r > 0.33 ? 'rgba(40,92,36,0.5)' : 'rgba(88,74,42,0.32)'
     ctx.beginPath()
     ctx.ellipse(rng() * w, rng() * h, 6 + rng() * 10, 3 + rng() * 5, 0, 0, Math.PI * 2)
     ctx.fill()
   }
-
-  ctx.fillStyle = '#3f7fbf'
-  for (let y = 0; y < h; y += 2) {
-    const xoff = 2 + Math.sin(y * 0.09) * 4
-    ctx.fillRect(xoff, y, 12, 2)
-  }
-  ctx.fillStyle = '#7db8e0'
-  for (let y = 3; y < h; y += 6) ctx.fillRect(5 + Math.sin(y * 0.09) * 4, y, 3, 1)
-
-  ctx.fillStyle = '#3f7fbf'
-  ctx.beginPath()
-  ctx.ellipse(20, h - 18, 13, 9, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = '#7db8e0'
-  ctx.fillRect(14, h - 20, 4, 1)
-  ctx.fillRect(22, h - 15, 3, 1)
 
   const polyline = (color: string, width: number) => {
     ctx.strokeStyle = color
@@ -426,39 +532,105 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
 
   ctx.save()
   ctx.globalAlpha = 0.35
-  polyline('#58a84e', 26)
+  polyline('#3e7a34', 26)
   ctx.restore()
 
-  polyline('#8a6a42', 7)
-  polyline('#c9a86a', 4.5)
+  polyline('#6b4a30', 8)
+  polyline('#a8844e', 5)
 
-  ctx.fillStyle = '#8a6a42'
-  ctx.fillRect(2, 56, 15, 4)
-  ctx.fillStyle = '#a9743a'
-  ctx.fillRect(2, 57, 15, 2)
+  ctx.strokeStyle = '#6b4a30'
+  ctx.lineWidth = 8
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(-4, nodes[0][1])
+  ctx.lineTo(nodes[0][0], nodes[0][1])
+  ctx.stroke()
+  ctx.strokeStyle = '#a8844e'
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  ctx.moveTo(-4, nodes[0][1])
+  ctx.lineTo(nodes[0][0], nodes[0][1])
+  ctx.stroke()
+
+  const dtl = mulberry32(918273)
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const [ax, ay] = nodes[i]
+    const [bx, by] = nodes[i + 1]
+    const len = Math.hypot(bx - ax, by - ay) || 1
+    const nx = -(by - ay) / len
+    const ny = (bx - ax) / len
+    for (let s = 0; s < len; s += 2.4) {
+      const t = s / len
+      const cx = ax + (bx - ax) * t
+      const cy = ay + (by - ay) * t
+      const off = (dtl() - 0.5) * 4.6
+      const px2 = Math.round(cx + nx * off)
+      const py2 = Math.round(cy + ny * off)
+      const r = dtl()
+      if (r < 0.14) {
+        ctx.fillStyle = dtl() > 0.5 ? '#7a1414' : '#a12020'
+        ctx.fillRect(px2, py2, 2, 1)
+        ctx.fillRect(px2 + (dtl() > 0.5 ? 2 : -1), py2 + 1, 1, 1)
+      } else if (r < 0.3) {
+        ctx.fillStyle = '#4c3626'
+        ctx.fillRect(px2, py2, 2, 1)
+        ctx.fillRect(px2 + 1, py2 - 1, 1, 1)
+      } else if (r < 0.36) {
+        const ex = Math.round(cx + nx * (off > 0 ? 4.5 : -4.5))
+        const ey = Math.round(cy + ny * (off > 0 ? 4.5 : -4.5))
+        ctx.fillStyle = '#d8d0c0'
+        ctx.fillRect(ex, ey, 2, 1)
+        ctx.fillStyle = '#8a8578'
+        ctx.fillRect(ex, ey, 1, 1)
+      } else if (r < 0.42) {
+        const ex = Math.round(cx + nx * (off > 0 ? 5 : -5))
+        const ey = Math.round(cy + ny * (off > 0 ? 5 : -5))
+        ctx.fillStyle = '#3f4a54'
+        ctx.fillRect(ex, ey, 2, 1)
+        ctx.fillStyle = '#35e0d8'
+        ctx.fillRect(ex + 1, ey - 1, 1, 1)
+      }
+    }
+  }
 
   const nearPath = (x: number, y: number) =>
     nodes.some((pt) => Math.hypot(pt[0] - x, pt[1] - y) < 13) ||
     nodes.some((pt, i) => i < nodes.length - 1 && distToSegment([x, y] as Pt, pt, nodes[i + 1]) < 9)
 
   let trees = 0
+  let dead = 0
+  let cyber = 0
   let bushes = 0
   let rocks = 0
-  for (let attempt = 0; attempt < 600 && (trees < 34 || bushes < 16 || rocks < 10); attempt++) {
-    const x = 18 + rng() * (w - 24)
+  let piles = 0
+  for (
+    let attempt = 0;
+    attempt < 800 && (trees < 30 || dead < 8 || cyber < 6 || bushes < 12 || rocks < 5 || piles < 7);
+    attempt++
+  ) {
+    const x = 14 + rng() * (w - 20)
     const y = 6 + rng() * (h - 12)
     if (nearPath(x, y)) continue
-    if (Math.hypot(x - 20, y - (h - 18)) < 18) continue
+    if (x > w - 36 && y < h * 0.46) continue
     const roll = rng()
-    if (roll < 0.55 && trees < 34) {
+    if (roll < 0.42 && trees < 30) {
       drawTree(ctx, x, y, rng)
       trees++
-    } else if (roll < 0.82 && bushes < 16) {
+    } else if (roll < 0.52 && dead < 8) {
+      drawDeadTree(ctx, x, y, rng)
+      dead++
+    } else if (roll < 0.6 && cyber < 6) {
+      drawCyberTree(ctx, x, y, rng)
+      cyber++
+    } else if (roll < 0.78 && bushes < 12) {
       drawBush(ctx, x, y, rng)
       bushes++
-    } else if (rocks < 10) {
+    } else if (roll < 0.86 && rocks < 5) {
       drawRock(ctx, x, y)
       rocks++
+    } else if (piles < 7) {
+      drawGorePile(ctx, x, y, rng)
+      piles++
     }
   }
 
@@ -466,8 +638,31 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
   drawMountain(ctx, 110, 126, 9)
   drawMountain(ctx, 88, 128, 7)
 
-  nodes.slice(0, 5).forEach(([x, y]) => drawHouse(ctx, x - 9, y - 9))
-  drawCastle(ctx, nodes[nodes.length - 1][0] + 2, nodes[nodes.length - 1][1] - 2)
+  drawCastle(ctx, nodes[nodes.length - 1][0] - 2, nodes[nodes.length - 1][1] - 4)
+
+  const night = ctx.createRadialGradient(w / 2, h * 0.45, h * 0.22, w / 2, h * 0.45, h * 0.85)
+  night.addColorStop(0, 'rgba(22,14,40,0.18)')
+  night.addColorStop(1, 'rgba(10,6,24,0.55)')
+  ctx.fillStyle = night
+  ctx.fillRect(0, 0, w, h)
+
+  for (const [gx, gy] of [
+    [w * 0.36, h * 0.6],
+    [w * 0.62, h * 0.52],
+    [w * 0.86, h * 0.34],
+  ] as Array<[number, number]>) {
+    const g = ctx.createRadialGradient(gx, gy, 2, gx, gy, 24)
+    g.addColorStop(0, 'rgba(143,29,29,0.18)')
+    g.addColorStop(1, 'rgba(143,29,29,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(gx - 24, gy - 24, 48, 48)
+  }
+
+  drawMapLamp(ctx, 40, 88)
+  drawMapLamp(ctx, 65, 87)
+  drawMapLamp(ctx, 107, 84)
+  drawMapLamp(ctx, 132, 81)
+  drawMapLamp(ctx, 171, 71)
 }
 
 
@@ -599,17 +794,44 @@ function vignette(ctx: Ctx, w: number, h: number): void {
 }
 
 function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
-  ctx.fillStyle = '#0d0a08'
-  ctx.fillRect(x, groundY - 96, 6, 96)
-  ctx.fillRect(x - 10, groundY - 98, 26, 6)
-  const flicker = 0.55 + 0.45 * Math.sin(t / 240 + x)
-  ctx.fillStyle = `rgba(255,176,58,${0.25 * flicker})`
+  const flicker = 0.85 + 0.15 * Math.sin(t / 260 + x)
+  const lx = x + 26
+  const ly = groundY - 106
+
+  const cone = ctx.createLinearGradient(0, ly, 0, groundY)
+  cone.addColorStop(0, `rgba(255,196,92,${0.34 * flicker})`)
+  cone.addColorStop(1, 'rgba(255,196,92,0.02)')
+  ctx.fillStyle = cone
   ctx.beginPath()
-  ctx.arc(x + 3, groundY - 104, 26, 0, Math.PI * 2)
+  ctx.moveTo(lx - 5, ly)
+  ctx.lineTo(lx + 5, ly)
+  ctx.lineTo(lx + 36, groundY + 2)
+  ctx.lineTo(lx - 34, groundY + 2)
+  ctx.closePath()
   ctx.fill()
-  ctx.fillStyle = '#ffd27a'
+
+  ctx.fillStyle = `rgba(255,196,92,${0.16 * flicker})`
   ctx.beginPath()
-  ctx.arc(x + 3, groundY - 104, 7, 0, Math.PI * 2)
+  ctx.ellipse(lx, groundY + 1, 34, 7, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = '#0d0a08'
+  ctx.fillRect(x, groundY - 88, 4, 88)
+  ctx.fillRect(x - 3, groundY - 2, 10, 3)
+  ctx.strokeStyle = '#0d0a08'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(x + 2, groundY - 86)
+  ctx.quadraticCurveTo(x + 2, ly, lx, ly)
+  ctx.stroke()
+
+  ctx.fillStyle = '#0d0a08'
+  ctx.fillRect(lx - 6, ly - 5, 12, 5)
+  ctx.fillStyle = `rgba(255,214,130,${0.9 * flicker})`
+  ctx.fillRect(lx - 4, ly - 2, 8, 3)
+  ctx.fillStyle = `rgba(255,196,92,${0.3 * flicker})`
+  ctx.beginPath()
+  ctx.arc(lx, ly, 14, 0, Math.PI * 2)
   ctx.fill()
 }
 
@@ -619,20 +841,42 @@ export function drawScene(ctx: Ctx, scene: SceneKey, w: number, h: number, t: nu
   switch (scene) {
     case 'street': {
       vgrad(ctx, w, h, [
-        [0, '#211a33'],
-        [0.5, '#33244a'],
-        [0.8, '#1c1428'],
+        [0, '#241b3a'],
+        [0.45, '#372752'],
+        [0.75, '#2a1d42'],
+        [1, '#1a1229'],
       ])
-      stars(ctx, w, h, h * 0.35)
-      bigMoon(ctx, w * 0.8, h * 0.22, 34, '#e8e2f2', 'rgba(220,210,240,0.10)')
-      buildingRow(ctx, w, gy + 6, '#241c38', '#181126', 'rgba(120,90,160,0.35)', 90, 190, 110, 0.35)
-      buildingRow(ctx, w, gy + 4, '#171126', '#100b1c', 'rgba(255,176,58,0.75)', 70, 150, 92, 0.5)
+      stars(ctx, w, h, h * 0.38)
+      bigMoon(ctx, w * 0.82, h * 0.2, 30, '#e9e4f4', 'rgba(222,212,244,0.12)')
+      buildingRow(ctx, w, gy + 6, '#241c38', '#181126', 'rgba(150,110,190,0.4)', 100, 200, 96, 0.4)
+      buildingRow(ctx, w, gy + 4, '#171126', '#100b1c', 'rgba(255,178,64,0.85)', 70, 150, 84, 0.62)
 
       streetBase(ctx, w, h, gy, '#231c30', '#3a3050')
-      ctx.fillStyle = 'rgba(232,226,242,0.10)'
-      for (let x = 30; x < w; x += 130) ctx.fillRect(x, gy + 6, 46, 3)
-      lampPost(ctx, w * 0.16, gy, t)
-      lampPost(ctx, w * 0.68, gy, t + 900)
+      ctx.fillStyle = '#31283f'
+      ctx.fillRect(0, gy, w, 5)
+      ctx.fillStyle = 'rgba(232,226,242,0.22)'
+      for (let x = 14; x < w; x += 56) {
+        const row = Math.floor(x / (w * 0.5))
+        const dw = 26 + row * 6
+        ctx.fillRect(x, gy + 12 + row * 16, dw, 3)
+        ctx.fillRect(x + 4, gy + 30 + row * 10, dw + 10, 3)
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.05)'
+      for (let x = 6; x < w; x += 34) ctx.fillRect(x, gy + 14 + ((x * 7) % 20), 20, 3)
+
+      for (const fx of [w * 0.08, w * 0.34, w * 0.6, w * 0.86]) lampPost(ctx, fx, gy, t)
+
+      ctx.fillStyle = '#16281a'
+      for (let x = 4; x < w; x += 30) {
+        const bh = 8 + ((x * 13) % 7)
+        ctx.fillRect(x, gy + 4 - bh, 22, bh)
+      }
+      ctx.fillStyle = '#1e3a24'
+      for (let x = 10; x < w; x += 34) {
+        ctx.beginPath()
+        ctx.arc(x + 4, gy - 2 - ((x * 7) % 5), 4, 0, Math.PI * 2)
+        ctx.fill()
+      }
 
       fogBand(ctx, w, h, t, gy - 24, 0.06, 0.01)
       vignette(ctx, w, h)
