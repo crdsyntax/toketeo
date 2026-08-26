@@ -304,223 +304,235 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
 }
 
 function drawTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = '#4a3018'
-  ctx.fillRect(x - 1, y - 3, 2, 4)
-  const r = 3 + Math.floor(rng() * 2)
-  ctx.fillStyle = '#14511f'
-  ctx.beginPath()
-  ctx.arc(x, y - 5, r, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = '#2c7a36'
-  ctx.beginPath()
-  ctx.arc(x - 1, y - 6, r - 1.4, 0, Math.PI * 2)
-  ctx.fill()
-}
+  // Trunk
+  ctx.fillStyle = '#422817'
+  ctx.fillRect(x - 1, y - 4, 3, 5)
+  ctx.fillStyle = '#2d1a0e'
+  ctx.fillRect(x + 1, y - 4, 1, 5)
 
-function drawDeadTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = '#38281c'
-  ctx.fillRect(x - 1, y - 8, 2, 9)
-  ctx.fillRect(x - 4, y - 6, 3, 1)
-  ctx.fillRect(x - 5, y - 7, 2, 1)
-  ctx.fillRect(x + 1, y - 5, 3, 1)
-  ctx.fillRect(x + 3, y - 6, 1, 2)
-  if (rng() > 0.5) {
-    ctx.fillStyle = '#4c3626'
-    ctx.fillRect(x - 1, y - 8, 1, 9)
-  }
-}
-
-function drawCyberTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = '#2a1d14'
-  ctx.fillRect(x - 1, y - 3, 2, 4)
-  ctx.fillRect(x + 1, y - 1, 3, 1)
-  const r = 3 + Math.floor(rng() * 2)
-  ctx.fillStyle = '#0f3a18'
+  // Foliage cluster (3 tiers of lush pixel art green)
+  const r = 4 + Math.floor(rng() * 2)
+  // Base dark foliage
+  ctx.fillStyle = '#174a1e'
   ctx.beginPath()
-  ctx.arc(x, y - 5, r, 0, Math.PI * 2)
+  ctx.arc(x, y - 7, r + 1.2, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = '#1c5c28'
   ctx.beginPath()
-  ctx.arc(x - 1, y - 6, r - 1.4, 0, Math.PI * 2)
+  ctx.arc(x - 3, y - 6, r - 0.5, 0, Math.PI * 2)
+  ctx.arc(x + 3, y - 6, r - 0.5, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = '#8f1d1d'
-  ctx.fillRect(x + 1, y - 6, 1, 1)
-  ctx.fillRect(x - 2, y - 4, 1, 1)
-  ctx.fillStyle = '#35e0d8'
-  ctx.fillRect(x, y - 7, 1, 1)
-}
 
-function drawGorePile(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = '#4e0c0c'
-  ctx.fillRect(x - 2, y - 1, 5, 2)
-  ctx.fillStyle = '#8f1d1d'
-  ctx.fillRect(x - 1, y - 2, 3, 2)
-  ctx.fillStyle = '#b02424'
-  ctx.fillRect(x, y - 2, 1, 1)
-  if (rng() > 0.5) {
-    ctx.fillStyle = '#d8d0c0'
-    ctx.fillRect(x + 2, y - 2, 2, 1)
-  }
-  ctx.fillStyle = '#3a3f46'
-  ctx.fillRect(x - 3, y, 1, 1)
-  ctx.fillStyle = '#35e0d8'
-  ctx.fillRect(x + 3, y - 1, 1, 1)
+  // Midtone lush green
+  ctx.fillStyle = '#2f8737'
+  ctx.beginPath()
+  ctx.arc(x - 0.5, y - 8, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(x - 2.5, y - 7.5, r - 1, 0, Math.PI * 2)
+  ctx.arc(x + 2, y - 7.5, r - 1, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Light green highlights on top
+  ctx.fillStyle = '#52b75a'
+  ctx.beginPath()
+  ctx.arc(x - 1, y - 9.5, r - 1.6, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillRect(x - 2, y - 11, 2, 2)
 }
 
 function drawBush(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  ctx.fillStyle = rng() > 0.5 ? '#1f6b2c' : '#175426'
+  ctx.fillStyle = '#174a1e'
   ctx.beginPath()
-  ctx.arc(x, y - 1, 2.2, 0, Math.PI * 2)
+  ctx.arc(x, y - 1, 3.2, 0, Math.PI * 2)
   ctx.fill()
+  ctx.fillStyle = rng() > 0.5 ? '#2f8737' : '#26732e'
+  ctx.beginPath()
+  ctx.arc(x - 0.5, y - 2, 2.2, 0, Math.PI * 2)
+  ctx.fill()
+  if (rng() > 0.4) {
+    ctx.fillStyle = '#ff8f24'
+    ctx.fillRect(x - 1, y - 2, 1, 1)
+    ctx.fillRect(x + 1, y - 1, 1, 1)
+  }
 }
 
 function drawRock(ctx: Ctx, x: number, y: number): void {
-  ctx.fillStyle = '#8d8d93'
-  ctx.fillRect(x - 2, y - 2, 4, 3)
+  ctx.fillStyle = '#4c525a'
+  ctx.fillRect(x - 3, y - 1, 6, 3)
+  ctx.fillStyle = '#727985'
+  ctx.fillRect(x - 2, y - 3, 4, 3)
+  ctx.fillStyle = '#9ca4b0'
   ctx.fillRect(x - 1, y - 3, 2, 1)
-  ctx.fillStyle = '#b9b9bf'
-  ctx.fillRect(x - 1, y - 2, 1, 1)
+  ctx.fillRect(x - 2, y - 2, 1, 1)
 }
 
 function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
-  ctx.fillStyle = '#8d8d93'
+  // Mountain base shadow / body
+  ctx.fillStyle = '#454c56'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
-  ctx.lineTo(x + s * 0.85, y)
-  ctx.lineTo(x - s * 0.85, y)
+  ctx.lineTo(x + s * 1.1, y)
+  ctx.lineTo(x - s * 1.1, y)
   ctx.closePath()
   ctx.fill()
-  ctx.fillStyle = '#6b6b70'
+
+  // Left lighted face
+  ctx.fillStyle = '#7a8391'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
-  ctx.lineTo(x + s * 0.85, y)
-  ctx.lineTo(x + s * 0.15, y)
+  ctx.lineTo(x, y)
+  ctx.lineTo(x - s * 1.1, y)
   ctx.closePath()
   ctx.fill()
-  ctx.fillStyle = '#e8ecef'
+
+  // Right shaded face
+  ctx.fillStyle = '#565d68'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
-  ctx.lineTo(x + s * 0.22, y - s * 0.62)
-  ctx.lineTo(x - s * 0.22, y - s * 0.62)
+  ctx.lineTo(x + s * 1.1, y)
+  ctx.lineTo(x, y)
+  ctx.closePath()
+  ctx.fill()
+
+  // Snowcap
+  ctx.fillStyle = '#f0f4f8'
+  ctx.beginPath()
+  ctx.moveTo(x, y - s)
+  ctx.lineTo(x + s * 0.35, y - s * 0.55)
+  ctx.lineTo(x + s * 0.1, y - s * 0.48)
+  ctx.lineTo(x - s * 0.05, y - s * 0.56)
+  ctx.lineTo(x - s * 0.35, y - s * 0.55)
+  ctx.closePath()
+  ctx.fill()
+
+  // Snowcap shaded side
+  ctx.fillStyle = '#ccd5e0'
+  ctx.beginPath()
+  ctx.moveTo(x, y - s)
+  ctx.lineTo(x + s * 0.35, y - s * 0.55)
+  ctx.lineTo(x, y - s * 0.5)
   ctx.closePath()
   ctx.fill()
 }
 
 function drawCastle(ctx: Ctx, x: number, y: number): void {
-  ctx.fillStyle = '#5c6066'
-  ctx.fillRect(x - 24, y - 28, 10, 28)
-  ctx.fillRect(x + 14, y - 28, 10, 28)
-  ctx.fillStyle = '#4a4d53'
-  ctx.fillRect(x - 24, y - 28, 3, 28)
-  ctx.fillRect(x + 14, y - 28, 3, 28)
-  ctx.fillStyle = '#6e7278'
-  for (const tx of [x - 24, x + 14]) {
-    for (let i = 0; i < 3; i++) ctx.fillRect(tx + i * 4, y - 31, 2, 3)
-  }
-  for (let ry = y - 26; ry < y; ry += 6) {
-    ctx.fillStyle = '#4a4d53'
-    ctx.fillRect(x - 24, ry, 10, 1)
-    ctx.fillRect(x + 14, ry, 10, 1)
+  // Castle Base & Twin Towers (Deadlock Fortress)
+  const tw = 8
+  const th = 26
+  const cw = 20
+  const ch = 18
+
+  // Shadow behind castle
+  ctx.fillStyle = 'rgba(15,25,18,0.35)'
+  ctx.fillRect(x - cw - 4, y - 2, cw * 2 + 8, 4)
+
+  // Left Tower
+  ctx.fillStyle = '#545b66'
+  ctx.fillRect(x - cw, y - th, tw, th)
+  ctx.fillStyle = '#7a8391'
+  ctx.fillRect(x - cw, y - th, 2, th)
+  // Left Tower battlements
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = '#7a8391'
+    ctx.fillRect(x - cw + i * 3, y - th - 3, 2, 3)
   }
 
-  ctx.fillStyle = '#6a6e75'
-  ctx.fillRect(x - 13, y - 22, 26, 22)
-  ctx.fillStyle = '#54575e'
-  ctx.fillRect(x - 13, y - 22, 4, 22)
-  for (let i = 0; i < 5; i++) ctx.fillRect(x - 13 + i * 6, y - 25, 3, 3)
-  for (let ry = y - 20; ry < y; ry += 5) {
-    ctx.fillStyle = '#54575e'
-    ctx.fillRect(x - 13, ry, 26, 1)
+  // Right Tower
+  ctx.fillStyle = '#444a54'
+  ctx.fillRect(x + cw - tw, y - th, tw, th)
+  ctx.fillStyle = '#6a727f'
+  ctx.fillRect(x + cw - tw, y - th, 2, th)
+  // Right Tower battlements
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = '#6a727f'
+    ctx.fillRect(x + cw - tw + i * 3, y - th - 3, 2, 3)
   }
-  ctx.fillStyle = '#8a8e95'
-  ctx.fillRect(x - 10, y - 21, 2, 1)
-  ctx.fillRect(x + 2, y - 14, 2, 1)
-  ctx.fillRect(x - 22, y - 12, 2, 1)
-  ctx.fillRect(x + 17, y - 18, 2, 1)
 
-  ctx.fillStyle = '#8f1d1d'
-  ctx.fillRect(x - 21, y - 41, 5, 4)
-  ctx.fillRect(x + 17, y - 41, 5, 4)
-  ctx.fillStyle = '#1c1c22'
-  ctx.fillRect(x - 19, y - 41, 1, 13)
-  ctx.fillRect(x + 19, y - 41, 1, 13)
-
-  const glow = (gx: number, gy: number) => {
-    ctx.fillStyle = 'rgba(160,20,20,0.22)'
-    ctx.fillRect(gx - 1, gy - 1, 6, 8)
-    ctx.fillStyle = '#e02626'
-    ctx.fillRect(gx, gy, 3, 5)
-    ctx.fillStyle = '#5c0f0f'
-    ctx.fillRect(gx + 1, gy + 1, 1, 3)
+  // Center Fortress Wall & Gatehouse
+  ctx.fillStyle = '#5c6370'
+  ctx.fillRect(x - cw + tw, y - ch, (cw - tw) * 2, ch)
+  ctx.fillStyle = '#7a8391'
+  ctx.fillRect(x - cw + tw, y - ch, 2, ch)
+  // Center battlements
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = '#7a8391'
+    ctx.fillRect(x - cw + tw + i * 4.5, y - ch - 3, 2.5, 3)
   }
-  glow(x - 9, y - 17)
-  glow(x + 6, y - 17)
-  glow(x - 21, y - 24)
-  glow(x + 19, y - 24)
-  glow(x - 2, y - 20)
 
-  ctx.fillStyle = 'rgba(224,38,38,0.14)'
+  // Brick horizontal mortar lines
+  ctx.fillStyle = '#3a3f48'
+  for (let by = y - ch + 4; by < y; by += 4) {
+    ctx.fillRect(x - cw + tw, by, (cw - tw) * 2, 1)
+  }
+  for (let by = y - th + 4; by < y; by += 4) {
+    ctx.fillRect(x - cw, by, tw, 1)
+    ctx.fillRect(x + cw - tw, by, tw, 1)
+  }
+
+  // Arched Entrance Portcullis
+  ctx.fillStyle = '#14161b'
   ctx.beginPath()
-  ctx.arc(x, y - 6, 9, Math.PI, 0)
-  ctx.fill()
-  ctx.fillStyle = '#141418'
-  ctx.beginPath()
-  ctx.arc(x, y - 6, 4, Math.PI, 0)
-  ctx.fill()
-  ctx.fillRect(x - 4, y - 6, 8, 6)
-  ctx.fillStyle = '#b02424'
-  ctx.fillRect(x - 2, y - 5, 4, 5)
-  ctx.fillStyle = '#5c0f0f'
-  ctx.fillRect(x - 1, y - 4, 2, 3)
-}
-
-function drawMapLamp(ctx: Ctx, x: number, gy: number): void {
-  ctx.fillStyle = '#241c14'
-  ctx.fillRect(x, gy - 14, 2, 14)
-  ctx.fillRect(x - 1, gy - 1, 4, 2)
-  ctx.fillStyle = '#6b3a1e'
-  ctx.fillRect(x, gy - 9, 1, 2)
-  ctx.fillRect(x + 1, gy - 4, 1, 2)
-  ctx.fillStyle = '#241c14'
-  ctx.fillRect(x, gy - 16, 6, 2)
-  const lx = x + 5
-
-  const cone = ctx.createLinearGradient(0, gy - 14, 0, gy + 3)
-  cone.addColorStop(0, 'rgba(255,198,88,0.5)')
-  cone.addColorStop(1, 'rgba(255,198,88,0.04)')
-  ctx.fillStyle = cone
-  ctx.beginPath()
-  ctx.moveTo(lx - 1, gy - 14)
-  ctx.lineTo(lx + 1, gy - 14)
-  ctx.lineTo(lx + 8, gy + 3)
-  ctx.lineTo(lx - 8, gy + 3)
+  ctx.arc(x, y - 8, 4.5, Math.PI, 0)
+  ctx.lineTo(x + 4.5, y)
+  ctx.lineTo(x - 4.5, y)
   ctx.closePath()
   ctx.fill()
 
-  ctx.fillStyle = 'rgba(255,198,88,0.2)'
+  // Gate iron bars
+  ctx.strokeStyle = '#444952'
+  ctx.lineWidth = 1
   ctx.beginPath()
-  ctx.ellipse(lx, gy + 2, 8, 2, 0, 0, Math.PI * 2)
+  ctx.moveTo(x - 2, y - 8)
+  ctx.lineTo(x - 2, y)
+  ctx.moveTo(x + 2, y - 8)
+  ctx.lineTo(x + 2, y)
+  ctx.moveTo(x - 4, y - 4)
+  ctx.lineTo(x + 4, y - 4)
+  ctx.stroke()
+
+  // Red Banners / Flags on towers
+  // Left Flag
+  ctx.fillStyle = '#1a1a20'
+  ctx.fillRect(x - cw + 2, y - th - 10, 1, 10)
+  ctx.fillStyle = '#dc2626'
+  ctx.beginPath()
+  ctx.moveTo(x - cw + 3, y - th - 10)
+  ctx.lineTo(x - cw + 10, y - th - 7.5)
+  ctx.lineTo(x - cw + 3, y - th - 5)
+  ctx.closePath()
   ctx.fill()
 
-  ctx.fillStyle = '#ffd27a'
-  ctx.fillRect(lx - 1, gy - 14, 2, 2)
+  // Right Flag
+  ctx.fillStyle = '#1a1a20'
+  ctx.fillRect(x + cw - 3, y - th - 10, 1, 10)
+  ctx.fillStyle = '#dc2626'
+  ctx.beginPath()
+  ctx.moveTo(x + cw - 2, y - th - 10)
+  ctx.lineTo(x + cw + 5, y - th - 7.5)
+  ctx.lineTo(x + cw - 2, y - th - 5)
+  ctx.closePath()
+  ctx.fill()
 }
 
 export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void {
   const rng = mulberry32(20260102)
 
-  ctx.fillStyle = '#3e7a34'
+  // Base grass terrain in vibrant rich green palette
+  ctx.fillStyle = '#54a648'
   ctx.fillRect(0, 0, w, h)
-  for (let i = 0; i < 56; i++) {
+
+  // Grass variation textures and patches
+  for (let i = 0; i < 90; i++) {
     const r = rng()
     ctx.fillStyle =
-      r > 0.66 ? 'rgba(56,118,48,0.55)' : r > 0.33 ? 'rgba(40,92,36,0.5)' : 'rgba(88,74,42,0.32)'
+      r > 0.66 ? 'rgba(74, 160, 64, 0.65)' : r > 0.33 ? 'rgba(98, 185, 87, 0.45)' : 'rgba(56, 126, 48, 0.55)'
     ctx.beginPath()
-    ctx.ellipse(rng() * w, rng() * h, 6 + rng() * 10, 3 + rng() * 5, 0, 0, Math.PI * 2)
+    ctx.ellipse(rng() * w, rng() * h, 4 + rng() * 12, 2 + rng() * 6, 0, 0, Math.PI * 2)
     ctx.fill()
   }
 
-  const polyline = (color: string, width: number) => {
+  // Dirt Road Polylines (Smooth, textured path connecting districts)
+  const drawRoadSegment = (color: string, width: number) => {
     ctx.strokeStyle = color
     ctx.lineWidth = width
     ctx.lineJoin = 'round'
@@ -530,28 +542,37 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     ctx.stroke()
   }
 
-  ctx.save()
-  ctx.globalAlpha = 0.35
-  polyline('#3e7a34', 26)
-  ctx.restore()
+  // Outer darker earth border
+  drawRoadSegment('#855d36', 10)
+  // Inner warm dirt/sand road
+  drawRoadSegment('#deb87a', 7)
+  // Road center highlight
+  drawRoadSegment('#edd19d', 3.5)
 
-  polyline('#6b4a30', 8)
-  polyline('#a8844e', 5)
-
-  ctx.strokeStyle = '#6b4a30'
-  ctx.lineWidth = 8
+  // Road entry from left edge
+  ctx.strokeStyle = '#855d36'
+  ctx.lineWidth = 10
   ctx.lineCap = 'round'
   ctx.beginPath()
-  ctx.moveTo(-4, nodes[0][1])
-  ctx.lineTo(nodes[0][0], nodes[0][1])
-  ctx.stroke()
-  ctx.strokeStyle = '#a8844e'
-  ctx.lineWidth = 5
-  ctx.beginPath()
-  ctx.moveTo(-4, nodes[0][1])
+  ctx.moveTo(-6, nodes[0][1])
   ctx.lineTo(nodes[0][0], nodes[0][1])
   ctx.stroke()
 
+  ctx.strokeStyle = '#deb87a'
+  ctx.lineWidth = 7
+  ctx.beginPath()
+  ctx.moveTo(-6, nodes[0][1])
+  ctx.lineTo(nodes[0][0], nodes[0][1])
+  ctx.stroke()
+
+  ctx.strokeStyle = '#edd19d'
+  ctx.lineWidth = 3.5
+  ctx.beginPath()
+  ctx.moveTo(-6, nodes[0][1])
+  ctx.lineTo(nodes[0][0], nodes[0][1])
+  ctx.stroke()
+
+  // Road pebbles & dirt flecks
   const dtl = mulberry32(918273)
   for (let i = 0; i < nodes.length - 1; i++) {
     const [ax, ay] = nodes[i]
@@ -559,115 +580,68 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     const len = Math.hypot(bx - ax, by - ay) || 1
     const nx = -(by - ay) / len
     const ny = (bx - ax) / len
-    for (let s = 0; s < len; s += 2.4) {
+    for (let s = 0; s < len; s += 2.2) {
       const t = s / len
       const cx = ax + (bx - ax) * t
       const cy = ay + (by - ay) * t
-      const off = (dtl() - 0.5) * 4.6
+      const off = (dtl() - 0.5) * 4.8
       const px2 = Math.round(cx + nx * off)
       const py2 = Math.round(cy + ny * off)
       const r = dtl()
-      if (r < 0.14) {
-        ctx.fillStyle = dtl() > 0.5 ? '#7a1414' : '#a12020'
-        ctx.fillRect(px2, py2, 2, 1)
-        ctx.fillRect(px2 + (dtl() > 0.5 ? 2 : -1), py2 + 1, 1, 1)
-      } else if (r < 0.3) {
-        ctx.fillStyle = '#4c3626'
-        ctx.fillRect(px2, py2, 2, 1)
-        ctx.fillRect(px2 + 1, py2 - 1, 1, 1)
-      } else if (r < 0.36) {
-        const ex = Math.round(cx + nx * (off > 0 ? 4.5 : -4.5))
-        const ey = Math.round(cy + ny * (off > 0 ? 4.5 : -4.5))
-        ctx.fillStyle = '#d8d0c0'
-        ctx.fillRect(ex, ey, 2, 1)
-        ctx.fillStyle = '#8a8578'
-        ctx.fillRect(ex, ey, 1, 1)
-      } else if (r < 0.42) {
-        const ex = Math.round(cx + nx * (off > 0 ? 5 : -5))
-        const ey = Math.round(cy + ny * (off > 0 ? 5 : -5))
-        ctx.fillStyle = '#3f4a54'
-        ctx.fillRect(ex, ey, 2, 1)
-        ctx.fillStyle = '#35e0d8'
-        ctx.fillRect(ex + 1, ey - 1, 1, 1)
+      if (r < 0.25) {
+        ctx.fillStyle = '#6b4526'
+        ctx.fillRect(px2, py2, 1.5, 1)
+      } else if (r < 0.45) {
+        ctx.fillStyle = '#f2e2be'
+        ctx.fillRect(px2, py2, 1, 1)
       }
     }
   }
 
   const nearPath = (x: number, y: number) =>
-    nodes.some((pt) => Math.hypot(pt[0] - x, pt[1] - y) < 13) ||
-    nodes.some((pt, i) => i < nodes.length - 1 && distToSegment([x, y] as Pt, pt, nodes[i + 1]) < 9)
+    nodes.some((pt) => Math.hypot(pt[0] - x, pt[1] - y) < 14) ||
+    nodes.some((pt, i) => i < nodes.length - 1 && distToSegment([x, y] as Pt, pt, nodes[i + 1]) < 10)
 
+  // Scatter lush trees, bushes and rocks around the terrain
   let trees = 0
-  let dead = 0
-  let cyber = 0
   let bushes = 0
   let rocks = 0
-  let piles = 0
-  for (
-    let attempt = 0;
-    attempt < 800 && (trees < 30 || dead < 8 || cyber < 6 || bushes < 12 || rocks < 5 || piles < 7);
-    attempt++
-  ) {
-    const x = 14 + rng() * (w - 20)
-    const y = 6 + rng() * (h - 12)
+  for (let attempt = 0; attempt < 900 && (trees < 36 || bushes < 18 || rocks < 8); attempt++) {
+    const x = 10 + rng() * (w - 18)
+    const y = 6 + rng() * (h - 10)
     if (nearPath(x, y)) continue
-    if (x > w - 36 && y < h * 0.46) continue
+    // Leave room for mountains and castle
+    if (x > 50 && x < 100 && y > h * 0.7) continue
+    if (x > w - 40 && y < h * 0.45) continue
+
     const roll = rng()
-    if (roll < 0.42 && trees < 30) {
+    if (roll < 0.55 && trees < 36) {
       drawTree(ctx, x, y, rng)
       trees++
-    } else if (roll < 0.52 && dead < 8) {
-      drawDeadTree(ctx, x, y, rng)
-      dead++
-    } else if (roll < 0.6 && cyber < 6) {
-      drawCyberTree(ctx, x, y, rng)
-      cyber++
-    } else if (roll < 0.78 && bushes < 12) {
+    } else if (roll < 0.82 && bushes < 18) {
       drawBush(ctx, x, y, rng)
       bushes++
-    } else if (roll < 0.86 && rocks < 5) {
+    } else if (rocks < 8) {
       drawRock(ctx, x, y)
       rocks++
-    } else if (piles < 7) {
-      drawGorePile(ctx, x, y, rng)
-      piles++
     }
   }
 
-  drawMountain(ctx, 96, 122, 13)
-  drawMountain(ctx, 110, 126, 9)
-  drawMountain(ctx, 88, 128, 7)
+  // Mountain range at bottom-center (as in reference Image 1)
+  drawMountain(ctx, 58, 126, 14)
+  drawMountain(ctx, 74, 122, 18)
+  drawMountain(ctx, 89, 125, 12)
 
-  drawCastle(ctx, nodes[nodes.length - 1][0] - 2, nodes[nodes.length - 1][1] - 4)
+  // Deadlock Castle Fortress at final node
+  drawCastle(ctx, nodes[nodes.length - 1][0], nodes[nodes.length - 1][1] - 4)
 
-  const night = ctx.createRadialGradient(w / 2, h * 0.45, h * 0.22, w / 2, h * 0.45, h * 0.85)
-  night.addColorStop(0, 'rgba(22,14,40,0.18)')
-  night.addColorStop(1, 'rgba(10,6,24,0.55)')
-  ctx.fillStyle = night
+  // Subtle atmospheric lighting
+  const mapAtmosphere = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.3, w / 2, h * 0.5, h * 0.9)
+  mapAtmosphere.addColorStop(0, 'rgba(255,255,255,0.03)')
+  mapAtmosphere.addColorStop(1, 'rgba(10,25,12,0.18)')
+  ctx.fillStyle = mapAtmosphere
   ctx.fillRect(0, 0, w, h)
-
-  for (const [gx, gy] of [
-    [w * 0.36, h * 0.6],
-    [w * 0.62, h * 0.52],
-    [w * 0.86, h * 0.34],
-  ] as Array<[number, number]>) {
-    const g = ctx.createRadialGradient(gx, gy, 2, gx, gy, 24)
-    g.addColorStop(0, 'rgba(143,29,29,0.18)')
-    g.addColorStop(1, 'rgba(143,29,29,0)')
-    ctx.fillStyle = g
-    ctx.fillRect(gx - 24, gy - 24, 48, 48)
-  }
-
-  drawMapLamp(ctx, 40, 88)
-  drawMapLamp(ctx, 65, 87)
-  drawMapLamp(ctx, 107, 84)
-  drawMapLamp(ctx, 132, 81)
-  drawMapLamp(ctx, 171, 71)
 }
-
-
-
-
 
 function drawCross(ctx: Ctx, x: number, y: number, s: number, color: string): void {
   ctx.fillStyle = color
@@ -683,36 +657,55 @@ function vgrad(ctx: Ctx, w: number, h: number, stops: Array<[number, string]>): 
 }
 
 function stars(ctx: Ctx, w: number, h: number, maxY: number): void {
-  ctx.fillStyle = 'rgba(232,226,214,0.7)'
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 65; i++) {
     const x = ((i * 197) % w)
     const y = ((i * 89) % maxY)
-    const s = (i % 4 === 0) ? 2 : 1
-    ctx.globalAlpha = 0.3 + ((i * 13) % 60) / 100
+    const s = (i % 5 === 0) ? 2 : 1
+    ctx.fillStyle = i % 4 === 0 ? '#ffffff' : i % 3 === 0 ? '#ffd9a8' : '#d2dcf5'
+    ctx.globalAlpha = 0.4 + ((i * 17) % 60) / 100
     ctx.fillRect(x, y, s, s)
   }
   ctx.globalAlpha = 1
 }
 
 function bigMoon(ctx: Ctx, cx: number, cy: number, r: number, color: string, glow: string): void {
-  ctx.fillStyle = glow
+  // Soft outer celestial glows
+  const glowGrad = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r + 26)
+  glowGrad.addColorStop(0, glow)
+  glowGrad.addColorStop(0.5, 'rgba(190, 205, 240, 0.08)')
+  glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+  ctx.fillStyle = glowGrad
   ctx.beginPath()
-  ctx.arc(cx, cy, r + 16, 0, Math.PI * 2)
+  ctx.arc(cx, cy, r + 26, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = glow
-  ctx.beginPath()
-  ctx.arc(cx, cy, r + 8, 0, Math.PI * 2)
-  ctx.fill()
+
+  // Moon base disc
   ctx.fillStyle = color
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = 'rgba(0,0,0,0.14)'
+
+  // Detailed Lunar Maria & Craters (matching Image 2)
+  ctx.fillStyle = 'rgba(100, 115, 148, 0.28)'
   ctx.beginPath()
-  ctx.arc(cx - r * 0.25, cy - r * 0.15, r * 0.28, 0, Math.PI * 2)
+  ctx.arc(cx - r * 0.3, cy - r * 0.2, r * 0.38, 0, Math.PI * 2)
+  ctx.arc(cx + r * 0.35, cy - r * 0.3, r * 0.24, 0, Math.PI * 2)
+  ctx.arc(cx + r * 0.15, cy + r * 0.25, r * 0.42, 0, Math.PI * 2)
+  ctx.arc(cx - r * 0.4, cy + r * 0.35, r * 0.25, 0, Math.PI * 2)
   ctx.fill()
+
+  ctx.fillStyle = 'rgba(65, 78, 105, 0.22)'
   ctx.beginPath()
-  ctx.arc(cx + r * 0.32, cy + r * 0.3, r * 0.18, 0, Math.PI * 2)
+  ctx.arc(cx - r * 0.2, cy - r * 0.15, r * 0.2, 0, Math.PI * 2)
+  ctx.arc(cx + r * 0.22, cy + r * 0.15, r * 0.22, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Moon crater rim highlights
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
+  ctx.beginPath()
+  ctx.arc(cx - r * 0.45, cy - r * 0.45, 1.5, 0, Math.PI * 2)
+  ctx.arc(cx + r * 0.5, cy + r * 0.1, 2, 0, Math.PI * 2)
+  ctx.arc(cx - r * 0.1, cy + r * 0.55, 1.5, 0, Math.PI * 2)
   ctx.fill()
 }
 
@@ -728,33 +721,41 @@ function buildingRow(
   step: number,
   litChance: number,
 ): void {
-  let x = -10
+  let x = -12
   let i = 0
-  while (x < w + 10) {
-    const bh = minH + ((i * 37) % (maxH - minH))
-    const bw = step - 8
+  while (x < w + 20) {
+    const bh = minH + ((i * 41 + 17) % (maxH - minH))
+    const bw = step - 6
     ctx.fillStyle = color
     ctx.fillRect(x, baseY - bh, bw, bh)
+
+    // Roof & Antenna Mast
     ctx.fillStyle = roofColor
-    if (i % 3 === 0) {
-      ctx.beginPath()
-      ctx.moveTo(x - 3, baseY - bh)
-      ctx.lineTo(x + bw / 2, baseY - bh - 12)
-      ctx.lineTo(x + bw + 3, baseY - bh)
-      ctx.closePath()
-      ctx.fill()
-    } else {
-      ctx.fillRect(x - 2, baseY - bh - 5, bw + 4, 5)
+    ctx.fillRect(x - 1, baseY - bh - 4, bw + 2, 4)
+
+    // Antenna on taller buildings with blinking red light
+    if (i % 2 === 0) {
+      const antX = Math.round(x + bw * 0.5)
+      ctx.fillStyle = '#221a30'
+      ctx.fillRect(antX, baseY - bh - 16, 2, 12)
+      ctx.fillStyle = '#ff2b2b'
+      ctx.fillRect(antX - 1, baseY - bh - 18, 4, 3)
+      ctx.fillStyle = 'rgba(255, 43, 43, 0.35)'
+      ctx.fillRect(antX - 3, baseY - bh - 20, 8, 7)
     }
-    for (let wy = baseY - bh + 12; wy <= baseY - 16; wy += 24) {
-      for (let wx = x + 8; wx <= x + bw - 14; wx += 20) {
-        const lit = ((wx * 31 + wy * 17 + i * 7) % 100) / 100 < litChance
-        ctx.fillStyle = lit ? winColor : 'rgba(10,8,14,0.85)'
-        ctx.fillRect(wx, wy, 9, 11)
+
+    // Windows Grid
+    for (let wy = baseY - bh + 10; wy <= baseY - 16; wy += 20) {
+      for (let wx = x + 6; wx <= x + bw - 12; wx += 16) {
+        const lit = ((wx * 37 + wy * 19 + i * 11) % 100) / 100 < litChance
         if (lit) {
-          ctx.fillStyle = 'rgba(255,176,58,0.18)'
-          ctx.fillRect(wx - 3, wy - 3, 15, 17)
-          ctx.fillStyle = 'rgba(10,8,14,0.85)'
+          ctx.fillStyle = winColor
+          ctx.fillRect(wx, wy, 8, 10)
+          ctx.fillStyle = 'rgba(255, 198, 80, 0.22)'
+          ctx.fillRect(wx - 2, wy - 2, 12, 14)
+        } else {
+          ctx.fillStyle = 'rgba(14, 10, 22, 0.85)'
+          ctx.fillRect(wx, wy, 8, 10)
         }
       }
     }
@@ -767,11 +768,7 @@ function streetBase(ctx: Ctx, w: number, h: number, y: number, color: string, li
   ctx.fillStyle = color
   ctx.fillRect(0, y, w, h - y)
   ctx.fillStyle = lineColor
-  ctx.fillRect(0, y, w, 3)
-  ctx.fillStyle = 'rgba(255,255,255,0.05)'
-  for (let x = 6; x < w; x += 34) {
-    ctx.fillRect(x, y + 14 + ((x * 7) % 20), 20, 3)
-  }
+  ctx.fillRect(0, y, w, 4)
 }
 
 function fogBand(ctx: Ctx, w: number, h: number, t: number, y: number, alpha: number, speed: number): void {
@@ -788,97 +785,139 @@ function fogBand(ctx: Ctx, w: number, h: number, t: number, y: number, alpha: nu
 function vignette(ctx: Ctx, w: number, h: number): void {
   const g = ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 0.95)
   g.addColorStop(0, 'rgba(0,0,0,0)')
-  g.addColorStop(1, 'rgba(0,0,0,0.62)')
+  g.addColorStop(1, 'rgba(0,0,0,0.58)')
   ctx.fillStyle = g
   ctx.fillRect(0, 0, w, h)
 }
 
 function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
-  const flicker = 0.85 + 0.15 * Math.sin(t / 260 + x)
-  const lx = x + 26
-  const ly = groundY - 106
+  const flicker = 0.92 + 0.08 * Math.sin(t / 220 + x)
+  const lx = x + 34
+  const ly = groundY - 110
 
-  const cone = ctx.createLinearGradient(0, ly, 0, groundY)
-  cone.addColorStop(0, `rgba(255,196,92,${0.34 * flicker})`)
-  cone.addColorStop(1, 'rgba(255,196,92,0.02)')
+  // Volumetric Triangular Light Cone (Soft glowing warm beam down to street)
+  const cone = ctx.createLinearGradient(0, ly, 0, groundY + 10)
+  cone.addColorStop(0, `rgba(255, 215, 110, ${0.48 * flicker})`)
+  cone.addColorStop(0.35, `rgba(255, 205, 95, ${0.28 * flicker})`)
+  cone.addColorStop(0.75, `rgba(255, 195, 80, ${0.12 * flicker})`)
+  cone.addColorStop(1, 'rgba(255, 190, 70, 0.01)')
   ctx.fillStyle = cone
   ctx.beginPath()
-  ctx.moveTo(lx - 5, ly)
-  ctx.lineTo(lx + 5, ly)
-  ctx.lineTo(lx + 36, groundY + 2)
-  ctx.lineTo(lx - 34, groundY + 2)
+  ctx.moveTo(lx - 4, ly)
+  ctx.lineTo(lx + 4, ly)
+  ctx.lineTo(lx + 46, groundY + 6)
+  ctx.lineTo(lx - 44, groundY + 6)
   ctx.closePath()
   ctx.fill()
 
-  ctx.fillStyle = `rgba(255,196,92,${0.16 * flicker})`
+  // Ground Illuminated Light Pool
+  const groundGlow = ctx.createRadialGradient(lx, groundY + 2, 4, lx, groundY + 2, 48)
+  groundGlow.addColorStop(0, `rgba(255, 220, 120, ${0.36 * flicker})`)
+  groundGlow.addColorStop(0.5, `rgba(255, 205, 90, ${0.18 * flicker})`)
+  groundGlow.addColorStop(1, 'rgba(255, 190, 70, 0)')
+  ctx.fillStyle = groundGlow
   ctx.beginPath()
-  ctx.ellipse(lx, groundY + 1, 34, 7, 0, 0, Math.PI * 2)
+  ctx.ellipse(lx, groundY + 2, 46, 10, 0, 0, Math.PI * 2)
   ctx.fill()
 
-  ctx.fillStyle = '#0d0a08'
-  ctx.fillRect(x, groundY - 88, 4, 88)
-  ctx.fillRect(x - 3, groundY - 2, 10, 3)
-  ctx.strokeStyle = '#0d0a08'
+  // Metallic Lamp Post Stem & Base
+  ctx.fillStyle = '#1c1b26'
+  ctx.fillRect(x - 1, groundY - 96, 4, 96)
+  ctx.fillStyle = '#2d2b3d'
+  ctx.fillRect(x - 1, groundY - 96, 1.5, 96)
+  ctx.fillStyle = '#14131c'
+  ctx.fillRect(x - 4, groundY - 3, 10, 4)
+
+  // Curved Curved Lamp Neck
+  ctx.strokeStyle = '#1c1b26'
   ctx.lineWidth = 4
   ctx.beginPath()
-  ctx.moveTo(x + 2, groundY - 86)
-  ctx.quadraticCurveTo(x + 2, ly, lx, ly)
+  ctx.moveTo(x + 1, groundY - 94)
+  ctx.quadraticCurveTo(x + 1, ly - 6, lx, ly - 4)
   ctx.stroke()
 
-  ctx.fillStyle = '#0d0a08'
-  ctx.fillRect(lx - 6, ly - 5, 12, 5)
-  ctx.fillStyle = `rgba(255,214,130,${0.9 * flicker})`
-  ctx.fillRect(lx - 4, ly - 2, 8, 3)
-  ctx.fillStyle = `rgba(255,196,92,${0.3 * flicker})`
+  ctx.strokeStyle = '#2d2b3d'
+  ctx.lineWidth = 1.5
   ctx.beginPath()
-  ctx.arc(lx, ly, 14, 0, Math.PI * 2)
+  ctx.moveTo(x, groundY - 94)
+  ctx.quadraticCurveTo(x, ly - 7, lx, ly - 5)
+  ctx.stroke()
+
+  // Lamp Fixture Head
+  ctx.fillStyle = '#181722'
+  ctx.fillRect(lx - 7, ly - 6, 14, 6)
+  ctx.fillStyle = '#2d2b3d'
+  ctx.fillRect(lx - 5, ly - 7, 10, 2)
+
+  // Glowing Bulb / Lantern Glow
+  ctx.fillStyle = `rgba(255, 235, 160, ${0.95 * flicker})`
+  ctx.fillRect(lx - 4, ly - 1, 8, 4)
+  ctx.fillStyle = `rgba(255, 210, 110, ${0.5 * flicker})`
+  ctx.beginPath()
+  ctx.arc(lx, ly, 16, 0, Math.PI * 2)
   ctx.fill()
 }
 
 export function drawScene(ctx: Ctx, scene: SceneKey, w: number, h: number, t: number): void {
-  const gy = h * 0.78
+  const gy = h * 0.74
 
   switch (scene) {
     case 'street': {
+      // 1. Night Sky (Deep violet to purple gradient)
       vgrad(ctx, w, h, [
-        [0, '#241b3a'],
-        [0.45, '#372752'],
-        [0.75, '#2a1d42'],
-        [1, '#1a1229'],
+        [0, '#150d24'],
+        [0.35, '#231438'],
+        [0.65, '#341b4e'],
+        [1, '#1b1228'],
       ])
-      stars(ctx, w, h, h * 0.38)
-      bigMoon(ctx, w * 0.82, h * 0.2, 30, '#e9e4f4', 'rgba(222,212,244,0.12)')
-      buildingRow(ctx, w, gy + 6, '#241c38', '#181126', 'rgba(150,110,190,0.4)', 100, 200, 96, 0.4)
-      buildingRow(ctx, w, gy + 4, '#171126', '#100b1c', 'rgba(255,178,64,0.85)', 70, 150, 84, 0.62)
 
-      streetBase(ctx, w, h, gy, '#231c30', '#3a3050')
-      ctx.fillStyle = '#31283f'
-      ctx.fillRect(0, gy, w, 5)
-      ctx.fillStyle = 'rgba(232,226,242,0.22)'
-      for (let x = 14; x < w; x += 56) {
-        const row = Math.floor(x / (w * 0.5))
-        const dw = 26 + row * 6
-        ctx.fillRect(x, gy + 12 + row * 16, dw, 3)
-        ctx.fillRect(x + 4, gy + 30 + row * 10, dw + 10, 3)
+      // 2. Stars & Celestial Full Moon (Image 2)
+      stars(ctx, w, h, h * 0.42)
+      bigMoon(ctx, w * 0.82, h * 0.22, 34, '#f0f3fa', 'rgba(215, 226, 250, 0.18)')
+
+      // 3. Layered Skyline (Back & Front City Skyline)
+      buildingRow(ctx, w, gy + 8, '#211535', '#160c24', 'rgba(180, 140, 220, 0.35)', 110, 210, 104, 0.38)
+      buildingRow(ctx, w, gy + 4, '#170f26', '#0f081c', 'rgba(255, 195, 75, 0.88)', 75, 165, 88, 0.65)
+
+      // 4. Asphalt Road & Sidewalk Curb
+      streetBase(ctx, w, h, gy, '#201d2a', '#403850')
+
+      // Sidewalk Paving
+      ctx.fillStyle = '#2f273d'
+      ctx.fillRect(0, gy, w, 12)
+      ctx.fillStyle = '#423755'
+      ctx.fillRect(0, gy + 11, w, 2)
+
+      // Road Lane Dashes
+      ctx.fillStyle = 'rgba(240, 235, 250, 0.75)'
+      for (let x = 16; x < w; x += 54) {
+        ctx.fillRect(x, gy + 32, 28, 3)
       }
-      ctx.fillStyle = 'rgba(255,255,255,0.05)'
-      for (let x = 6; x < w; x += 34) ctx.fillRect(x, gy + 14 + ((x * 7) % 20), 20, 3)
 
-      for (const fx of [w * 0.08, w * 0.34, w * 0.6, w * 0.86]) lampPost(ctx, fx, gy, t)
+      // 5. Volumetric Streetlamps with Soft Cones of Light
+      for (const fx of [w * 0.06, w * 0.31, w * 0.56, w * 0.81]) lampPost(ctx, fx, gy, t)
 
-      ctx.fillStyle = '#16281a'
-      for (let x = 4; x < w; x += 30) {
-        const bh = 8 + ((x * 13) % 7)
-        ctx.fillRect(x, gy + 4 - bh, 22, bh)
-      }
-      ctx.fillStyle = '#1e3a24'
-      for (let x = 10; x < w; x += 34) {
+      // 6. Lush Shrubs & Berry Bushes along the road border (Image 2)
+      ctx.fillStyle = '#122617'
+      for (let x = 2; x < w; x += 22) {
+        const bh = 10 + ((x * 13) % 9)
         ctx.beginPath()
-        ctx.arc(x + 4, gy - 2 - ((x * 7) % 5), 4, 0, Math.PI * 2)
+        ctx.arc(x + 10, gy - 2, bh * 0.7, 0, Math.PI * 2)
         ctx.fill()
       }
+      ctx.fillStyle = '#1f4829'
+      for (let x = 6; x < w; x += 26) {
+        ctx.beginPath()
+        ctx.arc(x + 8, gy - 5 - ((x * 7) % 4), 6.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = '#ff9436'
+      for (let x = 8; x < w; x += 18) {
+        ctx.fillRect(x + 4, gy - 6 - ((x * 11) % 6), 2, 2)
+      }
 
-      fogBand(ctx, w, h, t, gy - 24, 0.06, 0.01)
+      // 7. Atmospheric Fog & Vignette
+      fogBand(ctx, w, h, t, gy - 24, 0.05, 0.01)
       vignette(ctx, w, h)
       break
     }

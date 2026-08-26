@@ -5,9 +5,6 @@ use crate::models::assistant::{SchemaContext, TableContext};
 pub struct RelevanceFilter;
 
 impl RelevanceFilter {
-    /// Filter schema context to only include tables relevant to the question.
-    /// A table is relevant if its name or column names appear in the question.
-    /// FK-referenced tables of relevant tables are also included.
     pub fn filter(ctx: &SchemaContext, question: &str) -> SchemaContext {
         let question_lower = question.to_lowercase();
         let all_table_names: Vec<&str> = ctx.tables.iter().map(|t| t.name.as_str()).collect();

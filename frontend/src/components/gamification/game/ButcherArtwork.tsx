@@ -242,10 +242,14 @@ function paintScene(ctx: Ctx, t: number): void {
     }
   }
 
-  armSeg(92, 92, 74, 66, 11)
-  armSeg(74, 66, 62, 48, 11)
-  px(ctx, 54, 40, 16, 12, C.skin)
-  ditherRect(ctx, 54, 48, 16, 4, C.skinShade)
+  // Left Arm leaning on pig head with muscle curves
+  armSeg(92, 90, 74, 64, 13)
+  armSeg(74, 64, 60, 46, 12)
+  px(ctx, 52, 38, 18, 14, C.skin)
+  ditherRect(ctx, 52, 46, 18, 6, C.skinShade)
+  // Left arm veins and muscle lines
+  px(ctx, 76, 68, 8, 2, C.skinDark)
+  px(ctx, 70, 58, 6, 2, C.skinDark)
 
   px(ctx, 26, 22, 40, 30, C.pig)
   px(ctx, 22, 30, 46, 18, C.pig)
@@ -275,11 +279,23 @@ function paintScene(ctx: Ctx, t: number): void {
   px(ctx, 40, 56, 1, 8, C.blood)
   px(ctx, 50, 56, 1, 6, C.bloodBright)
 
-  armSeg(148, 96, 162, 122, 12)
-  armSeg(162, 122, 166, 154, 13)
-  px(ctx, 160, 152, 14, 14, C.skin)
-  ditherRect(ctx, 160, 162, 14, 4, C.skinShade)
-  for (let i = 0; i < 4; i++) px(ctx, 161, 153 + i * 3, 12, 1, C.skinDark)
+  // Massive Right Arm gripping cleaver (muscular deltoid, bicep, forearm)
+  armSeg(146, 94, 164, 120, 15)
+  armSeg(164, 120, 168, 154, 14)
+  // Bicep / Tricep muscle shadow separation
+  px(ctx, 152, 104, 8, 3, C.skinDark)
+  px(ctx, 158, 114, 6, 2, C.skinDark)
+  // Forearm striations & veins (Image 3)
+  px(ctx, 164, 128, 7, 2, '#4d6575')
+  px(ctx, 166, 136, 6, 2, '#4d6575')
+  px(ctx, 162, 144, 8, 2, C.skinDark)
+  // Blood drips on arm
+  px(ctx, 160, 118, 2, 8, C.blood)
+  px(ctx, 166, 142, 2, 6, C.bloodBright)
+
+  px(ctx, 158, 152, 16, 15, C.skin)
+  ditherRect(ctx, 158, 162, 16, 5, C.skinShade)
+  for (let i = 0; i < 4; i++) px(ctx, 159, 153 + i * 3, 14, 1, C.skinDark)
 
   px(ctx, 165, 164, 5, 18, C.handle)
   for (let i = 0; i < 5; i++) px(ctx, 165, 165 + i * 3, 5, 1, i % 2 ? '#301d10' : '#5c3a22')

@@ -81,7 +81,8 @@ export const useAssistantStore = create<AssistantState>()(
       partialize: (state) => ({
         onboardingCompleted: state.onboardingCompleted,
         dismissedTips: state.dismissedTips,
-        messages: state.messages,
+        // Retain only the last 50 active messages in localStorage to prevent quota exhaustion
+        messages: state.messages.slice(-50),
       }),
     },
   ),

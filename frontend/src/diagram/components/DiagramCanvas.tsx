@@ -207,6 +207,7 @@ export function DiagramCanvas({
             onEdgesDelete={onEdgesDelete}
             connectionMode={ConnectionMode.Loose}
             nodesConnectable
+            onlyRenderVisibleElements
             connectionLineStyle={{
               stroke: 'hsl(var(--muted-foreground))',
               strokeWidth: 2,

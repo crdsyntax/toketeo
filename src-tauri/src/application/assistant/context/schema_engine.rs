@@ -50,6 +50,17 @@ impl SchemaEngine {
         let fingerprint = ContextBuilder::compute_fingerprint(&ctx);
 
         let mut cache = self.cache.write().await;
+        // Capacity safeguard: if cache exceeds 20 entries, drop oldest entry
+        if cache.len() >= 20 {
+            if let Some(oldest_key) = cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.cached_at)
+                .map(|(k, _)| k.clone())
+            {
+                cache.remove(&oldest_key);
+            }
+        }
+
         cache.insert(
             connection_id.to_string(),
             CacheEntry {
@@ -60,6 +71,12 @@ impl SchemaEngine {
         );
 
         Ok(ctx)
+    }
+
+    pub async fn evict_expired(&self) {
+        let mut cache = self.cache.write().await;
+        let ttl = self.ttl;
+        cache.retain(|_, entry| entry.cached_at.elapsed() < ttl);
     }
 
     pub async fn invalidate(&self, connection_id: &str) {

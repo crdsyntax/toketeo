@@ -83,8 +83,25 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="relative h-[340px] w-full select-none overflow-hidden rounded-lg border-4 border-black bg-[#58a84e]">
+    <div className="flex flex-col gap-2 font-mono">
+      {/* Top Retro Game Header Banner (Image 1) */}
+      <div className="flex items-center justify-between border-4 border-black bg-[#101014] px-4 py-2 text-[#e7e0d0] select-none shadow-[4px_4px_0_#000]">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-black uppercase tracking-[0.2em] text-[#e7e0d0]">
+            DATA DEFENDER
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#8a8a96]">
+            COSTA: LOS ASESINATOS DE LA QUIEBRA
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="border border-[#444450] bg-[#1c1a24] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#ffd27a]">
+            LEVEL 1 · {completed.length}/{nodes.length}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative h-[380px] w-full select-none overflow-hidden rounded-lg border-4 border-black bg-[#54a648] shadow-[4px_4px_0_#000]">
         <canvas
           ref={mapCanvas}
           width={800}
@@ -92,18 +109,8 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
           className="absolute inset-0 h-full w-full"
           style={{ imageRendering: 'pixelated' }}
         />
-        <svg className="absolute inset-0 h-full w-full opacity-40" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polyline
-            points={NODE_XY.map(([x, y]) => `${x},${y}`).join(' ')}
-            fill="none"
-            stroke="#8f1d1d"
-            strokeWidth="0.9"
-            strokeLinecap="round"
-            strokeDasharray="2.4 1.6"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
 
+        {/* Level Checkpoint Nodes (Image 1) */}
         {nodes.map((node, i) => {
           const [x, y] = NODE_XY[i]
           const done = isDone(i)
@@ -114,55 +121,66 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
               key={node.id}
               onClick={() => walkTo(i)}
               disabled={walking || !unlocked}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 transition-transform ${
-                unlocked && !walking ? 'hover:scale-110' : ''
-              } ${current ? 'z-10' : ''}`}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-150 ${
+                unlocked && !walking ? 'hover:scale-110 active:scale-95' : ''
+              } ${current ? 'z-20' : 'z-10'}`}
               style={{ left: `${x}%`, top: `${y}%` }}
             >
+              {/* Checkpoint Box */}
               <div
-                className={`flex items-center justify-center border-4 border-black font-black shadow-[3px_3px_0_#000] ${
-                  node.isBoss ? 'h-14 w-14' : 'h-10 w-10'
+                className={`flex items-center justify-center rounded-sm border-2 border-[#121218] font-black shadow-[3px_3px_0_#000000] ${
+                  node.isBoss ? 'h-13 w-13' : 'h-11 w-11'
                 } ${
                   done
-                    ? 'bg-[#e7e0d0] text-[#8f1d1d]'
+                    ? 'bg-[#e5dfd3] text-[#8f1d1d]'
                     : unlocked
-                      ? `bg-[#8f1d1d] text-[#e7e0d0] ${!node.isBoss ? 'animate-pulse' : ''}`
-                      : 'bg-[#232329] text-[#3a3a40]'
+                      ? `bg-[#8f1d1d] text-[#ffffff] ring-2 ring-[#e02626] ${!node.isBoss ? 'animate-pulse' : ''}`
+                      : 'bg-[#282634] text-[#636175]'
                 }`}
               >
                 {done ? (
-                  <Check className={node.isBoss ? 'h-7 w-7' : 'h-5 w-5'} strokeWidth={4} />
+                  <Check className={node.isBoss ? 'h-6 w-6' : 'h-5 w-5'} strokeWidth={3.5} />
                 ) : node.isBoss ? (
-                  <Skull className={unlocked ? 'h-7 w-7' : 'h-7 w-7 text-[#3a3a40]'} strokeWidth={2.5} />
+                  <Skull className={unlocked ? 'h-6 w-6' : 'h-6 w-6 text-[#58566a]'} strokeWidth={2.5} />
                 ) : unlocked ? (
-                  <span className="text-lg">{i + 1}</span>
+                  <span className="text-sm font-black">{i + 1}</span>
                 ) : (
-                  <Lock className="h-4 w-4 text-[#3a3a40]" />
+                  <Lock className="h-4 w-4 text-[#727084]" />
                 )}
               </div>
+
+              {/* Node District Ribbon Label */}
               <div
-                className={`mx-auto mt-1 w-max max-w-[110px] border-2 border-black bg-[#101014]/85 px-1.5 py-0.5 text-center text-[9px] font-black uppercase tracking-widest leading-tight ${
-                  unlocked ? 'text-[#e7e0d0]' : 'text-[#6a6a74]'
+                className={`mx-auto mt-1.5 w-max max-w-[130px] rounded-xs border-2 border-black bg-[#121218]/95 px-2 py-0.5 text-center text-[9px] font-black uppercase tracking-wider leading-tight shadow-[2px_2px_0_#000000] ${
+                  unlocked ? 'text-[#f0ece1]' : 'text-[#7a7888]'
                 }`}
               >
-                {node.name[lang]}
+                {node.name[lang].replace(/·/g, '-')}
               </div>
             </button>
           )
         })}
 
+        {/* Hero Character & Floating Yellow Pointer Arrow (Image 1) */}
         <div
-          className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full"
+          className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-full transition-all"
           style={{ left: `${hero[0]}%`, top: `${hero[1]}%` }}
         >
-          <PixelSprite kind="hero" scale={3} moving={walking} level={level} />
-          <div className="mt-1 text-center text-[9px] font-black uppercase tracking-widest text-[#c9a227]">
+          {/* Yellow Pointer Arrow above Hero */}
+          <div className="flex justify-center -mb-1 animate-bounce">
+            <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[9px] border-t-[#f5b820] drop-shadow-[0_2px_0_#000000]" />
+          </div>
+
+          <PixelSprite kind="hero" scale={3.2} moving={walking} level={level} />
+
+          <div className="mt-0.5 rounded-xs bg-[#101014]/90 px-1.5 py-0.2 text-center text-[8px] font-black uppercase tracking-widest text-[#ffd27a] shadow-[1px_1px_0_#000]">
             {heroTier.label}
           </div>
         </div>
 
-        <div className="absolute left-3 top-3 border-2 border-black bg-black px-2 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-[#e7e0d0] shadow-[3px_3px_0_#8f1d1d]">
-          Level 1 · {completed.length}/{nodes.length}
+        {/* Bottom Level Indicator Badge */}
+        <div className="absolute left-3 top-3 border-2 border-black bg-[#101014]/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-[#e7e0d0] shadow-[2px_2px_0_#8f1d1d]">
+          ZONA 1 · nullville
         </div>
       </div>
     </div>

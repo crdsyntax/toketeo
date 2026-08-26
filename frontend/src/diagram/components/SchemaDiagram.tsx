@@ -235,6 +235,7 @@ function Flow({ data }: SchemaDiagramProps) {
             maxZoom={2}
             attributionPosition="bottom-left"
             deleteKeyCode={['Backspace', 'Delete']}
+            onlyRenderVisibleElements
             onEdgesDelete={() => {
               setSelectedEdge(null)
             }}
