@@ -975,27 +975,24 @@ pub async fn update_ddl(
     let db_type = driver.db_type();
     let start = std::time::Instant::now();
 
-    let final_sql = if let Some(ref s) = schema {
+    let result = if let Some(ref s) = schema {
         match db_type {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
-                format!("USE {};\n{}", quote_identifier(&db_type, s), sql)
+                driver
+                    .execute(&format!("USE {};\n{}", quote_identifier(&db_type, s), sql))
+                    .await
             }
             crate::db::DbType::Postgres => {
-                driver
-                    .execute(&format!(
-                        "SET search_path TO {};",
-                        quote_identifier(&db_type, s)
-                    ))
-                    .await?;
-                sql
+                // execute_with_schema sets the search_path for this statement and
+                // restores it afterwards, so it does not leak into the pool and
+                // break later queries on a recycled connection.
+                driver.execute_with_schema(&sql, s).await
             }
-            _ => sql,
+            _ => driver.execute(&sql).await,
         }
     } else {
-        sql
+        driver.execute(&sql).await
     };
-
-    let result = driver.execute(&final_sql).await;
 
     // Log the DDL update in audit
     let status = if result.is_ok() { "success" } else { "error" };
@@ -1004,7 +1001,7 @@ pub async fn update_ddl(
     let _ = AuditService::log_query(
         &state,
         id.clone(),
-        format!("UPDATE DDL ({} {}): {}", object_type, name, final_sql),
+        format!("UPDATE DDL ({} {}): {}", object_type, name, sql),
         start.elapsed().as_millis() as u64,
         status.to_string(),
         error_msg,

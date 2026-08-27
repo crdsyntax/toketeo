@@ -268,26 +268,33 @@ impl DbDriver for PostgresDriver {
 
         // Guardar el search_path anterior para restaurarlo antes de devolver
         // la conexión al pool (evita contaminar el estado de otras consultas).
-        let previous_path: Option<String> = sqlx::query("SELECT current_setting('search_path')")
-            .fetch_one(&mut *conn)
-            .await
-            .ok()
-            .and_then(|r| r.try_get::<String, _>(0).ok());
+        // Si el esquema está vacío no tiene sentido hacer SET search_path y
+        // además produciría un identificador delimitado de longitud cero
+        // ("zero-length delimited identifier at or near """).
+        let schema = schema.trim();
+        let (previous_path, search_path_set) = if schema.is_empty() {
+            (None, false)
+        } else {
+            let previous_path: Option<String> =
+                sqlx::query("SELECT current_setting('search_path')")
+                    .fetch_one(&mut *conn)
+                    .await
+                    .ok()
+                    .and_then(|r| r.try_get::<String, _>(0).ok());
 
-        let set_result = conn
-            .execute(sqlx::query(&format!(
-                "SET search_path TO \"{}\"",
-                schema.replace('"', "\"\"")
-            )))
-            .await
-            .map_err(|e| {
-                AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
-            });
+            let set_result = conn
+                .execute(sqlx::query(&format!(
+                    "SET search_path TO \"{}\"",
+                    schema.replace('"', "\"\"")
+                )))
+                .await
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
+                });
 
-        if let Err(e) = set_result {
-            Self::restore_search_path(conn, previous_path.as_deref()).await;
-            return Err(e);
-        }
+            set_result?;
+            (previous_path, true)
+        };
 
         let start = Instant::now();
         let trimmed = query.trim().to_uppercase();
@@ -369,7 +376,9 @@ impl DbDriver for PostgresDriver {
             }
         };
 
-        Self::restore_search_path(conn, previous_path.as_deref()).await;
+        if search_path_set {
+            Self::restore_search_path(conn, previous_path.as_deref()).await;
+        }
 
         match result {
             Some(Ok(qr)) => Ok(qr),
@@ -881,7 +890,7 @@ impl DataReader for PostgresDriver {
         last_key: Option<serde_json::Value>,
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -964,7 +973,7 @@ impl DataReader for PostgresDriver {
     }
 
     async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
-        let schema_name = schema.unwrap_or("public");
+        let schema_name = schema.filter(|s| !s.is_empty()).unwrap_or("public");
 
         // Estimación rápida vía pg_class para tablas grandes: evita el
         // `COUNT(*)` (full scan) que bloquea el inicio del sync y el primer
@@ -986,7 +995,7 @@ impl DataReader for PostgresDriver {
             }
         }
 
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -1018,7 +1027,7 @@ impl DataWriter for PostgresDriver {
             return Ok(UpsertResult::default());
         }
 
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -1087,7 +1096,7 @@ impl DataWriter for PostgresDriver {
         column: &str,
         column_type: &str,
     ) -> AppResult<()> {
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -1115,7 +1124,7 @@ impl DataWriter for PostgresDriver {
         schema: Option<&str>,
         column: &str,
     ) -> AppResult<()> {
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)

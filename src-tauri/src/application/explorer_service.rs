@@ -58,18 +58,11 @@ impl ExplorerService {
         let db_type = driver.db_type();
         let start = std::time::Instant::now();
 
-        let mut use_schema_context = false;
         let final_query = if let Some(ref s) = schema {
             if s.is_empty() {
                 query.to_string()
             } else {
                 match db_type {
-                    crate::db::DbType::Mysql
-                    | crate::db::DbType::Mariadb
-                    | crate::db::DbType::Postgres => {
-                        use_schema_context = true;
-                        query.to_string()
-                    }
                     crate::db::DbType::Mongodb => {
                         // Inject the database name into MongoDB JSON commands
                         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(query) {
@@ -136,14 +129,31 @@ impl ExplorerService {
             }
         }
 
-        let result = if use_schema_context {
-            if let Some(ref s) = schema {
-                driver.execute_with_schema(&final_query, s).await
-            } else {
-                driver.execute(&final_query).await
+        // Resolve the schema used to scope the query. For schema-based engines
+        // (PostgreSQL search_path, MySQL database) we always run the statement
+        // with an explicit schema so unqualified identifiers resolve correctly
+        // even after a pooled connection is recycled on idle. When the caller
+        // omits the schema we fall back to the connection's configured default
+        // schema; without that, plain `execute` would rely on ambient pool state
+        // that is lost when the connection is re-established.
+        let effective_schema: Option<String> = match db_type {
+            crate::db::DbType::Postgres | crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                match &schema {
+                    Some(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+                    _ => state
+                        .storage
+                        .get_connection(id)
+                        .await
+                        .ok()
+                        .and_then(|cfg| cfg.default_database.filter(|d| !d.trim().is_empty())),
+                }
             }
-        } else {
-            driver.execute(&final_query).await
+            _ => None,
+        };
+
+        let result = match &effective_schema {
+            Some(s) => driver.execute_with_schema(&final_query, s).await,
+            None => driver.execute(&final_query).await,
         };
 
         match result {

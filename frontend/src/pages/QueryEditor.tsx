@@ -14,6 +14,7 @@ import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
 import { NewScriptModal } from '@/components/query/NewScriptModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
+import { TransactionBanner } from '@/components/query/TransactionBanner';
 import { useEffect, useRef, useState } from 'react';
 import { ExecutionStatus, DatabaseType } from '@/types/database';
 import { useQuery } from '@tanstack/react-query';
@@ -98,6 +99,9 @@ export default function QueryEditor() {
     scriptResponding,
     respondScriptPrompt,
     scriptLive,
+    openTransaction,
+    handleCommit,
+    handleRollback,
   } = useQueryEditor()
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
@@ -293,6 +297,15 @@ export default function QueryEditor() {
           addTab(connectionId, database)
         }}
       />
+
+      {openTransaction && (
+        <TransactionBanner
+          connectionId={openTransaction.connectionId}
+          startedAt={openTransaction.startedAt}
+          onCommit={handleCommit}
+          onRollback={handleRollback}
+        />
+      )}
 
       {/* History panel floating dropdown */}
       {showHistory && (

@@ -38,6 +38,20 @@ impl ConnectionStringBuilder {
                 } else {
                     url.push_str("?sslmode=prefer");
                 }
+
+                // Apply the connection's default schema as the PostgreSQL
+                // search_path at connect time. This guarantees every physical
+                // connection — including ones created after the pool recycles an
+                // idle connection — starts with the correct schema, so unqualified
+                // table references keep resolving after long idle periods (instead
+                // of failing with "relation does not exist").
+                if let Some(ref def) = config.default_database {
+                    let def = def.trim();
+                    if !def.is_empty() {
+                        let options = format!("-c search_path={}", def);
+                        url.push_str(&format!("&options={}", Self::url_encode(&options)));
+                    }
+                }
                 Ok(url)
             }
             DbType::Mysql | DbType::Mariadb => {

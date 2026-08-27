@@ -251,6 +251,9 @@ export function useQueryEditor() {
   const [lastScriptSql, setLastScriptSql] = useState<string[]>([])
   const activeScriptRunIdRef = useRef<string | null>(null)
 
+  // Tracks an open transaction (BEGIN executed without COMMIT/ROLLBACK)
+  const [openTransaction, setOpenTransaction] = useState<{ connectionId: string; startedAt: number } | null>(null)
+
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
 
@@ -557,6 +560,7 @@ export function useQueryEditor() {
     setSafeDeleteSuggestion(null)
     setSqlFixSuggestion(null)
     const isMongo = targetConnection.type === DatabaseType.MONGODB;
+    const isPostgres = targetConnection.type === DatabaseType.POSTGRES;
     if (checkDangerousQuery(raw, isMongo, targetConnection)) return
 
       const effectiveLimit = limit ?? queryLimit;
@@ -599,7 +603,11 @@ export function useQueryEditor() {
       try {
         // Use the connection's database/schema, falling back to the active connection's
         // selected schema (important for PostgreSQL where the schema is set in the sidebar).
-        const schema = targetConnection.database || activeConnection?.database;
+        // For PostgreSQL the schema (search_path) scopes unqualified table names, so prefer
+        // the selected schema over the connection's database name.
+        const schema = isPostgres
+          ? (activeConnection?.database || targetConnection.defaultDatabase || targetConnection.database)
+          : (targetConnection.database || activeConnection?.database);
         
         let result;
         try {
@@ -624,12 +632,24 @@ export function useQueryEditor() {
         });
         toast.success(`Query returned successfully in ${durationMs} ms`);
 
+        // Track open transaction state (BEGIN / COMMIT / ROLLBACK)
+        if (!isMongo) {
+          const trimmedSql = sql.trim().replace(/;$/, '').trim()
+          const isBegin = /^(BEGIN|START\s+TRANSACTION)$/i.test(trimmedSql)
+          const isEnd = /^(COMMIT|ROLLBACK|ROLLBACK\s+TO\s+\S+)$/i.test(trimmedSql)
+          if (isBegin) {
+            setOpenTransaction({ connectionId: targetConnection.id, startedAt: Date.now() })
+          } else if (isEnd) {
+            setOpenTransaction(null)
+          }
+        }
+
         // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
         if (!isMongo && isSchemaChangingQuery(sql)) {
           refreshSchemaMetadata(targetConnection.id);
         }
 
-        // Handle MongoDB use <db> â€” update connection's active database
+        // Handle MongoDB use <db> — update connection's active database
         if (isMongo) {
           const useMatch = raw.match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
           if (useMatch) {
@@ -810,6 +830,18 @@ export function useQueryEditor() {
       const durationMs = Date.now() - startTime;
       toast.success(`Query returned successfully in ${durationMs} ms`);
 
+      // Track open transaction state (BEGIN / COMMIT / ROLLBACK)
+      if (!isMongo) {
+        const trimmedSnippet = sqlSnippet.trim().replace(/;$/, '').trim()
+        const isBegin = /^(BEGIN|START\s+TRANSACTION)$/i.test(trimmedSnippet)
+        const isEnd = /^(COMMIT|ROLLBACK|ROLLBACK\s+TO\s+\S+)$/i.test(trimmedSnippet)
+        if (isBegin) {
+          setOpenTransaction({ connectionId: targetConnection.id, startedAt: Date.now() })
+        } else if (isEnd) {
+          setOpenTransaction(null)
+        }
+      }
+
       // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
       if (!isMongo && isSchemaChangingQuery(sqlSnippet)) {
         refreshSchemaMetadata(targetConnection.id);
@@ -975,7 +1007,10 @@ export function useQueryEditor() {
     })
 
     try {
-        const schema = targetConnection.database || activeConnection?.database;
+        const isPostgres = targetConnection.type === DatabaseType.POSTGRES;
+        const schema = isPostgres
+          ? (activeConnection?.database || targetConnection.defaultDatabase || targetConnection.database)
+          : (targetConnection.database || activeConnection?.database);
 
         const runUpdate = async () => {
             await tauriApi.invoke('execute_query', {
@@ -1339,6 +1374,14 @@ export function useQueryEditor() {
     handleExecuteAll(page)
   }, [handleExecuteAll])
 
+  const handleCommit = useCallback(() => {
+    handleExecuteAll(1, undefined, 'COMMIT;')
+  }, [handleExecuteAll])
+
+  const handleRollback = useCallback(() => {
+    handleExecuteAll(1, undefined, 'ROLLBACK;')
+  }, [handleExecuteAll])
+
   return {
     activeConnection,
     tabs,
@@ -1418,5 +1461,8 @@ export function useQueryEditor() {
     respondScriptPrompt,
     scriptLive,
     lastScriptSql,
+    openTransaction,
+    handleCommit,
+    handleRollback,
   }
 }
