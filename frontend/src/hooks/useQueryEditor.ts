@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { EditorView } from '@codemirror/view'
 import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
 import { queryService, type ScriptDecision, type ScriptLiveStatement, type ScriptReport } from '@/services/query.service'
@@ -923,7 +923,7 @@ export function useQueryEditor() {
     }
 
     const tableNameMatch = (lastExecutedSqlRef.current || activeTab.query).match(TABLE_NAME_REGEX)
-    let tableName = tableNameMatch ? tableNameMatch[1] : null
+    const tableName = tableNameMatch ? tableNameMatch[1] : null
 
     if (!tableName) {
       updateTabResults(activeTab.id, { 
@@ -934,13 +934,9 @@ export function useQueryEditor() {
       return
     }
 
-    // Ensure tableName is escaped properly if it isn't
-    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
-        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
-    }
+    // Strip external quotes from tableName if regex captured them
+    const cleanTableName = tableName.replace(/^[`"[]+|[`"\]]+$/g, '')
 
-    // Build WHERE clause using all PK columns
-    const whereClauses = pkColumns.map((pk: string) => `\`${pk.replace(/`/g, "``")}\` = ?`).join(' AND ')
     const pkValues = pkColumns.map((pk: string) => row[pk])
 
     if (pkValues.some((v: DbValue) => v === null || v === undefined)) {
@@ -952,15 +948,22 @@ export function useQueryEditor() {
       return
     }
 
-    const updateSqlTemplate = `UPDATE ${tableName} SET \`${column.replace(/`/g, "``")}\` = ? WHERE ${whereClauses};`
-    const params = [newValue, ...pkValues]
+    const finalSql = generateUpdateByIds(
+      cleanTableName,
+      [row],
+      pkColumns,
+      [{ column, value: newValue }],
+      targetConnection.type,
+    )
 
-    const finalSql = updateSqlTemplate.replace(/\?/g, () => {
-      const val = params.shift();
-      if (val === null || val === undefined) return 'NULL';
-      if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
-      return String(val);
-    });
+    if (!finalSql) {
+      updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Failed to generate UPDATE statement for this record.' 
+      })
+      setEditingCell(null)
+      return
+    }
 
     const updatedRows = [...activeTab.results.rows]
     updatedRows[rowIndex] = { ...updatedRows[rowIndex], [column]: newValue }
