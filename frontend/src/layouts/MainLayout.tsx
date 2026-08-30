@@ -186,7 +186,17 @@ export default function MainLayout() {
       setConnectedConnection(conn.id)
       openScriptTabForConnection(conn.id, conn.defaultDatabase || conn.database)
     } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to connect to database'
       console.error('Failed to connect to database:', error)
+      // Surface the failure to the user: store it, show the error modal, and a toast.
+      setConnectionError(conn.id, message)
+      setConnectionErrorModal({
+        connectionId: conn.id,
+        connectionName: conn.name,
+        error: message,
+      })
+      toast.error(message)
     }
   }
 

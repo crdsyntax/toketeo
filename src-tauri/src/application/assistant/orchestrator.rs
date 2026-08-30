@@ -535,12 +535,16 @@ impl<'a> ChatOrchestrator<'a> {
         let mut total_completion = 0u32;
         let mut requires_confirmation = false;
 
-        // Detect repeated identical tool calls across rounds. If the model keeps
-        // requesting the same (tool, args), it is likely stuck — we stop
-        // executing and force one final completion without tools.
-        let mut executed_signatures: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut loop_detected = false;
+        // Detect repeated identical tool calls within a turn. The agent may
+        // legitimately call the same tool several times (e.g. a confirmation step
+        // followed by the confirmed execution, or several `query` calls with
+        // different arguments). Only after MAX_SAME_TOOL_CALLS identical requests do
+        // we skip the call — and even then we keep tools available so the agent can
+        // still call other tools and finish the task.
+        let mut executed_counts: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+        const MAX_SAME_TOOL_CALLS: u32 = 3;
+        let mut confirmation_message: Option<String> = None;
         // Side-effectful UI actions requested by the workspace tool are
         // surfaced to the frontend on the returned turn.
         let mut ui_action: Option<serde_json::Value> = None;
@@ -595,11 +599,12 @@ impl<'a> ChatOrchestrator<'a> {
                             tc.name,
                             serde_json::to_string(&tc.arguments).unwrap_or_default()
                         );
-                        if !executed_signatures.insert(signature) {
-                            loop_detected = true;
+                        let count = executed_counts.entry(signature.clone()).or_insert(0);
+                        *count += 1;
+                        if *count > MAX_SAME_TOOL_CALLS {
                             let result_text = serde_json::json!({
                                 "ok": false,
-                                "message": "Tool call repeated across rounds. Skipping it — answer now using the information already gathered.",
+                                "message": "This exact tool call was already executed. Use the data you already have and proceed to the next step (or answer now).",
                                 "requires_confirmation": false,
                                 "data": null,
                             })
@@ -657,6 +662,7 @@ impl<'a> ChatOrchestrator<'a> {
                             Ok(r) => {
                                 if r.requires_confirmation {
                                     requires_confirmation = true;
+                                    confirmation_message = r.message.clone();
                                 }
                                 // Stream the executed action so the frontend can
                                 // reflect side effects in real time (e.g. a
@@ -714,34 +720,32 @@ impl<'a> ChatOrchestrator<'a> {
                         });
                     }
 
-                    // The model kept requesting the same tool call. Force one
-                    // final completion with tools disabled so it must answer
-                    // from context.
-                    if loop_detected {
-                        let final_request = AiRequest {
-                            system: system_prompt.clone(),
-                            messages: messages.clone(),
-                            tools: vec![],
-                            temperature: 0.3,
-                            max_tokens: Some(4096),
-                        };
-                        let events = self.events;
-                        let on_delta = move |text: &str| {
-                            if let Some(emit) = events {
-                                emit(serde_json::json!({ "event": "delta", "text": text }));
-                            }
-                        };
-                        if let Ok(final_resp) = complete_with_retry(
-                            adapter.as_ref(),
-                            &final_request,
-                            &on_delta,
-                            self.events,
+                    // When a tool requires confirmation (e.g. switching database),
+                    // stop the tool loop immediately. Re-invoking the same tool here
+                    // caused confirmation loops; instead the user confirms in-chat and
+                    // a fresh turn executes it.
+                    if requires_confirmation {
+                        let answer = confirmation_message.clone().unwrap_or_else(|| {
+                            "Esta acción requiere tu confirmación. Presiona «Confirmar y continuar» para ejecutarla.".to_string()
+                        });
+                        self.save_message(
+                            &turn_id,
+                            "assistant",
+                            answer.clone(),
+                            None,
+                            tool_used.clone(),
                         )
-                        .await
-                        {
-                            last_response = Some(final_resp);
-                        }
-                        break;
+                        .await;
+                        return Ok(AssistantTurn {
+                            turn_id,
+                            answer,
+                            sql: None,
+                            tool_used,
+                            source,
+                            requires_confirmation: true,
+                            usage: None,
+                            action: ui_action,
+                        });
                     }
                 }
                 Err(e) => {

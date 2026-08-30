@@ -1,8 +1,3 @@
-use crate::db::common::{
-    decode_bool, decode_bytes, decode_date, decode_datetime, decode_datetime_utc, decode_decimal,
-    decode_f64, decode_i64, decode_string, decode_time, decode_u16, decode_u32, decode_u64,
-    decode_u8, Decoder,
-};
 use crate::db::CapabilityProvider;
 use crate::db::DataReader;
 use crate::db::DataWriter;
@@ -1249,27 +1244,18 @@ impl MySqlDriver {
     }
 
     fn decode_column(&self, row: &MySqlRow, index: usize) -> Value {
-        const DECODERS: &[Decoder] = &[
-            decode_string,
-            decode_i64,
-            decode_u8,
-            decode_u16,
-            decode_u32,
-            decode_u64,
-            decode_decimal,
-            decode_f64,
-            decode_bool,
-            decode_datetime_utc,
-            decode_datetime,
-            decode_date,
-            decode_time,
-            decode_bytes,
-        ];
-
-        for decoder in DECODERS {
+        for decoder in crate::db::common::DECODERS {
             if let Some(value) = decoder(row, index) {
                 return value;
             }
+        }
+
+        // Typed decoders failed. As a last resort let sqlx decode the value into a generic
+        // JSON value: this covers ENUM/SET/JSON and other types, and yields `null` for SQL NULL.
+        match row.try_get::<Option<serde_json::Value>, _>(index) {
+            Ok(Some(v)) => return v,
+            Ok(None) => return Value::Null,
+            Err(_) => {}
         }
 
         let column = &row.columns()[index];

@@ -69,7 +69,6 @@ function extractTableFromQuery(query: string): string | null {
   return match ? match[1] : null
 }
 
-/** Extract the raw WHERE clause of a DELETE statement (without the leading WHERE keyword). */
 function extractWhereClauseFromDelete(query: string): string | null {
   const match = query.match(/DELETE\s+FROM\s+[`'"`"]?\w+[`'"`"]?\s+WHERE\s+([\s\S]+)$/i)
   if (!match) return null
@@ -83,10 +82,6 @@ const tryParseJson = (v: string): unknown => {
   try { return JSON.parse(v); } catch { return v; }
 };
 
-/**
- * Merge MongoFilterBar values into a parsed protocol object.
- * Filter bar values override any values already in the protocol.
- */
 function mergeFilterBar(
   payload: Record<string, unknown>,
   mongoFilter: MongoFilterState | undefined,
@@ -109,33 +104,26 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
   const mode = editorMode ?? 'auto';
 
   if (mode === 'mongosh') {
-    // Shell mode â€” pure shell parsing, NO filter bar merge, NO legacy fallback
     const parseResult = parseMongoShell(cleaned);
     if (parseResult.success) {
       const payload = parseResult.protocol as unknown as Record<string, unknown>;
-      // Explicitly do NOT merge filter bar â€” user's query text is authoritative
       return JSON.stringify(payload);
     }
-    // Parse failed â€” throw so the caller shows the error instead of sending garbage
     throw new Error(`Failed to parse MongoDB shell syntax:\n${parseResult.error}\n\n${cleaned}`);
   }
 
   if (mode === 'json') {
-    // JSON mode â€” only try JSON protocol, no filter bar merge
     try {
       const parsed = JSON.parse(cleaned) as Record<string, unknown>;
       if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
-        // Do NOT merge filter bar â€” user's JSON is authoritative
         return JSON.stringify(parsed);
       }
-      // Valid JSON but missing 'collection' key â€” send as generic MongoDB command
       return cleaned;
     } catch {
       throw new Error(`Invalid JSON for MongoDB command:\n${cleaned}`);
     }
   }
 
-  // 'auto' â€” try JSON first, then shell, then legacy (with filter bar)
   try {
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
@@ -151,10 +139,8 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
       mergeFilterBar(payload, mongoFilter);
       return JSON.stringify(payload);
     }
-    console.warn('[mongoShellParser] Parse failed:', parseResult.error);
   }
 
-  // Legacy fallback (only reached in 'auto' mode)
   const dbShellMatch = cleaned.match(/db\.(\w+)/);
   const collectionName = dbShellMatch ? dbShellMatch[1] : 'unknown';
 
@@ -251,7 +237,6 @@ export function useQueryEditor() {
   const [lastScriptSql, setLastScriptSql] = useState<string[]>([])
   const activeScriptRunIdRef = useRef<string | null>(null)
 
-  // Tracks an open transaction (BEGIN executed without COMMIT/ROLLBACK)
   const [openTransaction, setOpenTransaction] = useState<{ connectionId: string; startedAt: number } | null>(null)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
@@ -302,7 +287,6 @@ export function useQueryEditor() {
       const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
       if (!isProduction) return false;
 
-      // MongoDB destructive operations regex
       const destructive = /\.\s*(updateMany|updateOne|deleteMany|deleteOne|findOneAndDelete|findOneAndUpdate|replaceOne|drop|remove|bulkWrite|insertMany|insertOne|save)\s*\(/i;
       if (destructive.test(sql)) {
         return !window.confirm(
@@ -328,7 +312,6 @@ export function useQueryEditor() {
       )
     }
 
-    // For any environment, UPDATE/DELETE without WHERE clause requires confirmation
     if ((hasUpdate || hasDelete) && !hasWhere) {
       return !window.confirm('Warning: This query contains an UPDATE or DELETE statement without a WHERE clause. Are you sure you want to proceed?')
     }
@@ -402,7 +385,6 @@ export function useQueryEditor() {
       activeScriptRunIdRef.current = null
       const durationMs = Date.now() - startTime
       setScriptSummary(report)
-      // Los statements pendientes (no ejecutados, p. ej. tras cancel) quedan skipped.
       setScriptLive(prev => prev
         ? prev.map(s => s.phase === 'running' || s.phase === 'pending' ? { ...s, phase: 'skipped' as const } : s)
         : prev)
@@ -507,8 +489,6 @@ export function useQueryEditor() {
     return () => { cancelled = true; unlisten?.() }
   }, [])
 
-  // Estados en vivo de cada statement del script (vista estilo Workbench):
-  // running → ok / failed (skipped se decide al terminar).
   useEffect(() => {
     let unlisten: (() => void) | undefined
     let cancelled = false
@@ -571,8 +551,6 @@ export function useQueryEditor() {
       } else {
         const statements = splitSqlStatements(sql);
         if (statements.length > 1) {
-          // Script multi-statement: el backend lo ejecuta en una transacción
-          // propia, statement a statement, preguntando qué hacer ante errores.
           void handleRunScript(statements, raw);
           return;
         }
@@ -601,10 +579,6 @@ export function useQueryEditor() {
 
       const startTime = Date.now();
       try {
-        // Use the connection's database/schema, falling back to the active connection's
-        // selected schema (important for PostgreSQL where the schema is set in the sidebar).
-        // For PostgreSQL the schema (search_path) scopes unqualified table names, so prefer
-        // the selected schema over the connection's database name.
         const schema = isPostgres
           ? (activeConnection?.database || targetConnection.defaultDatabase || targetConnection.database)
           : (targetConnection.database || activeConnection?.database);
@@ -632,7 +606,6 @@ export function useQueryEditor() {
         });
         toast.success(`Query returned successfully in ${durationMs} ms`);
 
-        // Track open transaction state (BEGIN / COMMIT / ROLLBACK)
         if (!isMongo) {
           const trimmedSql = sql.trim().replace(/;$/, '').trim()
           const isBegin = /^(BEGIN|START\s+TRANSACTION)$/i.test(trimmedSql)
@@ -644,12 +617,10 @@ export function useQueryEditor() {
           }
         }
 
-        // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
         if (!isMongo && isSchemaChangingQuery(sql)) {
           refreshSchemaMetadata(targetConnection.id);
         }
 
-        // Handle MongoDB use <db> — update connection's active database
         if (isMongo) {
           const useMatch = raw.match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
           if (useMatch) {
@@ -701,7 +672,6 @@ export function useQueryEditor() {
         addQueryHistory(histEntry);
         schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
 
-        // Auto-detect FK violation and generate safe delete suggestion
         if (isFKViolation(message) && targetConnection) {
           const table = extractTableFromQuery(raw)
           if (table) {
@@ -719,14 +689,12 @@ export function useQueryEditor() {
           }
         }
 
-        // Auto-detect SQL syntax errors and ask the assistant for a corrected query
         if (isSqlSyntaxError(message) && targetConnection) {
           fetchSqlFix(targetConnection.id, sql, message)
         }
       }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix, handleRunScript])
 
-  // Run a query requested from the assistant into the active editor tab.
   useEffect(() => {
     return onRunQueryRequested((sql) => {
       const tabId = useAppStore.getState().activeTabId
@@ -751,9 +719,6 @@ export function useQueryEditor() {
     if (!mainSel.empty) {
       sqlSnippet = view.state.sliceDoc(mainSel.from, mainSel.to)
     } else {
-      // Execute the statement at the cursor: the text bounded by the previous ';'
-      // (or start of file) and the next ';' at/after the cursor (or end of file),
-      // falling back to the preceding statement when the cursor sits on blank space.
       sqlSnippet = extractStatementAtCursor(fullText, cursorPos)
     }
 
@@ -830,7 +795,6 @@ export function useQueryEditor() {
       const durationMs = Date.now() - startTime;
       toast.success(`Query returned successfully in ${durationMs} ms`);
 
-      // Track open transaction state (BEGIN / COMMIT / ROLLBACK)
       if (!isMongo) {
         const trimmedSnippet = sqlSnippet.trim().replace(/;$/, '').trim()
         const isBegin = /^(BEGIN|START\s+TRANSACTION)$/i.test(trimmedSnippet)
@@ -842,12 +806,10 @@ export function useQueryEditor() {
         }
       }
 
-      // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
       if (!isMongo && isSchemaChangingQuery(sqlSnippet)) {
         refreshSchemaMetadata(targetConnection.id);
       }
 
-      // Handle MongoDB use <db> â€” update connection's active database
       if (isMongo) {
         const useMatch = (activeTab?.query ?? sqlSnippet).trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
         if (useMatch) {
@@ -868,7 +830,6 @@ export function useQueryEditor() {
         error: message
       })
 
-      // Auto-detect FK violation and generate safe delete suggestion
       if (isFKViolation(message) && targetConnection) {
         const table = extractTableFromQuery(sqlSnippet)
         if (table) {
@@ -886,14 +847,12 @@ export function useQueryEditor() {
         }
       }
 
-      // Auto-detect SQL syntax errors and ask the assistant for a corrected query
       if (isSqlSyntaxError(message) && targetConnection) {
         fetchSqlFix(targetConnection.id, sqlSnippet, message)
       }
     }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
 
-  // Use refs to avoid stale closures in editor keybindings
   const executeCurrentRef = useRef(handleExecuteCurrent)
   const executeAllRef = useRef(handleExecuteAll)
   
@@ -903,7 +862,6 @@ export function useQueryEditor() {
   }, [handleExecuteCurrent, handleExecuteAll])
 
   const handleCancel = useCallback(() => {
-    // Si hay un script en curso, cancelarlo produce rollback real.
     const runningRunId = activeScriptRunIdRef.current;
     if (runningRunId) {
       queryService.cancelScript(runningRunId).catch(() => undefined)
@@ -940,7 +898,6 @@ export function useQueryEditor() {
     const row = activeTab.results.rows[rowIndex]
     const prevValue = row[column]
     
-    // Use primary_keys metadata from backend if available, fallback to 'id'
     const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0 
       ? activeTab.results.primary_keys 
       : activeTab.results.columns.filter(c => c.toLowerCase() === 'id')
@@ -966,7 +923,6 @@ export function useQueryEditor() {
       return
     }
 
-    // Strip external quotes from tableName if regex captured them
     const cleanTableName = tableName.replace(/^[`"[]+|[`"\]]+$/g, '')
 
     const pkValues = pkColumns.map((pk: string) => row[pk])
@@ -1033,7 +989,7 @@ export function useQueryEditor() {
         }
         
         updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
-        addXP(10); // Base XP for edit
+        addXP(10);
         trackAction('EDIT_ROW');
         
         if (!isUndoRedo) {
@@ -1050,7 +1006,6 @@ export function useQueryEditor() {
             status: ExecutionStatus.ERROR, 
             error: errorMessage 
         })
-        // Revert local state on error
         updateTabResults(activeTab.id, { 
           results: { ...activeTab.results, rows: activeTab.results.rows },
         })
@@ -1064,13 +1019,10 @@ export function useQueryEditor() {
     const row = activeTab?.results?.rows[editingCell.rowIndex]
     const prevValue = row ? row[editingCell.column] : null
     const nextValue = coerceEditedDateValue(String(editingCell.value ?? ''), prevValue)
-    // When the Review Change panel is disabled (Settings â†’ Query Editor â†’
-    // Inline edition), apply the edit immediately.
     if (!useAppStore.getState().inlineEditReview) {
       await updateCell(editingCell.rowIndex, editingCell.column, nextValue)
       return
     }
-    // Stage the edit so the user can review the diff before committing.
     setPendingEdit({
       rowIndex: editingCell.rowIndex,
       column: editingCell.column,
@@ -1164,10 +1116,6 @@ export function useQueryEditor() {
     if (!targetConnection) return;
 
     const isMongo = targetConnection.type === DatabaseType.MONGODB;
-
-    // Reutiliza la selección múltiple del resultsPanel: si hay filas
-    // seleccionadas se generan consultas para todas; si no, para la fila
-    // sobre la que se hizo click derecho.
     const selectedRows = [...selectedRowIndexes]
       .map((i) => sortedRows[i])
       .filter((r): r is DbRow => Boolean(r))
@@ -1203,9 +1151,6 @@ export function useQueryEditor() {
         }
 
         const pks = activeTab.results.primary_keys || [];
-
-        // Reutiliza los generadores del DataTab (sqlGenerator.ts): soportan
-        // una o varias filas. UPDATE usa los valores no-PK del primer registro.
         let sql = ''
         switch (action) {
           case 'select':
@@ -1244,7 +1189,6 @@ export function useQueryEditor() {
     }
   }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults, selectedRowIndexes, sortedRows]);
 
-  /** Copy the right-clicked row (or all selected rows) to the clipboard as JSON. */
   const handleCopyRows = useCallback(async () => {
     if (!contextMenuSql || !activeTab?.results) return;
 
@@ -1264,7 +1208,6 @@ export function useQueryEditor() {
     }
   }, [contextMenuSql, activeTab, selectedRowIndexes, sortedRows])
 
-  /** Copy a single cell value to the clipboard. */
   const handleCopyCell = useCallback(async (row: DbRow, column: string) => {
     try {
       const value = row[column]
@@ -1278,7 +1221,6 @@ export function useQueryEditor() {
     }
   }, [])
 
-  /** Execute a SELECT that targets the right-clicked row (plus any multi-selected rows). */
   const handleExecuteRowSql = useCallback(async () => {
     if (!contextMenuSql || !activeTab?.results) return;
 
@@ -1363,7 +1305,7 @@ export function useQueryEditor() {
     } catch (e) {
       console.error('Failed to save script:', e);
     }
-  }, []) // No dependencies
+  }, [])
 
   const saveScriptRef = useRef(handleSaveScript)
   useEffect(() => {

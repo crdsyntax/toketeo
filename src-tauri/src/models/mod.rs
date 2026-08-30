@@ -1,6 +1,7 @@
 pub mod assistant;
 pub mod compare;
 pub mod diagram;
+pub mod sql_flow;
 pub mod sync;
 
 use crate::db::DbType;

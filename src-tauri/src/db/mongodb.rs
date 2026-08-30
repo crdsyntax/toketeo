@@ -248,8 +248,6 @@ impl DbDriver for MongoDbDriver {
             .as_object()
             .ok_or_else(|| AppError::Validation("MongoDB query must be a JSON object".into()))?;
 
-        tracing::info!("[MongoDB Execute] query: {}", query);
-
         // Cell update support:
         // { "database": "db", "collection": "name", "update": { "filter": {...}, "set": { "col": value } } }
         // Must run BEFORE the 'collection' find branch below, which also

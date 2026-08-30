@@ -180,6 +180,16 @@ impl PromptBuilder {
              real tool call instead."
                 .to_string(),
         );
+        parts.push(
+            "21. SWITCHING DATABASES — when the user refers to a database/schema that is not the \
+             currently active one, your FIRST action is to ask the user which database to connect \
+             to (or confirm switching to the one they named). Call the connection/schema tool ONCE \
+             with the switch request and then STOP calling tools and wait for the user's \
+             confirmation in this same conversation. NEVER re-invoke connection-management tools in \
+             a loop: if a tool result says confirmation is required, ask the user once and wait. \
+             After the user confirms, proceed to locate the tables and run the queries."
+                .to_string(),
+        );
 
         if !prefs.is_empty() {
             parts.push(String::new());

@@ -398,6 +398,7 @@ export default function QueryEditor() {
                     editorRef={editorRef}
                     executeCurrent={handleExecuteCurrent}
                     executeAll={handleExecuteAll}
+                    connectionId={currentConnectionId}
                     connectionName={targetConnection?.name}
                     connectionType={targetConnection?.type}
                     updateTabViewState={updateTabViewState}

@@ -92,13 +92,6 @@ impl ExplorerService {
             query.to_string()
         };
 
-        tracing::info!(
-            "[ExplorerService] execute_query: db_type={:?}, schema={:?}, initial_query={}",
-            db_type,
-            schema,
-            query
-        );
-
         // Handle MongoDB use <db> command — switch the connection's database
         if db_type == crate::db::DbType::Mongodb {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&final_query) {
@@ -1287,11 +1280,7 @@ impl ExplorerService {
             current_query.push_str(&line);
             if trimmed.ends_with(';') {
                 if let Err(e) = driver.execute(&current_query).await {
-                    errors.push(format!(
-                        "Error in statement near '{}': {}",
-                        &trimmed[..trimmed.len().min(80)],
-                        e
-                    ));
+                    errors.push(format!("Error executing statement: {}", e));
                 }
                 current_query.clear();
             }
@@ -1300,7 +1289,7 @@ impl ExplorerService {
 
         if !current_query.trim().is_empty() {
             if let Err(e) = driver.execute(&current_query).await {
-                errors.push(format!("Error in trailing statement: {}", e));
+                errors.push(format!("Error executing statement: {}", e));
             }
         }
 
@@ -1884,9 +1873,31 @@ impl ExplorerService {
 
         let driver = state.get_connection(id).await?;
         let is_postgres = matches!(driver.db_type(), crate::db::DbType::Postgres);
+        let is_mysql = matches!(
+            driver.db_type(),
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb
+        );
 
         let statements = split_sql_statements(&content);
         let mut errors = Vec::new();
+
+        // MySQL/MariaDB restores must run on a single dedicated connection with the
+        // target database selected. A bare `DROP TABLE` otherwise fails with
+        // "No database selected" because each pooled `execute` may use a different
+        // connection. `begin_script` issues `USE `schema'` on that connection.
+        let mut script = if is_mysql && !schema.is_empty() {
+            match driver.begin_script(Some(schema)).await {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    return Err(AppError::Internal(format!(
+                        "Failed to start restore session on database '{}': {}",
+                        schema, e
+                    )));
+                }
+            }
+        } else {
+            None
+        };
 
         for stmt in &statements {
             let trimmed = stmt.trim();
@@ -1913,8 +1924,16 @@ impl ExplorerService {
                 });
 
             if should_execute {
+                // mysqldump emits LOCK TABLES/UNLOCK TABLES for load speed. They are not
+                // required for a correct restore and conflict with the dedicated-connection
+                // transaction used here (MySQL forbids LOCK TABLES inside a transaction),
+                // so skip them.
+                if upper_stmt.starts_with("LOCK TABLES") || upper_stmt.starts_with("UNLOCK TABLES")
+                {
+                    continue;
+                }
+
                 // Before CREATE TABLE for a selected table, drop the table first
-                // so INSERT data does not fail on duplicate keys.
                 if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
                     if let Some(table_name) = extract_table_name_from_create(trimmed) {
                         if tables.is_empty()
@@ -1930,22 +1949,26 @@ impl ExplorerService {
                     }
                 }
 
-                let exec_result = if is_postgres {
-                    driver.execute_with_schema(trimmed, schema).await
+                let exec_result = if let Some(script) = script.as_mut() {
+                    script.execute_statement(trimmed).await.map(|_| ())
+                } else if is_postgres {
+                    driver
+                        .execute_with_schema(trimmed, schema)
+                        .await
+                        .map(|_| ())
                 } else {
-                    driver.execute(trimmed).await
+                    driver.execute(trimmed).await.map(|_| ())
                 };
                 if let Err(e) = exec_result {
-                    errors.push(format!(
-                        "Error in statement near '{}': {}",
-                        &trimmed[..trimmed.len().min(80)],
-                        e
-                    ));
+                    errors.push(format!("Error executing statement: {}", e));
                 }
             }
         }
 
         if !errors.is_empty() {
+            if let Some(script) = script {
+                let _ = script.rollback().await;
+            }
             return Err(AppError::Internal(format!(
                 "Restore completed with {} error(s). First error: {}",
                 errors.len(),
@@ -1953,14 +1976,22 @@ impl ExplorerService {
             )));
         }
 
+        if let Some(script) = script {
+            script.commit().await?;
+        }
         Ok(())
     }
 }
 
-/// Splits SQL text into top-level statements by `;` while respecting:
+/// Splits SQL text into top-level statements while respecting:
 /// - PostgreSQL dollar-quoting ($tag$...$tag$)
 /// - Single-quoted string literals (''...'')
 /// - Single-line (--) and block (/* */) comments
+/// - MySQL conditional comments (/*! ... */): MySQL executes these, so their
+///   contents are kept and run as statements (mysqldump relies on them for
+///   SET SQL_MODE, CREATE TRIGGER/PROCEDURE, etc.)
+/// - `DELIMITER` directives: the statement separator switches to the given
+///   token (used by mysqldump for routines whose bodies contain `;`)
 fn split_sql_statements(content: &str) -> Vec<String> {
     let mut statements = Vec::new();
     let mut current = String::new();
@@ -1972,19 +2003,33 @@ fn split_sql_statements(content: &str) -> Vec<String> {
     let mut in_single_quote = false;
     let mut in_dollar_tag: Option<String> = None;
     let mut in_block_comment = false;
+    let mut in_conditional_comment = false;
+    let mut delimiter = ";".to_string();
 
     while i < len {
-        // Block comment: /* ... */
+        // Comment open: /* ... */ (skipped) vs /*! ... */ (executed by MySQL)
         if !in_single_quote
             && in_dollar_tag.is_none()
             && !in_block_comment
+            && !in_conditional_comment
             && i + 1 < len
             && chars[i] == '/'
             && chars[i + 1] == '*'
         {
-            in_block_comment = true;
-            i += 2;
-            continue;
+            if i + 2 < len && chars[i + 2] == '!' {
+                // Conditional comment: keep contents, just skip the /*! marker and
+                // the optional version number (e.g. /*!50003 ... */).
+                in_conditional_comment = true;
+                i += 3;
+                while i < len && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                continue;
+            } else {
+                in_block_comment = true;
+                i += 2;
+                continue;
+            }
         }
         if in_block_comment {
             if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
@@ -1995,27 +2040,75 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
             continue;
         }
+        if in_conditional_comment {
+            if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
+                in_conditional_comment = false;
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+
+        // DELIMITER directive (mysql client command): switch the statement separator.
+        if !in_single_quote && in_dollar_tag.is_none() && current.trim().is_empty() {
+            let mut j = i;
+            while j < len && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j + 9 < len {
+                let word: String = chars[j..j + 9].iter().collect();
+                if word.eq_ignore_ascii_case("DELIMITER") {
+                    let after = chars[j + 9];
+                    if after == ' ' || after == '\t' {
+                        let mut k = j + 9;
+                        while k < len && (chars[k] == ' ' || chars[k] == '\t') {
+                            k += 1;
+                        }
+                        let start_tok = k;
+                        while k < len && chars[k] != '\n' && chars[k] != '\r' {
+                            k += 1;
+                        }
+                        delimiter = chars[start_tok..k].iter().collect();
+                        i = k;
+                        if i < len && chars[i] == '\r' {
+                            i += 1;
+                        }
+                        if i < len && chars[i] == '\n' {
+                            i += 1;
+                        }
+                        current.clear();
+                        continue;
+                    }
+                }
+            }
+        }
 
         // Single-line comment: -- ...
         if !in_single_quote
             && in_dollar_tag.is_none()
             && !in_block_comment
+            && !in_conditional_comment
             && i + 1 < len
             && chars[i] == '-'
             && chars[i + 1] == '-'
         {
-            // Skip to end of line
             while i < len && chars[i] != '\n' {
                 i += 1;
             }
             if i < len {
                 i += 1;
-            } // skip the newline
+            }
             continue;
         }
 
         // Dollar quote start: $tag$
-        if !in_single_quote && !in_block_comment && in_dollar_tag.is_none() && chars[i] == '$' {
+        if !in_single_quote
+            && !in_block_comment
+            && !in_conditional_comment
+            && in_dollar_tag.is_none()
+            && chars[i] == '$'
+        {
             if let Some(end) = find_dollar_tag_end(&chars, i, len) {
                 let tag: String = chars[i + 1..end].iter().collect();
                 in_dollar_tag = Some(tag);
@@ -2028,7 +2121,7 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
         }
         // Dollar quote end: $tag$
-        if !in_single_quote && !in_block_comment {
+        if !in_single_quote && !in_block_comment && !in_conditional_comment {
             if let Some(ref tag) = in_dollar_tag {
                 if chars[i] == '$' {
                     if let Some(end) = find_dollar_tag_end(&chars, i, len) {
@@ -2052,7 +2145,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             in_single_quote = !in_single_quote;
             current.push(chars[i]);
             i += 1;
-            // Handle doubled quotes inside string: ''
             if in_single_quote && i < len && chars[i] == '\'' {
                 current.push(chars[i]);
                 i += 1;
@@ -2060,15 +2152,28 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
 
-        // Statement separator at top level
-        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment && chars[i] == ';' {
-            let stmt = current.trim().to_string();
-            if !stmt.is_empty() {
-                statements.push(stmt);
+        // Statement separator (honors DELIMITER for routines)
+        if !in_single_quote && in_dollar_tag.is_none() {
+            let is_sep = if delimiter == ";" {
+                chars[i] == ';'
+            } else {
+                let dchars: Vec<char> = delimiter.chars().collect();
+                let dlen = dchars.len();
+                i + dlen <= len && chars[i..i + dlen] == dchars[..]
+            };
+            if is_sep {
+                let stmt = current.trim().to_string();
+                if !stmt.is_empty() {
+                    statements.push(stmt);
+                }
+                current.clear();
+                if delimiter == ";" {
+                    i += 1;
+                } else {
+                    i += delimiter.chars().count();
+                }
+                continue;
             }
-            current.clear();
-            i += 1;
-            continue;
         }
 
         current.push(chars[i]);

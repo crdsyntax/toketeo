@@ -32,6 +32,7 @@ import { ScriptPreview } from '@/components/compare/ScriptPreview';
 import { FullscreenModal } from '@/components/compare/FullscreenModal';
 import { SchemaDiffWizard } from '@/components/compare/SchemaDiffWizard';
 import { cn } from '@/lib/utils';
+import { toast } from 'react-hot-toast';
 import { DatabaseType, type Connection } from '@/types/database';
 
 type CompareTab = 'schema' | 'data' | 'script';
@@ -104,7 +105,10 @@ export function ComparePage() {
       const { setConnectedConnection } = useAppStore.getState();
       setConnectedConnection(connId);
     } catch (e) {
-      console.error(`[compare] auto-connect failed:`, e);
+      const message = e instanceof Error ? e.message : 'Failed to connect to database'
+      console.error(`[compare] auto-connect failed:`, e)
+      useAppStore.getState().setConnectionError(conn.id, message)
+      toast.error(`Compare: ${message}`)
     }
   }, [connections, connectedConnectionIds]);
 

@@ -41,11 +41,22 @@ describe('extractStatementAtCursor', () => {
     const insert = sql.indexOf('INSERT')
     const insertEnd = sql.indexOf(';', insert)
     expect(extractStatementAtCursor(sql, insert + 5)).toBe('INSERT INTO a VALUES (1);')
+    // Cursor right after a ';' runs the statement that ENDS there (the preceding
+    // one), not the next — so Ctrl+Enter at the end of a finished line is safe.
     expect(extractStatementAtCursor(sql, insertEnd)).toBe('INSERT INTO a VALUES (1);')
     const create = sql.indexOf('CREATE')
     expect(extractStatementAtCursor(sql, create + 2)).toBe('CREATE TABLE a (id INT);')
     const select = sql.indexOf('SELECT *')
     expect(extractStatementAtCursor(sql, select + 4)).toBe('SELECT * FROM a;')
+  });
+
+  it('runs the statement ending at the semicolon right after the cursor (not the next one)', () => {
+    const sql =
+      'select * from tb_wallet where clienteId = 12198;select * from tb_wallet_transactions where walletId = 238;'
+    const afterFirstSemi = sql.indexOf(';') + 1
+    expect(extractStatementAtCursor(sql, afterFirstSemi)).toBe(
+      'select * from tb_wallet where clienteId = 12198;',
+    )
   });
 
   it('falls back to the preceding statement when the cursor is right after a trailing semicolon', () => {

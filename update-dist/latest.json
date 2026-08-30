@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.3_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUJjbldYK1JPNjNsTGU5R0tDZHdTa09XWWVad1BTTFpWLzFwMWNPMEtGdFdyb3phWWhLc0VTWGp3NnQxN1dXSTAxRk5OeG5KQllyTGVqdmVQNDFyL1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3ODQzNjk2CWZpbGU6VG9rZXRlb18wLjUuM194NjRfZW4tVVMubXNpCkZ4aVIxVmNhWk55MmRPRFJiOEV6eFViVlRJb292Q1YrUEthRVpwK1hMR2VzUVI3MzIyVFdUNjhiREFqYWJRWHRzVFNKb2pVRHBuY2NFYTJURFdqdUJnPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.4_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUUwV2l6NE1USmdhbzhZTjZGL1E1MWhsenBtUHk0M0ZxeWVIWnJWNXE3YmdPQS9pMSt2Y3JEaHQ3YjNoTTMwZ3hSRjNrbnlDK2g5MFNrbXFJa0pFVEE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3ODUyODc4CWZpbGU6VG9rZXRlb18wLjUuNF94NjRfZW4tVVMubXNpCldwSzdZc1E3OW9YLytoL2JFZm45UHU2MWw3MWd3bmhaOHhGNEFMd3o2cm1UdURMZHowVlJua0RuSmswVzZjQkJndW5oaHVxU2lxdEU0UktlUHczdkFRPT0K"
                                          }
                   },
-    "pub_date":  "2026-08-27T15:14:56Z",
-    "version":  "0.5.3",
-    "notes":  "v0.5.3: cell UPDATE generation now uses generateUpdateByIds and strips captured quotes from table names; safer handling when statement generation fails."
+    "pub_date":  "2026-08-27T17:47:59Z",
+    "version":  "0.5.4",
+    "notes":  "v0.5.4: PostgreSQL search_path now persists across idle-recycled connections (set via connection URL options and applied explicitly on every query); DDL no longer leaks search_path into the pool; guard against empty schema causing \u0027zero-length delimited identifier\u0027."
 }

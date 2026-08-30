@@ -20,8 +20,12 @@ use tauri::Manager;
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                // Keep sqlx at `warn`: by default it logs every executed statement
+                // (query text + timings) at `info`, which floods the terminal during
+                // bulk operations like database restores. Warnings/errors are kept.
+                tracing_subscriber::EnvFilter::new("info,sqlx=warn")
+            }),
         )
         .init();
 
@@ -336,6 +340,8 @@ pub fn run() {
             commands::assistant_list_tools,
             commands::assistant_execute_tool,
             commands::assistant_get_recommendations,
+            commands::parse_sql_flow,
+            commands::get_sql_schema_flow_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
