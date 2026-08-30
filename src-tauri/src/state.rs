@@ -69,6 +69,7 @@ pub struct AppState {
     pub schema_engine: SchemaEngine,
     pub tool_engine: ToolEngine,
     pub script_store: ScriptPromptStore,
+    pub knowledge_vectors: Arc<crate::application::assistant::knowledge::VectorIndex>,
 }
 
 impl AppState {
@@ -89,7 +90,32 @@ impl AppState {
             schema_engine: SchemaEngine::new(300),
             tool_engine: Self::init_tools(),
             script_store: ScriptPromptStore::new(),
+            knowledge_vectors: Arc::new(
+                crate::application::assistant::knowledge::VectorIndex::default(),
+            ),
         }
+    }
+
+    /// Spawn a background task that indexes a freshly recorded knowledge case
+    /// (embed its semantic document, persist it and update the in-memory
+    /// index). Fails softly when no embedding provider is configured.
+    pub fn spawn_index_knowledge(
+        storage: &Arc<Storage>,
+        vectors: &Arc<crate::application::assistant::knowledge::VectorIndex>,
+        case: crate::models::assistant::KnowledgeCase,
+    ) {
+        let storage = Arc::clone(storage);
+        let vectors = Arc::clone(vectors);
+        tokio::spawn(async move {
+            use crate::application::assistant::knowledge::{EmbeddingProvider, KnowledgeEngine};
+            let Ok(configs) = storage.load_provider_configs().await else {
+                return;
+            };
+            let Some(provider) = configs.first().and_then(EmbeddingProvider::from_config) else {
+                return;
+            };
+            KnowledgeEngine::index_case(&storage, &vectors, &provider, &case).await;
+        });
     }
 
     fn init_tools() -> ToolEngine {
@@ -117,6 +143,7 @@ impl AppState {
         use crate::application::assistant::tools::schema_tool::SchemaTool;
         use crate::application::assistant::tools::sync_tool::SyncTool;
         use crate::application::assistant::tools::transaction_tool::TransactionTool;
+        use crate::application::assistant::tools::workspace_tool::WorkspaceTool;
 
         let mut engine = ToolEngine::new();
         engine.register(Box::new(SchemaTool));
@@ -143,6 +170,7 @@ impl AppState {
         engine.register(Box::new(JobsTool));
         engine.register(Box::new(DiagramsTool));
         engine.register(Box::new(AppSettingsTool));
+        engine.register(Box::new(WorkspaceTool));
         engine
     }
 
@@ -383,6 +411,18 @@ impl AppState {
         let conns = self.connections.read().await;
         if let Some(session) = conns.get(id) {
             Ok(session.read_only)
+        } else {
+            Err(crate::error::AppError::Internal(format!(
+                "Connection {} not found",
+                id
+            )))
+        }
+    }
+
+    pub async fn is_transactional(&self, id: &str) -> AppResult<bool> {
+        let conns = self.connections.read().await;
+        if let Some(session) = conns.get(id) {
+            Ok(session.transactional)
         } else {
             Err(crate::error::AppError::Internal(format!(
                 "Connection {} not found",

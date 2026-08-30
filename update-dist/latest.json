@@ -1,11 +1,11 @@
 {
-    "platforms":  {
-                      "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.4.5_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUxWRGNVMmVLT2E5OHF6eSs4ampHQzVTRWxzYlNHdW5lOHQvKzBzMnIvUmluV3lwakVYc292TG5TTUt4Q0Y0OEZtYmtQdEthUDYrZTZDY2FNcnAwS0E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MjM4NTc0CWZpbGU6VG9rZXRlb18wLjQuNV94NjRfZW4tVVMubXNpCm44ZGtJZEtrWFlFNTMzV1k3T2UzcVJCdzU1eUJaeG1udW4zQTdxRFdNdjVTdkV5SGxnMUxLdlVsaXpZQnBndlNIcWVPcFBsc3BtQWpMTk1qK3lXeUJRPT0K"
-                                         }
-                  },
-    "pub_date":  "2026-08-09T01:22:54Z",
-    "version":  "0.4.5",
-    "notes":  "v0.4.5 - Fix SQL editor scroll (CodeMirror wrapper height), connections panel scroll, ResultPanel resize"
+  "version": "0.5.5",
+  "notes": "v0.5.5: Improved context menu styling in ConnectionSidebar (solid backgrounds, higher z-index); SQL Schema Flow diagram with live query results.",
+  "pub_date": "2026-08-30T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.5_x64_en-US.msi",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU5tOUNtYzZYVWdVTDdvMzFTZVllT0kwaHVwZi9WT3BsSTc3NHFHbnFzSFBFSXY4YW5GS2cxYW1lV2RYTEk4NVNhenE1bWJtdTYxOVZaaC93SUY1NXdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MTI2NjI1CWZpbGU6VG9rZXRlb18wLjUuNV94NjRfZW4tVVMubXNpCm9sbWhIQWVvTXlTYjBiWXNoeTQ2RWFNalNDdDJNZ2tmczM5MGsyT0xYbXlJRU1jY2c5elIzc0Uxak5MY01hd1hleUdsb1hRR0NlWXVoSkFmWnR4a0NBPT0K"
+    }
+  }
 }

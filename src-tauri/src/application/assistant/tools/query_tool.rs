@@ -87,7 +87,8 @@ impl AssistantTool for QueryTool {
             });
         }
 
-        match ExplorerService::execute_query(state, cid, sql, schema).await {
+        match ExplorerService::execute_query_with_origin(state, cid, sql, schema, "assistant").await
+        {
             Ok(result) => {
                 let destructive = SafetyClassifier::is_destructive_query(sql);
                 Ok(ToolResult {

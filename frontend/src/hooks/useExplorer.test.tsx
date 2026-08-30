@@ -170,4 +170,182 @@ describe('useExplorer Performance and Caching', () => {
     })
     expect(result.current.currentSchema).toBe('myapp')
   })
+
+  it('keeps the active connection when the last explorer tab is closed', async () => {
+    const pgConn: Connection = {
+      id: 'pg-id',
+      name: 'Postgres',
+      type: DatabaseType.POSTGRES,
+      environment: Environment.LOCAL,
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      database: 'public',
+      createdAt: '',
+      updatedAt: '',
+    }
+    vi.mocked(connectionService.getAll).mockResolvedValue([pgConn])
+    vi.mocked(schemaService.getTables).mockResolvedValue([
+      { name: 'users', type: 'table' },
+      { name: 'orders', type: 'table' },
+    ])
+    vi.mocked(useAppStore).mockReturnValue({
+      activeConnection: pgConn,
+      explorer: {
+        sidebarTab: SidebarTab.TABLES,
+        search: '',
+        activeExplorerTabId: null,
+      },
+      explorerTabs: {},
+      setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+    } as unknown as ReturnType<typeof useAppStore>)
+
+    const { result } = renderHook(() => useExplorer(), { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(result.current.filteredItems.map((i) => i.name)).toEqual(['users', 'orders'])
+    })
+    expect(schemaService.getTables).toHaveBeenCalled()
+    expect(result.current.activeConnection?.id).toBe('pg-id')
+  })
+
+  it('keeps the sidebar tables after the last tab is closed (transition)', async () => {
+    const pgConn: Connection = {
+      id: 'pg-id',
+      name: 'Postgres',
+      type: DatabaseType.POSTGRES,
+      environment: Environment.LOCAL,
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      database: 'public',
+      createdAt: '',
+      updatedAt: '',
+    }
+    vi.mocked(connectionService.getAll).mockResolvedValue([pgConn])
+    vi.mocked(schemaService.getTables).mockResolvedValue([
+      { name: 'users', type: 'table' },
+      { name: 'orders', type: 'table' },
+    ])
+
+    const tabState = {
+      id: 'pg-id:public:users',
+      connectionId: 'pg-id',
+      database: 'public',
+      selectedItem: { name: 'users', type: 'table' },
+      activeTab: ExplorerTab.DATA,
+      executionStatus: ExecutionStatus.IDLE,
+      executionError: null,
+      socketResults: null,
+      page: 0,
+      pageSize: 50,
+      editableDdl: '',
+      filter: '',
+    }
+
+    // 1) tab open
+    vi.mocked(useAppStore).mockReturnValue({
+      activeConnection: pgConn,
+      explorer: {
+        sidebarTab: SidebarTab.TABLES,
+        search: '',
+        activeExplorerTabId: 'pg-id:public:users',
+      },
+      explorerTabs: { 'pg-id:public:users': tabState },
+      setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+    } as unknown as ReturnType<typeof useAppStore>)
+
+    const { result, rerender } = renderHook(() => useExplorer(), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(result.current.filteredItems.map((i) => i.name)).toEqual(['users', 'orders'])
+    })
+
+    // 2) last tab closed
+    vi.mocked(useAppStore).mockReturnValue({
+      activeConnection: pgConn,
+      explorer: {
+        sidebarTab: SidebarTab.TABLES,
+        search: '',
+        activeExplorerTabId: null,
+      },
+      explorerTabs: {},
+      setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+    } as unknown as ReturnType<typeof useAppStore>)
+
+    rerender()
+
+    await waitFor(() => {
+      expect(result.current.activeConnection?.id).toBe('pg-id')
+      expect(result.current.filteredItems.map((i) => i.name)).toEqual(['users', 'orders'])
+    })
+  })
+
+  it('keeps the sidebar tables after a reload (activeConnection null, persisted context)', async () => {
+    const pgConn: Connection = {
+      id: 'pg-id',
+      name: 'Postgres',
+      type: DatabaseType.POSTGRES,
+      environment: Environment.LOCAL,
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      database: 'public',
+      createdAt: '',
+      updatedAt: '',
+    }
+    vi.mocked(connectionService.getAll).mockResolvedValue([pgConn])
+    vi.mocked(schemaService.getTables).mockResolvedValue([
+      { name: 'users', type: 'table' },
+      { name: 'orders', type: 'table' },
+    ])
+    vi.mocked(useAppStore).mockReturnValue({
+      activeConnection: null,
+      lastExplorerContext: { connectionId: 'pg-id', database: 'public' },
+      explorer: {
+        sidebarTab: SidebarTab.TABLES,
+        search: '',
+        activeExplorerTabId: null,
+      },
+      explorerTabs: {},
+      setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+    } as unknown as ReturnType<typeof useAppStore>)
+
+    const { result } = renderHook(() => useExplorer(), { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(result.current.activeConnection?.id).toBe('pg-id')
+      expect(result.current.currentSchema).toBe('public')
+      expect(result.current.filteredItems.map((i) => i.name)).toEqual(['users', 'orders'])
+    })
+  })
+
+  it('treats a persisted ghost connection as null after reload', async () => {
+    vi.mocked(connectionService.getAll).mockResolvedValue([])
+    vi.mocked(useAppStore).mockReturnValue({
+      activeConnection: null,
+      lastExplorerContext: { connectionId: 'deleted-id', database: 'public' },
+      explorer: {
+        sidebarTab: SidebarTab.TABLES,
+        search: '',
+        activeExplorerTabId: null,
+      },
+      explorerTabs: {},
+      setExplorerState: vi.fn(),
+      updateExplorerTab: vi.fn(),
+    } as unknown as ReturnType<typeof useAppStore>)
+
+    const { result } = renderHook(() => useExplorer(), { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(result.current.activeConnection).toBeNull()
+    })
+    expect(result.current.filteredItems).toEqual([])
+  })
 })

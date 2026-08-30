@@ -202,6 +202,8 @@ impl SessionService {
                         session.metadata_cache.evict_expired();
                     }
                 }
+                // Evict expired schema engine entries
+                state.schema_engine.evict_expired().await;
                 // Prune audit logs every ~30 minutes (30 ticks at 60s interval)
                 audit_prune_counter += 1;
                 if audit_prune_counter >= 30 {

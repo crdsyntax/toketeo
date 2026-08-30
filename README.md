@@ -1,6 +1,6 @@
-# 🔱 Toketeo — Database Administration
+# 🔱 Toketeo — Database Administration & Architecture Studio
 
-**Toketeo** is a cross-platform database client built with **Rust + Tauri** and **React**. It turns everyday database administration into an RPG-like progression system — execute queries, earn XP, level up, unlock perks, and complete quests while managing your databases.
+**Toketeo** is a high-performance, cross-platform database administration client built with **Rust + Tauri v2** and **React 19**. It unifies multi-engine management, interactive SQL AST visualization, visual ER schema design, AI-assisted querying, and an RPG-like gamification progression system — execute queries, earn XP, level up, unlock perks, and complete quests while managing your data infrastructure.
 
 ## Download windows version at : https://toketeo.crdsyntax.workers.dev/
 
@@ -8,19 +8,84 @@
 
 ---
 
+## ✨ Core Features & Highlights
+
+### 🔀 SQL Schema Flow (AST Diagram & Data Flow)
+- **AST-Powered Graph Parsing**: Analyzes complex SQL queries with `sqlparser` in Rust to extract base tables, `INNER`/`LEFT`/`RIGHT`/`FULL` JOINs, aliases, and join conditions into an interactive DAG visualization powered by `@xyflow/react`.
+- **Entity Record Deduplication**: Runs the query and disambiguates aliased projections (`alias__column`), populating each table node with its exact matched rows and records in both tabular and JSON views.
+- **Diagram Exporting**: Export the schema flow directly as a **Mermaid (`.mmd`)** ER diagram or as a high-resolution **PNG image**.
+
+### 📐 Visual ER Diagram & Schema Designer
+- **Interactive Modeling**: Canvas for exploring and modeling tables, views, procedures, functions, and triggers.
+- **Relationship & Cardinality Mapping**: Visualizes foreign keys and cardinality symbols (`1:1`, `1:N`, `N:M`).
+- **Import & Export**: Save and load diagrams as JSON files or export them directly to Mermaid syntax.
+
+### 🍃 MongoDB Document Studio
+- **Full Query Support**: Native MongoDB driver with support for `$find`, `$project`, `$sort`, `$collation`, and `$hint` filters.
+- **Multiple View Modes**: Seamlessly switch between **Table View**, **List View**, and **JSON View**.
+- **Dual JSON Format**:
+  - **Simplified JSON**: Automatically unwraps BSON types (`$oid`, `$date`, `$numberLong`, `$binary`, `$regularExpression`, etc.) into clean `{ "key": value }` structures.
+  - **Raw EJSON**: Inspect raw MongoDB Extended JSON representations when exact type annotations are required.
+- **Mongo Shell Syntax**: Support for executing native Mongo shell scripts.
+
+### 💻 CodeMirror 6 SQL Workspace
+- **High-Performance Editor**: Built on CodeMirror 6 with custom One Dark theming, syntax highlighting, autocompletion, and SQL formatting.
+- **Interactive Transactions**: Explicit transaction banner with one-click `COMMIT` and `ROLLBACK` management.
+- **Split Layout & History**: Flexible split view with resizable editor and results grid, execution duration tracking, and query history replaying.
+
+### 🔍 Smart Data Browser & Visual Diff
+- **In-Place Cell Editing**: Context-aware inputs (datetime-local pickers, boolean toggle switches, and enum dropdowns).
+- **Visual Diff Review**: Non-destructive review panel showing previous vs. next values before persisting changes.
+- **Batch Operations**: Execute safe batch operations (`SELECT by IDs`, `UPDATE by IDs`, `SET NULL`, `DELETE by IDs`) with SQL preview.
+- **Production Guard**: Highlights production environments in red and enforces explicit commits to protect critical data.
+
+### 🤖 Smart Assistant Hub & AI SQL Fixer
+- **Multi-Provider AI**: Connect with OpenAI, Claude, Gemini, DeepSeek, Ollama (local), and OpenCode.
+- **Context-Aware SQL Generation**: Injects relevant schema metadata (tables, columns, foreign keys) into the LLM context.
+- **Runtime SQL Fixer**: When a query fails, the assistant analyzes the error code against the active database schema and suggests one-click verified fixes in the editor.
+
+### 🔄 DB Compare & Cross-DB Sync
+- **Schema & Data Comparison**: Diff structural objects and table rows between separate connections.
+- **Sync Script Generation**: Generates migration scripts to bring target databases in sync.
+- **Cross-DB Pipelines**: Automated pipeline engine for synchronizing data across heterogeneous engines (e.g. MySQL $\leftrightarrow$ PostgreSQL).
+
+### ⏰ Automated Tasks & Dump Studio
+- **Query & Backup Scheduler**: Cron-based recurring jobs for database dumps (`pg_dump`, `mysqldump`, `sqlite3`), periodic JSON reports, and CSV exports.
+- **Tabular Dump & Restore**: Granular selection of tables, views, triggers, and procedures with post-dump integrity checks.
+
+---
+
 ## 🎮 The Gamification System
 
-Toketeo makes database work feel like a game. Every action awards experience points (XP) that raise your level and unlock new features.
+Toketeo turns everyday database administration into a rewarding RPG journey. Every query, schema change, and administration task awards Experience Points (XP) calculated dynamically based on real architectural complexity:
 
-| Action | XP | Details |
-|--------|----|---------|
-| **Execute SQL** | *Dynamic* (2–150+) | Complex queries (JOINs, CTEs, DDL) earn more XP. First-time queries get a **1.5x bonus**. |
-| **Edit a row** | 10 XP | Direct inline edits in the data browser. |
-| **Export data** | 25 XP | Export results as CSV or JSON. |
-| **Create a connection** | 50 XP | Every new database connection. |
-| **Daily login** | 25–200 XP | Consecutive daily logins award increasing XP (capped at 200). |
+### ⚡ Dynamic XP Calculation Engine
 
-### 📊 Levels & Ranks
+The engine parses and evaluates SQL queries in real-time to reward technical depth:
+
+| Action / SQL Construct | XP Awarded | Complexity Details |
+|------------------------|------------|--------------------|
+| **CREATE INDEX** | **+150 XP** | Unique and composite index definitions |
+| **CREATE VIEW** | **+100 XP** | Materialized / standard view creations |
+| **CTEs (`WITH ...`)** | **+50 XP** | Common Table Expressions |
+| **CREATE TABLE AS SELECT** | **+80 XP** | DDL + DML pipeline statements |
+| **ALTER TABLE / DDL** | **+40 XP** | Schema migrations and structure alterations |
+| **DROP Object** | **+30 XP** | Controlled object destructions |
+| **JOIN Statements** | **+25 to +40+ XP** | Scales with multiple join nodes (25 XP for 1st, +15 XP per additional) |
+| **UNION / INTERSECT / EXCEPT** | **+15 to +20 XP** | Set operation queries |
+| **Window Functions (`OVER ()`)** | **+15 XP** | Analytical partitions and ranking |
+| **Subqueries / Nested SELECTs** | **+10 XP** | Rewarded per additional query layer |
+| **GROUP BY & HAVING** | **+10 XP** | Aggregate groupings |
+| **First-Time Execution** | **1.5x Multiplier** | Discovery bonus for novel, complex query executions |
+| **Inline Row Edit** | **+10 XP** | In-place modifications in the data browser |
+| **Export Data** | **+25 XP** | Exporting results to CSV or JSON formats |
+| **Create Connection** | **+50 XP** | Registering and connecting to a database |
+| **Daily Streak** | **+25 to +200 XP** | Consecutive daily check-ins (+5 XP/day, capped at 200) |
+
+### 📈 Hardcore Progression Curve & Ranks
+
+The progression follows an exponential difficulty curve:
+$$\text{Level} = \left\lfloor \left(\frac{\text{XP}}{10,000}\right)^{\frac{1}{2.2}} \right\rfloor + 1$$
 
 ```
 Level 1–4     Data Novice
@@ -35,126 +100,110 @@ Level 75–99   Grandmaster of Data
 Level 100+    God of Data
 ```
 
-The XP curve is exponential — early levels fly by, but reaching the endgame requires dedication.
+### 🧙 Evolving Pixel-Art Wizard Companions
 
-### 🎯 Quests
+Your in-app companion dynamically evolves its custom pixel-art avatar based on your current level:
 
-21 missions across 5 categories track your progress and award bonus XP on completion:
+| Tier | Title | Unlocks At | Visual Form |
+|------|-------|------------|-------------|
+| **Novice** | Data Novice | Level 1 | Apprentice robe and wooden staff |
+| **Wizard** | Data Wizard | Level 5 | Pointed wizard hat and enchanted orb |
+| **Archmage** | Query Architect | Level 15 | Flowing mystic robes and rune staff |
+| **Grandmaster** | Grandmaster of Data | Level 30 | Golden crown and ancient tome |
+| **Overlord** | DBA Overlord | Level 50 | Dark shadow armor and flame scythe |
+| **Deity** | God of Data | Level 75+ | Celestial halo, golden aura, and divine scepter |
 
-- Execute queries (1 → 10,000)
-- Edit rows (1 → 1,000)
-- Create connections (1 → 10)
-- Export data (1 → 200)
-- Daily logins (1 → 365)
+### 🕵️ Story-Driven SQL Learning Adventure ("The Cheesemaker Murders")
 
-### 🔓 Unlockable Perks
+Toketeo features an interactive detective story RPG that teaches database architecture and SQL query construction through immersive crime-solving:
 
-Level up to unlock features permanently:
+- **Immersive Narrative Campaign**: Set in the rain-drenched streets of *Nullville*, you step into the shoes of a data investigator solving *"Case: The Cheesemaker Murders / Los asesinatos de la Quesera"*.
+- **Atmospheric Pixel-Art Scenes & NPCs**: Travel through thematic nodes (*The Street*, *The Morgue*, *The Cheese Shop*, *The Graveyard*, *The Warehouse*, *The Throne*) interviewing suspects and forensic experts (*The Coroner*, *The Scribe*, *The Witness*, *The Ghost*, *The Butcher*, *The Boss*).
+- **Interactive SQL Challenges**:
+  - **Data Integrity Puzzles**: Understand the differences between non-destructive inspection (`SELECT`) and destructive alterations (`UPDATE` / `DELETE`).
+  - **Live Query Solving**: Write and test actual SQL queries against case tables (`victims`, `suspects`, `evidence`, `roles`, `deliveries`) using projections, `WHERE` predicates, multi-table `JOINs`, `GROUP BY`, `HAVING`, and aggregation functions.
+  - **Analytical Deductions**: Filter, join, and analyze clues to uncover culprits and deduce murder weapons.
+- **Interactive Concept Glossary (`TermTip`)**: Integrated learning definitions with runnable code examples for relational concepts (`JOIN`, `FOREIGN KEY`, `PRIMARY KEY`, `GROUP BY`, `HAVING`, `PROJECTION`, `INDEX`, `NULL`).
+- **Bilingual & Real Progression**: Complete story, hints, and explanations in both **English and Spanish**, awarding from **+150 to +200 XP** per puzzle and **+1,000 XP** for boss stages directly to your Toketeo account.
 
-| Perk | Unlocks At | What You Get |
-|------|-----------|-------------|
-| Advanced Theming | Level 5 | Custom colors, contextual tips, connection help |
-| AI Query Assistant | Level 10 | Conversational SQL generation, /assistant page, keyboard shortcuts |
-| Data Visualizer | Level 15 | Performance dashboard, schema insights |
-| Query Scheduler | Level 1 | Scheduled query execution (backup, report, CSV export) |
-| Cross-DB Sync | Level 30 | Multi-engine data synchronization |
+### 🎯 21 Quests & Achievements
+
+Progress is tracked across 5 achievement categories:
+- **Query Master**: Execute from 1 up to 10,000 SQL queries.
+- **Data Surgeon**: Perform from 1 up to 1,000 inline cell edits.
+- **Realm Builder**: Create from 1 up to 10 active database connections.
+- **Data Courier**: Export from 1 up to 200 datasets (CSV/JSON).
+- **Dedicated Scholar**: Maintain daily streaks up to 365 consecutive days.
+
+### 🔓 Unlockable Perks & Feature Gates
+
+Leveling up permanently unlocks advanced features across the platform:
+
+| Perk | Required Level | Feature Unlocked |
+|------|----------------|------------------|
+| **Advanced Theming** | Level 1 | Custom RGB accent palettes and dynamic theme customization |
+| **AI Query Assistant** | Level 1 | Conversational SQL generator and `/assistant` hub |
+| **Schema Diagram** | Level 1 | Visual ER diagram designer and relationship mapping |
+| **Query Scheduler** | Level 1 | Background cron jobs, automated backups, and reports |
+| **Cross-DB Sync** | Level 1 | Multi-engine cross-database synchronization pipelines |
+| **Data Visualizer** | Level 15 | Performance analytics, execution charts, and slow-query dashboards |
 
 ---
 
-## ✨ Core Features
+## 🔌 Supported Database Engines
 
-- **Multi-engine support** — MariaDB, MySQL, PostgreSQL, MongoDB, SQL Server
-- **SSH Tunnels** — Secure connections via SSH jump hosts
-- **Monaco SQL Editor** — Full-featured editor with syntax highlighting, autocompletion, multi-tab
-- **Object Explorer** — Browse tables, views, columns, indexes, foreign keys, DDL generation
-- **Dump & Restore** — Select specific objects (tables, views, triggers, procedures, functions) via tabbed UI, run integrity checks after dump, open file location straight from the toast
-- **Query Scheduler** — Schedule recurring backups, reports, and CSV exports via cron expressions. Three job types: Backup (pg_dump/mysqldump/sqlite3), Report (query → JSON), CSV Export (query → CSV). Real-time notifications on completion.
-- **Export** — Download query results as CSV or JSON
-- **Real-time Logs** — WebSocket-powered server event streaming
-- **Audit Trail** — Automatic logging of user actions and query execution
-- **Smart Assistant Hub** — AI query generation, performance insights, schema analysis, app tips, and connection help — all in one place
-- **AI SQL Fixer** — when a query fails to execute, the assistant analyzes the database error against the current connection's schema (tables, columns, foreign keys) and suggests a corrected query plus safer alternatives — e.g. avoiding cartesian products from wrong joins — with one-click replace in the editor
-- **Onboarding Tour** — Guided 7-step walkthrough on first launch with XP rewards
-- **Connection Wizard** — Step-by-step guided connection setup
-- **Performance Dashboard** — Track query duration, slow queries, and execution trends
-- **Keyboard Shortcuts** — Full shortcut reference (`?` to open)
-- **Cross-platform** — Native installers for Linux (.deb, .AppImage) and Windows (.msi, .zip portable)
-- **DB Compare** — Schema and data comparison across connections with sync script generation
-- **Cross-DB Sync** — Pipeline-based data synchronization between engines (full or incremental)
+- 🐬 **MySQL** & **MariaDB** (via `sqlx`)
+- 🐘 **PostgreSQL** (via `sqlx`)
+- 🍃 **MongoDB** (via `mongodb` driver)
+- 🪟 **Microsoft SQL Server** (via `tiberius`)
+- 🪶 **SQLite** (via `sqlx`)
+- ⚡ **Redis** (via `fred`)
+- 🔒 **SSH Jump Hosts** (native SSH tunnels for remote database access)
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Technology Stack
 
-### Backend (Rust)
-
-The desktop backend runs as a **Tauri** application written in Rust.
+Toketeo is engineered with a memory-safe, asynchronous Rust backend and a reactive React 19 frontend:
 
 ```
-src-tauri/src/
-├── application/                    # Business logic
-│   ├── assistant/                  # Smart Assistant Hub
-│   │   ├── adapters/               # AI providers (OpenAI, Claude, Gemini, DeepSeek, Ollama, OpenCode)
-│   │   ├── context/                # Schema engine + relevance filtering
-│   │   ├── history/ knowledge/ learning/   # Memory, knowledge base, learning engine
-│   │   ├── orchestrator.rs         # Chat orchestration + SQL block extraction
-│   │   ├── prompt/                 # Prompt builder
-│   │   ├── sql_fixer.rs            # AI-powered SQL fix suggestions
-│   │   └── tools/                  # Tool engine (query, DDL, compare, sync, backup, export, …)
-│   ├── audit_service.rs            # Action & query audit logging
-│   ├── auth_service.rs             # Authentication, TOTP, keyring
-│   ├── compare/                    # Schema + data comparison & sync script generators
-│   ├── connection_service.rs       # Connection lifecycle, database switching
-│   ├── explorer_service.rs         # Explorer, dump/restore, table sizes, integrity
-│   ├── model_generator_service.rs  # ORM model generation
-│   ├── monitoring_service.rs       # Performance monitoring
-│   ├── session_service.rs          # Metadata cache
-│   ├── sql_generator_service.rs    # Safe SQL generation
-│   └── sync/                       # Cross-DB sync engine (extractors, strategies, validators)
-├── infrastructure/
-│   ├── crypto.rs                   # Keyring-backed encryption
-│   ├── database/                   # Connection string builder
-│   ├── drivers/                    # Driver factory
-│   └── scheduler/                  # Job engine + executors (backup, report, CSV)
-├── db/                             # Driver trait + MySQL, PostgreSQL, SQL Server, MongoDB, SQLite, Redis
-├── presentation/tauri/             # Tauri IPC commands (commands.rs, assistant_commands.rs)
-├── models/                         # Shared structs (assistant, compare, sync, diagram)
-├── ssh/                            # SSH tunnel support
-├── state.rs                        # Shared application state
-├── storage.rs                      # SQLite persistence (connections, jobs, logs)
-├── lib.rs                          # Plugin registration, invoke_handler
-└── main.rs                         # Entry point
+toketeo/
+├── src-tauri/                       # Rust Backend (Tauri v2)
+│   ├── src/
+│   │   ├── application/             # Domain & business logic
+│   │   │   ├── assistant/           # AI orchestrator, adapters, tool calling & SQL fixer
+│   │   │   ├── compare/             # Schema & data diff engine
+│   │   │   ├── sql_flow_service.rs  # SQL AST parsing & live record deduplication
+│   │   │   ├── sync/                # Cross-engine data pipelines
+│   │   │   ├── explorer_service.rs  # Schema introspection, dump/restore & integrity
+│   │   │   └── session_service.rs   # Metadata caching & connection pools
+│   │   ├── db/                      # Driver implementations (MySQL, Postgres, Mongo, MSSQL, SQLite, Redis)
+│   │   ├── infrastructure/          # Scheduler engine, crypto keyring & driver factory
+│   │   ├── presentation/tauri/      # Tauri IPC command handlers
+│   │   ├── models/                  # Shared data models (SQL flow, diagrams, assistant, sync)
+│   │   ├── ssh/                     # SSH tunneling engine
+│   │   ├── lib.rs                   # Plugin registration & command router
+│   │   └── main.rs                  # Native application entry point
+│   └── Cargo.toml                   # Rust dependencies (Tauri 2.11, sqlx 0.8, tokio, sqlparser)
+│
+├── frontend/                        # Frontend (React 19 + TypeScript + Vite)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── query/               # QueryEditor, results grid, modals & flow/ (SQL Schema Flow)
+│   │   │   ├── explorer/            # Object explorer, DDL viewer & DataTab (Table/List/JSON)
+│   │   │   ├── diagram/             # Visual ER Diagram designer & Mermaid exporters
+│   │   │   ├── assistant/           # AI assistant panels, wizard & SQL fixer modal
+│   │   │   ├── compare/             # DB Compare & diff visualizer
+│   │   │   ├── scheduler/           # Cron job manager & schedule cards
+│   │   │   ├── connections/         # Connection tree & Dump/Restore manager
+│   │   │   ├── gamification/        # LevelBadge, quest progress & perk tree
+│   │   │   └── ui/                  # JsonResultsView, ReviewChangePanel, modals & controls
+│   │   ├── store/                   # Zustand stores (app, gamification, performance, assistant)
+│   │   ├── hooks/                   # useQueryEditor, useExplorer & custom hooks
+│   │   ├── services/                # Tauri IPC service abstractions
+│   │   └── lib/                     # mongoJsonHelper, sqlGenerator, formatCellValue & utils
+│   └── package.json                 # React 19, Vite 8, Tailwind CSS v4, @xyflow/react v12, CodeMirror 6
 ```
-
-The backend uses `tauri_plugin_dialog` for native file dialogs and `tokio_postgres` / `mysql` / `sqlx` for database connectivity, plus dedicated drivers for MongoDB, SQL Server and Redis. Dump operations generate full DDL + data for tables and DDL-only for views, triggers, procedures, and functions. Connections are kept in an `AppState` registry with a metadata cache and per-connection session state.
-
-### Frontend (React + TypeScript)
-
-```
-frontend/src/
-├── components/
-│   ├── assistant/      # Smart Assistant Hub (panels, SQL fixer popup, wizard, tour)
-│   ├── compare/        # DB Compare module
-│   ├── connections/    # Connection tree, DumpRestoreModal
-│   ├── editor/         # SQL editor components
-│   ├── explorer/       # Object explorer (sidebar, object detail, DDL, add column/index/FK)
-│   ├── gamification/   # LevelBadge, GamificationModal, FeatureGate, ThemeProvider
-│   ├── layout/         # App header, splash screen
-│   ├── query/          # SQL editor panel, results grid, error popups
-│   ├── scheduler/      # JobCard, JobFormModal
-│   ├── security/       # Security settings UI
-│   ├── sync/           # Cross-DB sync pipelines UI
-│   ├── ui/             # Shared UI primitives
-│   └── update/         # Update modal
-├── pages/              # QueryEditor, Explorer, Assistant, Compare, Scheduler, Monitor, …
-├── store/              # Zustand stores (app, gamification, assistant, performance, scheduler, compare)
-├── hooks/              # useQueryEditor, useExplorer, …
-├── services/           # Tauri IPC service wrappers
-├── lib/                # Gamification core, mongo shell parser, engine icons
-└── types/              # TypeScript type definitions
-```
-
-State management uses **Zustand** with persistence (localStorage). The gamification store saves XP, level, quest progress, unlocked perks, and query hashes across sessions. Editor state (tabs, explorer tabs, view state) is also persisted per connection.
 
 ---
 
@@ -162,83 +211,51 @@ State management uses **Zustand** with persistence (localStorage). The gamificat
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) (JavaScript runtime)
-- [Rust](https://rustup.rs/) (stable toolchain)
+- **[Bun](https://bun.sh/)** (JavaScript runtime & package manager)
+- **[Rust](https://rustup.rs/)** (Stable toolchain $\ge 1.77$)
 
-### Setup
+### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/crdsyntax/toketeo.git
 cd toketeo
 
-# Install backend & frontend dependencies
+# Install dependencies
 bun install
 cd frontend && bun install && cd ..
-cd src-tauri && cargo check && cd ..
 ```
 
-### Development
+### Running in Development
 
 ```bash
 bun run tauri:dev
 ```
 
-This starts the Vite dev server and launches the Tauri window with hot-reload.
+This starts the Vite development server with hot-module replacement and launches the native Tauri desktop window.
 
 ---
 
-## 📦 Building for Production
+## 📦 Production Builds
 
-### Linux
+### Linux (.deb / .AppImage)
 
 ```bash
 bun run tauri:build
 ```
 
-Artifacts are generated in `src-tauri/target/release/bundle/`.
-
-### Windows
+### Windows (.msi / Portable .zip)
 
 ```bash
 bun run tauri:build -- --target x86_64-pc-windows-msvc
 ```
 
-Produces an **MSI installer** (and portable `.zip`) in `src-tauri/target/release/bundle/`. Signed releases are published via `scripts/publish-update.ps1`, which signs the MSI with the project signing key and uploads it with `latest.json` to the update endpoint.
+Output binaries and installers are generated in `src-tauri/target/release/bundle/`. Releases are signed using the project's signing key via `scripts/publish-update.ps1`.
 
 ---
 
-## 📁 Project Structure
+## ✒️ Author & Contributing
 
-```
-toketeo/
-├── src-tauri/              # Rust/Tauri backend
-│   └── src/
-│       ├── application/    # Business logic (assistant, compare, explorer, sync, audit)
-│       │   ├── assistant/  # Smart Assistant Hub (adapters, tools, sql_fixer)
-│       │   └── compare/    # Schema + data comparison, diff builder, script generators
-│       ├── db/             # Database drivers (MySQL, PostgreSQL, SQL Server, MongoDB, SQLite, Redis)
-│       ├── infrastructure/ # Scheduler engine, executors, crypto, drivers
-│       ├── presentation/   # Tauri IPC commands
-│       ├── models/         # Data structures
-│       ├── ssh/            # SSH tunnel support
-│       ├── storage.rs      # SQLite persistence
-│       ├── lib.rs          # Plugin & command registration
-│       └── main.rs         # App entry point
-├── frontend/               # React + Vite app
-│   └── src/
-│       ├── components/     # React components (assistant/, compare/, explorer/, query/, …)
-│       ├── pages/          # Route-level pages (QueryEditor, Explorer, AssistantPage, …)
-│       ├── store/          # Zustand state stores
-│       ├── hooks/          # Custom React hooks
-│       ├── services/       # Tauri IPC wrappers
-│       └── lib/            # Gamification engine, utilities
-├── scripts/                # Release helpers (publish-update.ps1)
-├── package.json            # Root scripts
-└── README.md               # You are here
-```
+- **crdsyntax** — [GitHub](https://github.com/crdsyntax)
 
----
-
-## ✒️ Author
-
-**crdsyntax** — *Full-stack development* — [GitHub](https://github.com/crdsyntax)
+Contributions and pull requests are welcome! Please check [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines, local CI check commands, and branch policies.

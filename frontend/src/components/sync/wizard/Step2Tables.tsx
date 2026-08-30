@@ -161,7 +161,7 @@ export function Step2Tables({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
-          Tablas a sincronizar
+          Tables to sync
         </span>
         <div className="flex items-center gap-3">
           <button
@@ -174,13 +174,13 @@ export function Step2Tables({
             ) : (
               <ListChecks className="w-3 h-3" />
             )}
-            Copiar todas las tablas
+            Copy all tables
           </button>
           <button
             onClick={addTable}
             className="flex items-center gap-1 text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
           >
-            <Database className="w-3 h-3" /> Agregar Tabla
+            <Database className="w-3 h-3" /> Add Table
           </button>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function Step2Tables({
             className="w-full bg-background border border-border pl-8 pr-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar tablas..."
+            placeholder="Search tables..."
           />
           {searchQuery && (
             <button
@@ -218,7 +218,7 @@ export function Step2Tables({
           return (
             <div key={i} className="border border-border bg-muted/20 p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">Tabla {i + 1}</span>
+                <span className="text-xs font-bold text-foreground">Table {i + 1}</span>
                 <button onClick={() => removeTable(i)} className="p-1 text-muted-foreground hover:text-destructive">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -226,34 +226,34 @@ export function Step2Tables({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Tabla Origen</label>
+                  <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Source Table</label>
                   <input
                     className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                     value={table.source_table}
                     onChange={(e) => updateTable(i, 'source_table', e.target.value)}
-                    placeholder="nombre_tabla"
+                    placeholder="table_name"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Tabla Destino</label>
+                  <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Target Table</label>
                   <input
                     className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                     value={table.target_table}
                     onChange={(e) => updateTable(i, 'target_table', e.target.value)}
-                    placeholder="nombre_tabla"
+                    placeholder="table_name"
                   />
                 </div>
               </div>
 
               {loadingColumns[i] ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Detectando columnas...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Detecting columns...
                 </div>
               ) : sourceColumns[i] && sourceColumns[i].length > 0 ? (
                 <div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <Database className="w-3 h-3" />
-                    {sourceColumns[i].length} columnas detectadas
+                    {sourceColumns[i].length} columns detected
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -268,7 +268,7 @@ export function Step2Tables({
                       className="flex items-center gap-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-primary hover:text-primary/80"
                     >
                       {showPreview[i] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                      {showPreview[i] ? 'Ocultar preview' : 'Ver preview'}
+                      {showPreview[i] ? 'Hide preview' : 'Show preview'}
                     </button>
                     {loadingPreview[i] && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                   </div>
@@ -306,31 +306,31 @@ export function Step2Tables({
                 >
                   {advancedOpen[i] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                   <Columns className="w-3 h-3" />
-                  Opciones avanzadas (mapeo de columnas, transformaciones)
+                  Advanced options (column mapping, transformations)
                 </button>
                 {advancedOpen[i] && (
                   <div className="px-3 pb-3 space-y-4">
                     <div className="space-y-1">
-                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Filtro (cláusula SQL WHERE)</label>
+                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Filter (SQL WHERE clause)</label>
                       <input
                         className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                         value={table.filters ?? ''}
                         onChange={(e) => updateTable(i, 'filters', e.target.value || undefined)}
-                        placeholder="ej: created_at > '2024-01-01'"
+                        placeholder="e.g. created_at > '2024-01-01'"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Llave(s) primaria(s)</label>
+                      <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Primary key(s)</label>
                       {loadingTargetColumns[i] ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Cargando columnas destino...
+                          <Loader2 className="w-3 h-3 animate-spin" /> Loading target columns...
                         </div>
                       ) : (
                         <input
                           className="w-full bg-background border border-border px-3 py-2 text-xs font-mono focus:border-primary focus:outline-none"
                           value={table.primary_key?.join(', ') ?? ''}
                           onChange={(e) => updateTable(i, 'primary_key', e.target.value ? e.target.value.split(',').map((s) => s.trim()) : undefined)}
-                          placeholder="Auto-detectado si se deja vacío"
+                          placeholder="Auto-detected if left empty"
                         />
                       )}
                     </div>
@@ -349,7 +349,7 @@ export function Step2Tables({
 
       {tables.length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-6 border border-dashed border-border">
-          No hay tablas configuradas. Haz clic en "Agregar Tabla" o "Copiar todas las tablas".
+          No tables configured. Click "Add Table" or "Copy all tables".
         </p>
       )}
 
@@ -359,7 +359,7 @@ export function Step2Tables({
         table.target_table.toLowerCase().includes(searchQuery.toLowerCase())
       ).length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-6 border border-dashed border-border">
-          No se encontraron tablas que coincidan con "{searchQuery}"
+          No tables matched "{searchQuery}"
         </p>
       )}
     </div>

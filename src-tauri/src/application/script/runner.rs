@@ -1,3 +1,4 @@
+use crate::db::StatementOutcome;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use serde::Serialize;
@@ -42,6 +43,9 @@ pub struct ScriptReport {
     pub failed: usize,
     pub skipped: usize,
     pub rolled_back: bool,
+    /// True when the script ran inside a transactional (production) session:
+    /// changes are NOT committed and require the user to press Commit.
+    pub pending_commit: bool,
     pub results: Vec<StatementResult>,
 }
 
@@ -89,7 +93,15 @@ impl ScriptRunner {
         }
 
         let driver = state.get_connection(conn_id).await?;
-        let mut tx = driver.begin_script(schema.as_deref()).await?;
+        // Production (transactional) sessions run scripts inside the session
+        // transaction: no nested transaction and NO auto-commit — changes only
+        // take effect when the user presses Commit on the bottom bar.
+        let transactional = state.is_transactional(conn_id).await.unwrap_or(false);
+        let mut tx = if transactional {
+            None
+        } else {
+            Some(driver.begin_script(schema.as_deref()).await?)
+        };
         let run_id = uuid::Uuid::new_v4().to_string();
         let mut decision_rx = Self::register_prompt(&state.script_store.prompts, &run_id).await;
 
@@ -100,6 +112,7 @@ impl ScriptRunner {
             failed: 0,
             skipped: 0,
             rolled_back: false,
+            pending_commit: false,
             results: Vec::with_capacity(statements.len()),
         };
 
@@ -126,7 +139,36 @@ impl ScriptRunner {
                 }),
             );
 
-            match tx.execute_statement(sql).await {
+            let outcome = if let Some(tx) = tx.as_mut() {
+                tx.execute_statement(sql).await
+            } else {
+                let result = if let Some(schema) = schema.as_deref() {
+                    driver.execute_with_schema(sql, schema).await
+                } else {
+                    driver.execute(sql).await
+                };
+                result.map(|r| {
+                    let trimmed = sql.trim().to_uppercase();
+                    let is_select = trimmed.starts_with("SELECT")
+                        || trimmed.starts_with("SHOW")
+                        || trimmed.starts_with("DESCRIBE")
+                        || trimmed.starts_with("EXPLAIN")
+                        || trimmed.starts_with("WITH");
+                    if is_select {
+                        StatementOutcome {
+                            rows_affected: None,
+                            row_count: Some(r.rows.len()),
+                        }
+                    } else {
+                        StatementOutcome {
+                            rows_affected: Some(r.rows_affected),
+                            row_count: None,
+                        }
+                    }
+                })
+            };
+
+            match outcome {
                 Ok(outcome) => {
                     report.ok += 1;
                     report.results.push(StatementResult {
@@ -233,18 +275,28 @@ impl ScriptRunner {
         let _ = Self::unregister_prompt(&state.script_store.prompts, &run_id).await;
         drop(decision_rx);
 
-        if cancelled {
-            let rollback_err = tx.rollback().await.err();
-            if let Some(e) = rollback_err {
-                return Err(e);
+        if transactional {
+            // Session transaction stays open: changes only take effect when the
+            // user presses Commit on the bottom bar. Never auto-commit and never
+            // roll back the whole session (that could discard other pending
+            // changes the user has made).
+            report.rolled_back = false;
+            report.pending_commit = true;
+            Self::emit_progress(app, &report, "pending");
+        } else if let Some(tx) = tx {
+            if cancelled {
+                let rollback_err = tx.rollback().await.err();
+                if let Some(e) = rollback_err {
+                    return Err(e);
+                }
+                Self::emit_progress(app, &report, "rolled_back");
+            } else {
+                let commit_err = tx.commit().await.err();
+                if let Some(e) = commit_err {
+                    return Err(e);
+                }
+                Self::emit_progress(app, &report, "committed");
             }
-            Self::emit_progress(app, &report, "rolled_back");
-        } else {
-            let commit_err = tx.commit().await.err();
-            if let Some(e) = commit_err {
-                return Err(e);
-            }
-            Self::emit_progress(app, &report, "committed");
         }
 
         let _ = app.emit("script:done", &report);

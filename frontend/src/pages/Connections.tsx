@@ -5,7 +5,6 @@ import type { Connection, CreateConnectionDto } from '@/types/database'
 import { DatabaseType } from '@/types/database'
 import { useState, useMemo } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { useNavigate } from 'react-router-dom'
 import { ConnectionCard } from '@/components/connections/ConnectionCard'
 import { ConnectionModal } from '@/components/connections/ConnectionModal'
 import { ConnectionWizard } from '@/components/connections/ConnectionWizard'
@@ -14,7 +13,6 @@ import { getEngineConfig, ENGINE_ORDER } from '@/lib/engine-icons'
 
 export default function Connections() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const setActiveConnection = useAppStore((state) => state.setActiveConnection)
   const activeConnection = useAppStore((state) => state.activeConnection)
   const connectedConnectionIds = useAppStore((state) => state.connectedConnectionIds)
@@ -130,7 +128,6 @@ export default function Connections() {
         database: conn.defaultDatabase || conn.database
       })
       setConnectedConnection(conn.id)
-      navigate('/explorer')
     } catch (error: unknown) {
       console.error('Failed to connect to database:', error)
       setToastMessage({ type: 'error', text: (error as Error)?.message || 'Failed to connect' })

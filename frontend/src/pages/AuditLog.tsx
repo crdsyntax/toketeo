@@ -103,12 +103,17 @@ export default function AuditLog() {
                         )}
                         <span className={cn(
                           "text-[var(--ch-text-9)] font-semibold uppercase px-1 py-0.5 rounded border text-xs",
-                          log.status === 'success' 
-                            ? "text-green-500 bg-green-500/10 border-green-500/20" 
+                          log.status === 'success'
+                            ? "text-green-500 bg-green-500/10 border-green-500/20"
                             : "text-red-500 bg-red-500/10 border-red-500/20"
                         )}>
                           {log.status}
                         </span>
+                        {log.origin === 'assistant' && (
+                          <span className="text-[var(--ch-text-9)] font-semibold uppercase px-1 py-0.5 rounded border text-xs text-violet-500 bg-violet-500/10 border-violet-500/20" title="Ejecutada por el asistente IA">
+                            🤖 AI
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground text-xs">

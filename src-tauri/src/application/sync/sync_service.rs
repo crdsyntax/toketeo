@@ -3,10 +3,11 @@ use crate::application::sync::strategies::{FullSync, IncrementalSync, SyncEvent,
 use crate::application::sync::validators::PipelineValidator;
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
-use crate::models::sync::{SyncMode, SyncPipeline, ValidationReport};
+use crate::models::sync::{SyncMode, SyncPipeline, SyncTableConfig, ValidationReport};
 use crate::state::SyncController;
 use crate::storage::Storage;
 use regex::Regex;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const DEFAULT_BATCH_SIZE: usize = 1000;
@@ -25,55 +26,38 @@ impl SyncService {
         let source_db_type = source.db_type();
         let target_db_type = target.db_type();
 
-        // --- Auto-detect correct source schema ---
-        let mut effective_source_schema = pipeline.source_schema.clone();
-
-        if source_db_type == DbType::Postgres {
-            if let Some(first_table) = pipeline.tables.first() {
-                // Try the configured schema first
-                let test_schema = effective_source_schema
-                    .clone()
-                    .unwrap_or_else(|| "public".to_string());
-                let found = check_pg_table_exists(source, &first_table.source_table, &test_schema)
-                    .await
-                    .unwrap_or(false);
-                if found {
-                    tracing::info!(
-                        "[sync] Schema '{}' is correct for table '{}'",
-                        test_schema,
-                        first_table.source_table
+        // --- Auto-detect correct source schema (Postgres) ---
+        // Robusto: si la primera tabla falla, busca el esquema de la mayoría
+        // de las tablas del pipeline en vez de abortar por una sola tabla.
+        let effective_source_schema = if source_db_type == DbType::Postgres {
+            match Self::detect_source_schema(
+                source,
+                &pipeline.tables,
+                pipeline.source_schema.as_deref(),
+            )
+            .await
+            {
+                Some(s) => Some(s),
+                None => {
+                    tracing::error!(
+                        "[sync] No source table of the pipeline was found in ANY schema — aborting pipeline"
                     );
-                } else {
-                    // Search through all schemas to find which one has this table
-                    let detected =
-                        find_pg_schema_for_table(source, &first_table.source_table).await;
-                    if let Some(ref real_schema) = detected {
-                        tracing::info!(
-                            "[sync] Auto-detected source schema '{}' (was configured as '{}') for table '{}'",
-                            real_schema, test_schema, first_table.source_table
-                        );
-                        effective_source_schema = Some(real_schema.clone());
-                    } else {
-                        tracing::error!(
-                            "[sync] Table '{}' not found in ANY schema on source database — aborting pipeline",
-                            first_table.source_table
-                        );
-                        if let Some(ref sender) = event_sender {
-                            let _ = sender.send(SyncEvent::Error {
-                                message: format!(
-                                    "Table '{}' not found in any schema on source database",
-                                    first_table.source_table
-                                ),
-                            });
-                        }
-                        return Err(crate::error::AppError::Validation(format!(
-                            "Table '{}' not found in any schema on source database",
-                            first_table.source_table
-                        )));
+                    if let Some(ref sender) = event_sender {
+                        let _ = sender.send(SyncEvent::Error {
+                            message:
+                                "No source table of the pipeline was found in any schema on the source database"
+                                    .to_string(),
+                        });
                     }
+                    return Err(crate::error::AppError::Validation(
+                        "No source table of the pipeline was found in any schema on the source database"
+                            .into(),
+                    ));
                 }
             }
-        }
+        } else {
+            pipeline.source_schema.clone()
+        };
 
         // Verify source connection before starting
         if let Some(first_table) = pipeline.tables.first() {
@@ -356,6 +340,26 @@ impl SyncService {
                 }
             }
 
+            // Reconciliar columnas faltantes en el target antes de sincronizar:
+            // el sync crea los campos que no existen (ADD COLUMN).
+            if let Err(e) = Self::ensure_target_columns(
+                source,
+                target,
+                &source_db_type,
+                &target_db_type,
+                table_config,
+                pipeline_clone.source_schema.as_deref(),
+                pipeline_clone.target_schema.as_deref(),
+            )
+            .await
+            {
+                tracing::warn!(
+                    "[sync] Column reconciliation failed for '{}': {} — continuing",
+                    table_config.source_table,
+                    e,
+                );
+            }
+
             // Execute sync strategy for this table
             match strategy
                 .execute(
@@ -424,12 +428,266 @@ impl SyncService {
         Ok(())
     }
 
+    /// Crea en el target las columnas que el sync necesita insertar y que no
+    /// existen (reconciliación de esquema). Usa la metadata del source y las
+    /// mappings configuradas para generar el tipo SQL del motor de destino.
+    /// No es destructivo: si una columna no puede crearse, lo reporta por log
+    /// y la estrategia aplica su fallback en caliente.
+    async fn ensure_target_columns(
+        source: &dyn DbDriver,
+        target: &dyn DbDriver,
+        source_db_type: &DbType,
+        target_db_type: &DbType,
+        table_config: &SyncTableConfig,
+        source_schema: Option<&str>,
+        target_schema: Option<&str>,
+    ) -> AppResult<()> {
+        let source_cols = source
+            .fetch_columns(&table_config.source_table, source_schema.map(String::from))
+            .await?;
+        if source_cols.is_empty() {
+            return Ok(());
+        }
+
+        // Columnas de destino que el sync intentará insertar.
+        let needed: Vec<(String, serde_json::Value)> = if table_config.column_mappings.is_empty() {
+            source_cols
+                .iter()
+                .filter_map(|c| {
+                    let name = c.get("name").and_then(|v| v.as_str())?;
+                    Some((name.to_string(), c.clone()))
+                })
+                .collect()
+        } else {
+            let src_by_name: HashMap<&str, &serde_json::Value> = source_cols
+                .iter()
+                .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(|n| (n, c)))
+                .collect();
+            table_config
+                .column_mappings
+                .iter()
+                .filter_map(|m| {
+                    src_by_name
+                        .get(m.source_column.as_str())
+                        .map(|c| (m.destination_column.clone(), (*c).clone()))
+                })
+                .collect()
+        };
+        if needed.is_empty() {
+            return Ok(());
+        }
+
+        let target_cols = target
+            .fetch_columns(&table_config.target_table, target_schema.map(String::from))
+            .await?;
+        let target_col_map: HashMap<String, &serde_json::Value> = target_cols
+            .iter()
+            .filter_map(|c| {
+                c.get("name")
+                    .and_then(|v| v.as_str())
+                    .map(|n| (n.to_lowercase(), c))
+            })
+            .collect();
+
+        let target_ref = match target_schema {
+            Some(s) => format!(
+                "{}.{}",
+                quote_for_target(target_db_type, s),
+                quote_for_target(target_db_type, &table_config.target_table)
+            ),
+            None => quote_for_target(target_db_type, &table_config.target_table),
+        };
+        let needs_add_column = matches!(target_db_type, DbType::Mysql | DbType::Mariadb);
+
+        for (dest_name, src_col) in &needed {
+            let dest_lower = dest_name.to_lowercase();
+
+            // Columna presente en el target: si el source es nullable y el
+            // target NOT NULL, relajar la restricción para no perder filas
+            // con NULLs (p.ej. constraint agregado con NOT VALID).
+            if let Some(target_col) = target_col_map.get(&dest_lower) {
+                let src_nullable = src_col
+                    .get("isNullable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let tgt_nullable = target_col
+                    .get("isNullable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                if src_nullable && !tgt_nullable {
+                    Self::relax_not_null(
+                        target,
+                        target_db_type,
+                        &target_ref,
+                        &table_config.target_table,
+                        dest_name,
+                        target_col,
+                    )
+                    .await;
+                }
+                continue;
+            }
+
+            // Columna faltante: crearla (ADD COLUMN).
+            let src_type = src_col
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("text");
+            let max_len = src_col
+                .get("maxLength")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let sql_type = map_column_type(source_db_type, src_type, max_len, target_db_type);
+            let col_def = format!(
+                "{} {}",
+                quote_for_target(target_db_type, dest_name),
+                sql_type
+            );
+            let keyword = if needs_add_column {
+                "ADD COLUMN"
+            } else {
+                "ADD"
+            };
+            let alter = format!("ALTER TABLE {} {} {}", target_ref, keyword, col_def);
+
+            match target.execute(&alter).await {
+                Ok(_) => {
+                    tracing::info!(
+                        "[sync] Created missing target column '{}' on '{}' ({})",
+                        dest_name,
+                        table_config.target_table,
+                        sql_type,
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[sync] Could not create target column '{}' on '{}': {}",
+                        dest_name,
+                        table_config.target_table,
+                        e,
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Relaja la restricción NOT NULL de una columna del target cuando el
+    /// source la tiene nullable y el target no. No es destructivo: solo
+    /// flexibiliza el constraint para no perder filas con NULLs.
+    async fn relax_not_null(
+        target: &dyn DbDriver,
+        target_db_type: &DbType,
+        target_ref: &str,
+        target_table: &str,
+        dest_name: &str,
+        target_col: &serde_json::Value,
+    ) {
+        let sql = match target_db_type {
+            DbType::Postgres => format!(
+                "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL",
+                target_ref,
+                quote_for_target(target_db_type, dest_name)
+            ),
+            DbType::Mysql | DbType::Mariadb => {
+                let col_type = target_col
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("TEXT");
+                format!(
+                    "ALTER TABLE {} MODIFY COLUMN {} {} NULL",
+                    target_ref,
+                    quote_for_target(target_db_type, dest_name),
+                    col_type
+                )
+            }
+            _ => return,
+        };
+        match target.execute(&sql).await {
+            Ok(_) => tracing::info!(
+                "[sync] Relaxed NOT NULL on target column '{}' of '{}' (source is nullable)",
+                dest_name,
+                target_table,
+            ),
+            Err(e) => tracing::warn!(
+                "[sync] Could not relax NOT NULL on target column '{}' of '{}': {}",
+                dest_name,
+                target_table,
+                e,
+            ),
+        }
+    }
+
     pub async fn validate(
         pipeline: &SyncPipeline,
         source: &dyn DbDriver,
         target: &dyn DbDriver,
     ) -> AppResult<ValidationReport> {
         PipelineValidator::validate(pipeline, source, target).await
+    }
+
+    /// Detecta el esquema correcto del source (PostgreSQL). No depende de una
+    /// sola tabla: si la primera no se encuentra en el esquema configurado
+    /// (o `public`), busca el esquema que contiene la mayoría de las tablas del
+    /// pipeline en una sola consulta. Devuelve `None` solo si ninguna tabla del
+    /// pipeline existe en ningún esquema no-sistema. Nunca lanza error.
+    pub(crate) async fn detect_source_schema(
+        source: &dyn DbDriver,
+        tables: &[SyncTableConfig],
+        configured: Option<&str>,
+    ) -> Option<String> {
+        if tables.is_empty() {
+            return configured.filter(|s| !s.is_empty()).map(String::from);
+        }
+
+        // 1) Esquema configurado (o public) si contiene la primera tabla.
+        let configured_schema = configured.filter(|s| !s.is_empty()).unwrap_or("public");
+        if check_pg_table_exists(source, &tables[0].source_table, configured_schema)
+            .await
+            .unwrap_or(false)
+        {
+            tracing::info!(
+                "[sync] Schema '{}' is correct for table '{}'",
+                configured_schema,
+                tables[0].source_table
+            );
+            return Some(configured_schema.to_string());
+        }
+
+        // 2) Esquema con mayoría de tablas del pipeline (una sola consulta).
+        //    Robusto a tablas particionadas (relkind 'p'), vistas o a que la
+        //    primera tabla no exista.
+        let quoted: Vec<String> = tables
+            .iter()
+            .map(|t| format!("'{}'", t.source_table.replace('\'', "''")))
+            .collect();
+        let query = format!(
+            "SELECT n.nspname AS schema_name, count(*) AS table_count \
+             FROM pg_catalog.pg_class c \
+             JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid \
+             WHERE c.relname IN ({}) AND c.relkind IN ('r','p') \
+               AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') \
+             GROUP BY n.nspname \
+             ORDER BY table_count DESC \
+             LIMIT 1",
+            quoted.join(", ")
+        );
+        if let Ok(result) = source.execute(&query).await {
+            if let Some(row) = result.rows.first() {
+                if let Some(schema) = row.get("schema_name").and_then(|v| v.as_str()) {
+                    tracing::info!(
+                        "[sync] Auto-detected source schema '{}' (was configured as '{}')",
+                        schema,
+                        configured_schema
+                    );
+                    return Some(schema.to_string());
+                }
+            }
+        }
+
+        // 3) Último recurso: la primera tabla en cualquier esquema.
+        find_pg_schema_for_table(source, &tables[0].source_table).await
     }
 }
 
@@ -794,6 +1052,7 @@ fn quote_pg_type(ty: &str) -> String {
 }
 
 /// Check if a table exists in a specific PostgreSQL schema using pg_catalog.
+/// `relkind IN ('r','p')` cubre tablas normales y particionadas.
 async fn check_pg_table_exists(
     source: &dyn DbDriver,
     table: &str,
@@ -806,8 +1065,8 @@ async fn check_pg_table_exists(
         "SELECT EXISTS(
             SELECT 1 FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-            WHERE c.relname = '{}' AND n.nspname = '{}' AND c.relkind = 'r'
-        ) as exists",
+            WHERE c.relname = '{}' AND n.nspname = '{}' AND c.relkind IN ('r','p')
+        ) as is_present",
         table_clean, schema_clean
     );
 
@@ -815,7 +1074,7 @@ async fn check_pg_table_exists(
     Ok(result
         .rows
         .first()
-        .and_then(|r| r.get("exists"))
+        .and_then(|r| r.get("is_present"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false))
 }
@@ -828,7 +1087,7 @@ async fn find_pg_schema_for_table(source: &dyn DbDriver, table: &str) -> Option<
         "SELECT n.nspname as schema_name \
          FROM pg_catalog.pg_class c \
          JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid \
-         WHERE c.relname = '{}' AND c.relkind = 'r' \
+         WHERE c.relname = '{}' AND c.relkind IN ('r','p') \
            AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') \
          LIMIT 1",
         table_clean

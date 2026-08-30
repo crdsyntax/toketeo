@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { type Extension, Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import { ChevronUp, Terminal, Code2, Sparkles } from 'lucide-react';
+import { ChevronUp, Terminal, Code2, Sparkles, GitFork } from 'lucide-react';
 import type { QueryTab, EditorMode, EditorViewState } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
@@ -10,6 +10,10 @@ import { DatabaseType } from '@/types/database';
 import { cn } from '@/lib/utils';
 import { MONGO_SHELL_LANGUAGE_ID } from '@/lib/editor/mongoShellLanguage';
 import { SqlCodeEditor } from '@/components/editor/SqlCodeEditor';
+import { sqlFlowService } from '@/services/sqlFlow.service';
+import type { SqlFlowGraph } from '@/types/sqlFlow';
+import { SchemaFlowModal } from '@/components/query/flow/SchemaFlowModal';
+import toast from 'react-hot-toast';
 
 interface SqlEditorPanelProps {
   activeTab: QueryTab;
@@ -18,6 +22,7 @@ interface SqlEditorPanelProps {
   editorRef: React.MutableRefObject<EditorView | null>;
   executeCurrent: () => void;
   executeAll: () => void;
+  connectionId?: string;
   connectionName?: string;
   connectionType?: string;
   updateTabViewState: (id: string, viewState: EditorViewState | null) => void;
@@ -31,6 +36,7 @@ export function SqlEditorPanel({
   editorRef,
   executeCurrent,
   executeAll,
+  connectionId,
   connectionName,
   connectionType,
   updateTabViewState,
@@ -41,6 +47,53 @@ export function SqlEditorPanel({
   const prevTabIdRef = useRef<string>(activeTab.id);
   const viewStatesRef = useRef<Record<string, EditorViewState>>({});
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const [isFlowModalOpen, setIsFlowModalOpen] = useState(false);
+  const [flowGraph, setFlowGraph] = useState<SqlFlowGraph | null>(null);
+  const [isFlowLoading, setIsFlowLoading] = useState(false);
+
+  const handleLoadSchemaFlow = useCallback(async () => {
+    const query = activeTab.query.trim();
+    if (!query) {
+      toast.error('Escribe una consulta SQL antes de cargar el schema flow');
+      return;
+    }
+
+    if (!connectionId) {
+      toast.error('Selecciona una conexión antes de cargar el schema flow');
+      return;
+    }
+
+    setIsFlowLoading(true);
+    try {
+      const graph = await sqlFlowService.getFlowData({
+        query,
+        connectionId,
+        dialect: connectionType,
+      });
+
+      if (!graph.nodes || graph.nodes.length === 0) {
+        toast.error('No se detectaron tablas o entidades en la consulta');
+        setIsFlowLoading(false);
+        return;
+      }
+
+      setFlowGraph(graph);
+      setIsFlowModalOpen(true);
+    } catch (err: unknown) {
+      let message =
+        typeof err === 'string'
+          ? err
+          : err && typeof err === 'object' && 'message' in err
+            ? String(err.message)
+            : 'Error al analizar la consulta SQL y sus entidades';
+      if (connectionName && message.includes('not found') && connectionId && message.includes(connectionId)) {
+        message = message.replace(connectionId, connectionName);
+      }
+      toast.error(message);
+    } finally {
+      setIsFlowLoading(false);
+    }
+  }, [activeTab.query, connectionId, connectionName, connectionType]);
 
   // Keep the latest tab id available to event listeners without re-creating them.
   const activeTabIdRef = useRef<string>(activeTab.id);
@@ -250,6 +303,17 @@ export function SqlEditorPanel({
 
         <div className="flex items-center gap-2 shrink-0">
           {!isMongo && (
+            <button
+              onClick={handleLoadSchemaFlow}
+              disabled={isFlowLoading}
+              className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold border border-primary/30 transition-all shadow-xs disabled:opacity-50"
+              title="Cargar diagrama de flujo de entidades/joins (Schema Flow)"
+            >
+              <GitFork className={cn('w-3.5 h-3.5', isFlowLoading && 'animate-spin')} />
+              <span>Load schema flow</span>
+            </button>
+          )}
+          {!isMongo && (
             <span className="text-[var(--ch-text-10)] text-muted-foreground/50 hidden md:inline">
               Ctrl/Cmd + Enter
             </span>
@@ -299,6 +363,15 @@ export function SqlEditorPanel({
           </span>
         </div>
       </div>
+
+      {/* Schema Flow Modal */}
+      <SchemaFlowModal
+        isOpen={isFlowModalOpen}
+        onClose={() => setIsFlowModalOpen(false)}
+        graph={flowGraph}
+        isLoading={isFlowLoading}
+        onReload={handleLoadSchemaFlow}
+      />
     </div>
   );
 }

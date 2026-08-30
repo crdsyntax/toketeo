@@ -248,8 +248,6 @@ impl DbDriver for MongoDbDriver {
             .as_object()
             .ok_or_else(|| AppError::Validation("MongoDB query must be a JSON object".into()))?;
 
-        tracing::info!("[MongoDB Execute] query: {}", query);
-
         // Cell update support:
         // { "database": "db", "collection": "name", "update": { "filter": {...}, "set": { "col": value } } }
         // Must run BEFORE the 'collection' find branch below, which also
@@ -318,6 +316,7 @@ impl DbDriver for MongoDbDriver {
 
             return Ok(QueryResult {
                 columns: vec!["modified".to_string(), "matched".to_string()],
+                column_types: None,
                 rows: vec![serde_json::json!({
                     "modified": result.modified_count,
                     "matched": result.matched_count,
@@ -424,6 +423,7 @@ impl DbDriver for MongoDbDriver {
 
             return Ok(QueryResult {
                 columns,
+                column_types: None,
                 rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: Some(vec!["_id".to_string()]),
@@ -499,6 +499,7 @@ impl DbDriver for MongoDbDriver {
                     );
                     return Ok(QueryResult {
                         columns,
+                        column_types: None,
                         rows,
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -531,6 +532,7 @@ impl DbDriver for MongoDbDriver {
                 );
                 return Ok(QueryResult {
                     columns,
+                    column_types: None,
                     rows,
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -544,6 +546,7 @@ impl DbDriver for MongoDbDriver {
         tracing::info!("[MongoDB Execute] path=command, returning raw result as single row");
         Ok(QueryResult {
             columns: vec!["result".to_string()],
+            column_types: None,
             rows: vec![json_result],
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,

@@ -6,7 +6,7 @@ use crate::application::assistant::tools::recommendation_engine::RecommendationE
 use crate::error::AppResult;
 use crate::models::assistant::{
     AssistantTurn, KnowledgeCase, ModelInfo, Preference, ProviderConfig, ProviderInfo,
-    SqlFixResult, TestResult, ToolDescriptor, ToolResult,
+    SqlFixResult, TestResult, ToolDescriptor, ToolResult, UiContext,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -121,6 +121,8 @@ pub async fn assistant_chat(
     connection_id: String,
     question: String,
     confirm_destructive: bool,
+    ui_context: Option<UiContext>,
+    on_event: tauri::ipc::Channel<serde_json::Value>,
     state: State<'_, AppState>,
 ) -> AppResult<AssistantTurn> {
     let configs = state.storage.load_provider_configs().await?;
@@ -136,8 +138,14 @@ pub async fn assistant_chat(
                 source: "stub".to_string(),
                 requires_confirmation: false,
                 usage: None,
+                action: None,
             })
         }
+    };
+    // Adapt the Tauri channel into the orchestrator's emitter callback so the
+    // application layer stays decoupled from Tauri types.
+    let emitter = move |value: serde_json::Value| {
+        let _ = on_event.send(value);
     };
 
     ChatOrchestrator::new(
@@ -146,6 +154,8 @@ pub async fn assistant_chat(
         &question,
         &config,
         confirm_destructive,
+        ui_context.as_ref(),
+        Some(&emitter),
     )
     .run()
     .await
@@ -184,22 +194,28 @@ pub async fn assistant_fix_sql(
 #[tauri::command]
 pub async fn assistant_search_knowledge(
     query: String,
-    engine: String,
+    engine: Option<String>,
     limit: Option<i64>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<KnowledgeCase>> {
-    KnowledgeEngine::search(&state.storage, &query, &engine, limit.unwrap_or(5)).await
+    KnowledgeEngine::search(
+        &state.storage,
+        &query,
+        engine.as_deref(),
+        limit.unwrap_or(50),
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn assistant_list_knowledge(
-    engine: String,
+    engine: Option<String>,
     limit: Option<i64>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<KnowledgeCase>> {
     state
         .storage
-        .list_knowledge_all(&engine, limit.unwrap_or(50))
+        .list_knowledge_all(engine.as_deref(), limit.unwrap_or(200))
         .await
 }
 
@@ -219,7 +235,42 @@ pub async fn assistant_record_case(
     rating: String,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    KnowledgeEngine::record_case(&state.storage, &question, &sql_text, &engine, &rating).await
+    let id = KnowledgeEngine::record_case(&state.storage, &question, &sql_text, &engine, &rating)
+        .await?;
+    // Index the new case in the background (embed + vector side).
+    if let Some(case) = state.storage.get_knowledge_case(&id).await.ok().flatten() {
+        AppState::spawn_index_knowledge(&state.storage, &state.knowledge_vectors, case);
+    }
+    Ok(id)
+}
+
+/// Record an application error into the agent's knowledge library so it can
+/// learn from it (deduplicated by exact error message). Fire-and-forget from
+/// the frontend; returns (id, created).
+#[tauri::command]
+pub async fn assistant_record_error(
+    error: String,
+    context: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<(String, bool)> {
+    let (id, created) = KnowledgeEngine::record_error_case(
+        &state.storage,
+        &error,
+        context.as_deref().unwrap_or(""),
+    )
+    .await?;
+    if created {
+        if let Ok(Some(case)) = state.storage.get_knowledge_case(&id).await {
+            AppState::spawn_index_knowledge(&state.storage, &state.knowledge_vectors, case);
+        }
+    }
+    Ok((id, created))
+}
+
+/// (total, indexed) knowledge cases — powers the LibraryPanel index indicator.
+#[tauri::command]
+pub async fn assistant_knowledge_index_stats(state: State<'_, AppState>) -> AppResult<(i64, i64)> {
+    state.storage.knowledge_index_stats().await
 }
 
 // ── Feedback ──
@@ -237,7 +288,7 @@ pub async fn assistant_record_feedback(
     match rating.as_str() {
         "positive" => {
             crate::application::assistant::learning::LearningEngine::record_positive(
-                &state.storage,
+                &state,
                 &message_id,
                 &connection_id,
                 &engine,
@@ -246,7 +297,7 @@ pub async fn assistant_record_feedback(
         }
         "negative" => {
             crate::application::assistant::learning::LearningEngine::record_negative(
-                &state.storage,
+                &state,
                 &message_id,
                 &connection_id,
                 &engine,
@@ -306,6 +357,7 @@ pub async fn assistant_execute_tool(
             driver.as_deref(),
             &state,
             confirm_destructive,
+            Some(&connection_id),
         )
         .await
 }

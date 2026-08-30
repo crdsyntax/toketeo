@@ -186,6 +186,7 @@ export function ResultsPanelHeader({
             <div className="flex items-center bg-muted/20 p-0.5 rounded border border-border/40">
               <button
                 onClick={() => setViewMode('table')}
+                title="Table View"
                 className={cn(
                   "px-1.5 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors",
                   viewMode === 'table' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
@@ -195,6 +196,7 @@ export function ResultsPanelHeader({
               </button>
               <button
                 onClick={() => setViewMode('json')}
+                title="JSON View"
                 className={cn(
                   "px-1.5 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors",
                   viewMode === 'json' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
@@ -204,6 +206,7 @@ export function ResultsPanelHeader({
               </button>
               <button
                 onClick={() => setViewMode('visualize')}
+                title="Visualize"
                 className={cn(
                   "px-1.5 py-0.5 text-[var(--ch-text-9)] font-medium rounded-sm transition-colors",
                   viewMode === 'visualize' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"

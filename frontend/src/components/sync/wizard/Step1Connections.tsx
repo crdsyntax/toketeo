@@ -110,13 +110,13 @@ export function Step1Connections({
     <div className="space-y-6">
       <div className="space-y-2">
         <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-          Nombre de la sincronización
+          Sync Name
         </label>
         <input
           className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
-          placeholder="Ej: Producción → Analytics"
+          placeholder="E.g. Production → Analytics"
         />
       </div>
 
@@ -124,7 +124,7 @@ export function Step1Connections({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-              Conexión Origen
+              Source Connection
             </label>
             <button
               onClick={() => {
@@ -133,10 +133,10 @@ export function Step1Connections({
                 if (sourceId) queryClient.invalidateQueries({ queryKey: ['schemas', sourceId] })
               }}
               className="flex items-center gap-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
-              title="Recargar"
+              title="Reload"
             >
               <RefreshCw className="w-3 h-3" />
-              Recargar
+              Reload
             </button>
           </div>
           <select
@@ -148,7 +148,7 @@ export function Step1Connections({
               setSourceDatabase('')
             }}
           >
-            <option value="">— Seleccionar —</option>
+            <option value="">— Select —</option>
             {connections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.type.toUpperCase()})
@@ -157,10 +157,10 @@ export function Step1Connections({
           </select>
           {isSourcePostgres && sourceId && (
             <div className="space-y-1">
-              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Database</label>
               {loadingSourceDatabases ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Cargando bases de datos...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading databases...
                 </div>
               ) : (
                 <select
@@ -171,7 +171,7 @@ export function Step1Connections({
                     onSourceSchemaChange('')
                   }}
                 >
-                  <option value="">— Seleccionar DB —</option>
+                  <option value="">— Select DB —</option>
                   {(sourceDatabases ?? []).map((db) => (
                     <option key={db} value={db}>{db}</option>
                   ))}
@@ -181,18 +181,18 @@ export function Step1Connections({
           )}
           {sourceId && (isSourcePostgres ? !!sourceDatabase : true) && (
             <div className="space-y-1">
-              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Schema Origen</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Source Schema</label>
               {loadingSourceSchemas ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Cargando schemas...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading schemas...
                 </div>
               ) : sourceSchemasError ? (
                 <div className="space-y-1">
                   <select disabled className="w-full bg-background border border-border px-3 py-2 text-xs font-mono opacity-50">
-                    <option>No se pudieron cargar schemas</option>
+                    <option>Could not load schemas</option>
                   </select>
                   <p className="text-[var(--ch-text-9)] text-amber-500">
-                    Activa la conexión desde el sidebar y haz clic en "Recargar"
+                    Activate the connection from the sidebar and click "Reload"
                   </p>
                 </div>
               ) : (
@@ -201,7 +201,7 @@ export function Step1Connections({
                   value={sourceSchema}
                   onChange={(e) => onSourceSchemaChange(e.target.value)}
                 >
-                  <option value="">— Seleccionar Schema —</option>
+                  <option value="">— Select Schema —</option>
                   {(sourceSchemas ?? []).map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
@@ -214,7 +214,7 @@ export function Step1Connections({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-              Conexión Destino
+              Target Connection
             </label>
             <button
               onClick={() => {
@@ -223,10 +223,10 @@ export function Step1Connections({
                 if (targetId) queryClient.invalidateQueries({ queryKey: ['schemas', targetId] })
               }}
               className="flex items-center gap-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
-              title="Recargar"
+              title="Reload"
             >
               <RefreshCw className="w-3 h-3" />
-              Recargar
+              Reload
             </button>
           </div>
           <select
@@ -238,7 +238,7 @@ export function Step1Connections({
               setTargetDatabase('')
             }}
           >
-            <option value="">— Seleccionar —</option>
+            <option value="">— Select —</option>
             {connections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.type.toUpperCase()})
@@ -247,10 +247,10 @@ export function Step1Connections({
           </select>
           {isTargetPostgres && targetId && (
             <div className="space-y-1">
-              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Base de Datos</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Database</label>
               {loadingTargetDatabases ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Cargando bases de datos...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading databases...
                 </div>
               ) : (
                 <select
@@ -261,7 +261,7 @@ export function Step1Connections({
                     onTargetSchemaChange('')
                   }}
                 >
-                  <option value="">— Seleccionar DB —</option>
+                  <option value="">— Select DB —</option>
                   {(targetDatabases ?? []).map((db) => (
                     <option key={db} value={db}>{db}</option>
                   ))}
@@ -271,18 +271,18 @@ export function Step1Connections({
           )}
           {targetId && (isTargetPostgres ? !!targetDatabase : true) && (
             <div className="space-y-1">
-              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Schema Destino</label>
+              <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Target Schema</label>
               {loadingTargetSchemas ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Cargando schemas...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading schemas...
                 </div>
               ) : targetSchemasError ? (
                 <div className="space-y-1">
                   <select disabled className="w-full bg-background border border-border px-3 py-2 text-xs font-mono opacity-50">
-                    <option>No se pudieron cargar schemas</option>
+                    <option>Could not load schemas</option>
                   </select>
                   <p className="text-[var(--ch-text-9)] text-amber-500">
-                    Activa la conexión desde el sidebar y haz clic en "Recargar"
+                    Activate the connection from the sidebar and click "Reload"
                   </p>
                 </div>
               ) : (
@@ -291,7 +291,7 @@ export function Step1Connections({
                   value={targetSchema}
                   onChange={(e) => onTargetSchemaChange(e.target.value)}
                 >
-                  <option value="">— Seleccionar Schema —</option>
+                  <option value="">— Select Schema —</option>
                   {(targetSchemas ?? []).map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
@@ -303,9 +303,9 @@ export function Step1Connections({
       </div>
 
       <div className="space-y-2">
-        <Tooltip content="Full: copia todos los datos. Incremental: solo datos nuevos desde la última sincronización">
+        <Tooltip content="Full: copies all data. Incremental: only new data since last sync">
           <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            Modo de sincronización
+            Sync Mode
           </label>
         </Tooltip>
         <select
@@ -313,13 +313,13 @@ export function Step1Connections({
           value={mode}
           onChange={(e) => onModeChange(e.target.value as SyncMode)}
         >
-          <option value={SyncMode.Full}>Completa — copia todos los datos</option>
-          <option value={SyncMode.Incremental}>Incremental — solo cambios desde la última ejecución</option>
+          <option value={SyncMode.Full}>Full — copies all data</option>
+          <option value={SyncMode.Incremental}>Incremental — only changes since last run</option>
         </select>
         <p className="text-[var(--ch-text-10)] text-muted-foreground">
           {mode === SyncMode.Incremental
-            ? 'Requiere una columna primary key para detectar cambios.'
-            : 'Sobrescribe todos los datos en el destino en cada ejecución.'}
+            ? 'Requires a primary key column to detect changes.'
+            : 'Overwrites all data in the target on every run.'}
         </p>
       </div>
     </div>

@@ -3,9 +3,12 @@ use crate::application::assistant::context::relevance::RelevanceFilter;
 use crate::application::assistant::knowledge::KnowledgeEngine;
 use crate::application::assistant::learning::memory_engine::MemoryEngine;
 use crate::application::assistant::prompt::prompt_builder::PromptBuilder;
+use crate::application::assistant::tools::workspace_tool::render_ui_context_prompt;
 use crate::error::AppResult;
-use crate::models::assistant::ProviderConfig;
-use crate::models::assistant::{AiRequest, AssistantTurn, ChatMessage, SchemaContext, TokenUsage};
+use crate::models::assistant::{
+    AiRequest, AiResponse, AssistantTurn, ChatMessage, SchemaContext, TokenUsage,
+};
+use crate::models::assistant::{ProviderConfig, UiContext};
 use crate::state::AppState;
 
 /// Orchestrates a single assistant chat turn: builds context (schema, history,
@@ -18,17 +21,261 @@ pub struct ChatOrchestrator<'a> {
     question: &'a str,
     config: &'a ProviderConfig,
     confirm_destructive: bool,
+    ui_context: Option<&'a UiContext>,
+    events: Option<ChatEventEmitter<'a>>,
 }
 
 const MAX_TOOL_ROUNDS: usize = 12;
 
+/// Retries for transient provider failures (5xx / 429 / network blips).
+const PROVIDER_MAX_RETRIES: u32 = 2;
+
+fn is_transient_provider_error(err: &crate::error::AppError) -> bool {
+    let msg = err.to_string().to_lowercase();
+    const MARKERS: [&str; 14] = [
+        "500",
+        "502",
+        "503",
+        "504",
+        "429",
+        "service unavailable",
+        "bad gateway",
+        "internal server error",
+        "rate limit",
+        "too many requests",
+        "timed out",
+        "timeout",
+        "connection reset",
+        "temporarily unavailable",
+    ];
+    MARKERS.iter().any(|m| msg.contains(m))
+}
+
+/// Call the provider with automatic retries on transient errors. Each attempt
+/// is capped at 180s: a stalled SSE stream (no bytes, no [DONE]) must never
+/// hang the turn. Before each retry the partially streamed content is wiped
+/// (`clear_content`) and a status line tells the user what is happening.
+async fn complete_with_retry(
+    adapter: &dyn crate::application::assistant::adapters::AiAdapter,
+    request: &AiRequest,
+    on_delta: &(dyn Fn(&str) + Send + Sync),
+    events: Option<ChatEventEmitter<'_>>,
+) -> AppResult<AiResponse> {
+    const ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+    let mut attempt = 0u32;
+    loop {
+        let result = tokio::time::timeout(
+            ATTEMPT_TIMEOUT,
+            adapter.complete_streaming(request.clone(), on_delta),
+        )
+        .await;
+        match result {
+            Ok(Ok(resp)) => return Ok(resp),
+            Ok(Err(e)) if attempt < PROVIDER_MAX_RETRIES && is_transient_provider_error(&e) => {
+                attempt += 1;
+                if let Some(emit) = events {
+                    emit(serde_json::json!({ "event": "clear_content" }));
+                    emit(serde_json::json!({
+                        "event": "status",
+                        "message": format!(
+                            "Proveedor no disponible ({e}); reintentando ({attempt}/{PROVIDER_MAX_RETRIES})…"
+                        ),
+                    }));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(800 * (1 << attempt))).await;
+            }
+            Ok(Err(e)) => return Err(e),
+            // Attempt timed out (stalled stream) → treat as transient.
+            Err(_) if attempt < PROVIDER_MAX_RETRIES => {
+                attempt += 1;
+                if let Some(emit) = events {
+                    emit(serde_json::json!({ "event": "clear_content" }));
+                    emit(serde_json::json!({
+                        "event": "status",
+                        "message": format!(
+                            "El proveedor no respondió en 180s; reintentando ({attempt}/{PROVIDER_MAX_RETRIES})…"
+                        ),
+                    }));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(800 * (1 << attempt))).await;
+            }
+            Err(_) => {
+                return Err(crate::error::AppError::Internal(
+                    "El proveedor no respondió (timeout de 180s por intento). Revisa tu conexión o cambia de proveedor en Settings → AI Providers.".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod dump_tests {
+    #[test]
+    fn transient_provider_errors_are_detected() {
+        use crate::error::AppError;
+        for msg in [
+            "OpenCode returned 503 Service Unavailable: overloaded",
+            "OpenAI returned 429: rate limit exceeded",
+            "DeepSeek returned 502 Bad Gateway",
+            "request timed out after 30s",
+            "connection reset by peer",
+        ] {
+            assert!(
+                super::is_transient_provider_error(&AppError::Internal(msg.to_string())),
+                "should be transient: {msg}"
+            );
+        }
+        for msg in [
+            "Invalid API key (401)",
+            "model not found",
+            "Embedding parse failed: unexpected token",
+        ] {
+            assert!(
+                !super::is_transient_provider_error(&AppError::Internal(msg.to_string())),
+                "should NOT be transient: {msg}"
+            );
+        }
+        // 500 contains "500" — but a 401 message must not match "40" patterns.
+        assert!(super::is_transient_provider_error(&AppError::Internal(
+            "provider returned 500: oops".into()
+        )));
+        assert!(!super::is_transient_provider_error(&AppError::Internal(
+            "provider returned 400: bad request shape".into()
+        )));
+    }
+
+    use super::strip_pseudo_tool_dump;
+
+    #[test]
+    fn clean_answer_passes_through() {
+        let (cleaned, sql) = strip_pseudo_tool_dump("Respuesta normal del modelo.");
+        assert_eq!(cleaned, "Respuesta normal del modelo.");
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn pseudo_dump_is_stripped_and_sql_rescued() {
+        let content = "Encontré 11 tablas derivadas. Ejecuto el conteo.\n\
+                       Query\n\
+                       connection_id\n\
+                       5d692c53-ed8f-4fe4-a3bf-325354238c6d\n\
+                       sql\n\
+                       SELECT 'orders' AS tabla, COUNT(*) FROM orders;\n\
+                       schema\n\
+                       public\n\
+                       confirm_destructive\n\
+                       true";
+        let (cleaned, sql) = strip_pseudo_tool_dump(content);
+        assert_eq!(cleaned, "Encontré 11 tablas derivadas. Ejecuto el conteo.");
+        let sql = sql.unwrap();
+        assert!(sql.starts_with("SELECT 'orders'"));
+        assert!(!sql.contains("schema"));
+        assert!(!sql.contains("confirm_destructive"));
+    }
+
+    #[test]
+    fn sql_keyword_in_prose_does_not_trigger() {
+        // The key must be a bare line; prose containing the word is untouched.
+        let content = "El campo connection_id es obligatorio en la herramienta.";
+        let (cleaned, sql) = strip_pseudo_tool_dump(content);
+        assert_eq!(cleaned, content);
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn screenshot_dump_with_multiline_sql_is_cleaned() {
+        // Exact shape observed in production: narration + bare-key dump with a
+        // multi-line SQL statement.
+        let content = "El listado de tablas se omitió por repetición. Voy a consultarlo directamente con SQL para encontrar orders y sus tablas derivadas (por claves foráneas) en db_picer.public.\n\
+                       query\n\
+                       connection_id\n\
+                       5d692c53-ed8f-4fe4-a3bf-325354238c6d\n\
+                       sql\n\
+                       SELECT\n\
+                       \ttc.table_name AS derived_table,\n\
+                       \tkcu.column_name AS fk_column,\n\
+                       \tcct.table_name AS referenced_table\n\
+                       FROM information_schema.table_constraints tc\n\
+                       JOIN information_schema.key_column_usage kcu\n\
+                       \tON tc.constraint_name = kcu.constraint_name\n\
+                       ORDER BY derived_table;";
+        let (cleaned, sql) = strip_pseudo_tool_dump(content);
+        assert!(cleaned.starts_with("El listado de tablas"));
+        assert!(!cleaned.contains("connection_id"));
+        assert!(!cleaned.contains("information_schema"));
+        let sql = sql.expect("sql should be rescued");
+        assert!(sql.starts_with("SELECT"));
+        assert!(sql.contains("information_schema.table_constraints"));
+        assert!(sql.ends_with("ORDER BY derived_table;"));
+    }
+}
+
+/// Some models emit tool invocations as plain text instead of using the
+/// function-calling mechanism (e.g. a block starting with `Query`,
+/// `connection_id`, `sql`, …). Detect that dump in a final answer, remove it
+/// and rescue the SQL so the user still gets a "Load in editor" action.
+fn strip_pseudo_tool_dump(content: &str) -> (String, Option<String>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let is_key = |l: &str| -> bool {
+        let t = l.trim().trim_end_matches(':').to_lowercase();
+        matches!(
+            t.as_str(),
+            "query" | "connection_id" | "sql" | "schema" | "confirm_destructive" | "database"
+        )
+    };
+
+    // Find the start of the dump: a bare `connection_id` key line.
+    let Some(start_idx) = lines.iter().position(|l| {
+        l.trim()
+            .trim_end_matches(':')
+            .eq_ignore_ascii_case("connection_id")
+    }) else {
+        return (content.to_string(), None);
+    };
+    // The dump usually begins one line earlier with the tool name ("query").
+    let dump_start = if start_idx > 0 && is_key(lines[start_idx - 1]) {
+        start_idx - 1
+    } else {
+        start_idx
+    };
+
+    // Rescue the SQL: the value lines after a bare `sql` key line.
+    let sql = lines
+        .iter()
+        .skip(dump_start)
+        .position(|l| l.trim().trim_end_matches(':').eq_ignore_ascii_case("sql"))
+        .map(|sql_key_rel| {
+            let from = dump_start + sql_key_rel + 1;
+            let mut collected: Vec<&str> = vec![];
+            for l in &lines[from..] {
+                if is_key(l) && !l.trim().is_empty() {
+                    break;
+                }
+                collected.push(l);
+            }
+            collected.join("\n").trim().to_string()
+        })
+        .filter(|s| !s.is_empty());
+
+    let cleaned: String = lines[..dump_start].join("\n").trim_end().to_string();
+    (cleaned, sql)
+}
+
+/// Callback used to stream progress events (answer deltas, tool status) to the
+/// frontend during a chat turn. The Tauri command layer adapts this to an
+/// ipc::Channel, keeping this module decoupled from Tauri.
+pub type ChatEventEmitter<'a> = &'a (dyn Fn(serde_json::Value) + Send + Sync);
+
 impl<'a> ChatOrchestrator<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         state: &'a AppState,
         connection_id: &'a str,
         question: &'a str,
         config: &'a ProviderConfig,
         confirm_destructive: bool,
+        ui_context: Option<&'a UiContext>,
+        events: Option<ChatEventEmitter<'a>>,
     ) -> Self {
         Self {
             state,
@@ -36,19 +283,12 @@ impl<'a> ChatOrchestrator<'a> {
             question,
             config,
             confirm_destructive,
+            ui_context,
+            events,
         }
     }
 
     pub async fn run(self) -> AppResult<AssistantTurn> {
-        // One-off cleanup: previously auto-recorded tool results polluted the
-        // knowledge library; purge them so knowledge-first retrieval never
-        // suggests raw JSON payloads again.
-        if let Ok(removed) = KnowledgeEngine::purge_tool_cases(&self.state.storage).await {
-            if removed > 0 {
-                tracing::info!("Purged {removed} polluted tool-result knowledge cases");
-            }
-        }
-
         let driver = if self.connection_id.is_empty() {
             None
         } else {
@@ -128,19 +368,61 @@ impl<'a> ChatOrchestrator<'a> {
             .map(|(n, i)| (n.as_str(), i.as_str()))
             .collect();
         let system_prompt = PromptBuilder::build_system_prompt(&ctx, &prefs, &conn_slice);
+        // Surface the user's current workspace (module, open tabs, errors) so
+        // the model can act on what the user is looking at.
+        let system_prompt = match self.ui_context {
+            Some(ui) => format!("{system_prompt}\n\n{}", render_ui_context_prompt(ui)),
+            None => system_prompt,
+        };
 
-        // ── Knowledge-first retrieval ──
-        // Before calling the LLM, search the validated knowledge library for
-        // high-confidence prior answers. Short-circuit on a very-high-confidence
-        // positive hit (≥ 0.9 word overlap); otherwise inject candidates below
-        // the threshold as suggestions the user can pick from.
-        let global_cases = self
-            .state
-            .storage
-            .list_knowledge_global(500)
-            .await
-            .unwrap_or_default();
-        let scored = KnowledgeEngine::find_similar_scored(self.question, &global_cases, 0.5);
+        // ── Knowledge-first retrieval (hybrid: lexical ∪ vector) ──
+        // Before calling the LLM, search the knowledge library for
+        // high-confidence prior answers. Lexical candidates come from a cheap
+        // LIKE query; semantic recall comes from the in-memory embedding index
+        // (skipped when no provider is configured). Scores are fused with max.
+        // Short-circuit on a very-high-confidence positive hit (≥ 0.9);
+        // error cases are injected into the prompt as known past errors.
+        let embed_query = async {
+            let provider = crate::application::assistant::knowledge::EmbeddingProvider::from_config(
+                self.config,
+            );
+            match provider {
+                Some(p) => p.embed_one(self.question.to_string()).await.ok(),
+                None => None,
+            }
+        };
+        let hybrid = KnowledgeEngine::hybrid_search(
+            &self.state.storage,
+            &self.state.knowledge_vectors,
+            self.question,
+            0.5,
+            embed_query,
+        )
+        .await?;
+        let scored = &hybrid.qa;
+        let known_errors: Vec<&crate::models::assistant::KnowledgeCase> =
+            hybrid.errors.iter().take(3).collect();
+
+        let system_prompt = if known_errors.is_empty() {
+            system_prompt
+        } else {
+            let mut section = String::from(
+                "\n## Known past errors in this app\n\
+                 The user has hit these errors before. If the current question \
+                 relates to one of them, explain the cause and reuse what worked:\n",
+            );
+            for case in &known_errors {
+                let error_text = case
+                    .question
+                    .strip_prefix("[error] ")
+                    .unwrap_or(&case.question);
+                section.push_str(&format!("- Error: \"{error_text}\"\n"));
+                if !case.sql_text.trim().is_empty() {
+                    section.push_str(&format!("  Context: {}\n", case.sql_text));
+                }
+            }
+            format!("{system_prompt}\n{section}")
+        };
 
         if let Some((case, score)) = scored
             .iter()
@@ -176,6 +458,7 @@ impl<'a> ChatOrchestrator<'a> {
                 source: "knowledge".to_string(),
                 requires_confirmation: false,
                 usage: None,
+                action: None,
             });
         }
 
@@ -207,6 +490,7 @@ impl<'a> ChatOrchestrator<'a> {
                 source: "knowledge".to_string(),
                 requires_confirmation: false,
                 usage: None,
+                action: None,
             });
         }
 
@@ -251,12 +535,19 @@ impl<'a> ChatOrchestrator<'a> {
         let mut total_completion = 0u32;
         let mut requires_confirmation = false;
 
-        // Detect repeated identical tool calls across rounds. If the model keeps
-        // requesting the same (tool, args), it is likely stuck — we stop
-        // executing and force one final completion without tools.
-        let mut executed_signatures: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut loop_detected = false;
+        // Detect repeated identical tool calls within a turn. The agent may
+        // legitimately call the same tool several times (e.g. a confirmation step
+        // followed by the confirmed execution, or several `query` calls with
+        // different arguments). Only after MAX_SAME_TOOL_CALLS identical requests do
+        // we skip the call — and even then we keep tools available so the agent can
+        // still call other tools and finish the task.
+        let mut executed_counts: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+        const MAX_SAME_TOOL_CALLS: u32 = 3;
+        let mut confirmation_message: Option<String> = None;
+        // Side-effectful UI actions requested by the workspace tool are
+        // surfaced to the frontend on the returned turn.
+        let mut ui_action: Option<serde_json::Value> = None;
 
         for _round in 0..MAX_TOOL_ROUNDS {
             let request = AiRequest {
@@ -266,11 +557,28 @@ impl<'a> ChatOrchestrator<'a> {
                 temperature: 0.3,
                 max_tokens: Some(4096),
             };
-            match adapter.complete(request).await {
+            // Stream answer deltas to the frontend as they arrive.
+            let events = self.events;
+            let on_delta = move |text: &str| {
+                if let Some(emit) = events {
+                    emit(serde_json::json!({ "event": "delta", "text": text }));
+                }
+            };
+            match complete_with_retry(adapter.as_ref(), &request, &on_delta, self.events).await {
                 Ok(response) => {
                     total_prompt = total_prompt.saturating_add(response.usage.prompt_tokens);
                     total_completion =
                         total_completion.saturating_add(response.usage.completion_tokens);
+
+                    // A round that produces tool calls means its streamed text was
+                    // only intermediate reasoning (or leaked tool-call arguments),
+                    // never part of the answer. Tell the frontend to drop it so
+                    // the visible reply only keeps meaningful content.
+                    if !response.tool_calls.is_empty() {
+                        if let Some(emit) = self.events {
+                            emit(serde_json::json!({ "event": "clear_content" }));
+                        }
+                    }
 
                     if response.tool_calls.is_empty() {
                         last_response = Some(response);
@@ -291,11 +599,12 @@ impl<'a> ChatOrchestrator<'a> {
                             tc.name,
                             serde_json::to_string(&tc.arguments).unwrap_or_default()
                         );
-                        if !executed_signatures.insert(signature) {
-                            loop_detected = true;
+                        let count = executed_counts.entry(signature.clone()).or_insert(0);
+                        *count += 1;
+                        if *count > MAX_SAME_TOOL_CALLS {
                             let result_text = serde_json::json!({
                                 "ok": false,
-                                "message": "Tool call repeated across rounds. Skipping it — answer now using the information already gathered.",
+                                "message": "This exact tool call was already executed. Use the data you already have and proceed to the next step (or answer now).",
                                 "requires_confirmation": false,
                                 "data": null,
                             })
@@ -308,31 +617,93 @@ impl<'a> ChatOrchestrator<'a> {
                             });
                             continue;
                         }
-                        let exec = self
-                            .state
-                            .tool_engine
-                            .execute_with_confirmation(
+                        // Give context-aware tools access to the user's
+                        // workspace snapshot for this turn.
+                        let mut tool_args = tc.arguments.clone();
+                        if let Some(ui) = self.ui_context {
+                            if let Ok(ui_val) = serde_json::to_value(ui) {
+                                tool_args["ui_context"] = ui_val;
+                            }
+                        }
+                        if let Some(emit) = self.events {
+                            emit(serde_json::json!({
+                                "event": "status",
+                                "message": format!("Ejecutando herramienta '{}'…", tc.name),
+                            }));
+                        }
+                        // Hard timeout per tool: a hanging driver/network call
+                        // must never freeze the whole chat turn. On timeout the
+                        // model receives an error result and can narrate it.
+                        let exec = match tokio::time::timeout(
+                            std::time::Duration::from_secs(120),
+                            self.state.tool_engine.execute_with_confirmation(
                                 &tc.name,
-                                tc.arguments.clone(),
+                                tool_args,
                                 driver.as_deref(),
                                 self.state,
                                 self.confirm_destructive,
-                            )
-                            .await;
+                                Some(self.connection_id),
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(res) => res,
+                            Err(_) => Ok(crate::models::assistant::ToolResult {
+                                ok: false,
+                                data: None,
+                                requires_confirmation: false,
+                                message: Some(format!(
+                                    "Tool '{}' timed out after 120s and was cancelled.",
+                                    tc.name
+                                )),
+                            }),
+                        };
                         let result_text = match exec {
                             Ok(r) => {
                                 if r.requires_confirmation {
                                     requires_confirmation = true;
+                                    confirmation_message = r.message.clone();
+                                }
+                                // Stream the executed action so the frontend can
+                                // reflect side effects in real time (e.g. a
+                                // connection opened by the agent shows up
+                                // immediately in the sidebar).
+                                if let Some(emit) = self.events {
+                                    emit(serde_json::json!({
+                                        "event": "tool",
+                                        "name": tc.name,
+                                        "ok": r.ok,
+                                        "message": r.message,
+                                        "data": r.data,
+                                    }));
+                                }
+                                if tc.name == "workspace" {
+                                    if let Some(action) =
+                                        r.data.as_ref().and_then(|d| d.get("action"))
+                                    {
+                                        ui_action = Some(action.clone());
+                                    }
                                 }
                                 serde_json::to_string(&r).unwrap_or_else(|_| "{}".to_string())
                             }
-                            Err(e) => serde_json::json!({
-                                "ok": false,
-                                "message": e.to_string(),
-                                "requires_confirmation": false,
-                                "data": null,
-                            })
-                            .to_string(),
+                            Err(e) => {
+                                if let Some(emit) = self.events {
+                                    emit(serde_json::json!({
+                                        "event": "tool",
+                                        "name": tc.name,
+                                        "ok": false,
+                                        "message": e.to_string(),
+                                        "data": null,
+                                    }));
+                                }
+                                serde_json::json!({
+                                    "ok": false,
+                                    "message": e.to_string(),
+                                    "requires_confirmation": false,
+                                    "data": null,
+                                })
+                                .to_string()
+                            }
                         };
                         if tool_used.is_none() {
                             let _tn = tc.name.clone();
@@ -349,21 +720,32 @@ impl<'a> ChatOrchestrator<'a> {
                         });
                     }
 
-                    // The model kept requesting the same tool call. Force one
-                    // final completion with tools disabled so it must answer
-                    // from context.
-                    if loop_detected {
-                        let final_request = AiRequest {
-                            system: system_prompt.clone(),
-                            messages: messages.clone(),
-                            tools: vec![],
-                            temperature: 0.3,
-                            max_tokens: Some(4096),
-                        };
-                        if let Ok(final_resp) = adapter.complete(final_request).await {
-                            last_response = Some(final_resp);
-                        }
-                        break;
+                    // When a tool requires confirmation (e.g. switching database),
+                    // stop the tool loop immediately. Re-invoking the same tool here
+                    // caused confirmation loops; instead the user confirms in-chat and
+                    // a fresh turn executes it.
+                    if requires_confirmation {
+                        let answer = confirmation_message.clone().unwrap_or_else(|| {
+                            "Esta acción requiere tu confirmación. Presiona «Confirmar y continuar» para ejecutarla.".to_string()
+                        });
+                        self.save_message(
+                            &turn_id,
+                            "assistant",
+                            answer.clone(),
+                            None,
+                            tool_used.clone(),
+                        )
+                        .await;
+                        return Ok(AssistantTurn {
+                            turn_id,
+                            answer,
+                            sql: None,
+                            tool_used,
+                            source,
+                            requires_confirmation: true,
+                            usage: None,
+                            action: ui_action,
+                        });
                     }
                 }
                 Err(e) => {
@@ -375,6 +757,7 @@ impl<'a> ChatOrchestrator<'a> {
                         source: "error".to_string(),
                         requires_confirmation: false,
                         usage: None,
+                        action: None,
                     });
                 }
             }
@@ -391,14 +774,31 @@ impl<'a> ChatOrchestrator<'a> {
             model: self.config.model.clone().unwrap_or_default(),
         });
 
-        // Try to extract a fenced ```sql block from the final answer so the UI
-        // can surface a "Run SQL" affordance even outside of tool responses.
-        let sql = extract_sql_block(&response.content);
+        let sql_from_fenced = extract_sql_block(&response.content);
+        let (mut answer_text, sql) = match strip_pseudo_tool_dump(&response.content) {
+            (cleaned, Some(rescued)) if !rescued.is_empty() => {
+                (cleaned, sql_from_fenced.or(Some(rescued)))
+            }
+            (cleaned, _) => (cleaned, sql_from_fenced),
+        };
+
+        // Some models return an EMPTY final answer (e.g. after a tool was
+        // blocked pending confirmation). An empty bubble looks like a hang —
+        // synthesize a clear message instead.
+        if answer_text.trim().is_empty() {
+            answer_text = if requires_confirmation {
+                "⚠️ La operación quedó pendiente de tu confirmación. Presiona «Confirmar y continuar» para ejecutarla.".to_string()
+            } else if tool_used.is_some() {
+                "La herramienta se ejecutó pero el modelo no generó un resumen. Pregúntame por el resultado o reformula la acción.".to_string()
+            } else {
+                "No recibí respuesta del modelo. Vuelve a intentarlo.".to_string()
+            };
+        }
 
         self.save_message(
             &turn_id,
             "assistant",
-            response.content.clone(),
+            answer_text.clone(),
             sql.clone(),
             tool_used.clone(),
         )
@@ -406,7 +806,7 @@ impl<'a> ChatOrchestrator<'a> {
 
         Ok(AssistantTurn {
             turn_id,
-            answer: response.content,
+            answer: answer_text,
             sql,
             tool_used,
             source,
@@ -416,6 +816,7 @@ impl<'a> ChatOrchestrator<'a> {
                 completion_tokens: total_completion,
                 total_tokens: total_prompt.saturating_add(total_completion),
             }),
+            action: ui_action,
         })
     }
 

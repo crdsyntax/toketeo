@@ -1,8 +1,3 @@
-use crate::db::common::{
-    decode_bool, decode_bytes, decode_date, decode_datetime, decode_datetime_utc, decode_decimal,
-    decode_f64, decode_i64, decode_string, decode_time, decode_u16, decode_u32, decode_u64,
-    decode_u8, Decoder,
-};
 use crate::db::CapabilityProvider;
 use crate::db::DataReader;
 use crate::db::DataWriter;
@@ -19,6 +14,53 @@ use std::time::{Duration, Instant};
 
 pub(crate) fn quote_mysql(id: &str) -> String {
     format!("`{}`", id.replace('`', "``"))
+}
+
+/// Parsea los valores de una columna MySQL/MariaDB de tipo `enum('a','b','c')`
+/// devuelta por `information_schema.columns.column_type`. Respeta comillas
+/// simples y escapes `\'` dentro de los valores.
+fn parse_mysql_enum_values(col_type: &str) -> Vec<String> {
+    let t = col_type.trim();
+    if !t.to_ascii_lowercase().starts_with("enum(") || !t.ends_with(')') {
+        return Vec::new();
+    }
+    let inner = &t[5..t.len() - 1];
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut chars = inner.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => {
+                let mut in_str = String::new();
+                loop {
+                    match chars.next() {
+                        None => break,
+                        Some('\\') => {
+                            if let Some(next) = chars.next() {
+                                in_str.push(next);
+                            }
+                        }
+                        Some('\'') => break,
+                        Some(other) => in_str.push(other),
+                    }
+                }
+                current.push_str(&in_str);
+            }
+            ',' => {
+                let v = current.trim().to_string();
+                if !v.is_empty() {
+                    values.push(v);
+                }
+                current.clear();
+            }
+            other => current.push(other),
+        }
+    }
+    let v = current.trim().to_string();
+    if !v.is_empty() {
+        values.push(v);
+    }
+    values
 }
 
 /// Convert a JSON cell value into a MySQL-bindable string.
@@ -171,6 +213,7 @@ impl DbDriver for MySqlDriver {
             if rows.is_empty() {
                 return Ok(QueryResult {
                     columns: vec![],
+                    column_types: None,
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -186,6 +229,12 @@ impl DbDriver for MySqlDriver {
                 .map(|col| col.name().to_string())
                 .collect();
 
+            let column_types: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.type_info().name().to_string())
+                .collect();
+
             let mut result_rows = Vec::new();
             for row in rows {
                 let mut row_map = serde_json::Map::new();
@@ -198,6 +247,7 @@ impl DbDriver for MySqlDriver {
 
             Ok(QueryResult {
                 columns,
+                column_types: Some(column_types),
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
@@ -217,6 +267,7 @@ impl DbDriver for MySqlDriver {
                     let rows_affected = res.rows_affected();
                     Ok(QueryResult {
                         columns: vec![],
+                        column_types: None,
                         rows: vec![],
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -253,6 +304,7 @@ impl DbDriver for MySqlDriver {
             if rows.is_empty() {
                 return Ok(QueryResult {
                     columns: vec![],
+                    column_types: None,
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -267,6 +319,12 @@ impl DbDriver for MySqlDriver {
                 .map(|col| col.name().to_string())
                 .collect();
 
+            let column_types: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.type_info().name().to_string())
+                .collect();
+
             let mut result_rows = Vec::new();
             for row in rows {
                 let mut row_map = serde_json::Map::new();
@@ -279,6 +337,7 @@ impl DbDriver for MySqlDriver {
 
             Ok(QueryResult {
                 columns,
+                column_types: Some(column_types),
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
@@ -290,6 +349,7 @@ impl DbDriver for MySqlDriver {
             let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
+                column_types: None,
                 rows: vec![],
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
@@ -345,6 +405,7 @@ impl DbDriver for MySqlDriver {
                     if rows.is_empty() {
                         Some(Ok(QueryResult {
                             columns: vec![],
+                            column_types: None,
                             rows: vec![],
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
@@ -356,6 +417,12 @@ impl DbDriver for MySqlDriver {
                             .columns()
                             .iter()
                             .map(|col| col.name().to_string())
+                            .collect();
+
+                        let column_types: Vec<String> = rows[0]
+                            .columns()
+                            .iter()
+                            .map(|col| col.type_info().name().to_string())
                             .collect();
 
                         let mut result_rows = Vec::new();
@@ -370,6 +437,7 @@ impl DbDriver for MySqlDriver {
 
                         Some(Ok(QueryResult {
                             columns,
+                            column_types: Some(column_types),
                             rows: result_rows,
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
@@ -391,6 +459,7 @@ impl DbDriver for MySqlDriver {
                     let rows_affected = res.rows_affected();
                     Some(Ok(QueryResult {
                         columns: vec![],
+                        column_types: None,
                         rows: vec![],
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -543,7 +612,7 @@ impl DbDriver for MySqlDriver {
             let extra: Option<String> = row.try_get("extra").ok().flatten();
 
             map.insert("name".into(), name.into());
-            map.insert("type".into(), col_type.into());
+            map.insert("type".into(), col_type.clone().into());
             map.insert("isNullable".into(), (nullable_raw == "YES").into());
             map.insert("isPrimaryKey".into(), (key_raw == "PRI").into());
             map.insert("defaultValue".into(), default_val.into());
@@ -552,6 +621,18 @@ impl DbDriver for MySqlDriver {
                 if e.contains("auto_increment") {
                     map.insert("isAutoIncrement".into(), true.into());
                 }
+            }
+            let enum_values = parse_mysql_enum_values(&col_type);
+            if !enum_values.is_empty() {
+                map.insert(
+                    "enumValues".into(),
+                    serde_json::Value::Array(
+                        enum_values
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
             }
             cols.push(serde_json::Value::Object(map));
         }
@@ -1084,6 +1165,72 @@ impl DataWriter for MySqlDriver {
             }
         }
     }
+
+    async fn add_column(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+        column_type: &str,
+    ) -> AppResult<()> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_mysql(s), quote_mysql(table))
+        } else {
+            quote_mysql(table)
+        };
+        let sql_type = match column_type {
+            "bigint" => "BIGINT",
+            "double" => "DOUBLE",
+            "boolean" => "TINYINT(1)",
+            "json" => "JSON",
+            _ => "TEXT",
+        };
+        let sql = format!(
+            "ALTER TABLE {} ADD COLUMN {} {}",
+            table_ref,
+            quote_mysql(column),
+            sql_type
+        );
+        self.execute(&sql).await?;
+        Ok(())
+    }
+
+    async fn drop_not_null(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+    ) -> AppResult<()> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_mysql(s), quote_mysql(table))
+        } else {
+            quote_mysql(table)
+        };
+
+        // MySQL/MariaDB requieren MODIFY con el tipo completo: se lee de
+        // information_schema para preservar el tipo y solo relajar NOT NULL.
+        let col_type = sqlx::query(
+            "SELECT column_type \
+             FROM information_schema.columns \
+             WHERE table_schema = IFNULL(?, DATABASE()) AND table_name = ? AND column_name = ?",
+        )
+        .bind(schema)
+        .bind(table)
+        .bind(column)
+        .fetch_optional(&self.pool)
+        .await?
+        .and_then(|r| r.try_get::<Option<String>, _>("column_type").ok().flatten())
+        .unwrap_or_else(|| "TEXT".to_string());
+
+        let sql = format!(
+            "ALTER TABLE {} MODIFY COLUMN {} {} NULL",
+            table_ref,
+            quote_mysql(column),
+            col_type
+        );
+        self.execute(&sql).await?;
+        Ok(())
+    }
 }
 
 impl MySqlDriver {
@@ -1097,27 +1244,18 @@ impl MySqlDriver {
     }
 
     fn decode_column(&self, row: &MySqlRow, index: usize) -> Value {
-        const DECODERS: &[Decoder] = &[
-            decode_string,
-            decode_i64,
-            decode_u8,
-            decode_u16,
-            decode_u32,
-            decode_u64,
-            decode_decimal,
-            decode_f64,
-            decode_bool,
-            decode_datetime_utc,
-            decode_datetime,
-            decode_date,
-            decode_time,
-            decode_bytes,
-        ];
-
-        for decoder in DECODERS {
+        for decoder in crate::db::common::DECODERS {
             if let Some(value) = decoder(row, index) {
                 return value;
             }
+        }
+
+        // Typed decoders failed. As a last resort let sqlx decode the value into a generic
+        // JSON value: this covers ENUM/SET/JSON and other types, and yields `null` for SQL NULL.
+        match row.try_get::<Option<serde_json::Value>, _>(index) {
+            Ok(Some(v)) => return v,
+            Ok(None) => return Value::Null,
+            Err(_) => {}
         }
 
         let column = &row.columns()[index];
@@ -1191,4 +1329,31 @@ impl crate::db::ScriptTransaction for MySqlScriptTransaction {
 /// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
 pub struct MySqlScriptTransaction {
     tx: sqlx::Transaction<'static, sqlx::MySql>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_mysql_enum_values;
+
+    #[test]
+    fn parses_enum_values() {
+        assert_eq!(
+            parse_mysql_enum_values("enum('active','inactive','pending')"),
+            vec!["active", "inactive", "pending"]
+        );
+    }
+
+    #[test]
+    fn parses_enum_values_with_escapes_and_commas() {
+        assert_eq!(
+            parse_mysql_enum_values(r#"enum('a,b','it\'s','c')"#),
+            vec!["a,b", "it's", "c"]
+        );
+    }
+
+    #[test]
+    fn non_enum_returns_empty() {
+        assert!(parse_mysql_enum_values("varchar(255)").is_empty());
+        assert!(parse_mysql_enum_values("bigint").is_empty());
+    }
 }

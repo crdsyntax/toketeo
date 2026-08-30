@@ -151,6 +151,7 @@ impl DbDriver for MockDriver {
                     .iter()
                     .filter_map(|c| c.get("name").and_then(|v| v.as_str()).map(String::from))
                     .collect(),
+                column_types: None,
                 rows: t.rows,
                 execution_time_ms: 1,
                 primary_keys: Some(vec!["id".to_string()]),
@@ -161,6 +162,7 @@ impl DbDriver for MockDriver {
         }
         Ok(QueryResult {
             columns: vec![],
+            column_types: None,
             rows: vec![],
             execution_time_ms: 0,
             primary_keys: None,

@@ -73,6 +73,7 @@ export type DbRow = Record<string, DbValue>;
 
 export interface QueryResult {
   columns: string[];
+  columnTypes?: string[];
   rows: DbRow[];
   executionTime: number;
   affectedRows?: number;
@@ -98,7 +99,21 @@ export interface ColumnResponse {
   isPrimaryKey: boolean;
   defaultValue?: string;
   comment?: string;
+  enumValues?: string[];
+  udtName?: string;
+  udtSchema?: string;
 }
+
+/**
+ * Valor de celda que representa una expresión SQL segura (p.ej. NOW()) en vez
+ * de un literal. El backend lo emite crudo solo para una allowlist estricta.
+ */
+export interface SqlExpressionValue {
+  __expr: string;
+}
+
+/** Valor aceptado por `updateCell`: un literal o una expresión SQL segura. */
+export type CellValue = DbValue | SqlExpressionValue;
 
 export interface TableResponse {
   name: string;
@@ -152,6 +167,20 @@ export interface ReferencedByKeyResponse {
   referencingColumn: string;
 }
 
+export interface TruncateTableOutcome {
+  table: string;
+  ok: boolean;
+  error?: string | null;
+  rowsAffected?: number | null;
+}
+
+export interface TruncateTablesResult {
+  order: string[];
+  statements: string[];
+  outcomes: TruncateTableOutcome[];
+  warnings: string[];
+}
+
 export interface ConstraintResponse {
   name: string;
   type: string;
@@ -197,6 +226,14 @@ export interface Connection {
 }
 
 export type CreateConnectionDto = Omit<Connection, 'id' | 'createdAt' | 'updatedAt'>
+
+export interface DatabaseCredential {
+  connectionId: string
+  database: string
+  user: string
+  password?: string
+  authSource?: string
+}
 
 export interface DumpSelection {
   tables: string[]

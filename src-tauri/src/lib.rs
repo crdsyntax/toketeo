@@ -20,8 +20,12 @@ use tauri::Manager;
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                // Keep sqlx at `warn`: by default it logs every executed statement
+                // (query text + timings) at `info`, which floods the terminal during
+                // bulk operations like database restores. Warnings/errors are kept.
+                tracing_subscriber::EnvFilter::new("info,sqlx=warn")
+            }),
         )
         .init();
 
@@ -61,6 +65,72 @@ pub fn run() {
             let state = tauri::async_runtime::block_on(AppState::new(storage));
             let known_hosts = state.known_hosts.clone();
             let storage_arc = state.storage.clone();
+
+            // One-off cleanup + knowledge vector pipeline (startup only, not
+            // per chat turn): 1) purge polluted tool-result cases,
+            // 2) backfill embeddings for cases missing them (batches of 32),
+            // 3) load the whole embeddings table into the in-memory index.
+            let knowledge_storage = storage_arc.clone();
+            let knowledge_vectors = Arc::clone(&state.knowledge_vectors);
+            tauri::async_runtime::spawn(async move {
+                use crate::application::assistant::knowledge::{
+                    embeddings::{build_semantic_document, kind_of},
+                    EmbeddingProvider, KnowledgeEngine,
+                };
+                if let Ok(removed) = KnowledgeEngine::purge_tool_cases(&knowledge_storage).await {
+                    if removed > 0 {
+                        tracing::info!("Purged {removed} polluted tool-result knowledge cases");
+                    }
+                }
+
+                // Backfill embeddings for unindexed cases.
+                let configs = knowledge_storage
+                    .load_provider_configs()
+                    .await
+                    .unwrap_or_default();
+                let provider = configs.first().and_then(EmbeddingProvider::from_config);
+                if let Some(provider) = provider {
+                    loop {
+                        let Ok(pending) =
+                            knowledge_storage.list_knowledge_without_embedding(32).await
+                        else {
+                            break;
+                        };
+                        if pending.is_empty() {
+                            break;
+                        }
+                        let docs: Vec<String> = pending
+                            .iter()
+                            .map(build_semantic_document)
+                            .collect();
+                        if let Ok(vectors) = provider.embed(docs).await {
+                            for (case, vector) in pending.iter().zip(vectors) {
+                                let _ = knowledge_storage
+                                    .upsert_knowledge_embedding(
+                                        &case.id,
+                                        kind_of(case).as_str(),
+                                        &vector,
+                                    )
+                                    .await;
+                            }
+                        } else {
+                            tracing::info!("Embedding provider unavailable; skipping knowledge backfill");
+                            break;
+                        }
+                    }
+                }
+
+                // Load the full embedding table into the in-memory index.
+                match knowledge_storage.list_knowledge_embeddings().await {
+                    Ok(rows) => {
+                        let entries = rows.into_iter().map(|(id, kind, v)| {
+                            (id, crate::application::assistant::knowledge::embeddings::KnowledgeKind::parse(&kind), v)
+                        }).collect();
+                        knowledge_vectors.replace_all(entries);
+                    }
+                    Err(e) => tracing::warn!("Failed to load knowledge embeddings: {e}"),
+                }
+            });
 
             app.manage(state);
 
@@ -138,6 +208,7 @@ pub fn run() {
             commands::drop_foreign_key,
             commands::rename_foreign_key,
             commands::drop_constraint,
+            commands::truncate_tables,
             commands::switch_schema,
             commands::export_connection,
             commands::export_all_connections,
@@ -176,6 +247,9 @@ pub fn run() {
             commands::get_connection,
             commands::reveal_connection_secret,
             commands::delete_connection,
+            commands::get_database_credential,
+            commands::save_database_credential,
+            commands::delete_database_credential,
             commands::get_databases,
             commands::diagnose_connection,
             commands::switch_database,
@@ -258,12 +332,16 @@ pub fn run() {
             commands::assistant_list_knowledge,
             commands::assistant_toggle_knowledge_favorite,
             commands::assistant_record_case,
+            commands::assistant_record_error,
+            commands::assistant_knowledge_index_stats,
             commands::assistant_record_feedback,
             commands::assistant_get_preferences,
             commands::assistant_set_preference,
             commands::assistant_list_tools,
             commands::assistant_execute_tool,
             commands::assistant_get_recommendations,
+            commands::parse_sql_flow,
+            commands::get_sql_schema_flow_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

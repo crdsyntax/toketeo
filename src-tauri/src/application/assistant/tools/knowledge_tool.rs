@@ -83,7 +83,8 @@ impl AssistantTool for KnowledgeTool {
                         message: Some("'query' is required for search".to_string()),
                     });
                 }
-                let cases = KnowledgeEngine::search(&state.storage, query, engine, limit).await?;
+                let cases =
+                    KnowledgeEngine::search(&state.storage, query, Some(engine), limit).await?;
                 Ok(ToolResult {
                     ok: true,
                     data: Some(serde_json::json!({ "cases": cases })),
@@ -92,7 +93,10 @@ impl AssistantTool for KnowledgeTool {
                 })
             }
             "list" => {
-                let cases = state.storage.list_knowledge_all(engine, limit).await?;
+                let cases = state
+                    .storage
+                    .list_knowledge_all(Some(engine), limit)
+                    .await?;
                 Ok(ToolResult {
                     ok: true,
                     data: Some(serde_json::json!({ "cases": cases })),

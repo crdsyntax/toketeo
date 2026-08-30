@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, XCircle, SkipForward, Undo2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, XCircle, SkipForward, Undo2, X } from 'lucide-react';
 import type { ScriptReport, ScriptStatementResult } from '@/services/query.service';
 
 type Filter = 'all' | 'ok' | 'failed' | 'skipped';
@@ -24,7 +24,7 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
   const [filter, setFilter] = useState<Filter>('all');
   if (!report) return null;
 
-  const { ok, failed, skipped, total, rolledBack, results } = report;
+  const { ok, failed, skipped, total, rolledBack, pendingCommit, results } = report;
 
   const filtered = filter === 'all'
     ? results
@@ -58,6 +58,16 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
               <Undo2 className="w-4 h-4 text-red-500 shrink-0" />
               <p className="text-sm text-red-500">
                 The script was cancelled: all applied statements were rolled back.
+              </p>
+            </div>
+          )}
+          {pendingCommit && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+              <p className="text-sm text-amber-500">
+                This connection is in production: the script ran inside the transaction and was
+                NOT committed. Press <b>Commit</b> on the bottom bar to apply the changes, or{' '}
+                <b>Rollback</b> to discard them.
               </p>
             </div>
           )}

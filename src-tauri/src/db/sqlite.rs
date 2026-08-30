@@ -120,6 +120,7 @@ impl DbDriver for SqliteDriver {
 
         Ok(QueryResult {
             columns,
+            column_types: None,
             rows,
             execution_time_ms: start.elapsed().as_millis() as u64,
             primary_keys: None,
@@ -453,6 +454,28 @@ impl DataWriter for SqliteDriver {
             affected: total_affected,
             skipped: 0,
         })
+    }
+
+    async fn add_column(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+        _column_type: &str,
+    ) -> AppResult<()> {
+        let table_ref = if let Some(s) = schema {
+            format!("{}.{}", quote_sqlite(s), quote_sqlite(table))
+        } else {
+            quote_sqlite(table)
+        };
+        // SQLite es de tipado dinámico: la columna se agrega como TEXT genérico.
+        let sql = format!(
+            "ALTER TABLE {} ADD COLUMN {} TEXT",
+            table_ref,
+            quote_sqlite(column)
+        );
+        self.execute(&sql).await?;
+        Ok(())
     }
 }
 

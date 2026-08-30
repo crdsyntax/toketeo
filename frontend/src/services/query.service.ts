@@ -18,6 +18,7 @@ export interface ScriptReport {
   failed: number
   skipped: number
   rolledBack: boolean
+  pendingCommit: boolean
   results: ScriptStatementResult[]
 }
 

@@ -38,6 +38,15 @@ export interface AssistantTurn {
   source: string
   requiresConfirmation: boolean
   usage?: TokenUsage | null
+  /** UI side effect requested by the agent (export results, focus tab...). */
+  action?: AgentAction | null
+}
+
+export interface AgentAction {
+  type: 'export_tab_results' | 'focus_tab'
+  tabId: string
+  tabName?: string
+  format?: 'json' | 'csv'
 }
 
 export interface TokenUsage {

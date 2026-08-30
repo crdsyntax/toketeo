@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
-use sqlx::{postgres::PgPoolOptions, Column, PgPool, Row};
+use sqlx::{postgres::PgPoolOptions, Column, PgPool, Row, TypeInfo};
 use std::time::{Duration, Instant};
 
 pub(crate) fn quote_pg(id: &str) -> String {
@@ -108,6 +108,7 @@ impl DbDriver for PostgresDriver {
             if rows.is_empty() {
                 return Ok(QueryResult {
                     columns: vec![],
+                    column_types: None,
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -121,6 +122,12 @@ impl DbDriver for PostgresDriver {
                 .columns()
                 .iter()
                 .map(|col| col.name().to_string())
+                .collect();
+
+            let column_types: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.type_info().name().to_string())
                 .collect();
 
             let result_rows = rows
@@ -147,6 +154,7 @@ impl DbDriver for PostgresDriver {
 
             Ok(QueryResult {
                 columns,
+                column_types: Some(column_types),
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys,
@@ -159,6 +167,7 @@ impl DbDriver for PostgresDriver {
             let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
+                column_types: None,
                 rows: vec![],
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
@@ -193,6 +202,7 @@ impl DbDriver for PostgresDriver {
             if rows.is_empty() {
                 return Ok(QueryResult {
                     columns: vec![],
+                    column_types: None,
                     rows: vec![],
                     execution_time_ms: start.elapsed().as_millis() as u64,
                     primary_keys: None,
@@ -205,6 +215,12 @@ impl DbDriver for PostgresDriver {
                 .columns()
                 .iter()
                 .map(|col| col.name().to_string())
+                .collect();
+
+            let column_types: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|col| col.type_info().name().to_string())
                 .collect();
 
             let result_rows = rows
@@ -221,6 +237,7 @@ impl DbDriver for PostgresDriver {
 
             Ok(QueryResult {
                 columns,
+                column_types: Some(column_types),
                 rows: result_rows,
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
@@ -232,6 +249,7 @@ impl DbDriver for PostgresDriver {
             let rows_affected = result.rows_affected();
             Ok(QueryResult {
                 columns: vec![],
+                column_types: None,
                 rows: vec![],
                 execution_time_ms: start.elapsed().as_millis() as u64,
                 primary_keys: None,
@@ -250,26 +268,33 @@ impl DbDriver for PostgresDriver {
 
         // Guardar el search_path anterior para restaurarlo antes de devolver
         // la conexión al pool (evita contaminar el estado de otras consultas).
-        let previous_path: Option<String> = sqlx::query("SELECT current_setting('search_path')")
-            .fetch_one(&mut *conn)
-            .await
-            .ok()
-            .and_then(|r| r.try_get::<String, _>(0).ok());
+        // Si el esquema está vacío no tiene sentido hacer SET search_path y
+        // además produciría un identificador delimitado de longitud cero
+        // ("zero-length delimited identifier at or near """).
+        let schema = schema.trim();
+        let (previous_path, search_path_set) = if schema.is_empty() {
+            (None, false)
+        } else {
+            let previous_path: Option<String> =
+                sqlx::query("SELECT current_setting('search_path')")
+                    .fetch_one(&mut *conn)
+                    .await
+                    .ok()
+                    .and_then(|r| r.try_get::<String, _>(0).ok());
 
-        let set_result = conn
-            .execute(sqlx::query(&format!(
-                "SET search_path TO \"{}\"",
-                schema.replace('"', "\"\"")
-            )))
-            .await
-            .map_err(|e| {
-                AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
-            });
+            let set_result = conn
+                .execute(sqlx::query(&format!(
+                    "SET search_path TO \"{}\"",
+                    schema.replace('"', "\"\"")
+                )))
+                .await
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to set search_path to '{}': {}", schema, e))
+                });
 
-        if let Err(e) = set_result {
-            Self::restore_search_path(conn, previous_path.as_deref()).await;
-            return Err(e);
-        }
+            set_result?;
+            (previous_path, true)
+        };
 
         let start = Instant::now();
         let trimmed = query.trim().to_uppercase();
@@ -287,6 +312,7 @@ impl DbDriver for PostgresDriver {
                     if rows.is_empty() {
                         Some(Ok(QueryResult {
                             columns: vec![],
+                            column_types: None,
                             rows: vec![],
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
@@ -298,6 +324,12 @@ impl DbDriver for PostgresDriver {
                             .columns()
                             .iter()
                             .map(|col| col.name().to_string())
+                            .collect();
+
+                        let column_types: Vec<String> = rows[0]
+                            .columns()
+                            .iter()
+                            .map(|col| col.type_info().name().to_string())
                             .collect();
 
                         let result_rows = rows
@@ -314,6 +346,7 @@ impl DbDriver for PostgresDriver {
 
                         Some(Ok(QueryResult {
                             columns,
+                            column_types: Some(column_types),
                             rows: result_rows,
                             execution_time_ms: start.elapsed().as_millis() as u64,
                             primary_keys: None,
@@ -331,6 +364,7 @@ impl DbDriver for PostgresDriver {
                     let rows_affected = res.rows_affected();
                     Some(Ok(QueryResult {
                         columns: vec![],
+                        column_types: None,
                         rows: vec![],
                         execution_time_ms: start.elapsed().as_millis() as u64,
                         primary_keys: None,
@@ -342,7 +376,9 @@ impl DbDriver for PostgresDriver {
             }
         };
 
-        Self::restore_search_path(conn, previous_path.as_deref()).await;
+        if search_path_set {
+            Self::restore_search_path(conn, previous_path.as_deref()).await;
+        }
 
         match result {
             Some(Ok(qr)) => Ok(qr),
@@ -508,30 +544,36 @@ impl DbDriver for PostgresDriver {
         let rows = sqlx::query(
             r#"
             SELECT 
-                c.column_name as name,
-                c.data_type as type,
-                c.is_nullable = 'YES' as is_nullable,
-                c.column_default as default_value,
-                col_description(
-                    (quote_ident($2) || '.' || quote_ident($1))::regclass::oid, 
-                    c.ordinal_position
-                ) as comment,
+                a.attname AS name,
+                pg_catalog.format_type(a.atttypid, a.atttypmod) AS type,
+                NOT a.attnotnull AS is_nullable,
+                pg_get_expr(ad.adbin, ad.adrelid) AS default_value,
+                col_description(a.attrelid, a.attnum) AS comment,
                 EXISTS (
-                    SELECT 1 FROM pg_constraint pgc
-                    JOIN pg_attribute pga ON pga.attrelid = pgc.conrelid 
-                                         AND pga.attnum = ANY(pgc.conkey)
-                    WHERE pgc.contype = 'p' 
-                      AND pgc.conrelid = (
-                          SELECT oid FROM pg_class 
-                          WHERE relname = $1 
-                            AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)
-                      )
-                      AND pga.attname = c.column_name
-                ) as is_pk
-            FROM information_schema.columns c
-            WHERE c.table_name = $1 
-              AND c.table_schema = $2
-            ORDER BY c.ordinal_position
+                    SELECT 1
+                    FROM pg_catalog.pg_index pi
+                    WHERE pi.indrelid = a.attrelid
+                      AND pi.indisprimary
+                      AND a.attnum = ANY(pi.indkey)
+                ) AS is_pk,
+                t.typname AS udt_name,
+                tn.nspname AS udt_schema,
+                (
+                    SELECT COALESCE(json_agg(e.enumlabel ORDER BY e.enumsortorder), '[]'::json)
+                    FROM pg_catalog.pg_enum e
+                    WHERE e.enumtypid = t.oid
+                ) AS enum_values
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+            LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid = t.typnamespace
+            LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+            WHERE c.relname = $1
+              AND n.nspname = $2
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY a.attnum
             "#,
         )
         .bind(table)
@@ -556,6 +598,21 @@ impl DbDriver for PostgresDriver {
             map.insert(
                 "comment".into(),
                 row.get::<Option<String>, _>("comment").into(),
+            );
+            map.insert(
+                "udtName".into(),
+                row.get::<Option<String>, _>("udt_name").into(),
+            );
+            map.insert(
+                "udtSchema".into(),
+                row.get::<Option<String>, _>("udt_schema").into(),
+            );
+            map.insert(
+                "enumValues".into(),
+                row.try_get::<Option<serde_json::Value>, _>("enum_values")
+                    .ok()
+                    .flatten()
+                    .unwrap_or(serde_json::Value::Array(vec![])),
             );
             cols.push(serde_json::Value::Object(map));
         }
@@ -833,7 +890,7 @@ impl DataReader for PostgresDriver {
         last_key: Option<serde_json::Value>,
         batch_size: usize,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -916,7 +973,29 @@ impl DataReader for PostgresDriver {
     }
 
     async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
-        let table_ref = if let Some(s) = schema {
+        let schema_name = schema.filter(|s| !s.is_empty()).unwrap_or("public");
+
+        // Estimación rápida vía pg_class para tablas grandes: evita el
+        // `COUNT(*)` (full scan) que bloquea el inicio del sync y el primer
+        // evento de progreso. Exacto solo por debajo del umbral.
+        if let Ok(row) = sqlx::query(
+            "SELECT GREATEST(c.reltuples, 0)::bigint AS est \
+             FROM pg_class c \
+             JOIN pg_namespace n ON c.relnamespace = n.oid \
+             WHERE n.nspname = $1 AND c.relname = $2",
+        )
+        .bind(schema_name)
+        .bind(table)
+        .fetch_one(&self.pool)
+        .await
+        {
+            let est: i64 = row.get("est");
+            if est >= COUNT_ESTIMATE_THRESHOLD {
+                return Ok(est as u64);
+            }
+        }
+
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -929,6 +1008,10 @@ impl DataReader for PostgresDriver {
         Ok(row.get::<i64, _>("cnt") as u64)
     }
 }
+
+/// Tablas con al menos este número estimado de filas usan `reltuples` de
+/// `pg_class` en vez de `COUNT(*)` para el conteo de progreso.
+const COUNT_ESTIMATE_THRESHOLD: i64 = 1_000_000;
 
 #[async_trait]
 impl DataWriter for PostgresDriver {
@@ -944,7 +1027,7 @@ impl DataWriter for PostgresDriver {
             return Ok(UpsertResult::default());
         }
 
-        let table_ref = if let Some(s) = schema {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
             format!("{}.{}", quote_pg(s), quote_pg(table))
         } else {
             quote_pg(table)
@@ -967,11 +1050,7 @@ impl DataWriter for PostgresDriver {
                 .map(|col| {
                     let p = format!("${}", param_idx);
                     param_idx += 1;
-                    let cast = col_types
-                        .get(col.as_str())
-                        .and_then(|t| Self::pg_type_cast(t))
-                        .map(|c| format!("::{}", c))
-                        .unwrap_or_default();
+                    let cast = col_types.get(col.as_str()).cloned().unwrap_or_default();
                     format!("{}{}", p, cast)
                 })
                 .collect();
@@ -1009,6 +1088,55 @@ impl DataWriter for PostgresDriver {
             skipped: 0,
         })
     }
+
+    async fn add_column(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+        column_type: &str,
+    ) -> AppResult<()> {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
+            format!("{}.{}", quote_pg(s), quote_pg(table))
+        } else {
+            quote_pg(table)
+        };
+        let sql_type = match column_type {
+            "bigint" => "BIGINT",
+            "double" => "DOUBLE PRECISION",
+            "boolean" => "BOOLEAN",
+            "json" => "JSONB",
+            _ => "TEXT",
+        };
+        let sql = format!(
+            "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {}",
+            table_ref,
+            quote_pg(column),
+            sql_type
+        );
+        self.execute(&sql).await?;
+        Ok(())
+    }
+
+    async fn drop_not_null(
+        &self,
+        table: &str,
+        schema: Option<&str>,
+        column: &str,
+    ) -> AppResult<()> {
+        let table_ref = if let Some(s) = schema.filter(|s| !s.is_empty()) {
+            format!("{}.{}", quote_pg(s), quote_pg(table))
+        } else {
+            quote_pg(table)
+        };
+        let sql = format!(
+            "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL",
+            table_ref,
+            quote_pg(column)
+        );
+        self.execute(&sql).await?;
+        Ok(())
+    }
 }
 
 // ==================== MÉTODOS AUXILIARES ====================
@@ -1027,6 +1155,7 @@ impl PostgresDriver {
 
     fn decode_column(&self, row: &sqlx::postgres::PgRow, i: usize) -> serde_json::Value {
         use sqlx::TypeInfo;
+        use sqlx::ValueRef;
         let col = &row.columns()[i];
         let type_name = col.type_info().name();
 
@@ -1049,7 +1178,7 @@ impl PostgresDriver {
                 .flatten()
                 .map(|v| serde_json::Value::Number(v.into()))
                 .unwrap_or(serde_json::Value::Null),
-            "FLOAT4" | "FLOAT8" | "NUMERIC" => row
+            "FLOAT4" | "FLOAT8" => row
                 .try_get::<Option<f64>, _>(i)
                 .ok()
                 .flatten()
@@ -1058,6 +1187,24 @@ impl PostgresDriver {
                         serde_json::Number::from_f64(v)
                             .unwrap_or_else(|| serde_json::Number::from(0)),
                     )
+                })
+                .unwrap_or(serde_json::Value::Null),
+            // NUMERIC/DECIMAL(p,s): sqlx no lo decodifica como f64; se usa
+            // rust_decimal (conserva precisión) y se emite como número cuando
+            // encaja en f64, o como string para precisiones grandes.
+            "NUMERIC" => row
+                .try_get::<Option<rust_decimal::Decimal>, _>(i)
+                .ok()
+                .flatten()
+                .map(|v| {
+                    let s = v.to_string();
+                    if let Ok(f) = s.parse::<f64>() {
+                        serde_json::Number::from_f64(f)
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::String(s))
+                    } else {
+                        serde_json::Value::String(s)
+                    }
                 })
                 .unwrap_or(serde_json::Value::Null),
             "BOOL" => row
@@ -1102,24 +1249,50 @@ impl PostgresDriver {
                 .flatten()
                 .map(|v| serde_json::Value::String(v.to_string()))
                 .unwrap_or(serde_json::Value::Null),
-            _ => row
-                .try_get::<Option<String>, _>(i)
-                .ok()
-                .flatten()
-                .map(|s| serde_json::Value::String(sanitize_string(&s)))
-                .unwrap_or(serde_json::Value::Null),
+            _ => {
+                // Tipos custom: pgvector `vector`/`halfvec`/`sparsevec` llegan
+                // en formato binario (int32 dim + float32) o texto `[...]`;
+                // enums/dominios llegan en texto.
+                let is_vector = type_name.eq_ignore_ascii_case("vector")
+                    || type_name.eq_ignore_ascii_case("halfvec")
+                    || type_name.eq_ignore_ascii_case("sparsevec");
+
+                // Fast path: tipos de la familia texto.
+                if let Ok(Some(s)) = row.try_get::<Option<String>, _>(i) {
+                    serde_json::Value::String(sanitize_string(&s))
+                } else if let Ok(raw) = row.try_get_raw(i) {
+                    if raw.is_null() {
+                        serde_json::Value::Null
+                    } else if let Ok(bytes) = raw.as_bytes() {
+                        if is_vector {
+                            decode_vector_bytes(bytes)
+                        } else {
+                            serde_json::Value::String(sanitize_string(&String::from_utf8_lossy(
+                                bytes,
+                            )))
+                        }
+                    } else {
+                        serde_json::Value::Null
+                    }
+                } else {
+                    serde_json::Value::Null
+                }
+            }
         }
     }
 
     /// Query the target table's column types from information_schema.
-    /// Returns a map of column_name -> data_type (lowercase).
+    /// Returns a map of column_name -> SQL cast suffix for the upsert
+    /// placeholders (e.g. `::text`, `::"public"."status_enum"`, or empty).
+    /// USER-DEFINED (enum) columns get a fully-qualified cast so text values
+    /// binded from the source are converted to the enum type server-side.
     async fn fetch_column_types(
         &self,
         table: &str,
         schema: &str,
     ) -> std::collections::HashMap<String, String> {
         let rows = sqlx::query(
-            r#"SELECT column_name, data_type
+            r#"SELECT column_name, data_type, udt_schema, udt_name
                FROM information_schema.columns
                WHERE table_name = $1 AND table_schema = $2"#,
         )
@@ -1134,14 +1307,41 @@ impl PostgresDriver {
                 .filter_map(|r| {
                     let name: String = r.try_get("column_name").ok()?;
                     let ty: String = r.try_get("data_type").ok()?;
-                    Some((name, ty))
+                    let udt_schema: Option<String> = r.try_get("udt_schema").ok();
+                    let udt_name: Option<String> = r.try_get("udt_name").ok();
+                    Some((
+                        name,
+                        Self::pg_column_cast(&ty, udt_schema.as_deref(), udt_name.as_deref()),
+                    ))
                 })
                 .collect(),
             Err(_) => std::collections::HashMap::new(),
         }
     }
 
-    /// Map information_schema.columns.data_type to a PostgreSQL type cast name.
+    /// Sufijo de cast para un parámetro de upsert según la columna del target.
+    /// Tipos built-in → cast simple; USER-DEFINED (enums) → cast al tipo con su
+    /// esquema, de modo que un texto proveniente del source se inserte en una
+    /// columna enum sin error `... is of type X but expression is of type text`.
+    fn pg_column_cast(data_type: &str, udt_schema: Option<&str>, udt_name: Option<&str>) -> String {
+        if let Some(c) = Self::pg_type_cast(data_type) {
+            return format!("::{c}");
+        }
+        if data_type.eq_ignore_ascii_case("USER-DEFINED") {
+            if let (Some(s), Some(n)) = (udt_schema, udt_name) {
+                if !n.is_empty() {
+                    let s = s.replace('"', "\"\"");
+                    let n = n.replace('"', "\"\"");
+                    return format!("::\"{s}\".\"{n}\"");
+                }
+            }
+        }
+        String::new()
+    }
+
+    /// Map information_schema.columns.data_type to a PostgreSQL type cast name
+    /// for built-in types. USER-DEFINED (enum/composite) types are handled by
+    /// `pg_column_cast` using the UDT schema/name.
     fn pg_type_cast(data_type: &str) -> Option<&'static str> {
         match data_type {
             "smallint" => Some("smallint"),
@@ -1421,6 +1621,41 @@ fn sanitize_string(s: &str) -> String {
     }
 }
 
+/// Decodifica un valor pgvector (`vector`, `halfvec`, `sparsevec`) para mostrar.
+/// - Formato texto: `[0.1, 0.2, ...]` → se devuelve tal cual.
+/// - Formato binario (int32 dimensión + dim × float32 LE, endianness poco/común):
+///   se parsea a `[f1, f2, ...]`.
+fn decode_vector_bytes(bytes: &[u8]) -> serde_json::Value {
+    if bytes.first() == Some(&b'[') {
+        return serde_json::Value::String(sanitize_string(&String::from_utf8_lossy(bytes)));
+    }
+    if bytes.len() >= 4 {
+        let le = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let be = i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        for dim_candidate in [le, be] {
+            if dim_candidate > 0 && dim_candidate <= 100_000 {
+                let dim = dim_candidate as usize;
+                if bytes.len() == 4 + dim.saturating_mul(4) {
+                    let floats: Vec<String> = (0..dim)
+                        .map(|k| {
+                            let off = 4 + k * 4;
+                            let f = f32::from_le_bytes([
+                                bytes[off],
+                                bytes[off + 1],
+                                bytes[off + 2],
+                                bytes[off + 3],
+                            ]);
+                            format!("{f}")
+                        })
+                        .collect();
+                    return serde_json::Value::String(format!("[{}]", floats.join(", ")));
+                }
+            }
+        }
+    }
+    serde_json::Value::String(sanitize_string(&String::from_utf8_lossy(bytes)))
+}
+
 /// Recursively strip null bytes (0x00) from all string values and keys
 /// inside a serde_json::Value tree. This prevents null bytes from reaching
 /// PostgreSQL where they cause UTF-8 encoding errors, especially in JSONB columns.
@@ -1546,5 +1781,113 @@ impl crate::db::ScriptTransaction for PostgresScriptTransaction {
         self.tx.rollback().await.map_err(|e| {
             AppError::Database(format!("Failed to rollback script transaction: {}", e))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PostgresDriver;
+
+    #[test]
+    fn pg_column_cast_builtin_types() {
+        assert_eq!(
+            PostgresDriver::pg_column_cast("text", Some("public"), Some("_text")),
+            "::text"
+        );
+        assert_eq!(
+            PostgresDriver::pg_column_cast("integer", Some("public"), Some("_int4")),
+            "::integer"
+        );
+        assert_eq!(
+            PostgresDriver::pg_column_cast("jsonb", Some("public"), Some("_jsonb")),
+            "::jsonb"
+        );
+    }
+
+    #[test]
+    fn pg_column_cast_enum_gets_qualified_udt() {
+        assert_eq!(
+            PostgresDriver::pg_column_cast(
+                "USER-DEFINED",
+                Some("public"),
+                Some("merchant_verification_status_enum"),
+            ),
+            "::\"public\".\"merchant_verification_status_enum\""
+        );
+    }
+
+    #[test]
+    fn pg_column_cast_enum_in_custom_schema() {
+        assert_eq!(
+            PostgresDriver::pg_column_cast("USER-DEFINED", Some("app"), Some("role_enum")),
+            "::\"app\".\"role_enum\""
+        );
+    }
+
+    #[test]
+    fn pg_column_cast_escapes_quotes_in_udt_names() {
+        assert_eq!(
+            PostgresDriver::pg_column_cast(
+                "USER-DEFINED",
+                Some("my\"schema"),
+                Some("status\"enum")
+            ),
+            "::\"my\"\"schema\".\"status\"\"enum\""
+        );
+    }
+
+    #[test]
+    fn pg_column_cast_unknown_returns_empty() {
+        assert_eq!(
+            PostgresDriver::pg_column_cast("USER-DEFINED", None, None),
+            ""
+        );
+        assert_eq!(
+            PostgresDriver::pg_column_cast("USER-DEFINED", Some("s"), None),
+            ""
+        );
+        assert_eq!(PostgresDriver::pg_column_cast("weird", None, None), "");
+    }
+
+    #[test]
+    fn decode_vector_text_format() {
+        assert_eq!(
+            super::decode_vector_bytes(b"[0.1,0.2,0.3]"),
+            serde_json::json!("[0.1,0.2,0.3]")
+        );
+    }
+
+    #[test]
+    fn decode_vector_binary_little_endian() {
+        // dim = 2 (LE), floats 1.5 y -2.25 (f32 LE)
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&2i32.to_le_bytes());
+        bytes.extend_from_slice(&1.5f32.to_le_bytes());
+        bytes.extend_from_slice(&(-2.25f32).to_le_bytes());
+        assert_eq!(
+            super::decode_vector_bytes(&bytes),
+            serde_json::json!("[1.5, -2.25]")
+        );
+    }
+
+    #[test]
+    fn decode_vector_binary_big_endian_dimension() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&2i32.to_be_bytes());
+        bytes.extend_from_slice(&1.0f32.to_le_bytes());
+        bytes.extend_from_slice(&2.0f32.to_le_bytes());
+        assert_eq!(
+            super::decode_vector_bytes(&bytes),
+            serde_json::json!("[1, 2]")
+        );
+    }
+
+    #[test]
+    fn decode_vector_invalid_bytes_falls_back_to_lossy() {
+        let garbage = [0xff, 0x01, 0x02, 0x03, 0x04];
+        assert_eq!(
+            super::decode_vector_bytes(&garbage),
+            serde_json::json!(String::from_utf8_lossy(&garbage).into_owned())
+        );
     }
 }

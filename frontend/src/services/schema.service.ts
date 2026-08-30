@@ -12,6 +12,8 @@ import type {
   DumpObjects,
   SchemaDiagramData,
   IntegrityResult,
+  TruncateTablesResult,
+  DatabaseCredential,
 } from '@/types/database'
 import type { QueryHistoryEntry } from '@/store/useAppStore'
 
@@ -32,6 +34,15 @@ export const schemaService = {
   },
   switchDatabase: async (id: string, newDb: string) => {
     return await tauriApi.invoke<void>('switch_database', { id, newDb })
+  },
+  getDatabaseCredential: async (id: string, database: string): Promise<DatabaseCredential | null> => {
+    return await tauriApi.invoke<DatabaseCredential | null>('get_database_credential', { id, database })
+  },
+  saveDatabaseCredential: async (id: string, database: string, user: string, password: string, authSource: string): Promise<void> => {
+    return await tauriApi.invoke<void>('save_database_credential', { id, database, user, password, authSource })
+  },
+  deleteDatabaseCredential: async (id: string, database: string): Promise<void> => {
+    return await tauriApi.invoke<void>('delete_database_credential', { id, database })
   },
   getSchemas: async (id: string) => {
     return await tauriApi.invoke<string[]>('get_schemas', { id })
@@ -100,10 +111,14 @@ export const schemaService = {
     return await tauriApi.invoke<ReferencedByKeyResponse[]>('get_referenced_by_keys', { id, table, schema })
   },
 
-  generateSafeDeleteSql: async (id: string, table: string, schema?: string) => {
+  truncateTables: async (id: string, schema: string | undefined, tables: string[]): Promise<TruncateTablesResult> => {
+    return await tauriApi.invoke<TruncateTablesResult>('truncate_tables', { id, schema, tables })
+  },
+
+  generateSafeDeleteSql: async (id: string, table: string, schema?: string, whereClause?: string) => {
     return await tauriApi.invoke<string>('generate_safe_delete_sql', {
       id,
-      input: { table, schema },
+      input: { table, schema, whereClause },
     })
   },
 

@@ -24,5 +24,6 @@ pub mod schema_tool;
 pub mod sync_tool;
 pub mod tool_engine;
 pub mod transaction_tool;
+pub mod workspace_tool;
 
 pub use tool_engine::{AssistantTool, SafetyClassifier, ToolEngine};

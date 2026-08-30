@@ -71,6 +71,12 @@ impl Storage {
         .execute(&pool)
         .await?;
 
+        // Migration: attribute each entry to who ran it ('user' | 'assistant' | 'monitor').
+        let _ =
+            sqlx::query("ALTER TABLE audit_logs ADD COLUMN origin TEXT NOT NULL DEFAULT 'user'")
+                .execute(&pool)
+                .await;
+
         // Migration: Add environment column if it doesn't exist
         let _ = sqlx::query(
             "ALTER TABLE connections ADD COLUMN environment TEXT NOT NULL DEFAULT 'local'",
@@ -322,6 +328,20 @@ impl Storage {
         .execute(&pool)
         .await?;
 
+        // Semantic embeddings for knowledge cases, kept conceptually separate
+        // from the relational table. `kind` distinguishes document shapes
+        // ('qa' | 'error'); `embedding` is little-endian float32.
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS assistant_knowledge_embeddings (
+                knowledge_id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                dim INTEGER NOT NULL,
+                embedding BLOB NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS assistant_preferences (
                 key TEXT PRIMARY KEY,
@@ -411,6 +431,21 @@ impl Storage {
             .execute(&pool)
             .await;
 
+        // Per-database credentials (MongoDB: each db may have its own auth)
+        let _ = sqlx::query(
+            "CREATE TABLE IF NOT EXISTS connection_database_credentials (
+                connection_id TEXT NOT NULL,
+                database TEXT NOT NULL,
+                user TEXT NOT NULL DEFAULT '',
+                password_enc BLOB,
+                password_nonce BLOB,
+                auth_source TEXT,
+                PRIMARY KEY (connection_id, database)
+            )",
+        )
+        .execute(&pool)
+        .await;
+
         Ok(Self {
             pool,
             master_key: RwLock::new(None),
@@ -427,8 +462,8 @@ impl Storage {
 
     pub async fn save_audit_log(&self, entry: AuditEntry) -> AppResult<()> {
         sqlx::query(
-            "INSERT INTO audit_logs (connection_id, query, timestamp, execution_time_ms, status, error)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO audit_logs (connection_id, query, timestamp, execution_time_ms, status, error, origin)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&entry.connection_id)
         .bind(&entry.query)
@@ -436,6 +471,7 @@ impl Storage {
         .bind(entry.execution_time_ms as i64)
         .bind(&entry.status)
         .bind(&entry.error)
+        .bind(&entry.origin)
         .execute(&self.pool)
         .await?;
 
@@ -472,6 +508,11 @@ impl Storage {
                 execution_time_ms: row.get::<i64, _>("execution_time_ms") as u64,
                 status: row.get("status"),
                 error: row.get("error"),
+                origin: row
+                    .try_get::<Option<String>, _>("origin")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "user".to_string()),
             });
         }
         Ok(logs)
@@ -755,6 +796,10 @@ impl Storage {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        sqlx::query("DELETE FROM connection_database_credentials WHERE connection_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -768,6 +813,82 @@ impl Storage {
         .bind(&config.ssh_enc)
         .bind(&config.ssh_nonce)
         .bind(&id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_database_credential(
+        &self,
+        connection_id: &str,
+        database: &str,
+    ) -> AppResult<Option<crate::models::DatabaseCredential>> {
+        let row = sqlx::query(
+            "SELECT connection_id, database, user, password_enc, password_nonce, auth_source
+             FROM connection_database_credentials
+             WHERE connection_id = ? AND database = ?",
+        )
+        .bind(connection_id)
+        .bind(database)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| crate::models::DatabaseCredential {
+            connection_id: r
+                .get::<String, _>("connection_id")
+                .parse()
+                .unwrap_or_else(|_| uuid::Uuid::nil()),
+            database: r.get::<String, _>("database"),
+            user: r.get::<String, _>("user"),
+            password: None,
+            auth_source: r
+                .try_get::<Option<String>, _>("auth_source")
+                .unwrap_or(None),
+            password_enc: r
+                .try_get::<Option<Vec<u8>>, _>("password_enc")
+                .unwrap_or(None),
+            password_nonce: r
+                .try_get::<Option<Vec<u8>>, _>("password_nonce")
+                .unwrap_or(None),
+        }))
+    }
+
+    pub async fn save_database_credential(
+        &self,
+        cred: &crate::models::DatabaseCredential,
+    ) -> AppResult<()> {
+        let id = cred.connection_id.to_string();
+        sqlx::query(
+            "INSERT INTO connection_database_credentials
+                (connection_id, database, user, password_enc, password_nonce, auth_source)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(connection_id, database) DO UPDATE SET
+                user = excluded.user,
+                password_enc = excluded.password_enc,
+                password_nonce = excluded.password_nonce,
+                auth_source = excluded.auth_source",
+        )
+        .bind(id)
+        .bind(&cred.database)
+        .bind(&cred.user)
+        .bind(&cred.password_enc)
+        .bind(&cred.password_nonce)
+        .bind(&cred.auth_source)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_database_credential(
+        &self,
+        connection_id: &str,
+        database: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            "DELETE FROM connection_database_credentials WHERE connection_id = ? AND database = ?",
+        )
+        .bind(connection_id)
+        .bind(database)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -1886,23 +2007,82 @@ impl Storage {
     pub async fn search_knowledge(
         &self,
         query: &str,
-        engine: &str,
+        engine: Option<&str>,
         limit: i64,
     ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
         let pattern = format!("%{}%", query);
-        let rows = sqlx::query(
+        let mut sql = String::from(
             "SELECT id, question, sql_text, engine, rating, used_count, favorite
              FROM assistant_knowledge
-             WHERE engine = ? AND (question LIKE ? OR sql_text LIKE ?)
-             ORDER BY favorite DESC, used_count DESC, created_at DESC
-             LIMIT ?",
-        )
-        .bind(engine)
-        .bind(&pattern)
-        .bind(&pattern)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
+             WHERE (question LIKE ? OR sql_text LIKE ?)",
+        );
+        if engine.is_some() {
+            sql.push_str(" AND engine = ?");
+        }
+        sql.push_str(" ORDER BY favorite DESC, used_count DESC, created_at DESC LIMIT ?");
+
+        let mut q = sqlx::query(&sql).bind(&pattern).bind(&pattern);
+        if let Some(e) = engine {
+            q = q.bind(e);
+        }
+        q = q.bind(limit);
+        let rows = q.fetch_all(&self.pool).await?;
+
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::KnowledgeCase {
+                id: row.get("id"),
+                question: row.get("question"),
+                sql_text: row.get("sql_text"),
+                engine: row.get("engine"),
+                rating: row.get("rating"),
+                used_count: row.get("used_count"),
+                favorite: row
+                    .get::<Option<i64>, _>("favorite")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+            })
+            .collect())
+    }
+
+    /// Candidate fetch for hybrid retrieval: LIKE-matches the significant
+    /// words of the user's question against question/SQL text. Optionally
+    /// restricted to one engine tag (e.g. "error").
+    pub async fn search_knowledge_by_words(
+        &self,
+        words: &[String],
+        engine: Option<&str>,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
+        if words.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut sql = String::from(
+            "SELECT id, question, sql_text, engine, rating, used_count, favorite
+             FROM assistant_knowledge WHERE (",
+        );
+        for i in 0..words.len() {
+            if i > 0 {
+                sql.push_str(" OR ");
+            }
+            sql.push_str("(question LIKE ? OR sql_text LIKE ?)");
+        }
+        sql.push(')');
+        if engine.is_some() {
+            sql.push_str(" AND engine = ?");
+        }
+        sql.push_str(" ORDER BY favorite DESC, used_count DESC, created_at DESC LIMIT ?");
+
+        let patterns: Vec<String> = words.iter().map(|w| format!("%{w}%")).collect();
+        let mut q = sqlx::query(&sql);
+        for p in &patterns {
+            q = q.bind(p).bind(p);
+        }
+        if let Some(e) = engine {
+            q = q.bind(e);
+        }
+        q = q.bind(limit);
+        let rows = q.fetch_all(&self.pool).await?;
 
         Ok(rows
             .iter()
@@ -1923,20 +2103,24 @@ impl Storage {
 
     pub async fn list_knowledge_all(
         &self,
-        engine: &str,
+        engine: Option<&str>,
         limit: i64,
     ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
-        let rows = sqlx::query(
+        let mut sql = String::from(
             "SELECT id, question, sql_text, engine, rating, used_count, favorite
-             FROM assistant_knowledge
-             WHERE engine = ?
-             ORDER BY favorite DESC, used_count DESC, created_at DESC
-             LIMIT ?",
-        )
-        .bind(engine)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
+             FROM assistant_knowledge",
+        );
+        if engine.is_some() {
+            sql.push_str(" WHERE engine = ?");
+        }
+        sql.push_str(" ORDER BY favorite DESC, used_count DESC, created_at DESC LIMIT ?");
+
+        let mut q = sqlx::query(&sql);
+        if let Some(e) = engine {
+            q = q.bind(e);
+        }
+        q = q.bind(limit);
+        let rows = q.fetch_all(&self.pool).await?;
 
         Ok(rows
             .iter()
@@ -2038,12 +2222,177 @@ impl Storage {
         Ok(())
     }
 
+    /// Fetch a single knowledge case by id.
+    pub async fn get_knowledge_case(
+        &self,
+        id: &str,
+    ) -> AppResult<Option<crate::models::assistant::KnowledgeCase>> {
+        let row = sqlx::query(
+            "SELECT id, question, sql_text, engine, rating, used_count, favorite
+             FROM assistant_knowledge WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|row| crate::models::assistant::KnowledgeCase {
+            id: row.get("id"),
+            question: row.get("question"),
+            sql_text: row.get("sql_text"),
+            engine: row.get("engine"),
+            rating: row.get("rating"),
+            used_count: row.get("used_count"),
+            favorite: row
+                .get::<Option<i64>, _>("favorite")
+                .map(|v| v != 0)
+                .unwrap_or(false),
+        }))
+    }
+
+    /// (total_cases, indexed_cases) for the knowledge library UI.
+    pub async fn knowledge_index_stats(&self) -> AppResult<(i64, i64)> {
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assistant_knowledge")
+            .fetch_one(&self.pool)
+            .await?;
+        let indexed: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM assistant_knowledge_embeddings")
+                .fetch_one(&self.pool)
+                .await?;
+        Ok((total, indexed))
+    }
+
     pub async fn delete_knowledge_case(&self, id: &str) -> AppResult<()> {
         sqlx::query("DELETE FROM assistant_knowledge WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
+        // Keep the vector side in sync with the relational side.
+        self.delete_knowledge_embedding(id).await?;
         Ok(())
+    }
+
+    // ── Assistant Knowledge Embeddings ──
+
+    /// Store (or replace) the semantic embedding of a knowledge case.
+    pub async fn upsert_knowledge_embedding(
+        &self,
+        knowledge_id: &str,
+        kind: &str,
+        embedding: &[f32],
+    ) -> AppResult<()> {
+        let bytes = f32_slice_to_le_bytes(embedding);
+        sqlx::query(
+            "INSERT OR REPLACE INTO assistant_knowledge_embeddings (knowledge_id, kind, dim, embedding)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(knowledge_id)
+        .bind(kind)
+        .bind(embedding.len() as i64)
+        .bind(&bytes[..])
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_knowledge_embedding(&self, knowledge_id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM assistant_knowledge_embeddings WHERE knowledge_id = ?")
+            .bind(knowledge_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Load every stored embedding as `(knowledge_id, kind, vector)`.
+    pub async fn list_knowledge_embeddings(&self) -> AppResult<Vec<(String, String, Vec<f32>)>> {
+        let rows = sqlx::query(
+            "SELECT knowledge_id, kind, dim, embedding FROM assistant_knowledge_embeddings",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let id: String = row.get("knowledge_id");
+                let kind: String = row.get("kind");
+                let dim: i64 = row.get("dim");
+                let blob: Vec<u8> = row.get("embedding");
+                let vector = le_bytes_to_f32_vec(&blob, dim as usize)?;
+                Some((id, kind, vector))
+            })
+            .collect())
+    }
+
+    /// Knowledge cases that do not have an embedding yet (for backfill).
+    pub async fn list_knowledge_without_embedding(
+        &self,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
+        let rows = sqlx::query(
+            "SELECT k.id, k.question, k.sql_text, k.engine, k.rating, k.used_count, k.favorite
+             FROM assistant_knowledge k
+             LEFT JOIN assistant_knowledge_embeddings e ON e.knowledge_id = k.id
+             WHERE e.knowledge_id IS NULL
+             ORDER BY k.used_count DESC, k.created_at DESC
+             LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::KnowledgeCase {
+                id: row.get("id"),
+                question: row.get("question"),
+                sql_text: row.get("sql_text"),
+                engine: row.get("engine"),
+                rating: row.get("rating"),
+                used_count: row.get("used_count"),
+                favorite: row
+                    .get::<Option<i64>, _>("favorite")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+            })
+            .collect())
+    }
+
+    /// Fetch knowledge cases by id (batch) for vector-hit hydration.
+    pub async fn get_knowledge_cases_by_ids(
+        &self,
+        ids: &[String],
+    ) -> AppResult<Vec<crate::models::assistant::KnowledgeCase>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut query = String::from(
+            "SELECT id, question, sql_text, engine, rating, used_count, favorite
+             FROM assistant_knowledge WHERE id IN (",
+        );
+        for i in 0..ids.len() {
+            if i > 0 {
+                query.push(',');
+            }
+            query.push('?');
+        }
+        query.push(')');
+        let mut q = sqlx::query(&query);
+        for id in ids {
+            q = q.bind(id);
+        }
+        let rows = q.fetch_all(&self.pool).await?;
+        Ok(rows
+            .iter()
+            .map(|row| crate::models::assistant::KnowledgeCase {
+                id: row.get("id"),
+                question: row.get("question"),
+                sql_text: row.get("sql_text"),
+                engine: row.get("engine"),
+                rating: row.get("rating"),
+                used_count: row.get("used_count"),
+                favorite: row
+                    .get::<Option<i64>, _>("favorite")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+            })
+            .collect())
     }
 
     // ── Assistant Preferences ──
@@ -2257,6 +2606,25 @@ fn row_to_sync_checkpoint(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncCheckpo
     })
 }
 
+/// Encode f32s as little-endian bytes for the embeddings BLOB column.
+fn f32_slice_to_le_bytes(values: &[f32]) -> Vec<u8> {
+    values.iter().flat_map(|v| v.to_le_bytes()).collect()
+}
+
+/// Decode little-endian float32 bytes into a vector. Returns `None` when the
+/// blob length does not match the declared dimension (corrupted row).
+fn le_bytes_to_f32_vec(bytes: &[u8], dim: usize) -> Option<Vec<f32>> {
+    if bytes.len() != dim * 4 {
+        return None;
+    }
+    Some(
+        bytes
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::Storage;
@@ -2370,5 +2738,55 @@ mod tests {
 
         let from_b = storage.load_assistant_messages("conn-b").await.unwrap();
         assert!(from_b.is_empty());
+    }
+
+    #[tokio::test]
+    async fn knowledge_embeddings_roundtrip() {
+        let storage = test_storage().await;
+        let case = crate::models::assistant::KnowledgeCase {
+            id: "k1".into(),
+            question: "reservas pendientes".into(),
+            sql_text: "SELECT 1".into(),
+            engine: "mysql".into(),
+            rating: "positive".into(),
+            used_count: 0,
+            favorite: false,
+        };
+        storage.save_knowledge_case(&case).await.unwrap();
+
+        // No embedding yet → appears in backfill list.
+        let pending = storage.list_knowledge_without_embedding(10).await.unwrap();
+        assert_eq!(pending.len(), 1);
+
+        storage
+            .upsert_knowledge_embedding("k1", "qa", &[0.1, 0.2, -0.3])
+            .await
+            .unwrap();
+
+        // Now indexed.
+        let pending = storage.list_knowledge_without_embedding(10).await.unwrap();
+        assert!(pending.is_empty());
+
+        let rows = storage.list_knowledge_embeddings().await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "k1");
+        assert_eq!(rows[0].1, "qa");
+        assert_eq!(rows[0].2, vec![0.1, 0.2, -0.3]);
+
+        // Batch hydration by ids.
+        let cases = storage
+            .get_knowledge_cases_by_ids(&["k1".to_string(), "missing".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(cases.len(), 1);
+        assert_eq!(cases[0].id, "k1");
+
+        // Deleting the case also removes its embedding (vector side stays in sync).
+        storage.delete_knowledge_case("k1").await.unwrap();
+        assert!(storage
+            .list_knowledge_embeddings()
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

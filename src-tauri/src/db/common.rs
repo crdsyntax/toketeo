@@ -47,17 +47,30 @@ pub fn decode_u64(row: &MySqlRow, index: usize) -> Option<Value> {
 }
 
 pub fn decode_decimal(row: &MySqlRow, index: usize) -> Option<Value> {
-    row.try_get::<Option<Decimal>, _>(index)
-        .ok()
-        .flatten()
-        .map(|v| Value::from(v.to_string()))
+    if let Ok(Some(v)) = row.try_get::<Option<Decimal>, _>(index) {
+        let s = v.to_string();
+        if let Ok(f) = s.parse::<f64>() {
+            return Some(
+                serde_json::Number::from_f64(f)
+                    .map(Value::Number)
+                    .unwrap_or(Value::String(s)),
+            );
+        }
+        return Some(Value::String(s));
+    }
+    if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(index) {
+        if let Some(num) = serde_json::Number::from_f64(v) {
+            return Some(Value::Number(num));
+        }
+    }
+    None
 }
 
 pub fn decode_f64(row: &MySqlRow, index: usize) -> Option<Value> {
     row.try_get::<Option<f64>, _>(index)
         .ok()
         .flatten()
-        .map(Value::from)
+        .and_then(|v| serde_json::Number::from_f64(v).map(Value::Number))
 }
 
 pub fn decode_bool(row: &MySqlRow, index: usize) -> Option<Value> {
@@ -75,25 +88,16 @@ pub fn decode_datetime_utc(row: &MySqlRow, index: usize) -> Option<Value> {
 }
 
 pub fn decode_datetime(row: &MySqlRow, index: usize) -> Option<Value> {
-    if let Ok(v) = row.try_get::<Option<chrono::NaiveDateTime>, _>(index) {
-        return Some(match v {
-            Some(d) => Value::from(d.format("%Y-%m-%d %H:%M:%S").to_string()),
-            None => Value::Null,
-        });
+    if let Ok(Some(d)) = row.try_get::<Option<chrono::NaiveDateTime>, _>(index) {
+        return Some(Value::from(d.format("%Y-%m-%d %H:%M:%S").to_string()));
     }
 
-    if let Ok(v) = row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(index) {
-        return Some(match v {
-            Some(d) => Value::from(d.to_rfc3339()),
-            None => Value::Null,
-        });
+    if let Ok(Some(d)) = row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(index) {
+        return Some(Value::from(d.to_rfc3339()));
     }
 
-    if let Ok(v) = row.try_get::<Option<chrono::NaiveDate>, _>(index) {
-        return Some(match v {
-            Some(d) => Value::from(d.to_string()),
-            None => Value::Null,
-        });
+    if let Ok(Some(d)) = row.try_get::<Option<chrono::NaiveDate>, _>(index) {
+        return Some(Value::from(d.format("%Y-%m-%d").to_string()));
     }
 
     None
@@ -133,3 +137,20 @@ pub fn decode_bytes(row: &MySqlRow, index: usize) -> Option<Value> {
         Err(_) => Value::from("<binary>"),
     })
 }
+
+pub const DECODERS: &[Decoder] = &[
+    decode_string,
+    decode_i64,
+    decode_u8,
+    decode_u16,
+    decode_u32,
+    decode_u64,
+    decode_decimal,
+    decode_f64,
+    decode_bool,
+    decode_datetime_utc,
+    decode_datetime,
+    decode_date,
+    decode_time,
+    decode_bytes,
+];

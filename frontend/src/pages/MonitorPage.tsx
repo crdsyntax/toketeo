@@ -5,6 +5,7 @@ import { connectionService } from '@/services/connection.service'
 import { monitorService, type InnoDbSection, type ProcessEntry, type InnoDbStatus } from '@/services/monitor.service'
 import { DatabaseType, type Connection } from '@/types/database'
 import { cn } from '@/lib/utils'
+import { toast } from 'react-hot-toast'
 import {
   Activity, AlertTriangle, Check, Copy, Database, Gauge, Loader2, Plug,
   RefreshCw, ShieldAlert, ShieldCheck, Skull, Terminal, XCircle,
@@ -383,7 +384,10 @@ export default function MonitorPage() {
       await connectionService.connect(c)
       setConnectedConnection(c.id)
     } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to connect to database'
       console.error('[monitor] auto-connect failed:', e)
+      useAppStore.getState().setConnectionError(c.id, message)
+      toast.error(`Monitor: ${message}`)
     }
   }, [connectedConnectionIds, setConnectedConnection])
 

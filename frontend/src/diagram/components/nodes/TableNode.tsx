@@ -15,10 +15,10 @@ type TableNodeType = Node<TableNodeData, 'table'>
 export const TableNode = memo(({ data }: NodeProps<TableNodeType>) => {
   return (
     <div className="bg-card border border-border rounded-lg shadow-md min-w-[220px] overflow-hidden group">
-      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-3 !border-2 !border-background" title="Arrastra para conectar" />
+      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-3 !border-2 !border-background" title="Drag to connect" />
       <div
         className="bg-primary/10 px-3 py-2 border-b border-border font-semibold text-sm text-primary flex items-center gap-2 cursor-grab"
-        title="Doble clic para editar"
+        title="Double click to edit"
       >
         <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
         <span className="truncate">{data.label}</span>
@@ -42,7 +42,7 @@ export const TableNode = memo(({ data }: NodeProps<TableNodeType>) => {
           </div>
         ))}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-3 !border-2 !border-background" title="Arrastra para conectar" />
+      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-3 !border-2 !border-background" title="Drag to connect" />
     </div>
   )
 })

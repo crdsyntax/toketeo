@@ -55,6 +55,12 @@ interface ResultsModalProps {
   clearResults: () => void;
   isInteracting: boolean;
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
+  selectedRowIndexes: Set<number>;
+  setSelectedRowIndexes: Dispatch<SetStateAction<Set<number>>>;
+  selectionAnchor: number | null;
+  setSelectionAnchor: Dispatch<SetStateAction<number | null>>;
+  isMongo?: boolean;
+  handleCopyCell?: (row: DbRow, column: string) => void;
 }
 
 export function ResultsModal({
@@ -76,9 +82,20 @@ export function ResultsModal({
   clearResults,
   isInteracting,
   setContextMenuSql,
+  selectedRowIndexes,
+  setSelectedRowIndexes,
+  selectionAnchor,
+  setSelectionAnchor,
+  isMongo = false,
+  handleCopyCell,
 }: ResultsModalProps) {
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>(isMongo ? 'json' : 'table');
+
+  const [prevIsMongo, setPrevIsMongo] = useState(isMongo);
+  if (isMongo !== prevIsMongo) {
+    setPrevIsMongo(isMongo);
+    if (isMongo) setViewMode('json');
+  }
 
   if (!isOpen || !activeTab?.results) return null;
 
@@ -251,10 +268,13 @@ export function ResultsModal({
               setEditingCell={setEditingCell}
               handleSave={handleSave}
               setContextMenuSql={setContextMenuSql}
-              selectedRowIndex={selectedRowIndex}
-              setSelectedRowIndex={setSelectedRowIndex}
+              selectedRowIndexes={selectedRowIndexes}
+              setSelectedRowIndexes={setSelectedRowIndexes}
+              selectionAnchor={selectionAnchor}
+              setSelectionAnchor={setSelectionAnchor}
               setShowExportMenu={() => {}}
               setShowLimitMenu={() => {}}
+              handleCopyCell={handleCopyCell}
             />
           )}
 

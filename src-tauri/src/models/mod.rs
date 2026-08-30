@@ -1,6 +1,7 @@
 pub mod assistant;
 pub mod compare;
 pub mod diagram;
+pub mod sql_flow;
 pub mod sync;
 
 use crate::db::DbType;
@@ -84,6 +85,38 @@ impl fmt::Debug for DbConnectionConfig {
             .field("max_lifetime", &self.max_lifetime)
             .field("keep_alive", &self.keep_alive)
             .field("metadata_cache_ttl", &self.metadata_cache_ttl)
+            .finish()
+    }
+}
+
+/// Per-database credentials override for a connection (currently used for
+/// MongoDB where each database may have its own user/password/authSource).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DatabaseCredential {
+    pub connection_id: Uuid,
+    pub database: String,
+    pub user: String,
+    #[serde(
+        serialize_with = "serialize_secret",
+        deserialize_with = "deserialize_secret"
+    )]
+    pub password: Option<SecretString>,
+    #[serde(rename = "authSource")]
+    pub auth_source: Option<String>,
+    #[serde(skip)]
+    pub password_enc: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub password_nonce: Option<Vec<u8>>,
+}
+
+impl fmt::Debug for DatabaseCredential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseCredential")
+            .field("connection_id", &self.connection_id)
+            .field("database", &self.database)
+            .field("user", &"***")
+            .field("password", &self.password)
+            .field("auth_source", &self.auth_source)
             .finish()
     }
 }
@@ -176,6 +209,10 @@ impl fmt::Debug for SshConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct QueryResult {
     pub columns: Vec<String>,
+    /// DB engine type names for each column (e.g. "int4", "varchar") when the
+    /// driver exposes them; used by the UI to render name + type headers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_types: Option<Vec<String>>,
     pub rows: Vec<serde_json::Value>,
     #[serde(rename = "executionTime")]
     pub execution_time_ms: u64,
@@ -214,11 +251,38 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
+/// Resultado de truncar un set de tablas respetando el orden impuesto por las
+/// claves foráneas (hijas antes que padres). `order` es el orden de ejecución,
+/// `statements` el SQL generado y `outcomes` el resultado por tabla.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncateTablesResult {
+    pub order: Vec<String>,
+    pub statements: Vec<String>,
+    pub outcomes: Vec<TruncateTableOutcome>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncateTableOutcome {
+    pub table: String,
+    pub ok: bool,
+    pub error: Option<String>,
+    pub rows_affected: Option<u64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeDeleteInput {
     pub table: String,
     pub schema: Option<String>,
+    /// Optional WHERE clause of the original DELETE (e.g. `id IN (252, 236)`).
+    /// When present, the safe delete script only removes the dependent rows
+    /// referencing the rows matched by this clause instead of wiping the
+    /// referencing tables entirely.
+    #[serde(default)]
+    pub where_clause: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

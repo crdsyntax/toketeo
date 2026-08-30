@@ -1,5 +1,6 @@
 import { Diff, ArrowRightLeft, Check, X } from 'lucide-react'
 import { formatCellValue } from '@/lib/formatCellValue'
+import { useEffect } from 'react'
 import type { DbValue } from '@/types/database'
 
 interface ReviewChangePanelProps {
@@ -19,6 +20,21 @@ interface ReviewChangePanelProps {
  */
 export function ReviewChangePanel({ column, prevValue, nextValue, onConfirm, onDiscard, position }: ReviewChangePanelProps) {
   const centered = !position
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onDiscard();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        onConfirm();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onDiscard, onConfirm]);
+
   return (
     <div
       className={cnFixed(centered)}

@@ -67,6 +67,34 @@ impl AiAdapter for DeepSeekAdapter {
         openai_format::parse_response(&data, &self.model)
     }
 
+    async fn complete_streaming(
+        &self,
+        req: AiRequest,
+        on_delta: openai_format::OnDelta<'_>,
+    ) -> AppResult<AiResponse> {
+        let messages = openai_format::build_messages(&req.system, &req.messages);
+        let tools = openai_format::build_tools(&req.tools);
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "tools": tools,
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+        });
+
+        openai_format::complete_streaming(
+            &self.client,
+            &self.base_url,
+            Some(&self.api_key),
+            "DeepSeek",
+            &body,
+            &self.model,
+            on_delta,
+        )
+        .await
+    }
+
     async fn list_models(&self) -> AppResult<Vec<ModelInfo>> {
         let resp = self
             .client

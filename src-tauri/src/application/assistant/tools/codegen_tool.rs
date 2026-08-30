@@ -142,7 +142,7 @@ impl CodegenTool {
             "sql_delete" => SqlGeneratorService::generate_delete(db_type, &fake_row),
             "sql_safe_delete" => {
                 let refs = driver.fetch_referenced_by_keys(table, None).await?;
-                SqlGeneratorService::generate_safe_delete(db_type, table, None, &refs)
+                SqlGeneratorService::generate_safe_delete(db_type, table, None, &refs, None)
             }
             other => {
                 return Ok(ToolResult {

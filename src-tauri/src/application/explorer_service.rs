@@ -35,6 +35,18 @@ impl ExplorerService {
         query: &str,
         schema: Option<String>,
     ) -> AppResult<QueryResult> {
+        Self::execute_query_with_origin(state, id, query, schema, "user").await
+    }
+
+    /// Same as [execute_query] but attributes the audit entry to `origin`
+    /// (e.g. "assistant") so the audit log can distinguish who ran it.
+    pub async fn execute_query_with_origin(
+        state: &AppState,
+        id: &str,
+        query: &str,
+        schema: Option<String>,
+        origin: &str,
+    ) -> AppResult<QueryResult> {
         let is_read_only = state.is_read_only(id).await.unwrap_or(false);
         if is_read_only && Self::is_destructive_query(query) {
             return Err(AppError::Validation(
@@ -46,18 +58,11 @@ impl ExplorerService {
         let db_type = driver.db_type();
         let start = std::time::Instant::now();
 
-        let mut use_schema_context = false;
         let final_query = if let Some(ref s) = schema {
             if s.is_empty() {
                 query.to_string()
             } else {
                 match db_type {
-                    crate::db::DbType::Mysql
-                    | crate::db::DbType::Mariadb
-                    | crate::db::DbType::Postgres => {
-                        use_schema_context = true;
-                        query.to_string()
-                    }
                     crate::db::DbType::Mongodb => {
                         // Inject the database name into MongoDB JSON commands
                         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(query) {
@@ -87,13 +92,6 @@ impl ExplorerService {
             query.to_string()
         };
 
-        tracing::info!(
-            "[ExplorerService] execute_query: db_type={:?}, schema={:?}, initial_query={}",
-            db_type,
-            schema,
-            query
-        );
-
         // Handle MongoDB use <db> command — switch the connection's database
         if db_type == crate::db::DbType::Mongodb {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&final_query) {
@@ -109,6 +107,7 @@ impl ExplorerService {
                         .await?;
                         return Ok(QueryResult {
                             columns: vec!["message".to_string()],
+                            column_types: None,
                             rows: vec![
                                 serde_json::json!({"message": format!("Switched to db {}", use_db), "db": use_db}),
                             ],
@@ -123,25 +122,43 @@ impl ExplorerService {
             }
         }
 
-        let result = if use_schema_context {
-            if let Some(ref s) = schema {
-                driver.execute_with_schema(&final_query, s).await
-            } else {
-                driver.execute(&final_query).await
+        // Resolve the schema used to scope the query. For schema-based engines
+        // (PostgreSQL search_path, MySQL database) we always run the statement
+        // with an explicit schema so unqualified identifiers resolve correctly
+        // even after a pooled connection is recycled on idle. When the caller
+        // omits the schema we fall back to the connection's configured default
+        // schema; without that, plain `execute` would rely on ambient pool state
+        // that is lost when the connection is re-established.
+        let effective_schema: Option<String> = match db_type {
+            crate::db::DbType::Postgres | crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                match &schema {
+                    Some(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+                    _ => state
+                        .storage
+                        .get_connection(id)
+                        .await
+                        .ok()
+                        .and_then(|cfg| cfg.default_database.filter(|d| !d.trim().is_empty())),
+                }
             }
-        } else {
-            driver.execute(&final_query).await
+            _ => None,
+        };
+
+        let result = match &effective_schema {
+            Some(s) => driver.execute_with_schema(&final_query, s).await,
+            None => driver.execute(&final_query).await,
         };
 
         match result {
             Ok(result) => {
-                let _ = AuditService::log_query(
+                let _ = AuditService::log_query_with_origin(
                     state,
                     id.to_string(),
                     query.to_string(),
                     start.elapsed().as_millis() as u64,
                     "success".to_string(),
                     None,
+                    origin,
                 )
                 .await;
 
@@ -156,13 +173,14 @@ impl ExplorerService {
                 Ok(result)
             }
             Err(e) => {
-                let _ = AuditService::log_query(
+                let _ = AuditService::log_query_with_origin(
                     state,
                     id.to_string(),
                     query.to_string(),
                     start.elapsed().as_millis() as u64,
                     "error".to_string(),
                     Some(e.to_string()),
+                    origin,
                 )
                 .await;
                 Err(e)
@@ -1234,8 +1252,14 @@ impl ExplorerService {
 
         let driver = state.get_connection(id).await?;
 
-        // Begin transaction for atomic restore when possible (Postgres DDL is transactional)
-        let _ = driver.execute("BEGIN").await;
+        // On a transactional session (production) the restore runs INSIDE the
+        // session transaction: no own BEGIN/COMMIT, so nothing persists until
+        // the user presses Commit. Otherwise begin an atomic restore when
+        // possible (Postgres DDL is transactional).
+        let transactional = state.is_transactional(id).await.unwrap_or(false);
+        if !transactional {
+            let _ = driver.execute("BEGIN").await;
+        }
 
         let file = File::open(file_path)
             .await
@@ -1256,11 +1280,7 @@ impl ExplorerService {
             current_query.push_str(&line);
             if trimmed.ends_with(';') {
                 if let Err(e) = driver.execute(&current_query).await {
-                    errors.push(format!(
-                        "Error in statement near '{}': {}",
-                        &trimmed[..trimmed.len().min(80)],
-                        e
-                    ));
+                    errors.push(format!("Error executing statement: {}", e));
                 }
                 current_query.clear();
             }
@@ -1269,12 +1289,14 @@ impl ExplorerService {
 
         if !current_query.trim().is_empty() {
             if let Err(e) = driver.execute(&current_query).await {
-                errors.push(format!("Error in trailing statement: {}", e));
+                errors.push(format!("Error executing statement: {}", e));
             }
         }
 
         if !errors.is_empty() {
-            let _ = driver.execute("ROLLBACK").await;
+            if !transactional {
+                let _ = driver.execute("ROLLBACK").await;
+            }
             return Err(AppError::Internal(format!(
                 "Restore completed with {} error(s). First error: {}",
                 errors.len(),
@@ -1282,7 +1304,9 @@ impl ExplorerService {
             )));
         }
 
-        let _ = driver.execute("COMMIT").await;
+        if !transactional {
+            let _ = driver.execute("COMMIT").await;
+        }
         Ok(())
     }
 
@@ -1404,6 +1428,369 @@ impl ExplorerService {
         }
     }
 
+    /// Truncate a set of tables in foreign-key-safe order (children first).
+    /// Returns the execution order, the generated SQL, per-table outcomes and
+    /// warnings. Execution is engine-specific:
+    /// - Postgres: single `TRUNCATE TABLE a, b` statement (FK-aware).
+    /// - MySQL/MariaDB: `SET FOREIGN_KEY_CHECKS = 0; TRUNCATE ...; SET FOREIGN_KEY_CHECKS = 1;`.
+    /// - SQLite: `DELETE FROM` per table in order (no TRUNCATE in SQLite).
+    /// - SQL Server: disables incoming FK constraints (selected set only),
+    ///   truncates, then re-enables them.
+    pub async fn truncate_tables(
+        state: &AppState,
+        id: &str,
+        schema: Option<String>,
+        tables: Vec<String>,
+    ) -> AppResult<crate::models::TruncateTablesResult> {
+        use crate::models::{TruncateTableOutcome, TruncateTablesResult};
+        use std::collections::{HashMap, HashSet, VecDeque};
+
+        const MAX_TABLES: usize = 100;
+
+        if tables.is_empty() {
+            return Err(AppError::Validation(
+                "No tables selected to truncate".into(),
+            ));
+        }
+        if tables.len() > MAX_TABLES {
+            return Err(AppError::Validation(format!(
+                "Cannot truncate more than {} tables in a single operation (got {}).",
+                MAX_TABLES,
+                tables.len()
+            )));
+        }
+
+        let driver = state.get_connection(id).await?;
+        let db_type = driver.db_type();
+
+        if matches!(
+            db_type,
+            crate::db::DbType::Mongodb | crate::db::DbType::Redis
+        ) {
+            return Err(AppError::Validation(
+                "TRUNCATE is not supported for this database type".into(),
+            ));
+        }
+
+        // Dedupe preserving selection order.
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut unique: Vec<String> = Vec::new();
+        for t in tables {
+            if seen.insert(t.clone()) {
+                unique.push(t);
+            }
+        }
+        let index: HashMap<String, usize> = unique
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.clone(), i))
+            .collect();
+
+        // Build the FK graph among the selected tables. Edge child -> parent
+        // means the child must be truncated before the parent.
+        let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); unique.len()];
+        let mut in_degree = vec![0usize; unique.len()];
+
+        for (i, table) in unique.iter().enumerate() {
+            let fks = driver.fetch_foreign_keys(table, schema.clone()).await?;
+            for fk in fks {
+                let parent = fk
+                    .get("referencedTable")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| fk.get("referencedTableName").and_then(|v| v.as_str()))
+                    .or_else(|| fk.get("table").and_then(|v| v.as_str()));
+                if let Some(parent) = parent {
+                    if let Some(&p) = index.get(parent) {
+                        if p != i && !adjacency[i].contains(&p) {
+                            adjacency[i].push(p);
+                            in_degree[p] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Detect tables outside the selection that reference selected tables.
+        // These are left intact and foreign key enforcement stays ON so the
+        // engine rejects truncating any referenced parent instead of orphaning
+        // data (MySQL would otherwise allow it silently with FK checks off).
+        let mut unselected_refs: Vec<String> = Vec::new();
+        for table in &unique {
+            let referenced_by = driver
+                .fetch_referenced_by_keys(table, schema.clone())
+                .await?;
+            for rk in referenced_by {
+                if let Some(referencing) = rk.get("referencingTable").and_then(|v| v.as_str()) {
+                    if !index.contains_key(referencing) {
+                        unselected_refs.push(format!("{referencing} references {table}"));
+                    }
+                }
+            }
+        }
+        let has_unselected_refs = !unselected_refs.is_empty();
+
+        // Topological sort (Kahn): children (in-degree 0) come first.
+        let mut warnings: Vec<String> = Vec::new();
+        if has_unselected_refs {
+            warnings.push(format!(
+                "These tables are not selected but reference selected tables. They are left intact and foreign key enforcement stays on, so the database may reject truncating the referenced parents:\n- {}",
+                unselected_refs.join("\n- ")
+            ));
+        }
+        let mut order: Vec<String> = Vec::new();
+        let mut queue: VecDeque<usize> = (0..unique.len()).filter(|&i| in_degree[i] == 0).collect();
+        let mut placed = vec![false; unique.len()];
+
+        while let Some(i) = queue.pop_front() {
+            order.push(unique[i].clone());
+            placed[i] = true;
+            for &p in &adjacency[i] {
+                in_degree[p] -= 1;
+                if in_degree[p] == 0 {
+                    queue.push_back(p);
+                }
+            }
+        }
+
+        // Tables not reached by the sort participate in an FK cycle.
+        let remaining: Vec<usize> = (0..unique.len()).filter(|&i| !placed[i]).collect();
+        if !remaining.is_empty() {
+            let cycle: Vec<String> = remaining.iter().map(|&i| unique[i].clone()).collect();
+            warnings.push(format!(
+                "Circular foreign key dependency detected between: {}. Order between them is not guaranteed.",
+                cycle.join(", ")
+            ));
+            order.extend(remaining.into_iter().map(|i| unique[i].clone()));
+        }
+
+        // Identifier quoting per engine.
+        let (q_open, q_close, q_esc) = match db_type {
+            crate::db::DbType::Postgres => ("\"", "\"", "\"\""),
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => ("`", "`", "``"),
+            crate::db::DbType::Sqlserver => ("[", "]", "]]"),
+            _ => ("\"", "\"", "\"\""), // SQLite
+        };
+
+        let quote_table = |name: &str| -> String {
+            let quoted = format!("{}{}{}", q_open, name.replace(q_close, q_esc), q_close);
+            match schema.as_ref() {
+                Some(s) if !s.is_empty() && db_type != crate::db::DbType::Sqlite => format!(
+                    "{}{}{}.{}",
+                    q_open,
+                    s.replace(q_close, q_esc),
+                    q_close,
+                    quoted
+                ),
+                _ => quoted,
+            }
+        };
+
+        let make_outcome =
+            |table: &str, ok: bool, error: Option<String>, rows_affected: Option<u64>| {
+                TruncateTableOutcome {
+                    table: table.to_string(),
+                    ok,
+                    error,
+                    rows_affected,
+                }
+            };
+
+        let mut statements: Vec<String> = Vec::new();
+        let mut outcomes: Vec<TruncateTableOutcome> = Vec::new();
+
+        match db_type {
+            crate::db::DbType::Postgres => {
+                if has_unselected_refs {
+                    // Fall back to per-table statements so the engine decides
+                    // table by table (children succeed, referenced parents fail).
+                    for t in &order {
+                        let sql = format!("TRUNCATE TABLE {}", quote_table(t));
+                        statements.push(sql.clone());
+                        match Self::execute_query(state, id, &sql, schema.clone()).await {
+                            Ok(res) => {
+                                outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                            }
+                            Err(e) => {
+                                outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                            }
+                        }
+                    }
+                } else {
+                    let quoted: Vec<String> = order.iter().map(|t| quote_table(t)).collect();
+                    let sql = format!("TRUNCATE TABLE {}", quoted.join(", "));
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(res) => {
+                            for t in &order {
+                                outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                            }
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            for t in &order {
+                                outcomes.push(make_outcome(t, false, Some(msg.clone()), None));
+                            }
+                        }
+                    }
+                }
+            }
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
+                if has_unselected_refs {
+                    // Per-table so the engine decides. FK checks stay ON so a
+                    // referenced parent is rejected instead of orphaning rows
+                    // in the unselected referencing tables.
+                    for t in &order {
+                        let sql = format!("TRUNCATE TABLE {}", quote_table(t));
+                        statements.push(sql.clone());
+                        match Self::execute_query(state, id, &sql, schema.clone()).await {
+                            Ok(res) => {
+                                outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                            }
+                            Err(e) => {
+                                outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                            }
+                        }
+                    }
+                } else {
+                    let mut parts = vec!["SET FOREIGN_KEY_CHECKS = 0".to_string()];
+                    for t in &order {
+                        parts.push(format!("TRUNCATE TABLE {}", quote_table(t)));
+                    }
+                    parts.push("SET FOREIGN_KEY_CHECKS = 1".to_string());
+                    let sql = parts.join("; ");
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(_) => {
+                            for t in &order {
+                                outcomes.push(make_outcome(t, true, None, None));
+                            }
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            for t in &order {
+                                outcomes.push(make_outcome(t, false, Some(msg.clone()), None));
+                            }
+                        }
+                    }
+                }
+            }
+            crate::db::DbType::Sqlite => {
+                for t in &order {
+                    let sql = format!("DELETE FROM {}", quote_table(t));
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(res) => {
+                            outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                        }
+                        Err(e) => outcomes.push(make_outcome(t, false, Some(e.to_string()), None)),
+                    }
+                }
+            }
+            crate::db::DbType::Sqlserver => {
+                // Incoming FK constraints from selected children (needed to
+                // TRUNCATE a referenced table).
+                let mut disable_map: HashMap<String, Vec<String>> = HashMap::new();
+                for table in &order {
+                    let referenced_by = driver
+                        .fetch_referenced_by_keys(table, schema.clone())
+                        .await?;
+                    let mut names: Vec<String> = Vec::new();
+                    for rk in referenced_by {
+                        let referencing = rk.get("referencingTable").and_then(|v| v.as_str());
+                        let fk = rk.get("constraintName").and_then(|v| v.as_str());
+                        if let (Some(r), Some(f)) = (referencing, fk) {
+                            if index.contains_key(r) {
+                                names.push(f.to_string());
+                            }
+                        }
+                    }
+                    if !names.is_empty() {
+                        disable_map.insert(table.clone(), names);
+                    }
+                }
+
+                for t in &order {
+                    let full = quote_table(t);
+                    let names = disable_map.get(t).cloned().unwrap_or_default();
+
+                    // 1. Disable incoming FK constraints.
+                    let mut disabled: Vec<String> = Vec::new();
+                    let mut disable_failed = false;
+                    for fk in &names {
+                        let sql = format!(
+                            "ALTER TABLE {} NOCHECK CONSTRAINT {}",
+                            full,
+                            crate::db::quote_identifier(&db_type, fk)
+                        );
+                        statements.push(sql.clone());
+                        match Self::execute_query(state, id, &sql, schema.clone()).await {
+                            Ok(_) => disabled.push(fk.clone()),
+                            Err(e) => {
+                                disable_failed = true;
+                                outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                                break;
+                            }
+                        }
+                    }
+
+                    if disable_failed {
+                        // Best-effort re-enable of what was disabled.
+                        for fk in &disabled {
+                            let sql = format!(
+                                "ALTER TABLE {} WITH CHECK CHECK CONSTRAINT {}",
+                                full,
+                                crate::db::quote_identifier(&db_type, fk)
+                            );
+                            statements.push(sql.clone());
+                            let _ = Self::execute_query(state, id, &sql, schema.clone()).await;
+                        }
+                        continue;
+                    }
+
+                    // 2. Truncate.
+                    let sql = format!("TRUNCATE TABLE {}", full);
+                    statements.push(sql.clone());
+                    match Self::execute_query(state, id, &sql, schema.clone()).await {
+                        Ok(res) => {
+                            outcomes.push(make_outcome(t, true, None, Some(res.rows_affected)));
+                        }
+                        Err(e) => {
+                            outcomes.push(make_outcome(t, false, Some(e.to_string()), None));
+                        }
+                    }
+
+                    // 3. Re-enable constraints (best effort).
+                    for fk in &names {
+                        let sql = format!(
+                            "ALTER TABLE {} WITH CHECK CHECK CONSTRAINT {}",
+                            full,
+                            crate::db::quote_identifier(&db_type, fk)
+                        );
+                        statements.push(sql.clone());
+                        let _ = Self::execute_query(state, id, &sql, schema.clone()).await;
+                    }
+                }
+            }
+            _ => {
+                return Err(AppError::Validation(
+                    "TRUNCATE is not supported for this database type".into(),
+                ))
+            }
+        }
+
+        // Invalidate cached metadata for the affected tables.
+        for t in &unique {
+            Self::invalidate_metadata_cache(state, id, t, schema.as_deref()).await;
+        }
+
+        Ok(TruncateTablesResult {
+            order,
+            statements,
+            outcomes,
+            warnings,
+        })
+    }
+
     /// Verify dump file integrity: count statements vs expected tables.
     pub fn verify_dump_integrity(
         file_path: &str,
@@ -1486,9 +1873,31 @@ impl ExplorerService {
 
         let driver = state.get_connection(id).await?;
         let is_postgres = matches!(driver.db_type(), crate::db::DbType::Postgres);
+        let is_mysql = matches!(
+            driver.db_type(),
+            crate::db::DbType::Mysql | crate::db::DbType::Mariadb
+        );
 
         let statements = split_sql_statements(&content);
         let mut errors = Vec::new();
+
+        // MySQL/MariaDB restores must run on a single dedicated connection with the
+        // target database selected. A bare `DROP TABLE` otherwise fails with
+        // "No database selected" because each pooled `execute` may use a different
+        // connection. `begin_script` issues `USE `schema'` on that connection.
+        let mut script = if is_mysql && !schema.is_empty() {
+            match driver.begin_script(Some(schema)).await {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    return Err(AppError::Internal(format!(
+                        "Failed to start restore session on database '{}': {}",
+                        schema, e
+                    )));
+                }
+            }
+        } else {
+            None
+        };
 
         for stmt in &statements {
             let trimmed = stmt.trim();
@@ -1515,8 +1924,16 @@ impl ExplorerService {
                 });
 
             if should_execute {
+                // mysqldump emits LOCK TABLES/UNLOCK TABLES for load speed. They are not
+                // required for a correct restore and conflict with the dedicated-connection
+                // transaction used here (MySQL forbids LOCK TABLES inside a transaction),
+                // so skip them.
+                if upper_stmt.starts_with("LOCK TABLES") || upper_stmt.starts_with("UNLOCK TABLES")
+                {
+                    continue;
+                }
+
                 // Before CREATE TABLE for a selected table, drop the table first
-                // so INSERT data does not fail on duplicate keys.
                 if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
                     if let Some(table_name) = extract_table_name_from_create(trimmed) {
                         if tables.is_empty()
@@ -1532,22 +1949,26 @@ impl ExplorerService {
                     }
                 }
 
-                let exec_result = if is_postgres {
-                    driver.execute_with_schema(trimmed, schema).await
+                let exec_result = if let Some(script) = script.as_mut() {
+                    script.execute_statement(trimmed).await.map(|_| ())
+                } else if is_postgres {
+                    driver
+                        .execute_with_schema(trimmed, schema)
+                        .await
+                        .map(|_| ())
                 } else {
-                    driver.execute(trimmed).await
+                    driver.execute(trimmed).await.map(|_| ())
                 };
                 if let Err(e) = exec_result {
-                    errors.push(format!(
-                        "Error in statement near '{}': {}",
-                        &trimmed[..trimmed.len().min(80)],
-                        e
-                    ));
+                    errors.push(format!("Error executing statement: {}", e));
                 }
             }
         }
 
         if !errors.is_empty() {
+            if let Some(script) = script {
+                let _ = script.rollback().await;
+            }
             return Err(AppError::Internal(format!(
                 "Restore completed with {} error(s). First error: {}",
                 errors.len(),
@@ -1555,14 +1976,22 @@ impl ExplorerService {
             )));
         }
 
+        if let Some(script) = script {
+            script.commit().await?;
+        }
         Ok(())
     }
 }
 
-/// Splits SQL text into top-level statements by `;` while respecting:
+/// Splits SQL text into top-level statements while respecting:
 /// - PostgreSQL dollar-quoting ($tag$...$tag$)
 /// - Single-quoted string literals (''...'')
 /// - Single-line (--) and block (/* */) comments
+/// - MySQL conditional comments (/*! ... */): MySQL executes these, so their
+///   contents are kept and run as statements (mysqldump relies on them for
+///   SET SQL_MODE, CREATE TRIGGER/PROCEDURE, etc.)
+/// - `DELIMITER` directives: the statement separator switches to the given
+///   token (used by mysqldump for routines whose bodies contain `;`)
 fn split_sql_statements(content: &str) -> Vec<String> {
     let mut statements = Vec::new();
     let mut current = String::new();
@@ -1574,19 +2003,33 @@ fn split_sql_statements(content: &str) -> Vec<String> {
     let mut in_single_quote = false;
     let mut in_dollar_tag: Option<String> = None;
     let mut in_block_comment = false;
+    let mut in_conditional_comment = false;
+    let mut delimiter = ";".to_string();
 
     while i < len {
-        // Block comment: /* ... */
+        // Comment open: /* ... */ (skipped) vs /*! ... */ (executed by MySQL)
         if !in_single_quote
             && in_dollar_tag.is_none()
             && !in_block_comment
+            && !in_conditional_comment
             && i + 1 < len
             && chars[i] == '/'
             && chars[i + 1] == '*'
         {
-            in_block_comment = true;
-            i += 2;
-            continue;
+            if i + 2 < len && chars[i + 2] == '!' {
+                // Conditional comment: keep contents, just skip the /*! marker and
+                // the optional version number (e.g. /*!50003 ... */).
+                in_conditional_comment = true;
+                i += 3;
+                while i < len && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                continue;
+            } else {
+                in_block_comment = true;
+                i += 2;
+                continue;
+            }
         }
         if in_block_comment {
             if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
@@ -1597,27 +2040,75 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
             continue;
         }
+        if in_conditional_comment {
+            if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
+                in_conditional_comment = false;
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+
+        // DELIMITER directive (mysql client command): switch the statement separator.
+        if !in_single_quote && in_dollar_tag.is_none() && current.trim().is_empty() {
+            let mut j = i;
+            while j < len && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j + 9 < len {
+                let word: String = chars[j..j + 9].iter().collect();
+                if word.eq_ignore_ascii_case("DELIMITER") {
+                    let after = chars[j + 9];
+                    if after == ' ' || after == '\t' {
+                        let mut k = j + 9;
+                        while k < len && (chars[k] == ' ' || chars[k] == '\t') {
+                            k += 1;
+                        }
+                        let start_tok = k;
+                        while k < len && chars[k] != '\n' && chars[k] != '\r' {
+                            k += 1;
+                        }
+                        delimiter = chars[start_tok..k].iter().collect();
+                        i = k;
+                        if i < len && chars[i] == '\r' {
+                            i += 1;
+                        }
+                        if i < len && chars[i] == '\n' {
+                            i += 1;
+                        }
+                        current.clear();
+                        continue;
+                    }
+                }
+            }
+        }
 
         // Single-line comment: -- ...
         if !in_single_quote
             && in_dollar_tag.is_none()
             && !in_block_comment
+            && !in_conditional_comment
             && i + 1 < len
             && chars[i] == '-'
             && chars[i + 1] == '-'
         {
-            // Skip to end of line
             while i < len && chars[i] != '\n' {
                 i += 1;
             }
             if i < len {
                 i += 1;
-            } // skip the newline
+            }
             continue;
         }
 
         // Dollar quote start: $tag$
-        if !in_single_quote && !in_block_comment && in_dollar_tag.is_none() && chars[i] == '$' {
+        if !in_single_quote
+            && !in_block_comment
+            && !in_conditional_comment
+            && in_dollar_tag.is_none()
+            && chars[i] == '$'
+        {
             if let Some(end) = find_dollar_tag_end(&chars, i, len) {
                 let tag: String = chars[i + 1..end].iter().collect();
                 in_dollar_tag = Some(tag);
@@ -1630,7 +2121,7 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
         }
         // Dollar quote end: $tag$
-        if !in_single_quote && !in_block_comment {
+        if !in_single_quote && !in_block_comment && !in_conditional_comment {
             if let Some(ref tag) = in_dollar_tag {
                 if chars[i] == '$' {
                     if let Some(end) = find_dollar_tag_end(&chars, i, len) {
@@ -1654,7 +2145,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             in_single_quote = !in_single_quote;
             current.push(chars[i]);
             i += 1;
-            // Handle doubled quotes inside string: ''
             if in_single_quote && i < len && chars[i] == '\'' {
                 current.push(chars[i]);
                 i += 1;
@@ -1662,15 +2152,28 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
 
-        // Statement separator at top level
-        if !in_single_quote && in_dollar_tag.is_none() && !in_block_comment && chars[i] == ';' {
-            let stmt = current.trim().to_string();
-            if !stmt.is_empty() {
-                statements.push(stmt);
+        // Statement separator (honors DELIMITER for routines)
+        if !in_single_quote && in_dollar_tag.is_none() {
+            let is_sep = if delimiter == ";" {
+                chars[i] == ';'
+            } else {
+                let dchars: Vec<char> = delimiter.chars().collect();
+                let dlen = dchars.len();
+                i + dlen <= len && chars[i..i + dlen] == dchars[..]
+            };
+            if is_sep {
+                let stmt = current.trim().to_string();
+                if !stmt.is_empty() {
+                    statements.push(stmt);
+                }
+                current.clear();
+                if delimiter == ";" {
+                    i += 1;
+                } else {
+                    i += delimiter.chars().count();
+                }
+                continue;
             }
-            current.clear();
-            i += 1;
-            continue;
         }
 
         current.push(chars[i]);

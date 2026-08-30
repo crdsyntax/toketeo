@@ -41,6 +41,10 @@ interface ResultsPanelProps {
   updateTabResults: (tabId: string, updates: Partial<QueryTab>) => void;
   handlePageChange: (page: number) => void;
   setContextMenuSql: (menu: { x: number, y: number, row: DbRow } | null) => void;
+  selectedRowIndexes: Set<number>;
+  setSelectedRowIndexes: React.Dispatch<React.SetStateAction<Set<number>>>;
+  selectionAnchor: number | null;
+  setSelectionAnchor: React.Dispatch<React.SetStateAction<number | null>>;
   queryLimit: number;
   setQueryLimit: (limit: number) => void;
   safeDeleteSuggestion: string | null;
@@ -51,6 +55,8 @@ interface ResultsPanelProps {
   scriptLive: ScriptLiveStatement[] | null;
   scriptLiveRunning: boolean;
   onShowScriptSummary: () => void;
+  isMongo?: boolean;
+  handleCopyCell?: (row: DbRow, column: string) => void;
 }
 
 export function ResultsPanel({
@@ -70,6 +76,10 @@ export function ResultsPanel({
   updateTabResults,
   handlePageChange,
   setContextMenuSql,
+  selectedRowIndexes,
+  setSelectedRowIndexes,
+  selectionAnchor,
+  setSelectionAnchor,
   queryLimit,
   setQueryLimit,
   safeDeleteSuggestion,
@@ -80,11 +90,18 @@ export function ResultsPanel({
   scriptLive,
   scriptLiveRunning,
   onShowScriptSummary,
+  isMongo = false,
+  handleCopyCell,
 }: ResultsPanelProps) {
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showLimitMenu, setShowLimitMenu] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'json' | 'visualize'>(isMongo ? 'json' : 'table');
+
+  const [prevIsMongo, setPrevIsMongo] = useState(isMongo);
+  if (isMongo !== prevIsMongo) {
+    setPrevIsMongo(isMongo);
+    if (isMongo) setViewMode('json');
+  }
 
   const isResultsPanelVisible = panels?.results ?? false;
 
@@ -154,10 +171,13 @@ export function ResultsPanel({
                   setEditingCell={setEditingCell}
                   handleSave={handleSave}
                   setContextMenuSql={setContextMenuSql}
-                  selectedRowIndex={selectedRowIndex}
-                  setSelectedRowIndex={setSelectedRowIndex}
+                  selectedRowIndexes={selectedRowIndexes}
+                  setSelectedRowIndexes={setSelectedRowIndexes}
+                  selectionAnchor={selectionAnchor}
+                  setSelectionAnchor={setSelectionAnchor}
                   setShowExportMenu={setShowExportMenu}
                   setShowLimitMenu={setShowLimitMenu}
+                  handleCopyCell={handleCopyCell}
                 />
               )}
               {activeTab?.status === ExecutionStatus.EXECUTING && (

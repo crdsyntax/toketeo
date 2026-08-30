@@ -187,7 +187,11 @@ impl SyncStrategy for FullSync {
 
             let batch_size = output.rows.len();
             let raw_rows = output.rows.clone();
-            let transformed = transformers::transform_rows(output.rows, &mappings)?;
+
+            // Transform + última barrera de null bytes: cualquier \0 que llegue
+            // aquí se elimina y se reporta (fila/columna) para diagnóstico.
+            let transformed =
+                transform_and_strip(output.rows, &mappings, &pk, &table_config.source_table)?;
 
             let mut abort_table = false;
             let upsert_result = match writer
@@ -205,60 +209,196 @@ impl SyncStrategy for FullSync {
                     let err_str = e.to_string();
                     let column_name = extract_unknown_column(&err_str);
 
-                    // Retry without the missing column when the target lacks it
+                    // La columna falta en el target: primero se crea
+                    // (reconciliación de esquema en caliente); si no puede
+                    // crearse, se cae al fallback de excluirla del sync.
                     if let Some(ref col) = column_name {
-                        tracing::warn!(
-                            "[full_sync] Table '{}': column '{}' missing on target — removing from sync, retrying batch",
-                            table_config.source_table,
-                            col,
-                        );
-                        let new_dest: Vec<String> =
-                            dest_columns.iter().filter(|c| c != &col).cloned().collect();
-                        let new_columns: Vec<String> = columns
-                            .iter()
-                            .zip(dest_columns.iter())
-                            .filter(|(_, d)| d != &col)
-                            .map(|(s, _)| s.clone())
-                            .collect();
-                        let new_mappings: Vec<ColumnMapping> = mappings
-                            .iter()
-                            .filter(|m| m.destination_column != *col)
-                            .cloned()
-                            .collect();
-
-                        let new_transformed =
-                            transformers::transform_rows(raw_rows, &new_mappings)?;
-
+                        let col_type = infer_agnostic_type(&raw_rows, col);
                         match writer
-                            .upsert_rows(
-                                &table_config.target_table,
-                                target_schema,
-                                &new_dest,
-                                table_config.primary_key.as_deref().unwrap_or(&[]),
-                                &new_transformed,
-                            )
+                            .add_column(&table_config.target_table, target_schema, col, col_type)
                             .await
                         {
-                            Ok(r) => {
-                                // Update mappings for subsequent batches
-                                mappings.clone_from(&new_mappings);
-                                columns.clone_from(&new_columns);
-                                dest_columns.clone_from(&new_dest);
-                                r
-                            }
-                            Err(_) => {
-                                tracing::error!(
-                                    "[full_sync] Table '{}': retry without '{}' also failed — skipping batch",
+                            Ok(()) => {
+                                tracing::info!(
+                                    "[full_sync] Table '{}': created missing column '{}' on target ({}) — retrying batch",
                                     table_config.source_table,
                                     col,
+                                    col_type,
+                                );
+                                let retry_transformed = transform_and_strip(
+                                    raw_rows,
+                                    &mappings,
+                                    &pk,
+                                    &table_config.source_table,
+                                )?;
+                                match writer
+                                    .upsert_rows(
+                                        &table_config.target_table,
+                                        target_schema,
+                                        &dest_columns,
+                                        table_config.primary_key.as_deref().unwrap_or(&[]),
+                                        &retry_transformed,
+                                    )
+                                    .await
+                                {
+                                    Ok(r) => r,
+                                    Err(retry_err) => {
+                                        tracing::error!(
+                                            "[full_sync] Table '{}': retry after creating column '{}' failed: {} — skipping batch (original error: {})",
+                                            table_config.source_table,
+                                            col,
+                                            retry_err,
+                                            err_str,
+                                        );
+                                        if let Some(ref sender) = event_sender {
+                                            let _ = sender.send(SyncEvent::RowError {
+                                                table: table_config.source_table.clone(),
+                                                row_key: None,
+                                                error: format!(
+                                                    "Batch {} failed; retry after creating '{}' also failed: {}",
+                                                    batch_number, col, retry_err
+                                                ),
+                                            });
+                                        }
+                                        crate::db::UpsertResult::default()
+                                    }
+                                }
+                            }
+                            Err(add_err) => {
+                                tracing::warn!(
+                                    "[full_sync] Table '{}': could not create column '{}' on target: {} — falling back to removing it from sync",
+                                    table_config.source_table,
+                                    col,
+                                    add_err,
+                                );
+                                let new_dest: Vec<String> =
+                                    dest_columns.iter().filter(|c| c != &col).cloned().collect();
+                                let new_columns: Vec<String> = columns
+                                    .iter()
+                                    .zip(dest_columns.iter())
+                                    .filter(|(_, d)| d != &col)
+                                    .map(|(s, _)| s.clone())
+                                    .collect();
+                                let new_mappings: Vec<ColumnMapping> = mappings
+                                    .iter()
+                                    .filter(|m| m.destination_column != *col)
+                                    .cloned()
+                                    .collect();
+
+                                let new_transformed = transform_and_strip(
+                                    raw_rows,
+                                    &new_mappings,
+                                    &pk,
+                                    &table_config.source_table,
+                                )?;
+
+                                match writer
+                                    .upsert_rows(
+                                        &table_config.target_table,
+                                        target_schema,
+                                        &new_dest,
+                                        table_config.primary_key.as_deref().unwrap_or(&[]),
+                                        &new_transformed,
+                                    )
+                                    .await
+                                {
+                                    Ok(r) => {
+                                        // Update mappings for subsequent batches
+                                        mappings.clone_from(&new_mappings);
+                                        columns.clone_from(&new_columns);
+                                        dest_columns.clone_from(&new_dest);
+                                        r
+                                    }
+                                    Err(retry_err) => {
+                                        tracing::error!(
+                                            "[full_sync] Table '{}': retry without '{}' also failed: {} — skipping batch (original error: {})",
+                                            table_config.source_table,
+                                            col,
+                                            retry_err,
+                                            err_str,
+                                        );
+                                        if let Some(ref sender) = event_sender {
+                                            let _ = sender.send(SyncEvent::RowError {
+                                                table: table_config.source_table.clone(),
+                                                row_key: None,
+                                                error: format!(
+                                                    "Batch {} failed; retry after removing '{}' also failed: {}",
+                                                    batch_number, col, retry_err
+                                                ),
+                                            });
+                                        }
+                                        crate::db::UpsertResult::default()
+                                    }
+                                }
+                            }
+                        }
+                    } else if let Some(not_null_col) = extract_not_null_column(&err_str) {
+                        // Violación NOT NULL: el target tiene la columna NOT NULL
+                        // pero el source trae NULLs. Se relaja la restricción
+                        // (DROP NOT NULL) y se reintenta el batch.
+                        match writer
+                            .drop_not_null(&table_config.target_table, target_schema, &not_null_col)
+                            .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    "[full_sync] Table '{}': dropped NOT NULL on column '{}' — retrying batch",
+                                    table_config.source_table,
+                                    not_null_col,
+                                );
+                                let retry_transformed = transform_and_strip(
+                                    raw_rows,
+                                    &mappings,
+                                    &pk,
+                                    &table_config.source_table,
+                                )?;
+                                match writer
+                                    .upsert_rows(
+                                        &table_config.target_table,
+                                        target_schema,
+                                        &dest_columns,
+                                        table_config.primary_key.as_deref().unwrap_or(&[]),
+                                        &retry_transformed,
+                                    )
+                                    .await
+                                {
+                                    Ok(r) => r,
+                                    Err(retry_err) => {
+                                        tracing::error!(
+                                            "[full_sync] Table '{}': retry after dropping NOT NULL on '{}' failed: {} — skipping batch (original error: {})",
+                                            table_config.source_table,
+                                            not_null_col,
+                                            retry_err,
+                                            err_str,
+                                        );
+                                        if let Some(ref sender) = event_sender {
+                                            let _ = sender.send(SyncEvent::RowError {
+                                                table: table_config.source_table.clone(),
+                                                row_key: None,
+                                                error: format!(
+                                                    "Batch {} failed; retry after dropping NOT NULL on '{}' also failed: {}",
+                                                    batch_number, not_null_col, retry_err
+                                                ),
+                                            });
+                                        }
+                                        crate::db::UpsertResult::default()
+                                    }
+                                }
+                            }
+                            Err(drop_err) => {
+                                tracing::warn!(
+                                    "[full_sync] Table '{}': could not drop NOT NULL on column '{}' on target: {} — skipping batch",
+                                    table_config.source_table,
+                                    not_null_col,
+                                    drop_err,
                                 );
                                 if let Some(ref sender) = event_sender {
                                     let _ = sender.send(SyncEvent::RowError {
                                         table: table_config.source_table.clone(),
                                         row_key: None,
                                         error: format!(
-                                            "Batch {} upsert failed: {}",
-                                            batch_number, err_str
+                                            "Batch {} failed with NOT NULL violation on '{}' and the constraint could not be relaxed: {}",
+                                            batch_number, not_null_col, drop_err
                                         ),
                                     });
                                 }
@@ -403,8 +543,13 @@ impl SyncStrategy for FullSync {
                 }
             }
 
+            let rows_per_sec = if duration > 0 {
+                batch_size as f64 / duration as f64 * 1000.0
+            } else {
+                batch_size as f64
+            };
             tracing::debug!(
-                "[full_sync] Table '{}' batch {}: extracted={}, loaded={}, skipped={}, errors={}, duration={}ms, batch_size={}",
+                "[full_sync] Table '{}' batch {}: extracted={}, loaded={}, skipped={}, errors={}, duration={}ms, batch_size={}, rows/sec={:.0}",
                 table_config.source_table,
                 batch_number,
                 batch_size,
@@ -413,6 +558,7 @@ impl SyncStrategy for FullSync {
                 batch_errors,
                 duration,
                 current_batch_size,
+                rows_per_sec,
             );
 
             let batch_id = Uuid::new_v4().to_string();
@@ -510,6 +656,160 @@ impl SyncStrategy for FullSync {
     }
 }
 
+/// Transforma las filas con `transformers::transform_rows` y aplica la última
+/// barrera de null bytes: elimina cualquier `\0` de valores y claves, y reporta
+/// qué (fila, columna) los contenía. Garantiza que el writer nunca reciba \0.
+fn transform_and_strip(
+    rows: Vec<serde_json::Value>,
+    mappings: &[ColumnMapping],
+    pk: &str,
+    table: &str,
+) -> AppResult<Vec<serde_json::Value>> {
+    let mut out = transformers::transform_rows(rows, mappings)?;
+    let hits = strip_null_bytes(&mut out, pk);
+    if !hits.is_empty() {
+        tracing::warn!(
+            "[full_sync] Table '{}': stripped null bytes (0x00) from {} value(s) before upsert; hits: {:?}",
+            table,
+            hits.len(),
+            hits.iter().take(10).collect::<Vec<_>>(),
+        );
+    }
+    Ok(out)
+}
+
+/// Elimina null bytes (0x00) de todos los strings de las filas (valores y
+/// claves JSON, recursivo) y devuelve los hits (row_key, columna) afectados.
+fn strip_null_bytes(rows: &mut [serde_json::Value], pk: &str) -> Vec<(String, String)> {
+    let mut hits = Vec::new();
+    for row in rows {
+        let row_key = row
+            .get(pk)
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "<none>".to_string());
+        if let Some(obj) = row.as_object_mut() {
+            for (col, val) in obj.iter_mut() {
+                strip_null_bytes_in_value(val, &row_key, col, &mut hits);
+            }
+        }
+    }
+    hits
+}
+
+fn strip_null_bytes_in_value(
+    val: &mut serde_json::Value,
+    row_key: &str,
+    column: &str,
+    hits: &mut Vec<(String, String)>,
+) {
+    match val {
+        serde_json::Value::String(s) => {
+            if s.contains('\0') {
+                let clean = s.replace('\0', "");
+                hits.push((row_key.to_string(), column.to_string()));
+                *s = clean;
+            }
+        }
+        serde_json::Value::Object(map) => {
+            let old = std::mem::take(map);
+            let mut new_map = serde_json::Map::with_capacity(old.len());
+            for (k, v) in old {
+                let mut val = v;
+                let (clean_key, key_was_stripped) = if k.contains('\0') {
+                    (k.replace('\0', ""), true)
+                } else {
+                    (k, false)
+                };
+                let nested = if column.is_empty() {
+                    clean_key.clone()
+                } else {
+                    format!("{column}.{clean_key}")
+                };
+                strip_null_bytes_in_value(&mut val, row_key, &nested, hits);
+                if key_was_stripped {
+                    hits.push((row_key.to_string(), nested));
+                }
+                new_map.insert(clean_key, val);
+            }
+            *map = new_map;
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                strip_null_bytes_in_value(v, row_key, column, hits);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Extrae el nombre de la columna de un error de violación NOT NULL.
+/// PostgreSQL: `null value in column "segment" of relation "attributes"
+/// violates not-null constraint`. También MySQL / SQLite / SQL Server.
+fn extract_not_null_column(err: &str) -> Option<String> {
+    // PostgreSQL
+    if err.contains("violates not-null constraint") {
+        if let Some(start) = err.find("column \"") {
+            let rest = &err[start + 8..];
+            if let Some(end) = rest.find('"') {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    // MySQL / MariaDB: Column 'segment' cannot be null
+    if err.contains("cannot be null") {
+        if let Some(start) = err.find("Column '") {
+            let rest = &err[start + 8..];
+            if let Some(end) = rest.find('\'') {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    // SQLite: NOT NULL constraint failed: attributes.segment
+    if err.contains("NOT NULL constraint failed") {
+        if let Some(start) = err.find("failed: ") {
+            let rest = &err[start + 8..];
+            if let Some(end) = rest.rfind('.') {
+                return Some(rest[end + 1..].to_string());
+            }
+            return Some(rest.to_string());
+        }
+    }
+    // SQL Server: Cannot insert the value NULL into column 'segment'
+    if err.contains("NULL into column") {
+        if let Some(start) = err.find("column '") {
+            let rest = &err[start + 8..];
+            if let Some(end) = rest.find('\'') {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Infiere un tipo de columna agnóstico al dialecto ("text", "bigint",
+/// "double", "boolean", "json") a partir del primer valor no-nulo de la
+/// columna en el batch. Se usa para `DataWriter::add_column` en la
+/// reconciliación en caliente.
+fn infer_agnostic_type(rows: &[serde_json::Value], column: &str) -> &'static str {
+    for row in rows {
+        match row.get(column) {
+            Some(serde_json::Value::String(_)) => return "text",
+            Some(serde_json::Value::Number(n)) => {
+                if n.is_i64() || n.is_u64() {
+                    return "bigint";
+                }
+                return "double";
+            }
+            Some(serde_json::Value::Bool(_)) => return "boolean",
+            Some(serde_json::Value::Array(_)) | Some(serde_json::Value::Object(_)) => {
+                return "json"
+            }
+            _ => {}
+        }
+    }
+    "text"
+}
+
 /// Extract the unknown column name from MySQL/MariaDB error messages.
 /// Handles format: `Unknown column 'agencia_id' in 'INSERT INTO'`
 fn extract_unknown_column(err: &str) -> Option<String> {
@@ -520,11 +820,15 @@ fn extract_unknown_column(err: &str) -> Option<String> {
             return Some(rest[..end].to_string());
         }
     }
-    // PostgreSQL: column "xxx" does not exist
-    if let Some(start) = err.find("column \"") {
-        let rest = &err[start + 8..];
-        if let Some(end) = rest.find('"') {
-            return Some(rest[..end].to_string());
+    // PostgreSQL: column "xxx" of relation "yyy" does not exist.
+    // Requiere "does not exist" para NO confundir errores de tipo enum como
+    // `column "status" is of type X but expression is of type text`.
+    if err.contains("does not exist") {
+        if let Some(start) = err.find("column \"") {
+            let rest = &err[start + 8..];
+            if let Some(end) = rest.find('"') {
+                return Some(rest[..end].to_string());
+            }
         }
     }
     // SQL Server: Invalid column name 'xxx'
@@ -744,6 +1048,91 @@ mod tests {
     }
 
     // ── Tests ──
+
+    #[test]
+    fn extract_unknown_column_ignores_unrelated_errors() {
+        assert_eq!(
+            extract_unknown_column("relation \"brands\" does not exist"),
+            None
+        );
+        assert_eq!(extract_unknown_column("type \"x\" does not exist"), None);
+        assert_eq!(extract_unknown_column("connection refused"), None);
+    }
+
+    #[test]
+    fn extract_not_null_column_matches_per_engine() {
+        assert_eq!(
+            extract_not_null_column(
+                r#"null value in column "segment" of relation "attributes" violates not-null constraint"#
+            ),
+            Some("segment".to_string())
+        );
+        assert_eq!(
+            extract_not_null_column("Column 'segment' cannot be null"),
+            Some("segment".to_string())
+        );
+        assert_eq!(
+            extract_not_null_column("NOT NULL constraint failed: attributes.segment"),
+            Some("segment".to_string())
+        );
+        assert_eq!(
+            extract_not_null_column("Cannot insert the value NULL into column 'segment'."),
+            Some("segment".to_string())
+        );
+        assert_eq!(extract_not_null_column("connection refused"), None);
+    }
+
+    #[test]
+    fn strip_null_bytes_removes_and_reports_hits() {
+        let mut rows = vec![serde_json::json!({
+            "id": 1,
+            "name": "a\u{0}b",
+            "meta": { "x\u{0}y": "v\u{0}", "arr": ["z\u{0}"] },
+        })];
+        let hits = strip_null_bytes(&mut rows, "id");
+        assert!(!hits.is_empty());
+        assert_eq!(rows[0]["name"], serde_json::json!("ab"));
+        assert!(rows[0]["meta"].as_object().unwrap().contains_key("xy"));
+        assert_eq!(rows[0]["meta"]["xy"], serde_json::json!("v"));
+        assert_eq!(rows[0]["meta"]["arr"][0], serde_json::json!("z"));
+        // Debe reportar al menos name y las claves anidadas.
+        assert!(hits.iter().any(|(_, col)| col == "name"));
+        assert!(hits.iter().any(|(_, col)| col == "meta.xy"));
+    }
+
+    #[test]
+    fn extract_unknown_column_ignores_enum_type_mismatch() {
+        // El error de enum NO es una columna faltante: no debe devolver "status".
+        assert_eq!(
+            extract_unknown_column(
+                r#"column "status" is of type merchant_verification_status_enum but expression is of type text"#
+            ),
+            None
+        );
+        // Otro error con "column X is of type ..." tampoco debe casar.
+        assert_eq!(
+            extract_unknown_column(
+                r#"column "amount" is of type numeric but expression is of type text"#
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn extract_unknown_column_matches_real_missing_columns() {
+        assert_eq!(
+            extract_unknown_column(r#"column "agencia_id" of relation "brands" does not exist"#),
+            Some("agencia_id".to_string())
+        );
+        assert_eq!(
+            extract_unknown_column("Unknown column 'price' in 'INSERT INTO ...'"),
+            Some("price".to_string())
+        );
+        assert_eq!(
+            extract_unknown_column("Invalid column name 'status'."),
+            Some("status".to_string())
+        );
+    }
 
     #[tokio::test]
     async fn test_full_sync_70_tables_200_records_each() {

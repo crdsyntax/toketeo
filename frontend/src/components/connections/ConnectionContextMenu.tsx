@@ -34,19 +34,19 @@ export function ConnectionContextMenu({
     <div
       ref={containerRef}
       style={{ left: x, top: y }}
-      className="fixed z-50 min-w-[160px] bg-muted border border-border rounded-xl shadow-2xl shadow-black/50 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
+      className="fixed z-[9999] min-w-[172px] bg-card border border-border rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.35)] p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none"
       onClick={onClose}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <button
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs text-foreground/90 rounded-lg hover:bg-accent/80 hover:text-accent-foreground transition-all duration-150"
         onClick={(e) => { e.stopPropagation(); onClose(); if (connId && typeof onDisconnect === 'function') onDisconnect(connId) }}
       >
-        <Unplug className="w-3.5 h-3.5 text-muted-foreground" />
+        <Unplug className="w-3.5 h-3.5 text-muted-foreground/70" />
         Disconnect
       </button>
       <button
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs text-foreground/90 rounded-lg hover:bg-accent/80 hover:text-accent-foreground transition-all duration-150"
         onClick={async (e) => {
           e.stopPropagation()
           onClose()
@@ -60,11 +60,11 @@ export function ConnectionContextMenu({
           }
         }}
       >
-        <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+        <RefreshCw className="w-3.5 h-3.5 text-muted-foreground/70" />
         Refresh Connection
       </button>
       <button
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs text-foreground/90 rounded-lg hover:bg-accent/80 hover:text-accent-foreground transition-all duration-150"
         onClick={(e) => {
           e.stopPropagation()
           onClose()
@@ -74,12 +74,12 @@ export function ConnectionContextMenu({
           toast.success('Schemas refreshed')
         }}
       >
-        <Database className="w-3.5 h-3.5 text-muted-foreground" />
+        <Database className="w-3.5 h-3.5 text-muted-foreground/70" />
         Refresh Schemas
       </button>
-      <div className="border-t border-border my-1" />
+      <div className="border-t border-border/60 my-1" />
       <button
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs text-foreground/90 rounded-lg hover:bg-accent/80 hover:text-accent-foreground transition-all duration-150"
         onClick={(e) => {
           e.stopPropagation()
           onClose()
@@ -103,11 +103,11 @@ export function ConnectionContextMenu({
           })
         }}
       >
-        <Database className="w-3.5 h-3.5 text-muted-foreground" />
+        <Database className="w-3.5 h-3.5 text-muted-foreground/70" />
         Create Database
       </button>
       <button
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-destructive rounded-md hover:bg-destructive/10 transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs text-destructive rounded-lg hover:bg-destructive/10 transition-all duration-150"
         onClick={(e) => {
           e.stopPropagation()
           onClose()

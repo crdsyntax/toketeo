@@ -15,22 +15,22 @@ interface SyncHistoryProps {
 function timeAgo(dateStr: string): string {
   const ms = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(ms / 60000)
-  if (mins < 1) return 'justo ahora'
-  if (mins < 60) return `hace ${mins}m`
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `hace ${hours}h`
+  if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
-  return `hace ${days}d`
+  return `${days}d ago`
 }
 
 const statusInfo = (s: PipelineStatus) => {
   switch (s) {
-    case PipelineStatus.Completed: return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'Completado' }
+    case PipelineStatus.Completed: return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'Completed' }
     case PipelineStatus.Failed: return { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', label: 'Error' }
-    case PipelineStatus.Running: return { icon: Loader2, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20', label: 'En progreso' }
-    case PipelineStatus.Paused: return { icon: PauseCircle, color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', label: 'Pausado' }
-    case PipelineStatus.Cancelled: return { icon: XCircle, color: 'text-muted-foreground', bg: 'bg-muted/20', border: 'border-border', label: 'Cancelado' }
-    default: return { icon: Clock, color: 'text-muted-foreground', bg: 'bg-muted/20', border: 'border-border', label: 'Desconocido' }
+    case PipelineStatus.Running: return { icon: Loader2, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20', label: 'In progress' }
+    case PipelineStatus.Paused: return { icon: PauseCircle, color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', label: 'Paused' }
+    case PipelineStatus.Cancelled: return { icon: XCircle, color: 'text-muted-foreground', bg: 'bg-muted/20', border: 'border-border', label: 'Cancelled' }
+    default: return { icon: Clock, color: 'text-muted-foreground', bg: 'bg-muted/20', border: 'border-border', label: 'Unknown' }
   }
 }
 
@@ -40,17 +40,17 @@ function RunDetail({ runId }: { runId: string }) {
     queryFn: () => syncService.listBatches(runId),
   })
 
-  if (!batches) return <p className="text-[var(--ch-text-10)] text-muted-foreground py-2">Cargando detalle...</p>
-  if (batches.length === 0) return <p className="text-[var(--ch-text-10)] text-muted-foreground py-2">Sin lotes registrados.</p>
+  if (!batches) return <p className="text-[var(--ch-text-10)] text-muted-foreground py-2">Loading details...</p>
+  if (batches.length === 0) return <p className="text-[var(--ch-text-10)] text-muted-foreground py-2">No batches recorded.</p>
 
   return (
     <div className="space-y-1 py-2">
       {batches.map((b) => (
         <div key={b.id} className="flex items-center gap-2 text-[var(--ch-text-10)] font-mono text-muted-foreground pl-4">
           <span className={cn('w-1.5 h-1.5 rounded-full', b.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500')} />
-          <span>Lote {b.batch_number}</span>
+          <span>Batch {b.batch_number}</span>
           <span>{b.table_name}</span>
-          <span className="text-muted-foreground/70">{b.rows_extracted} filas</span>
+          <span className="text-muted-foreground/70">{b.rows_extracted} rows</span>
           {b.duration_ms > 0 && <span>{b.duration_ms}ms</span>}
           {b.error_message && <span className="text-destructive">{b.error_message}</span>}
         </div>
@@ -73,13 +73,13 @@ function RunTableSummary({ runId }: { runId: string }) {
   return (
     <div className="flex items-center gap-1.5 text-[var(--ch-text-9)] text-muted-foreground/70 mt-1 flex-wrap">
       <Database className="w-2.5 h-2.5 shrink-0" />
-      <span className="font-bold uppercase tracking-wider">Tablas:</span>
+      <span className="font-bold uppercase tracking-wider">Tables:</span>
       {tableNames.length <= 5 ? (
         tableNames.map((t) => (
           <span key={t} className="font-mono">{t}{t !== tableNames[tableNames.length - 1] ? ',' : ''}</span>
         ))
       ) : (
-        <span className="font-mono">{tableNames.slice(0, 4).join(', ')}, +{tableNames.length - 4} más</span>
+        <span className="font-mono">{tableNames.slice(0, 4).join(', ')}, +{tableNames.length - 4} more</span>
       )}
     </div>
   )
@@ -95,7 +95,7 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
   if (isLoading) {
     return (
       <div className="border border-border bg-muted/20 p-6 text-center">
-        <p className="text-xs text-muted-foreground">Cargando historial...</p>
+        <p className="text-xs text-muted-foreground">Loading history...</p>
       </div>
     )
   }
@@ -103,7 +103,7 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
   if (!runs || runs.length === 0) {
     return (
       <div className="border border-border bg-muted/20 p-6 text-center">
-        <p className="text-xs text-muted-foreground">Sin ejecuciones aún.</p>
+        <p className="text-xs text-muted-foreground">No runs yet.</p>
       </div>
     )
   }
@@ -169,14 +169,14 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
 
                 <div className="flex items-center gap-3 text-[var(--ch-text-10)] text-muted-foreground font-mono">
                   <span className="text-foreground font-bold">{run.processed_rows.toLocaleString()}</span>
-                  <span className="text-muted-foreground/70">filas</span>
+                  <span className="text-muted-foreground/70">rows</span>
                   {run.error_count > 0 && (
                     <>
                       <span className="text-destructive font-bold">{run.error_count}</span>
-                      <span className="text-muted-foreground/70">errores</span>
+                      <span className="text-muted-foreground/70">errors</span>
                     </>
                   )}
-                  <span>{run.batch_count} lote{run.batch_count !== 1 ? 's' : ''}</span>
+                  <span>{run.batch_count} batch{run.batch_count !== 1 ? 'es' : ''}</span>
                 </div>
 
                 <RunTableSummary runId={run.id} />

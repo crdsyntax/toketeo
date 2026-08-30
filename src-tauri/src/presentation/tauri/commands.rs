@@ -211,6 +211,44 @@ pub async fn delete_connection(id: String, state: State<'_, AppState>) -> AppRes
 }
 
 #[tauri::command]
+pub async fn get_database_credential(
+    id: String,
+    database: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<crate::models::DatabaseCredential>> {
+    ConnectionService::get_database_credential(&state, &id, &database).await
+}
+
+#[tauri::command]
+pub async fn save_database_credential(
+    id: String,
+    database: String,
+    user: String,
+    password: String,
+    auth_source: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::save_database_credential(
+        &state,
+        &id,
+        &database,
+        &user,
+        &password,
+        &auth_source,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_database_credential(
+    id: String,
+    database: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    ConnectionService::delete_database_credential(&state, &id, &database).await
+}
+
+#[tauri::command]
 pub async fn reveal_connection_secret(
     id: String,
     field: String,
@@ -888,6 +926,7 @@ pub async fn generate_safe_delete_sql(
         &input.table,
         input.schema.as_deref(),
         &referenced_by,
+        input.where_clause.as_deref(),
     ))
 }
 
@@ -936,27 +975,24 @@ pub async fn update_ddl(
     let db_type = driver.db_type();
     let start = std::time::Instant::now();
 
-    let final_sql = if let Some(ref s) = schema {
+    let result = if let Some(ref s) = schema {
         match db_type {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
-                format!("USE {};\n{}", quote_identifier(&db_type, s), sql)
+                driver
+                    .execute(&format!("USE {};\n{}", quote_identifier(&db_type, s), sql))
+                    .await
             }
             crate::db::DbType::Postgres => {
-                driver
-                    .execute(&format!(
-                        "SET search_path TO {};",
-                        quote_identifier(&db_type, s)
-                    ))
-                    .await?;
-                sql
+                // execute_with_schema sets the search_path for this statement and
+                // restores it afterwards, so it does not leak into the pool and
+                // break later queries on a recycled connection.
+                driver.execute_with_schema(&sql, s).await
             }
-            _ => sql,
+            _ => driver.execute(&sql).await,
         }
     } else {
-        sql
+        driver.execute(&sql).await
     };
-
-    let result = driver.execute(&final_sql).await;
 
     // Log the DDL update in audit
     let status = if result.is_ok() { "success" } else { "error" };
@@ -965,7 +1001,7 @@ pub async fn update_ddl(
     let _ = AuditService::log_query(
         &state,
         id.clone(),
-        format!("UPDATE DDL ({} {}): {}", object_type, name, final_sql),
+        format!("UPDATE DDL ({} {}): {}", object_type, name, sql),
         start.elapsed().as_millis() as u64,
         status.to_string(),
         error_msg,
@@ -1130,6 +1166,16 @@ pub async fn drop_constraint(
     ExplorerService::execute_query(&state, &id, &sql, schema)
         .await
         .map(|_| ())
+}
+
+#[tauri::command]
+pub async fn truncate_tables(
+    id: String,
+    schema: Option<String>,
+    tables: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::TruncateTablesResult> {
+    ExplorerService::truncate_tables(&state, &id, schema, tables).await
 }
 
 #[tauri::command]

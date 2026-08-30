@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Play, Copy } from 'lucide-react';
 import { EditorTabs } from '@/components/query/panels/EditorTabs';
 import { EditorToolbar } from '@/components/query/panels/EditorToolbar';
 import { SqlEditorPanel } from '@/components/query/panels/SqlEditorPanel';
@@ -10,17 +10,15 @@ import { SqlGeneratorModal } from '@/components/query/SqlGeneratorModal';
 import { ScriptErrorModal } from '@/components/query/ScriptErrorModal';
 import { ScriptSummaryModal } from '@/components/query/ScriptSummaryModal';
 import { QueryHistoryPanel } from '@/components/query/QueryHistoryPanel';
-import { AssistantLayout } from '@/components/assistant/AssistantLayout';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
 import { NewScriptModal } from '@/components/query/NewScriptModal';
-import { useAssistantStore } from '@/store/assistantStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useQueryEditor } from '@/hooks/useQueryEditor';
+import { TransactionBanner } from '@/components/query/TransactionBanner';
 import { useEffect, useRef, useState } from 'react';
 import { ExecutionStatus, DatabaseType } from '@/types/database';
 import { useQuery } from '@tanstack/react-query';
 import { connectionService } from '@/services/connection.service';
-import { cn } from '@/lib/utils';
 
 export default function QueryEditor() {
   const { data: connections = [] } = useQuery({
@@ -61,6 +59,10 @@ export default function QueryEditor() {
     pendingEdit,
     confirmPendingEdit,
     discardPendingEdit,
+    selectedRowIndexes,
+    setSelectedRowIndexes,
+    selectionAnchor,
+    setSelectionAnchor,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,
@@ -77,6 +79,9 @@ export default function QueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    handleCopyRows,
+    handleCopyCell,
+    handleExecuteRowSql,
     updateTabViewState,
     queryLimit,
     setQueryLimit,
@@ -94,6 +99,9 @@ export default function QueryEditor() {
     scriptResponding,
     respondScriptPrompt,
     scriptLive,
+    openTransaction,
+    handleCommit,
+    handleRollback,
   } = useQueryEditor()
 
   const setActiveConnection = useAppStore((s) => s.setActiveConnection)
@@ -101,8 +109,6 @@ export default function QueryEditor() {
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [seenReportId, setSeenReportId] = useState<string | null>(null);
-  const showAssistant = useAssistantStore((s) => s.showAssistant);
-  const setShowAssistant = useAssistantStore((s) => s.setShowAssistant);
   const currentConnectionId = activeTab?.connectionId || activeConnection?.id;
   const targetConnection = (connections.find(c => c.id === currentConnectionId) || activeConnection || null);
 
@@ -114,19 +120,17 @@ export default function QueryEditor() {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
         setShowShortcuts(true)
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
-        e.preventDefault()
-        setShowAssistant(!showAssistant)
-      }
+      // Ctrl/Cmd+I is handled globally by the AssistantDrawer.
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [showAssistant, setShowAssistant])
+  }, [])
   const currentHistory = currentConnectionId ? (queryHistory[currentConnectionId] ?? []) : [];
 
   const isMongo = targetConnection?.type === DatabaseType.MONGODB
 
   const SQL_ACTIONS: string[] = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
+  const MONGO_ACTIONS: string[] = ['FIND', 'UPDATE', 'INSERT', 'DELETE', 'JSON']
 
   const containerRef = useRef<HTMLDivElement>(null)
   const splitterRef = useRef({ isDragging: false, startY: 0, startHeight: 60 })
@@ -210,11 +214,28 @@ export default function QueryEditor() {
           style={{ top: contextMenuSql.y, left: contextMenuSql.x }}
         >
           <div className="px-2 py-1 text-[var(--ch-text-10)] font-semibold text-muted-foreground uppercase tracking-wider select-none">
-            {isMongo ? 'Schema Query Actions' : 'SQL Actions'}
+            {isMongo ? 'Mongo Actions' : 'SQL Actions'}
           </div>
           <hr className="border-border/50 my-1" />
           <div className="space-y-0.5">
-            {SQL_ACTIONS.map((action) => (
+            {!isMongo && (
+              <>
+                <button
+                  onClick={() => handleExecuteRowSql()}
+                  className="w-full text-left px-2.5 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-150 flex items-center gap-2"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Execute</span>
+                  {selectedRowIndexes.size > 1 && (
+                    <span className="ml-auto text-[var(--ch-text-10)] text-muted-foreground font-mono">
+                      {selectedRowIndexes.size} rows
+                    </span>
+                  )}
+                </button>
+                <hr className="border-border/50 my-1" />
+              </>
+            )}
+            {(isMongo ? MONGO_ACTIONS : SQL_ACTIONS).map((action) => (
               <button
                 key={action}
                 onClick={() => handleGenerateSql(action.toLowerCase())}
@@ -226,6 +247,19 @@ export default function QueryEditor() {
                 </span>
               </button>
             ))}
+            <hr className="border-border/50 my-1" />
+            <button
+              onClick={() => handleCopyRows()}
+              className="w-full text-left px-2.5 py-1.5 text-xs text-foreground rounded-md hover:bg-accent-muted hover:text-accent transition-colors duration-150 flex items-center justify-between font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <Copy className="w-3.5 h-3.5" />
+                {selectedRowIndexes.size > 1 ? 'Copy Rows' : 'Copy Row'}
+              </span>
+              <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono">
+                {selectedRowIndexes.size > 1 ? `${selectedRowIndexes.size} rows` : 'JSON'}
+              </span>
+            </button>
           </div>
         </div>
       )}
@@ -264,6 +298,15 @@ export default function QueryEditor() {
         }}
       />
 
+      {openTransaction && (
+        <TransactionBanner
+          connectionId={openTransaction.connectionId}
+          startedAt={openTransaction.startedAt}
+          onCommit={handleCommit}
+          onRollback={handleRollback}
+        />
+      )}
+
       {/* History panel floating dropdown */}
       {showHistory && (
         <div className="relative">
@@ -300,6 +343,12 @@ export default function QueryEditor() {
         draggingRef={draggingRef}
         resizingRef={resizingRef}
         setContextMenuSql={setContextMenuSql}
+        selectedRowIndexes={selectedRowIndexes}
+        setSelectedRowIndexes={setSelectedRowIndexes}
+        selectionAnchor={selectionAnchor}
+        setSelectionAnchor={setSelectionAnchor}
+        isMongo={isMongo}
+        handleCopyCell={handleCopyCell}
       />
 
       <QueryMenus 
@@ -312,20 +361,7 @@ export default function QueryEditor() {
         togglePanel={togglePanel}
       />
 
-      <button
-        onClick={() => setShowAssistant(!showAssistant)}
-        className={cn(
-          "fixed bottom-4 right-4 z-50 w-9 h-9 rounded-lg flex items-center justify-center shadow-lg transition-all",
-          showAssistant
-            ? "bg-primary text-primary-foreground shadow-primary/25"
-            : "bg-background/80 backdrop-blur text-muted-foreground hover:text-foreground border border-border"
-        )}
-        title="Toggle Assistant (⌘I)"
-      >
-        <Sparkles className="w-4 h-4" />
-      </button>
-
-      <EditorTabs 
+      <EditorTabs
         tabs={tabs}
         activeTabId={activeTabId}
         setActiveTabId={setActiveTabId}
@@ -362,6 +398,7 @@ export default function QueryEditor() {
                     editorRef={editorRef}
                     executeCurrent={handleExecuteCurrent}
                     executeAll={handleExecuteAll}
+                    connectionId={currentConnectionId}
                     connectionName={targetConnection?.name}
                     connectionType={targetConnection?.type}
                     updateTabViewState={updateTabViewState}
@@ -407,6 +444,10 @@ export default function QueryEditor() {
                 discardPendingEdit={discardPendingEdit}
                 handlePageChange={handlePageChange}
                 setContextMenuSql={setContextMenuSql}
+                selectedRowIndexes={selectedRowIndexes}
+                setSelectedRowIndexes={setSelectedRowIndexes}
+                selectionAnchor={selectionAnchor}
+                setSelectionAnchor={setSelectionAnchor}
                 queryLimit={queryLimit}
                 setQueryLimit={setQueryLimit}
                 safeDeleteSuggestion={safeDeleteSuggestion}
@@ -419,16 +460,12 @@ export default function QueryEditor() {
                 onShowScriptSummary={() => {
                   if (scriptSummary) setSeenReportId(null);
                 }}
+                isMongo={isMongo}
+                handleCopyCell={handleCopyCell}
               />
             </div>
           )}
         </div>
-
-        {showAssistant && (
-          <div className="w-80 2xl:w-96 border-l border-border shrink-0 overflow-hidden">
-            <AssistantLayout />
-          </div>
-        )}
       </div>
 
       {showShortcuts && <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />}

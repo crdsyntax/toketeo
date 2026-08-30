@@ -38,10 +38,40 @@ fn apply_mappings(
             value
         };
 
-        map.insert(mapping.destination_column.clone(), transformed);
+        map.insert(
+            mapping.destination_column.clone(),
+            sanitize_json_value(transformed),
+        );
     }
 
     Ok(serde_json::Value::Object(map))
+}
+
+/// Elimina null bytes (0x00) de todos los strings (valores y claves de
+/// objetos) de un valor JSON. Previene errores `invalid byte sequence for
+/// encoding "UTF8": 0x00` en targets que rechazan null bytes (PostgreSQL).
+/// Punto único de saneo para TODOS los drivers antes de cualquier upsert.
+pub fn sanitize_json_value(val: serde_json::Value) -> serde_json::Value {
+    match val {
+        serde_json::Value::String(s) => serde_json::Value::String(sanitize_string(&s)),
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (sanitize_string(&k), sanitize_json_value(v)))
+                .collect(),
+        ),
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sanitize_json_value).collect())
+        }
+        other => other,
+    }
+}
+
+fn sanitize_string(s: &str) -> String {
+    if s.contains('\0') {
+        s.replace('\0', "")
+    } else {
+        s.to_string()
+    }
 }
 
 fn apply_transform(
@@ -183,4 +213,43 @@ fn try_parse_datetime(s: &str) -> Option<chrono::NaiveDateTime> {
         return Some(dt);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_removes_null_bytes_from_scalars() {
+        let val = serde_json::json!("a\0b\0c");
+        assert_eq!(sanitize_json_value(val), serde_json::json!("abc"));
+    }
+
+    #[test]
+    fn sanitize_recurses_into_objects_and_arrays() {
+        let val = serde_json::json!({
+            "ke\0y": "va\0lue",
+            "arr": ["x\0", {"nested": "y\0z"}],
+            "num": 42,
+        });
+        let cleaned = sanitize_json_value(val);
+        let obj = cleaned.as_object().unwrap();
+        assert!(obj.contains_key("key"));
+        assert_eq!(obj["key"], serde_json::json!("value"));
+        assert_eq!(obj["arr"][0], serde_json::json!("x"));
+        assert_eq!(obj["arr"][1]["nested"], serde_json::json!("yz"));
+        assert_eq!(obj["num"], serde_json::json!(42));
+    }
+
+    #[test]
+    fn transform_rows_strips_null_bytes_through_mappings() {
+        let row = serde_json::json!({ "name": "a\0b", "price": 10 });
+        let mappings = vec![ColumnMapping {
+            source_column: "name".into(),
+            destination_column: "name".into(),
+            transform: None,
+        }];
+        let out = transform_rows(vec![row], &mappings).unwrap();
+        assert_eq!(out[0]["name"], serde_json::json!("ab"));
+    }
 }

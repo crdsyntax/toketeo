@@ -42,7 +42,7 @@ export function UpdateModal() {
             onClick={dismiss}
             disabled={downloading}
             className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-            title="No actualizar ahora"
+            title="Not now"
           >
             <X className="w-5 h-5" />
           </button>
@@ -53,9 +53,9 @@ export function UpdateModal() {
             </div>
             <div className="min-w-0">
               <Badge variant="default" size="sm" className="mb-1.5 uppercase tracking-wider">
-                Nueva versión
+                New version
               </Badge>
-              <h2 className="text-xl font-black">Toketeo tiene una actualización</h2>
+              <h2 className="text-xl font-black">Toketeo has an update</h2>
             </div>
           </div>
         </div>
@@ -66,14 +66,14 @@ export function UpdateModal() {
           <div className="flex items-center gap-3">
             <div className="flex-1 rounded-xl border border-border bg-card p-4 text-center">
               <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">
-                Versión actual
+                Current version
               </p>
               <p className="text-lg font-black text-muted-foreground">v{update.currentVersion}</p>
             </div>
             <ArrowUpRight className="w-5 h-5 text-accent shrink-0" />
             <div className="flex-1 rounded-xl border border-accent/30 bg-accent-muted/40 p-4 text-center">
               <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-accent/70 mb-1">
-                Nueva versión
+                New version
               </p>
               <p className="text-lg font-black text-accent">v{update.version}</p>
             </div>
@@ -82,7 +82,7 @@ export function UpdateModal() {
           {update.date && (
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <RefreshCw className="w-3.5 h-3.5" />
-              Publicada el {dayjs(update.date).format('DD/MM/YYYY')}
+              Published on {dayjs(update.date).format('MM/DD/YYYY')}
             </p>
           )}
 
@@ -90,7 +90,7 @@ export function UpdateModal() {
           {update.body && (
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">
-                Notas de la versión
+                Release notes
               </p>
               <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{update.body}</p>
             </div>
@@ -107,8 +107,8 @@ export function UpdateModal() {
               </div>
               <p className="text-xs text-muted-foreground text-center">
                 {percentage !== null
-                  ? `Descargando… ${percentage.toFixed(0)}%`
-                  : 'Descargando actualización…'}
+                  ? `Downloading… ${percentage.toFixed(0)}%`
+                  : 'Downloading update…'}
               </p>
             </div>
           )}
@@ -117,11 +117,11 @@ export function UpdateModal() {
         {/* Footer */}
         <div className="border-t border-border bg-card p-6 flex items-center justify-end gap-3">
           <Button variant="secondary" onClick={dismiss} disabled={downloading}>
-            No actualizar ahora
+            Not now
           </Button>
           <Button onClick={installNow} disabled={downloading} loading={downloading}>
             <Download className="w-4 h-4" />
-            Actualizar ahora
+            Update now
           </Button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { AppHeader } from '@/components/layout/AppHeader'
 import { useAppStore } from '@/store/useAppStore'
 import { ConnectionsSidebar } from '@/components/connections/ConnectionsSidebar'
@@ -12,19 +12,44 @@ import { GamificationModal } from '@/components/gamification/GamificationModal'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { listen } from '@tauri-apps/api/event'
 import { toast } from 'react-hot-toast'
+import { Environment } from '@/types/database'
+import { AlertTriangle, CheckCircle, Loader2, RotateCcw } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { openScriptTabForConnection } from '@/lib/connectionScript'
+import { AssistantDrawer } from '@/components/assistant/AssistantDrawer'
 
 export default function MainLayout() {
   const queryClient = useQueryClient()
   const { activeConnection, setActiveConnection, isSidebarOpen } = useAppStore()
+  const tabs = useAppStore((s) => s.tabs)
+  const activeTabId = useAppStore((s) => s.activeTabId)
+  const explorerTabs = useAppStore((s) => s.explorerTabs)
+  const activeExplorerTabId = useAppStore((s) => s.explorer.activeExplorerTabId)
   const setConnectedConnection = useAppStore((state) => state.setConnectedConnection)
   const removeConnectedConnection = useAppStore((state) => state.removeConnectedConnection)
   const setMiniToast = useAppStore((state) => state.setMiniToast)
   const setConnectionError = useAppStore((state) => state.setConnectionError)
+  const location = useLocation()
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
+
+  // The bottom Commit/Rollback bar must target the connection that actually
+  // serves queries: the active query tab's connection (or the active explorer
+  // tab's connection), falling back to the sidebar's active connection.
+  const activeQueryTab = tabs.find((t) => t.id === activeTabId)
+  const activeExplorerTab = activeExplorerTabId ? explorerTabs[activeExplorerTabId] : null
+  const txConnectionId =
+    location.pathname === '/query'
+      ? activeQueryTab?.connectionId || activeConnection?.id
+      : location.pathname === '/explorer'
+        ? activeExplorerTab?.connectionId || activeConnection?.id
+        : activeConnection?.id
+  const txConnection = txConnectionId ? connections.find((c) => c.id === txConnectionId) : null
+  const isProductionTx =
+    !!txConnection && txConnection.environment?.toLowerCase() === Environment.PRODUCTION
 
   const checkStreak = useGamificationStore(state => state.checkStreak)
   
@@ -85,10 +110,10 @@ export default function MainLayout() {
   const [isTransacting, setIsTransacting] = useState(false)
 
   const handleCommit = async () => {
-    if (!activeConnection?.id) return
+    if (!txConnectionId) return
     setIsTransacting(true)
     try {
-      const rowsAffected = await connectionService.commit(activeConnection.id)
+      const rowsAffected = await connectionService.commit(txConnectionId)
       const msg = rowsAffected > 0
         ? `Transaction committed — ${rowsAffected} row(s) affected`
         : 'Transaction committed successfully'
@@ -104,10 +129,10 @@ export default function MainLayout() {
   }
 
   const handleRollback = async () => {
-    if (!activeConnection?.id) return
+    if (!txConnectionId) return
     setIsTransacting(true)
     try {
-      await connectionService.rollback(activeConnection.id)
+      await connectionService.rollback(txConnectionId)
       setMiniToast('tx', { type: 'success', text: 'Transaction Rolled Back' })
       toast.success('Transaction rolled back successfully')
     } catch (error: unknown) {
@@ -159,8 +184,19 @@ export default function MainLayout() {
         database: conn.defaultDatabase || conn.database
       })
       setConnectedConnection(conn.id)
+      openScriptTabForConnection(conn.id, conn.defaultDatabase || conn.database)
     } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to connect to database'
       console.error('Failed to connect to database:', error)
+      // Surface the failure to the user: store it, show the error modal, and a toast.
+      setConnectionError(conn.id, message)
+      setConnectionErrorModal({
+        connectionId: conn.id,
+        connectionName: conn.name,
+        error: message,
+      })
+      toast.error(message)
     }
   }
 
@@ -172,9 +208,6 @@ export default function MainLayout() {
   return (
     <div className="flex flex-col h-screen w-full bg-background text-foreground overflow-hidden">
       <AppHeader
-        onCommit={handleCommit}
-        onRollback={handleRollback}
-        isTransacting={isTransacting}
         onOpenGamification={() => setIsGamificationModalOpen(true)}
       />
 
@@ -195,6 +228,39 @@ export default function MainLayout() {
           </div>
         </main>
       </div>
+
+      {isProductionTx && txConnection && (
+        <div className="h-10 border-t border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-destructive/10 border border-destructive/20 rounded-md">
+            <AlertTriangle className="w-3 h-3 text-destructive" />
+            <span className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-destructive">Production</span>
+            <span className="text-[var(--ch-text-10)] text-muted-foreground font-semibold max-w-[200px] truncate">
+              {txConnection.name}
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5 bg-surface border border-border rounded-md p-0.5">
+            <button
+              onClick={handleRollback}
+              disabled={isTransacting}
+              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded transition-all duration-200 disabled:opacity-50"
+              title="Rollback Transaction"
+            >
+              <RotateCcw className={cn("w-3 h-3", isTransacting && "animate-spin")} />
+              Rollback
+            </button>
+            <div className="w-px h-3 bg-border" />
+            <button
+              onClick={handleCommit}
+              disabled={isTransacting}
+              className="flex items-center gap-1 px-2 py-1 text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-accent hover:bg-accent-muted rounded transition-all duration-200 disabled:opacity-50"
+              title="Commit Transaction"
+            >
+              {isTransacting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+              {isTransacting ? 'Committing...' : 'Commit'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <ConnectionModal 
         key={editingConnection?.id || 'new'}
@@ -222,6 +288,8 @@ export default function MainLayout() {
           onReconnected={handleReconnected}
         />
       )}
+
+      <AssistantDrawer />
     </div>
   )
 }

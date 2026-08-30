@@ -21,23 +21,23 @@ type DetailTab = 'progress' | 'logs' | 'history'
 function timeAgo(dateStr: string): string {
   const ms = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(ms / 60000)
-  if (mins < 1) return 'justo ahora'
-  if (mins < 60) return `hace ${mins}m`
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `hace ${hours}h`
+  if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
-  return `hace ${days}d`
+  return `${days}d ago`
 }
 
 const STATUS_CONFIG: Record<PipelineStatus, { color: string; label: string; icon: typeof CheckCircle2 }> = {
-  [PipelineStatus.Ready]: { color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', label: 'Listo', icon: CheckCircle2 },
-  [PipelineStatus.Running]: { color: 'text-blue-500 bg-blue-500/10 border-blue-500/20', label: 'En progreso', icon: Loader2 },
-  [PipelineStatus.Draft]: { color: 'text-muted-foreground bg-muted/20 border-border', label: 'Borrador', icon: Clock },
-  [PipelineStatus.Failed]: { color: 'text-destructive bg-destructive/10 border-destructive/20', label: 'Error', icon: AlertCircle },
-  [PipelineStatus.Completed]: { color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', label: 'Completado', icon: CheckCircle2 },
-  [PipelineStatus.Paused]: { color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20', label: 'Pausado', icon: Pause },
-  [PipelineStatus.Cancelled]: { color: 'text-muted-foreground bg-muted/20 border-border', label: 'Cancelado', icon: Square },
-  [PipelineStatus.Retrying]: { color: 'text-orange-500 bg-orange-500/10 border-orange-500/20', label: 'Reintentando', icon: Loader2 },
+  [PipelineStatus.Ready]: { color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', label: 'Ready', icon: CheckCircle2 },
+  [PipelineStatus.Running]: { color: 'text-blue-500 bg-blue-500/10 border-blue-500/20', label: 'Running', icon: Loader2 },
+  [PipelineStatus.Draft]: { color: 'text-muted-foreground bg-muted/20 border-border', label: 'Draft', icon: Clock },
+  [PipelineStatus.Failed]: { color: 'text-destructive bg-destructive/10 border-destructive/20', label: 'Failed', icon: AlertCircle },
+  [PipelineStatus.Completed]: { color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', label: 'Completed', icon: CheckCircle2 },
+  [PipelineStatus.Paused]: { color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20', label: 'Paused', icon: Pause },
+  [PipelineStatus.Cancelled]: { color: 'text-muted-foreground bg-muted/20 border-border', label: 'Cancelled', icon: Square },
+  [PipelineStatus.Retrying]: { color: 'text-orange-500 bg-orange-500/10 border-orange-500/20', label: 'Retrying', icon: Loader2 },
 }
 
 export function CrossDbSyncPage() {
@@ -170,7 +170,7 @@ export function CrossDbSyncPage() {
         )
       }
     } catch {
-      toast.error('Error al pausar/reanudar sincronización')
+      toast.error('Error pausing/resuming sync')
     } finally {
       setPausedId(null)
     }
@@ -184,9 +184,9 @@ export function CrossDbSyncPage() {
       queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
         old?.map((p) => p.id === id ? { ...p, status: PipelineStatus.Cancelled } : p)
       )
-      toast.success('Sincronización cancelada')
+      toast.success('Sync cancelled')
     } catch {
-      toast.error('Error al cancelar sincronización')
+      toast.error('Error cancelling sync')
     }
   }
 
@@ -196,7 +196,7 @@ export function CrossDbSyncPage() {
       if (e.PhaseCompleted) {
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
         queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
-        toast.success(`Tabla "${e.PhaseCompleted.table}" sincronizada: ${e.PhaseCompleted.total_rows.toLocaleString()} filas`)
+        toast.success(`Table "${e.PhaseCompleted.table}" synced: ${e.PhaseCompleted.total_rows.toLocaleString()} rows`)
         setLatestRuns((prev) => ({
           ...prev,
           [selectedPipeline?.id ?? '']: {
@@ -233,7 +233,7 @@ export function CrossDbSyncPage() {
             }
           }).catch(() => {})
         }
-        toast.success('Sincronización completada')
+        toast.success('Sync completed')
       }
       if (e.Error) {
         const pipeId = executingPipelineIdRef.current
@@ -248,7 +248,7 @@ export function CrossDbSyncPage() {
         }
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
         queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
-        toast.error(`Error en sincronización: ${e.Error.message}`)
+        toast.error(`Sync error: ${e.Error.message}`)
       }
     })
     return () => { unlisten.then((f) => f()) }
@@ -260,7 +260,7 @@ export function CrossDbSyncPage() {
       executingPipelineIdRef.current = null
       queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
       queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
-      toast.error(`Error en sincronización: ${event.payload}`)
+      toast.error(`Sync error: ${event.payload}`)
     })
     return () => { unlisten.then((f) => f()) }
   }, [queryClient])
@@ -284,10 +284,10 @@ export function CrossDbSyncPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight uppercase flex items-center gap-3">
             <GitBranch className="w-6 h-6 text-primary" />
-            Sincronización Cross-DB
+            Cross-DB Sync
           </h1>
           <p className="text-[var(--ch-text-10)] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-bold">
-            Sincroniza datos entre distintos motores de base de datos
+            Sync data between different database engines
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -295,7 +295,7 @@ export function CrossDbSyncPage() {
             onClick={handleCreate}
             className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
           >
-            <Plus className="w-4 h-4" /> Nueva Sincronización
+            <Plus className="w-4 h-4" /> New Sync
           </button>
         </div>
       </div>
@@ -356,7 +356,7 @@ export function CrossDbSyncPage() {
                                 "p-1.5 text-muted-foreground hover:bg-yellow-500/5 transition-colors",
                                 p.status === PipelineStatus.Paused ? 'hover:text-emerald-500' : 'hover:text-yellow-500',
                               )}
-                              title={p.status === PipelineStatus.Paused ? 'Reanudar' : 'Pausar'}
+                              title={p.status === PipelineStatus.Paused ? 'Resume' : 'Pause'}
                             >
                               {pausedId === p.id ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -369,7 +369,7 @@ export function CrossDbSyncPage() {
                             <button
                               onClick={() => handleCancel(p.id)}
                               className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
-                              title="Cancelar"
+                              title="Cancel"
                             >
                               <Square className="w-3.5 h-3.5" />
                             </button>
@@ -379,14 +379,14 @@ export function CrossDbSyncPage() {
                             <button
                               onClick={() => handleStart(p)}
                               className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
-                              title="Ejecutar"
+                              title="Run"
                             >
                               <Play className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleEdit(p)}
                               className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
-                              title="Editar"
+                              title="Edit"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -395,7 +395,7 @@ export function CrossDbSyncPage() {
                         <button
                           onClick={() => deleteMutation.mutate(p.id)}
                           className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
-                          title="Eliminar"
+                          title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -415,16 +415,16 @@ export function CrossDbSyncPage() {
                     </div>
 
                     <div className="pt-3 border-t border-border/50 flex items-center justify-between text-[var(--ch-text-10)] text-muted-foreground">
-                      <span className="font-bold uppercase tracking-wider">{p.mode === 'full' ? 'Completa' : 'Incremental'}</span>
-                      <span>{p.tables.length} tabla{p.tables.length !== 1 ? 's' : ''}</span>
+                      <span className="font-bold uppercase tracking-wider">{p.mode === 'full' ? 'Full' : 'Incremental'}</span>
+                      <span>{p.tables.length} table{p.tables.length !== 1 ? 's' : ''}</span>
                     </div>
 
                     {lastRun && (
                       <div className="mt-1 text-[var(--ch-text-9)] text-muted-foreground/70">
                         {lastRun.completed_at ? (
-                          <span>Última ejecución: {timeAgo(lastRun.completed_at)} · {lastRun.processed_rows} filas, {lastRun.error_count} errores</span>
+                          <span>Last run: {timeAgo(lastRun.completed_at)} · {lastRun.processed_rows} rows, {lastRun.error_count} errors</span>
                         ) : (
-                          <span>Última ejecución: {timeAgo(lastRun.started_at ?? '')}</span>
+                          <span>Last run: {timeAgo(lastRun.started_at ?? '')}</span>
                         )}
                       </div>
                     )}
@@ -435,13 +435,13 @@ export function CrossDbSyncPage() {
           ) : (
             <div className="flex flex-col items-center justify-center text-muted-foreground p-12 text-center border border-dashed border-border bg-muted/20">
               <GitBranch className="w-12 h-12 mb-4 opacity-30" />
-              <h3 className="text-base font-semibold text-foreground mb-1">Sin sincronizaciones</h3>
-              <p className="text-sm max-w-md">Crea una sincronización para empezar a transferir datos entre bases de datos.</p>
+              <h3 className="text-base font-semibold text-foreground mb-1">No syncs</h3>
+              <p className="text-sm max-w-md">Create a sync to start transferring data between databases.</p>
               <button
                 onClick={handleCreate}
                 className="mt-6 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
               >
-                <Plus className="w-4 h-4" /> Nueva Sincronización
+                <Plus className="w-4 h-4" /> New Sync
               </button>
             </div>
           )}
@@ -461,9 +461,9 @@ export function CrossDbSyncPage() {
 
             <div className="flex gap-1 border-b border-border pb-1">
               {[
-                { id: 'progress' as DetailTab, icon: BarChart3, label: 'Progreso' },
-                { id: 'logs' as DetailTab, icon: ScrollText, label: 'Registros' },
-                { id: 'history' as DetailTab, icon: History, label: 'Historial' },
+                { id: 'progress' as DetailTab, icon: BarChart3, label: 'Progress' },
+                { id: 'logs' as DetailTab, icon: ScrollText, label: 'Logs' },
+                { id: 'history' as DetailTab, icon: History, label: 'History' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -485,7 +485,7 @@ export function CrossDbSyncPage() {
                 <SyncProgress key={activeRun?.id ?? 'none'} run={activeRun} progress={progressState} logs={progressLogs} onProgressChange={setProgressState} onLogsChange={setProgressLogs} />
               ) : (
                 <div className="border border-border bg-muted/20 p-6 text-center">
-                  <p className="text-xs text-muted-foreground">Selecciona una ejecución del historial para ver su progreso, o inicia una nueva sincronización.</p>
+                  <p className="text-xs text-muted-foreground">Select a run from history to view its progress, or start a new sync.</p>
                 </div>
               )
             )}
@@ -495,7 +495,7 @@ export function CrossDbSyncPage() {
                 <SyncLogViewer runId={activeRun.id} />
               ) : (
                 <div className="border border-border bg-muted/20 p-6 text-center">
-                  <p className="text-xs text-muted-foreground">Selecciona una ejecución para ver sus registros.</p>
+                  <p className="text-xs text-muted-foreground">Select a run to view its logs.</p>
                 </div>
               )
             )}
@@ -528,10 +528,10 @@ export function CrossDbSyncPage() {
         >
           <GitBranch className="w-4 h-4 text-primary" />
           <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-            {editingPipeline ? 'Editar' : 'Nueva'} Sincronización
+            {editingPipeline ? 'Edit' : 'New'} Sync
           </span>
           <span className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-            Minimizado
+            Minimized
           </span>
         </button>
       )}

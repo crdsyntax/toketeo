@@ -9,6 +9,7 @@ pub mod model_generator_service;
 pub mod monitoring_service;
 pub mod script;
 pub mod session_service;
+pub mod sql_flow_service;
 pub mod sql_generator_service;
 pub mod sync;
 pub mod totp_service;

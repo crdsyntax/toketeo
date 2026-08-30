@@ -30,7 +30,13 @@ export function ResultsPanelError({
     const { updateTabQuery, tabs, activeTabId } = useAppStore.getState()
     const tabId = activeTabId || (tabs.length > 0 ? tabs[0].id : null)
     if (tabId) {
-      updateTabQuery(tabId, safeDeleteSuggestion)
+      // Append the safe delete script below the current query instead of
+      // replacing it, so the original statement is kept for reference.
+      const current = tabs.find((t) => t.id === tabId)?.query ?? ''
+      updateTabQuery(
+        tabId,
+        current.trim() ? `${current.trimEnd()}\n\n${safeDeleteSuggestion}` : safeDeleteSuggestion,
+      )
     }
   }
 
@@ -154,7 +160,7 @@ export function ResultsPanelError({
               className="flex items-center gap-1.5 text-[var(--ch-text-11)] font-medium px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 transition-colors"
             >
               <FileCode className="w-3 h-3" />
-              Replace query with safe delete
+              Insert safe delete below query
             </button>
           </div>
           <button

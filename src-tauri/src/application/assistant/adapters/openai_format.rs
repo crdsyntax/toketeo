@@ -154,6 +154,128 @@ fn normalize_arguments(value: &serde_json::Value) -> serde_json::Value {
     }
 }
 
+/// Callback invoked with each content delta as it streams in.
+pub type OnDelta<'a> = &'a (dyn Fn(&str) + Send + Sync);
+
+/// Streaming chat completion against an OpenAI-compatible endpoint (SSE).
+/// Emits content deltas through `on_delta` as they arrive and returns the
+/// fully assembled response (content + tool calls). Tool-call argument
+/// fragments are accumulated per call index. Usage is not reported by most
+/// providers when streaming, so token usage is zeroed.
+pub async fn complete_streaming(
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: Option<&str>,
+    provider_label: &str,
+    body: &serde_json::Value,
+    model: &str,
+    on_delta: OnDelta<'_>,
+) -> AppResult<AiResponse> {
+    use futures::StreamExt;
+
+    let mut request_body = body.clone();
+    request_body["stream"] = serde_json::Value::Bool(true);
+
+    let mut req = client
+        .post(format!("{base_url}/chat/completions"))
+        .json(&request_body);
+    if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+        req = req.header("Authorization", format!("Bearer {key}"));
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("{provider_label} request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "{provider_label} returned {status}: {text}"
+        )));
+    }
+
+    let mut stream = resp.bytes_stream();
+    let mut buffer = String::new();
+    let mut content = String::new();
+    // tool_calls keyed by their streamed index: (id, name, arguments-so-far).
+    let mut tool_calls: std::collections::BTreeMap<u64, (String, String, String)> =
+        std::collections::BTreeMap::new();
+    let mut finish_model = model.to_string();
+
+    while let Some(chunk) = stream.next().await {
+        let bytes = chunk
+            .map_err(|e| AppError::Internal(format!("{provider_label} stream failed: {e}")))?;
+        buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+        // SSE events are separated by newlines; process every complete line.
+        while let Some(pos) = buffer.find('\n') {
+            let line: String = buffer.drain(..=pos).collect();
+            let line = line.trim_end_matches(['\n', '\r']);
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+            if data == "[DONE]" {
+                continue;
+            }
+            let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) else {
+                continue;
+            };
+
+            if let Some(m) = parsed["model"].as_str() {
+                finish_model = m.to_string();
+            }
+            let delta = &parsed["choices"][0]["delta"];
+
+            if let Some(text) = delta["content"].as_str() {
+                if !text.is_empty() {
+                    content.push_str(text);
+                    on_delta(text);
+                }
+            }
+
+            if let Some(tcs) = delta["tool_calls"].as_array() {
+                for tc in tcs {
+                    let index = tc["index"].as_u64().unwrap_or(0);
+                    let entry = tool_calls.entry(index).or_default();
+                    if let Some(id) = tc["id"].as_str() {
+                        entry.0.push_str(id);
+                    }
+                    if let Some(name) = tc["function"]["name"].as_str() {
+                        entry.1.push_str(name);
+                    }
+                    if let Some(args) = tc["function"]["arguments"].as_str() {
+                        entry.2.push_str(args);
+                    }
+                }
+            }
+        }
+    }
+
+    let tool_calls: Vec<ToolCall> = tool_calls
+        .into_values()
+        .filter(|(_, name, _)| !name.is_empty())
+        .map(|(id, name, args)| ToolCall {
+            id,
+            name,
+            arguments: normalize_arguments(&serde_json::Value::String(args)),
+        })
+        .collect();
+
+    Ok(AiResponse {
+        content,
+        tool_calls,
+        usage: TokenUsage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        },
+        model: finish_model,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{build_messages, normalize_arguments, parse_response};

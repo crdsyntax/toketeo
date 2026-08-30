@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { EditorView } from '@codemirror/view'
 import { useAppStore, type MongoFilterState, type QueryHistoryEntry, type EditorMode } from '@/store/useAppStore'
 import { queryService, type ScriptDecision, type ScriptLiveStatement, type ScriptReport } from '@/services/query.service'
@@ -18,7 +18,11 @@ import { assistantService } from '@/services/assistant.service'
 import type { SqlFixResult } from '@/types/assistant'
 import { listen } from '@tauri-apps/api/event'
 import { splitSqlStatements } from '@/lib/sqlScript'
+import { extractStatementAtCursor } from '@/lib/sql-statement'
 import type { ScriptErrorPrompt } from '@/components/query/ScriptErrorModal'
+import { generateRowsWhereClause, quoteIdent, quoteTableName, generateSelectByIds, generateDeleteByIds, generateUpdateByIds, generateInsertRows } from '@/lib/sqlGenerator'
+import { generateMongoCommand, extractMongoCollection, type MongoAction } from '@/lib/mongoGenerator'
+import { coerceEditedDateValue } from '@/lib/formatCellValue'
 
 const TABLE_NAME_REGEX = /FROM\s+([a-zA-Z0-9_.`"[\]]+)/i
 
@@ -61,8 +65,16 @@ function isSchemaChangingQuery(sql: string): boolean {
 }
 
 function extractTableFromQuery(query: string): string | null {
-  const match = query.match(/DELETE\s+FROM\s+[`'"']?(\w+)[`'"']?/i)
+  const match = query.match(/DELETE\s+FROM\s+[`'"`"]?(\w+)[`'"`"]?/i)
   return match ? match[1] : null
+}
+
+function extractWhereClauseFromDelete(query: string): string | null {
+  const match = query.match(/DELETE\s+FROM\s+[`'"`"]?\w+[`'"`"]?\s+WHERE\s+([\s\S]+)$/i)
+  if (!match) return null
+  let clause = match[1].trim()
+  if (clause.endsWith(';')) clause = clause.slice(0, -1).trimEnd()
+  return clause || null
 }
 
 const tryParseJson = (v: string): unknown => {
@@ -70,10 +82,6 @@ const tryParseJson = (v: string): unknown => {
   try { return JSON.parse(v); } catch { return v; }
 };
 
-/**
- * Merge MongoFilterBar values into a parsed protocol object.
- * Filter bar values override any values already in the protocol.
- */
 function mergeFilterBar(
   payload: Record<string, unknown>,
   mongoFilter: MongoFilterState | undefined,
@@ -96,33 +104,26 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
   const mode = editorMode ?? 'auto';
 
   if (mode === 'mongosh') {
-    // Shell mode â€” pure shell parsing, NO filter bar merge, NO legacy fallback
     const parseResult = parseMongoShell(cleaned);
     if (parseResult.success) {
       const payload = parseResult.protocol as unknown as Record<string, unknown>;
-      // Explicitly do NOT merge filter bar â€” user's query text is authoritative
       return JSON.stringify(payload);
     }
-    // Parse failed â€” throw so the caller shows the error instead of sending garbage
     throw new Error(`Failed to parse MongoDB shell syntax:\n${parseResult.error}\n\n${cleaned}`);
   }
 
   if (mode === 'json') {
-    // JSON mode â€” only try JSON protocol, no filter bar merge
     try {
       const parsed = JSON.parse(cleaned) as Record<string, unknown>;
       if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
-        // Do NOT merge filter bar â€” user's JSON is authoritative
         return JSON.stringify(parsed);
       }
-      // Valid JSON but missing 'collection' key â€” send as generic MongoDB command
       return cleaned;
     } catch {
       throw new Error(`Invalid JSON for MongoDB command:\n${cleaned}`);
     }
   }
 
-  // 'auto' â€” try JSON first, then shell, then legacy (with filter bar)
   try {
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     if (parsed && typeof parsed === 'object' && 'collection' in parsed) {
@@ -138,10 +139,8 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
       mergeFilterBar(payload, mongoFilter);
       return JSON.stringify(payload);
     }
-    console.warn('[mongoShellParser] Parse failed:', parseResult.error);
   }
 
-  // Legacy fallback (only reached in 'auto' mode)
   const dbShellMatch = cleaned.match(/db\.(\w+)/);
   const collectionName = dbShellMatch ? dbShellMatch[1] : 'unknown';
 
@@ -221,6 +220,8 @@ export function useQueryEditor() {
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
   const [pendingEdit, setPendingEdit] = useState<{ rowIndex: number; column: string; prevValue: DbValue; nextValue: DbValue } | null>(null)
   const [isInteracting, setIsInteracting] = useState(false)
+  const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set())
+  const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null)
   const lastExecutedSqlRef = useRef('')
   const [tabHistory, setTabHistory] = useState<Record<string, { history: { rowIndex: number; col: string; prev: DbValue; next: DbValue }[]; historyIndex: number }>>({})
   const [contextMenuSql, setContextMenuSql] = useState<{ x: number, y: number, row: DbRow } | null>(null)
@@ -235,6 +236,8 @@ export function useQueryEditor() {
   const [scriptLive, setScriptLive] = useState<ScriptLiveStatement[] | null>(null)
   const [lastScriptSql, setLastScriptSql] = useState<string[]>([])
   const activeScriptRunIdRef = useRef<string | null>(null)
+
+  const [openTransaction, setOpenTransaction] = useState<{ connectionId: string; startedAt: number } | null>(null)
 
   const draggingRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const resizingRef = useRef<{ startX: number; startY: number; startSize: { w: number; h: number } } | null>(null)
@@ -284,7 +287,6 @@ export function useQueryEditor() {
       const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
       if (!isProduction) return false;
 
-      // MongoDB destructive operations regex
       const destructive = /\.\s*(updateMany|updateOne|deleteMany|deleteOne|findOneAndDelete|findOneAndUpdate|replaceOne|drop|remove|bulkWrite|insertMany|insertOne|save)\s*\(/i;
       if (destructive.test(sql)) {
         return !window.confirm(
@@ -310,7 +312,6 @@ export function useQueryEditor() {
       )
     }
 
-    // For any environment, UPDATE/DELETE without WHERE clause requires confirmation
     if ((hasUpdate || hasDelete) && !hasWhere) {
       return !window.confirm('Warning: This query contains an UPDATE or DELETE statement without a WHERE clause. Are you sure you want to proceed?')
     }
@@ -384,12 +385,11 @@ export function useQueryEditor() {
       activeScriptRunIdRef.current = null
       const durationMs = Date.now() - startTime
       setScriptSummary(report)
-      // Los statements pendientes (no ejecutados, p. ej. tras cancel) quedan skipped.
       setScriptLive(prev => prev
         ? prev.map(s => s.phase === 'running' || s.phase === 'pending' ? { ...s, phase: 'skipped' as const } : s)
         : prev)
       updateTabResults(activeTab.id, {
-        status: report.rolledBack ? ExecutionStatus.ERROR : report.failed > 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.SUCCESS,
+        status: report.rolledBack ? ExecutionStatus.ERROR : ExecutionStatus.SUCCESS,
         error: report.rolledBack
           ? `Script cancelled: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped — transaction rolled back.`
           : report.failed > 0
@@ -400,6 +400,8 @@ export function useQueryEditor() {
 
       if (report.rolledBack) {
         toast.error(`Script rolled back: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped`)
+      } else if (report.pendingCommit) {
+        toast.success(`Script completed: ${report.ok} ok — changes pending. Press Commit on the bottom bar to apply.`)
       } else if (report.failed > 0) {
         toast(`Script completed: ${report.ok} ok, ${report.failed} failed, ${report.skipped} skipped`, { icon: '⚠️' })
       } else {
@@ -487,8 +489,6 @@ export function useQueryEditor() {
     return () => { cancelled = true; unlisten?.() }
   }, [])
 
-  // Estados en vivo de cada statement del script (vista estilo Workbench):
-  // running → ok / failed (skipped se decide al terminar).
   useEffect(() => {
     let unlisten: (() => void) | undefined
     let cancelled = false
@@ -521,6 +521,8 @@ export function useQueryEditor() {
   const handleExecuteAll = useCallback(async (page: number = 1, limit?: number, overrideSql?: string) => {
     const raw = overrideSql?.trim() ?? activeTab?.query
     if (!raw) return
+    setSelectedRowIndexes(new Set())
+    setSelectionAnchor(null)
     const targetConnectionId = activeTab.connectionId || activeConnection?.id;
     const targetConnection = activeConnection && activeConnection.id === targetConnectionId
       ? activeConnection
@@ -538,6 +540,7 @@ export function useQueryEditor() {
     setSafeDeleteSuggestion(null)
     setSqlFixSuggestion(null)
     const isMongo = targetConnection.type === DatabaseType.MONGODB;
+    const isPostgres = targetConnection.type === DatabaseType.POSTGRES;
     if (checkDangerousQuery(raw, isMongo, targetConnection)) return
 
       const effectiveLimit = limit ?? queryLimit;
@@ -548,8 +551,6 @@ export function useQueryEditor() {
       } else {
         const statements = splitSqlStatements(sql);
         if (statements.length > 1) {
-          // Script multi-statement: el backend lo ejecuta en una transacción
-          // propia, statement a statement, preguntando qué hacer ante errores.
           void handleRunScript(statements, raw);
           return;
         }
@@ -578,9 +579,9 @@ export function useQueryEditor() {
 
       const startTime = Date.now();
       try {
-        // Use the connection's database/schema, falling back to the active connection's
-        // selected schema (important for PostgreSQL where the schema is set in the sidebar).
-        const schema = targetConnection.database || activeConnection?.database;
+        const schema = isPostgres
+          ? (activeConnection?.database || targetConnection.defaultDatabase || targetConnection.database)
+          : (targetConnection.database || activeConnection?.database);
         
         let result;
         try {
@@ -605,12 +606,21 @@ export function useQueryEditor() {
         });
         toast.success(`Query returned successfully in ${durationMs} ms`);
 
-        // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
+        if (!isMongo) {
+          const trimmedSql = sql.trim().replace(/;$/, '').trim()
+          const isBegin = /^(BEGIN|START\s+TRANSACTION)$/i.test(trimmedSql)
+          const isEnd = /^(COMMIT|ROLLBACK|ROLLBACK\s+TO\s+\S+)$/i.test(trimmedSql)
+          if (isBegin) {
+            setOpenTransaction({ connectionId: targetConnection.id, startedAt: Date.now() })
+          } else if (isEnd) {
+            setOpenTransaction(null)
+          }
+        }
+
         if (!isMongo && isSchemaChangingQuery(sql)) {
           refreshSchemaMetadata(targetConnection.id);
         }
 
-        // Handle MongoDB use <db> â€” update connection's active database
         if (isMongo) {
           const useMatch = raw.match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
           if (useMatch) {
@@ -662,7 +672,6 @@ export function useQueryEditor() {
         addQueryHistory(histEntry);
         schemaService.saveQueryHistory([histEntry]).catch(() => undefined)
 
-        // Auto-detect FK violation and generate safe delete suggestion
         if (isFKViolation(message) && targetConnection) {
           const table = extractTableFromQuery(raw)
           if (table) {
@@ -671,6 +680,7 @@ export function useQueryEditor() {
                 targetConnection.id,
                 table,
                 targetConnection.database,
+                extractWhereClauseFromDelete(raw) ?? undefined,
               )
               setSafeDeleteSuggestion(safeSql)
             } catch {
@@ -679,14 +689,12 @@ export function useQueryEditor() {
           }
         }
 
-        // Auto-detect SQL syntax errors and ask the assistant for a corrected query
         if (isSqlSyntaxError(message) && targetConnection) {
           fetchSqlFix(targetConnection.id, sql, message)
         }
       }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addQueryHistory, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix, handleRunScript])
 
-  // Run a query requested from the assistant into the active editor tab.
   useEffect(() => {
     return onRunQueryRequested((sql) => {
       const tabId = useAppStore.getState().activeTabId
@@ -711,43 +719,12 @@ export function useQueryEditor() {
     if (!mainSel.empty) {
       sqlSnippet = view.state.sliceDoc(mainSel.from, mainSel.to)
     } else {
-      const activeLine = view.state.doc.lineAt(cursorPos)
-      const lineText = activeLine.text.trim()
-      const lineSemicolonIndex = lineText.indexOf(';')
-
-      if (lineSemicolonIndex >= 0) {
-        sqlSnippet = lineText.slice(0, lineSemicolonIndex + 1).trim()
-      } else {
-        // Execute the statement at the cursor: the text bounded by the previous ';'
-        // (or start of file) and the next ';' at/after the cursor (or end of file).
-        let start = 0
-        for (let i = cursorPos - 1; i >= 0; i--) {
-          if (fullText[i] === ';') {
-            start = i + 1
-            break
-          }
-        }
-
-        let end = fullText.length - 1
-        for (let i = cursorPos; i < fullText.length; i++) {
-          if (fullText[i] === ';') {
-            end = i
-            break
-          }
-        }
-
-        sqlSnippet = fullText.slice(start, end + 1).trim()
-
-        // Cursor over blank whitespace (e.g. right after a trailing ';'): fall
-        // back to the preceding statement so Ctrl+Enter still runs the finished query.
-        if (!sqlSnippet) {
-          start = fullText.lastIndexOf(';', Math.max(0, start - 2)) + 1
-          sqlSnippet = fullText.slice(start, end + 1).trim()
-        }
-      }
+      sqlSnippet = extractStatementAtCursor(fullText, cursorPos)
     }
 
     if (!sqlSnippet) return
+    setSelectedRowIndexes(new Set())
+    setSelectionAnchor(null)
 
     const targetConnectionId = activeTab.connectionId || activeConnection?.id;
     const targetConnection = activeConnection && activeConnection.id === targetConnectionId
@@ -818,12 +795,21 @@ export function useQueryEditor() {
       const durationMs = Date.now() - startTime;
       toast.success(`Query returned successfully in ${durationMs} ms`);
 
-      // Refresh table metadata when the query changed the schema (e.g. ALTER TABLE ... ADD COLUMN)
+      if (!isMongo) {
+        const trimmedSnippet = sqlSnippet.trim().replace(/;$/, '').trim()
+        const isBegin = /^(BEGIN|START\s+TRANSACTION)$/i.test(trimmedSnippet)
+        const isEnd = /^(COMMIT|ROLLBACK|ROLLBACK\s+TO\s+\S+)$/i.test(trimmedSnippet)
+        if (isBegin) {
+          setOpenTransaction({ connectionId: targetConnection.id, startedAt: Date.now() })
+        } else if (isEnd) {
+          setOpenTransaction(null)
+        }
+      }
+
       if (!isMongo && isSchemaChangingQuery(sqlSnippet)) {
         refreshSchemaMetadata(targetConnection.id);
       }
 
-      // Handle MongoDB use <db> â€” update connection's active database
       if (isMongo) {
         const useMatch = (activeTab?.query ?? sqlSnippet).trim().match(/^\s*use\s+([^\s;]+)\s*;?\s*$/i);
         if (useMatch) {
@@ -844,7 +830,6 @@ export function useQueryEditor() {
         error: message
       })
 
-      // Auto-detect FK violation and generate safe delete suggestion
       if (isFKViolation(message) && targetConnection) {
         const table = extractTableFromQuery(sqlSnippet)
         if (table) {
@@ -853,6 +838,7 @@ export function useQueryEditor() {
               targetConnection.id,
               table,
               targetConnection.database,
+              extractWhereClauseFromDelete(sqlSnippet) ?? undefined,
             )
             setSafeDeleteSuggestion(safeSql)
           } catch {
@@ -861,14 +847,12 @@ export function useQueryEditor() {
         }
       }
 
-      // Auto-detect SQL syntax errors and ask the assistant for a corrected query
       if (isSqlSyntaxError(message) && targetConnection) {
         fetchSqlFix(targetConnection.id, sqlSnippet, message)
       }
     }
   }, [activeTab, activeConnection, connections, updateTabResults, checkDangerousQuery, queryLimit, addXP, isQueryFirstTime, markQueryExecuted, trackAction, setActiveConnectionDatabase, refreshSchemaMetadata, fetchSqlFix])
 
-  // Use refs to avoid stale closures in editor keybindings
   const executeCurrentRef = useRef(handleExecuteCurrent)
   const executeAllRef = useRef(handleExecuteAll)
   
@@ -878,7 +862,6 @@ export function useQueryEditor() {
   }, [handleExecuteCurrent, handleExecuteAll])
 
   const handleCancel = useCallback(() => {
-    // Si hay un script en curso, cancelarlo produce rollback real.
     const runningRunId = activeScriptRunIdRef.current;
     if (runningRunId) {
       queryService.cancelScript(runningRunId).catch(() => undefined)
@@ -915,7 +898,6 @@ export function useQueryEditor() {
     const row = activeTab.results.rows[rowIndex]
     const prevValue = row[column]
     
-    // Use primary_keys metadata from backend if available, fallback to 'id'
     const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0 
       ? activeTab.results.primary_keys 
       : activeTab.results.columns.filter(c => c.toLowerCase() === 'id')
@@ -930,7 +912,7 @@ export function useQueryEditor() {
     }
 
     const tableNameMatch = (lastExecutedSqlRef.current || activeTab.query).match(TABLE_NAME_REGEX)
-    let tableName = tableNameMatch ? tableNameMatch[1] : null
+    const tableName = tableNameMatch ? tableNameMatch[1] : null
 
     if (!tableName) {
       updateTabResults(activeTab.id, { 
@@ -941,13 +923,8 @@ export function useQueryEditor() {
       return
     }
 
-    // Ensure tableName is escaped properly if it isn't
-    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
-        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
-    }
+    const cleanTableName = tableName.replace(/^[`"[]+|[`"\]]+$/g, '')
 
-    // Build WHERE clause using all PK columns
-    const whereClauses = pkColumns.map((pk: string) => `\`${pk.replace(/`/g, "``")}\` = ?`).join(' AND ')
     const pkValues = pkColumns.map((pk: string) => row[pk])
 
     if (pkValues.some((v: DbValue) => v === null || v === undefined)) {
@@ -959,15 +936,22 @@ export function useQueryEditor() {
       return
     }
 
-    const updateSqlTemplate = `UPDATE ${tableName} SET \`${column.replace(/`/g, "``")}\` = ? WHERE ${whereClauses};`
-    const params = [newValue, ...pkValues]
+    const finalSql = generateUpdateByIds(
+      cleanTableName,
+      [row],
+      pkColumns,
+      [{ column, value: newValue }],
+      targetConnection.type,
+    )
 
-    const finalSql = updateSqlTemplate.replace(/\?/g, () => {
-      const val = params.shift();
-      if (val === null || val === undefined) return 'NULL';
-      if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
-      return String(val);
-    });
+    if (!finalSql) {
+      updateTabResults(activeTab.id, { 
+        status: ExecutionStatus.ERROR, 
+        error: 'Cannot update: Failed to generate UPDATE statement for this record.' 
+      })
+      setEditingCell(null)
+      return
+    }
 
     const updatedRows = [...activeTab.results.rows]
     updatedRows[rowIndex] = { ...updatedRows[rowIndex], [column]: newValue }
@@ -979,7 +963,10 @@ export function useQueryEditor() {
     })
 
     try {
-        const schema = targetConnection.database || activeConnection?.database;
+        const isPostgres = targetConnection.type === DatabaseType.POSTGRES;
+        const schema = isPostgres
+          ? (activeConnection?.database || targetConnection.defaultDatabase || targetConnection.database)
+          : (targetConnection.database || activeConnection?.database);
 
         const runUpdate = async () => {
             await tauriApi.invoke('execute_query', {
@@ -1002,7 +989,7 @@ export function useQueryEditor() {
         }
         
         updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
-        addXP(10); // Base XP for edit
+        addXP(10);
         trackAction('EDIT_ROW');
         
         if (!isUndoRedo) {
@@ -1019,7 +1006,6 @@ export function useQueryEditor() {
             status: ExecutionStatus.ERROR, 
             error: errorMessage 
         })
-        // Revert local state on error
         updateTabResults(activeTab.id, { 
           results: { ...activeTab.results, rows: activeTab.results.rows },
         })
@@ -1030,20 +1016,18 @@ export function useQueryEditor() {
 
   const handleSave = useCallback(async () => {
     if (!editingCell) return
-    // When the Review Change panel is disabled (Settings â†’ Query Editor â†’
-    // Inline edition), apply the edit immediately.
-    if (!useAppStore.getState().inlineEditReview) {
-      await updateCell(editingCell.rowIndex, editingCell.column, editingCell.value)
-      return
-    }
-    // Stage the edit so the user can review the diff before committing.
     const row = activeTab?.results?.rows[editingCell.rowIndex]
     const prevValue = row ? row[editingCell.column] : null
+    const nextValue = coerceEditedDateValue(String(editingCell.value ?? ''), prevValue)
+    if (!useAppStore.getState().inlineEditReview) {
+      await updateCell(editingCell.rowIndex, editingCell.column, nextValue)
+      return
+    }
     setPendingEdit({
       rowIndex: editingCell.rowIndex,
       column: editingCell.column,
       prevValue,
-      nextValue: editingCell.value,
+      nextValue,
     })
     setEditingCell(null)
   }, [editingCell, updateCell, activeTab])
@@ -1106,63 +1090,6 @@ export function useQueryEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  const handleGenerateSql = useCallback(async (action: string) => {
-    if (!contextMenuSql || !activeTab?.results) return;
-
-    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
-    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
-      ? activeConnection
-      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
-    if (!targetConnection) return;
-
-    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
-    let tableName = tableNameMatch ? tableNameMatch[1] : null
-    
-    if (!tableName) {
-      updateTabResults(activeTab.id, { 
-        status: ExecutionStatus.ERROR, 
-        error: 'Cannot generate SQL: Table name not found in query.' 
-      })
-      setContextMenuSql(null)
-      return
-    }
-
-    if (!tableName.startsWith('`') && !tableName.startsWith('"') && !tableName.startsWith('[')) {
-        tableName = `\`${tableName.replace(/\./g, '`.`')}\``
-    }
-
-    const pks = activeTab.results.primary_keys || [];
-    const primary_keys = pks.reduce(
-      (acc, pk) => {
-        if (contextMenuSql.row[pk] !== undefined) acc[pk] = contextMenuSql.row[pk];
-        return acc;
-      },
-      {} as Record<string, DbValue>,
-    );
-
-    try {
-      if (action === 'json') {
-        const jsonStr = JSON.stringify(contextMenuSql.row, null, 2);
-        setSqlModal({ isOpen: true, sql: jsonStr });
-      } else {
-        const sql = await tauriApi.invoke<string>('generate_sql', {
-          id: targetConnection.id,
-          action,
-          context: {
-            table: tableName,
-            primary_keys,
-            data: contextMenuSql.row,
-          },
-        });
-        setSqlModal({ isOpen: true, sql });
-      }
-    } catch (e) {
-      console.error('Failed to generate SQL:', e);
-    } finally {
-      setContextMenuSql(null);
-    }
-  }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults]);
-
   const sortedRows = useMemo(() => {
     const rows = activeTab?.results?.rows;
     if (!rows) return []
@@ -1178,6 +1105,169 @@ export function useQueryEditor() {
       return 0
     })
   }, [activeTab?.results?.rows, sortConfig])
+
+  const handleGenerateSql = useCallback(async (action: string) => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return;
+
+    const isMongo = targetConnection.type === DatabaseType.MONGODB;
+    const selectedRows = [...selectedRowIndexes]
+      .map((i) => sortedRows[i])
+      .filter((r): r is DbRow => Boolean(r))
+    const rows = selectedRows.length > 0 ? selectedRows : [contextMenuSql.row]
+
+    try {
+      if (action === 'json') {
+        const jsonStr = JSON.stringify(rows.length > 1 ? rows : rows[0], null, 2);
+        setSqlModal({ isOpen: true, sql: jsonStr });
+      } else if (isMongo) {
+        const collection = extractMongoCollection(activeTab.query)
+        if (!collection) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Cannot generate Mongo command: Collection name not found in query.',
+          })
+          setContextMenuSql(null)
+          return
+        }
+        const mongoSql = generateMongoCommand(collection, action as MongoAction, rows)
+        setSqlModal({ isOpen: true, sql: mongoSql });
+      } else {
+        const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+        const tableName = tableNameMatch ? tableNameMatch[1] : null
+
+        if (!tableName) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Cannot generate SQL: Table name not found in query.',
+          })
+          setContextMenuSql(null)
+          return
+        }
+
+        const pks = activeTab.results.primary_keys || [];
+        let sql = ''
+        switch (action) {
+          case 'select':
+            sql = generateSelectByIds(tableName, rows, pks, targetConnection.type)
+            break
+          case 'delete':
+            sql = generateDeleteByIds(tableName, rows, pks, targetConnection.type)
+            break
+          case 'insert':
+            sql = generateInsertRows(tableName, rows, targetConnection.type)
+            break
+          case 'update': {
+            const assignments = Object.entries(rows[0] ?? {})
+              .filter(([k]) => !pks.includes(k))
+              .map(([k, v]) => ({ column: k, value: v as DbValue }))
+            sql = generateUpdateByIds(tableName, rows, pks, assignments, targetConnection.type)
+            break
+          }
+          default:
+            sql = ''
+        }
+        if (!sql) {
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: 'Cannot generate SQL: No primary key / identity columns available to identify the selected rows.',
+          })
+          setContextMenuSql(null)
+          return
+        }
+        setSqlModal({ isOpen: true, sql });
+      }
+    } catch (e) {
+      console.error('Failed to generate SQL:', e);
+    } finally {
+      setContextMenuSql(null);
+    }
+  }, [contextMenuSql, activeConnection, connections, activeTab, updateTabResults, selectedRowIndexes, sortedRows]);
+
+  const handleCopyRows = useCallback(async () => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const selectedRows = [...selectedRowIndexes]
+      .map((i) => sortedRows[i])
+      .filter((r): r is DbRow => Boolean(r))
+    const rows = selectedRows.length > 0 ? selectedRows : [contextMenuSql.row]
+
+    try {
+      const text = rows.length > 1 ? JSON.stringify(rows, null, 2) : JSON.stringify(rows[0], null, 2)
+      await navigator.clipboard.writeText(text)
+      toast.success(rows.length > 1 ? `Copied ${rows.length} rows as JSON` : 'Copied row as JSON')
+    } catch (e) {
+      console.error('Failed to copy rows:', e)
+    } finally {
+      setContextMenuSql(null)
+    }
+  }, [contextMenuSql, activeTab, selectedRowIndexes, sortedRows])
+
+  const handleCopyCell = useCallback(async (row: DbRow, column: string) => {
+    try {
+      const value = row[column]
+      const text = value === null || value === undefined
+        ? ''
+        : typeof value === 'object' ? JSON.stringify(value) : String(value)
+      await navigator.clipboard.writeText(text)
+      toast.success(`Copied ${column}`)
+    } catch (e) {
+      console.error('Failed to copy cell:', e)
+    }
+  }, [])
+
+  const handleExecuteRowSql = useCallback(async () => {
+    if (!contextMenuSql || !activeTab?.results) return;
+
+    const targetConnectionId = activeTab.connectionId || activeConnection?.id;
+    const targetConnection = activeConnection && activeConnection.id === targetConnectionId
+      ? activeConnection
+      : (connections.find(c => c.id === targetConnectionId) || activeConnection || null);
+    if (!targetConnection) return;
+
+    const tableNameMatch = activeTab.query.match(TABLE_NAME_REGEX)
+    let tableName = tableNameMatch ? tableNameMatch[1] : null
+    if (!tableName) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot execute: Table name not found in query.',
+      })
+      setContextMenuSql(null)
+      return
+    }
+
+    if (tableName.startsWith('`') || tableName.startsWith('"') || tableName.startsWith('[')) {
+      tableName = tableName.slice(1, -1)
+    }
+
+    const selectedRows = [...selectedRowIndexes]
+      .map((i) => sortedRows[i])
+      .filter((r): r is DbRow => Boolean(r))
+    const rows = selectedRows.length > 0 ? selectedRows : [contextMenuSql.row]
+
+    const where = generateRowsWhereClause(rows, activeTab.results.primary_keys ?? [], targetConnection.type)
+    if (!where) {
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot execute: No primary key / identity columns available to identify the selected rows.',
+      })
+      setContextMenuSql(null)
+      return
+    }
+
+    const quotedTable = tableName.includes('.')
+      ? tableName.split('.').map((part) => quoteIdent(part, targetConnection.type)).join('.')
+      : quoteTableName(tableName, targetConnection.type)
+    const sql = `SELECT * FROM ${quotedTable} WHERE ${where};`
+
+    setContextMenuSql(null)
+    await handleExecuteAll(1, undefined, sql)
+  }, [contextMenuSql, activeTab, activeConnection, connections, selectedRowIndexes, sortedRows, handleExecuteAll, updateTabResults])
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc'
@@ -1215,7 +1305,7 @@ export function useQueryEditor() {
     } catch (e) {
       console.error('Failed to save script:', e);
     }
-  }, []) // No dependencies
+  }, [])
 
   const saveScriptRef = useRef(handleSaveScript)
   useEffect(() => {
@@ -1224,6 +1314,14 @@ export function useQueryEditor() {
 
   const handlePageChange = useCallback((page: number) => {
     handleExecuteAll(page)
+  }, [handleExecuteAll])
+
+  const handleCommit = useCallback(() => {
+    handleExecuteAll(1, undefined, 'COMMIT;')
+  }, [handleExecuteAll])
+
+  const handleRollback = useCallback(() => {
+    handleExecuteAll(1, undefined, 'ROLLBACK;')
   }, [handleExecuteAll])
 
   return {
@@ -1260,6 +1358,10 @@ export function useQueryEditor() {
     pendingEdit,
     confirmPendingEdit,
     discardPendingEdit,
+    selectedRowIndexes,
+    setSelectedRowIndexes,
+    selectionAnchor,
+    setSelectionAnchor,
     handleExecuteAll,
     handleExecuteCurrent,
     handleCancel,
@@ -1278,6 +1380,9 @@ export function useQueryEditor() {
     sqlModal,
     setSqlModal,
     handleGenerateSql,
+    handleCopyRows,
+    handleCopyCell,
+    handleExecuteRowSql,
     updateTabViewState,
     updateTabMongoFilter,
     updateTabEditorMode,
@@ -1298,5 +1403,8 @@ export function useQueryEditor() {
     respondScriptPrompt,
     scriptLive,
     lastScriptSql,
+    openTransaction,
+    handleCommit,
+    handleRollback,
   }
 }

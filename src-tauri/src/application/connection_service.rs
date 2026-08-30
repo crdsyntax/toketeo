@@ -64,6 +64,41 @@ impl ConnectionService {
         Ok(())
     }
 
+    fn encrypt_database_credential(
+        cred: &mut crate::models::DatabaseCredential,
+        key: &[u8; 32],
+    ) -> AppResult<()> {
+        if let Some(ref pw) = cred.password {
+            let plaintext = pw.expose_secret();
+            if !plaintext.is_empty() {
+                let (enc, nonce) =
+                    crypto::encrypt(plaintext, key).map_err(crate::error::AppError::Auth)?;
+                cred.password_enc = Some(enc);
+                cred.password_nonce = Some(nonce.to_vec());
+                cred.password = None;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn decrypt_database_credential(
+        cred: &mut crate::models::DatabaseCredential,
+        key: &[u8; 32],
+    ) -> AppResult<()> {
+        if let Some(ref enc) = cred.password_enc.clone() {
+            if let Some(ref nonce_vec) = cred.password_nonce.clone() {
+                if nonce_vec.len() == 12 {
+                    let mut nonce = [0u8; 12];
+                    nonce.copy_from_slice(nonce_vec);
+                    if let Ok(plaintext) = crypto::decrypt(enc, &nonce, key) {
+                        cred.password = Some(secrecy::SecretString::from(plaintext));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn decrypt_connection(
         config: &mut DbConnectionConfig,
         key: &[u8; 32],
@@ -356,6 +391,128 @@ impl ConnectionService {
         state.storage.delete_connection(id).await
     }
 
+    /// Returns the stored per-database credential with the password decrypted
+    /// and replaced by the REDACTED sentinel (never send secrets to the webview).
+    pub async fn get_database_credential(
+        state: &AppState,
+        id: &str,
+        database: &str,
+    ) -> AppResult<Option<crate::models::DatabaseCredential>> {
+        let mut cred = state.storage.get_database_credential(id, database).await?;
+        if let Some(cred) = cred.as_mut() {
+            if let Ok(key) = state.get_decryption_key().await {
+                let _ = Self::decrypt_database_credential(cred, &key);
+            }
+            if cred.password.is_some() {
+                cred.password = Some(secrecy::SecretString::from(REDACTED));
+            }
+            cred.password_enc = None;
+            cred.password_nonce = None;
+        }
+        Ok(cred)
+    }
+
+    /// Persists a per-database credential. `password` is only encrypted when a
+    /// non-empty value is provided; an empty/REDACTED password keeps the stored
+    /// one so a hostile webview can't overwrite it with the sentinel.
+    pub async fn save_database_credential(
+        state: &AppState,
+        id: &str,
+        database: &str,
+        user: &str,
+        password: &str,
+        auth_source: &str,
+    ) -> AppResult<()> {
+        let connection_id = uuid::Uuid::parse_str(id).map_err(|_| {
+            crate::error::AppError::Validation(format!("Invalid connection id: {}", id))
+        })?;
+
+        let mut existing = state.storage.get_database_credential(id, database).await?;
+        let keep_password = password.is_empty() || password == REDACTED;
+
+        let mut cred = crate::models::DatabaseCredential {
+            connection_id,
+            database: database.to_string(),
+            user: user.to_string(),
+            password: if keep_password {
+                None
+            } else {
+                Some(secrecy::SecretString::from(password.to_string()))
+            },
+            auth_source: if auth_source.is_empty() {
+                None
+            } else {
+                Some(auth_source.to_string())
+            },
+            password_enc: None,
+            password_nonce: None,
+        };
+
+        if keep_password {
+            if let Some(existing) = existing.as_mut() {
+                cred.password_enc = existing.password_enc.take();
+                cred.password_nonce = existing.password_nonce.take();
+            }
+        } else {
+            if let Ok(key) = state.get_decryption_key().await {
+                Self::encrypt_database_credential(&mut cred, &key)?;
+            }
+        }
+
+        state.storage.save_database_credential(&cred).await
+    }
+
+    pub async fn delete_database_credential(
+        state: &AppState,
+        id: &str,
+        database: &str,
+    ) -> AppResult<()> {
+        state.storage.delete_database_credential(id, database).await
+    }
+
+    /// For MongoDB, override the connection-level credentials with the
+    /// per-database credentials when one is configured for the target database.
+    pub async fn apply_database_credential(
+        state: &AppState,
+        config: &mut DbConnectionConfig,
+    ) -> AppResult<()> {
+        if config.db_type != crate::db::DbType::Mongodb {
+            return Ok(());
+        }
+        let Some(id) = config.id else {
+            return Ok(());
+        };
+        let database = config.database.as_deref().unwrap_or_default();
+        if database.is_empty() {
+            return Ok(());
+        }
+
+        let mut cred = state
+            .storage
+            .get_database_credential(&id.to_string(), database)
+            .await?;
+        if let Some(cred) = cred.as_mut() {
+            if let Ok(key) = state.get_decryption_key().await {
+                let _ = Self::decrypt_database_credential(cred, &key);
+            }
+            config.user = cred.user.clone();
+            config.password = cred.password.clone();
+            if let Some(ref auth_source) = cred.auth_source {
+                if !auth_source.is_empty() {
+                    config.auth_source = Some(auth_source.clone());
+                }
+            }
+            tracing::debug!(
+                "Applying per-database credentials for {}@{} (auth_source={:?}, password_present={})",
+                config.user,
+                database,
+                config.auth_source,
+                config.password.is_some()
+            );
+        }
+        Ok(())
+    }
+
     pub async fn connect(state: &AppState, mut config: DbConnectionConfig) -> AppResult<String> {
         // Redis always needs auth capability — force auth_enabled before merge so password is never cleared
         if config.db_type == crate::db::DbType::Redis {
@@ -363,6 +520,9 @@ impl ConnectionService {
         }
 
         Self::merge_sensitive_data(state, &mut config).await;
+
+        // MongoDB: use per-database credentials when available for the target db
+        Self::apply_database_credential(state, &mut config).await?;
 
         tracing::info!(
             "Attempting to connect to: {} ({:?})",
@@ -495,6 +655,9 @@ impl ConnectionService {
             Self::decrypt_connection(&mut config, &key)?;
         }
         config.database = Some(new_db.to_string());
+
+        // MongoDB: use per-database credentials when available for the target db
+        Self::apply_database_credential(state, &mut config).await?;
 
         // For SSH connections, reuse the existing tunnel's local port
         if config.ssh_tunnel.is_some() {

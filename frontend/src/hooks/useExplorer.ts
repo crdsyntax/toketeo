@@ -5,11 +5,13 @@ import { schemaService } from '@/services/schema.service';
 import { connectionService } from '@/services/connection.service';
 import { useAppStore } from '@/store/useAppStore';
 import { tauriApi } from '@/lib/api';
+import { normalizeFilterQuotes } from '@/lib/sqlGenerator';
 import { toast } from 'react-hot-toast';
 import type {
   DatabaseObject,
   QueryResult,
   DbValue,
+  CellValue,
   DbRow,
 } from '@/types/database';
 import {
@@ -24,9 +26,11 @@ import {
 export function useExplorer() {
   const {
     activeConnection,
+    lastExplorerContext,
     explorer,
     explorerTabs,
     setExplorerState,
+    setActiveConnection,
     addExplorerTab,
     updateExplorerTab,
     removeExplorerTab,
@@ -38,36 +42,45 @@ export function useExplorer() {
     queryFn: () => connectionService.getAll(),
   });
 
+  const connectedConnectionIds = useAppStore((s) => s.connectedConnectionIds);
+
   const { search, sidebarTab, activeExplorerTabId } = explorer;
 
   const activeTabState = activeExplorerTabId
     ? explorerTabs[activeExplorerTabId]
     : null;
 
-  // When there are no explorer tabs open (all closed), the explorer must be
-  // cleared: resolve no connection so the sidebar stops fetching/displaying
-  // the residual objects of the last connection.
-  const hasExplorerTabs = Object.keys(explorerTabs).length > 0;
-
   // Each explorer tab carries its own connection context (connectionId +
   // database). All operations below resolve against the ACTIVE tab's
-  // connection, falling back to the global activeConnection only when the tab
-  // has no connection (legacy) or it can't be found.
-  // Once the connections list has loaded, an activeConnection that is no
+  // connection, falling back to the global activeConnection when no tabs are
+  // open, when the tab has no connection (legacy) or when it can't be found.
+  // Resolving against activeConnection (instead of null) when all tabs are
+  // closed keeps the sidebar showing the last connection's objects instead of
+  // requiring a manual refresh.
+  // activeConnection is intentionally NOT persisted, so after a reload it is
+  // null. The persisted lastExplorerContext (set whenever a tab is opened or
+  // closed) provides the fallback in that case, so the sidebar still shows the
+  // last connection's objects.
+  // Once the connections list has loaded, a fallback connection that is no
   // longer in the list (deleted/ghost) is treated as null so the explorer
   // never surfaces a connection that no longer exists. While the list is
-  // still loading, the activeConnection is trusted to avoid a flicker.
+  // still loading, the fallback is trusted to avoid a flicker.
   const resolvedConnection = useMemo(() => {
-    if (!hasExplorerTabs) return null;
-    const tabConnId = activeTabState?.connectionId;
+    const hasExplorerTabs = Object.keys(explorerTabs).length > 0;
+    const tabConnId = hasExplorerTabs ? activeTabState?.connectionId : undefined;
     const tabMatch = tabConnId ? connections.find((c) => c.id === tabConnId) : undefined;
     if (tabMatch) return tabMatch;
-    const activeIsGhost =
-      activeConnection !== null &&
+    const fallback =
+      activeConnection ??
+      (lastExplorerContext
+        ? connections.find((c) => c.id === lastExplorerContext.connectionId) ?? null
+        : null);
+    if (!fallback) return null;
+    const fallbackIsGhost =
       !connectionsLoading &&
-      !connections.some((c) => c.id === activeConnection.id);
-    return activeIsGhost ? null : activeConnection;
-  }, [hasExplorerTabs, activeTabState?.connectionId, connections, connectionsLoading, activeConnection]);
+      !connections.some((c) => c.id === fallback.id);
+    return fallbackIsGhost ? null : fallback;
+  }, [explorerTabs, activeTabState?.connectionId, connections, connectionsLoading, activeConnection, lastExplorerContext]);
 
   const {
     selectedItem,
@@ -103,6 +116,34 @@ export function useExplorer() {
   const setSearch = useCallback(
     (s: string) => setExplorerState({ search: s }),
     [setExplorerState],
+  );
+
+  const switchExplorerConnection = useCallback(
+    (connection: typeof activeConnection) => {
+      if (!connection) return;
+      // Restore the database the user was browsing on this connection: the raw
+      // connection object often has no `database` (e.g. MongoDB picks it per
+      // session), so carry over the lastExplorerContext when it belongs to it.
+      const ctxMatches =
+        lastExplorerContext?.connectionId === connection.id
+          ? lastExplorerContext.database
+          : undefined;
+      setActiveConnection({
+        ...connection,
+        database: connection.database || ctxMatches || undefined,
+      });
+      const connTabs = Object.values(explorerTabs).filter(
+        (t) => t.connectionId === connection.id,
+      );
+      setExplorerState({
+        // Focus the connection's most recent tab so the explorer actually
+        // switches. When the connection has no open tabs yet, clear the active
+        // tab so the sidebar falls back to showing the new connection's objects.
+        activeExplorerTabId:
+          connTabs.length > 0 ? connTabs[connTabs.length - 1].id : null,
+      });
+    },
+    [setActiveConnection, explorerTabs, setExplorerState, lastExplorerContext],
   );
   const setSidebarTab = useCallback(
     (tab: SidebarTab) => setExplorerState({ sidebarTab: tab }),
@@ -161,7 +202,19 @@ export function useExplorer() {
     [activeExplorerTabId, updateExplorerTab],
   );
 
-  const currentSchema = activeTabState?.database || activeConnection?.database;
+  // Only fall back to the persisted lastExplorerContext when it belongs to the
+  // connection we are actually resolving. Otherwise a Mongo connection (which
+  // typically has no `database` field) would inherit the schema of whatever
+  // connection was browsed last (e.g. Postgres 'public') and the sidebar would
+  // query the wrong database after closing the last tab.
+  const currentSchema =
+    activeTabState?.database ||
+    activeConnection?.database ||
+    (resolvedConnection &&
+    lastExplorerContext &&
+    lastExplorerContext.connectionId === resolvedConnection.id
+      ? lastExplorerContext.database
+      : undefined);
 
   const handleSetPageSize = useCallback(
     (size: number) => {
@@ -240,9 +293,14 @@ export function useExplorer() {
 
   const handleSelectItem = useCallback(
     (item: DatabaseObject) => {
-      if (!resolvedConnection) return;
+      // Tras desconectar/volver a conectar, los explorer tabs se limpian y
+      // `resolvedConnection` puede ser null; se cae a `activeConnection` para
+      // que el doble-click siga abriendo/recargando la tabla. Una vez creado el
+      // tab, `resolvedConnection` se resuelve y dispara la carga de datos.
+      const conn = resolvedConnection ?? activeConnection;
+      if (!conn) return;
 
-      const tabId = `${resolvedConnection.id}:${currentSchema || 'default'}:${item.name}`;
+      const tabId = `${conn.id}:${currentSchema || 'default'}:${item.name}`;
       const nextActiveTab =
         item.type === DatabaseObjectType.TABLE ||
         item.type === DatabaseObjectType.VIEW
@@ -252,6 +310,7 @@ export function useExplorer() {
       if (explorerTabs[tabId]) {
         updateExplorerTab(tabId, {
           executionStatus: ExecutionStatus.IDLE,
+          executionError: null,
           socketResults: null,
         });
         setExplorerState({ activeExplorerTabId: tabId });
@@ -266,7 +325,7 @@ export function useExplorer() {
         removeExplorerTab(activeExplorerTabId);
         addExplorerTab({
           id: tabId,
-          connectionId: resolvedConnection.id,
+          connectionId: conn.id,
           database: currentSchema || '',
           selectedItem: item,
           activeTab: nextActiveTab,
@@ -281,7 +340,7 @@ export function useExplorer() {
       } else {
         addExplorerTab({
           id: tabId,
-          connectionId: resolvedConnection.id,
+          connectionId: conn.id,
           database: currentSchema || '',
           selectedItem: item,
           activeTab: nextActiveTab,
@@ -295,10 +354,13 @@ export function useExplorer() {
         });
       }
 
-      setIsSidebarCollapsed(true);
+      // Nota: el sidebar NO se colapsa al seleccionar (para poder hacer
+      // multi-selección sin perder la vista). Se colapsa solo con doble-click
+      // desde el propio Sidebar.
     },
     [
       resolvedConnection,
+      activeConnection,
       currentSchema,
       explorerTabs,
       activeExplorerTabId,
@@ -729,7 +791,7 @@ export function useExplorer() {
   });
 
   const updateCell = useCallback(
-    (row: DbRow, column: string, newValue: DbValue) => {
+    (row: DbRow, column: string, newValue: CellValue) => {
       if (!selectedItem || !resolvedConnection) return;
 
       if (resolvedConnection.environment === Environment.PRODUCTION) {
@@ -742,6 +804,11 @@ export function useExplorer() {
       const primaryKeys = columns
         ?.filter((col) => col.isPrimaryKey)
         .map((col) => col.name) ?? [];
+
+      const isExpr =
+        typeof newValue === 'object' &&
+        newValue !== null &&
+        '__expr' in newValue;
 
       tauriApi
         .invoke('update_cell', {
@@ -770,7 +837,10 @@ export function useExplorer() {
           : prevRows.indexOf(row);
         if (matchedIndex === -1) return prev;
         const newRows = [...prevRows];
-        newRows[matchedIndex] = { ...prevRows[matchedIndex], [column]: newValue };
+        const optimisticValue: DbValue = isExpr
+          ? (newValue as { __expr: string }).__expr
+          : (newValue as DbValue);
+        newRows[matchedIndex] = { ...prevRows[matchedIndex], [column]: optimisticValue };
         return { ...prev, rows: newRows } as QueryResult;
       });
     },
@@ -798,6 +868,14 @@ export function useExplorer() {
           const store = useAppStore.getState();
           const tabId = activeExplorerTabId ?? store.explorer.activeExplorerTabId;
           const currentFilter = tabId ? store.explorerTabs[tabId]?.filter ?? '' : '';
+          // Normaliza comillas dobles → simples para motores donde "..." es un
+          // identificador (Postgres/SQL Server/SQLite), usando las columnas de
+          // la tabla para no convertir identificadores reales.
+          const normalizedFilter = normalizeFilterQuotes(
+            currentFilter,
+            (columns ?? []).map((c) => c.name),
+            resolvedConnection.type as DatabaseType,
+          );
 
           const result = await schemaService.executeExplorer({
             connectionId: resolvedConnection.id,
@@ -807,7 +885,7 @@ export function useExplorer() {
             page: page + 1,
             pageSize: pageSize,
             params: useParams ? paramValues : undefined,
-            filter: currentFilter,
+            filter: normalizedFilter,
           });
 
           if (activeExplorerTabId) {
@@ -840,6 +918,7 @@ export function useExplorer() {
       currentSchema,
       updateExplorerTab,
       activeExplorerTabId,
+      columns,
     ],
   );
 
@@ -990,5 +1069,8 @@ export function useExplorer() {
     activeExplorerTabId,
     removeExplorerTab,
     setExplorerState,
+    connections,
+    connectedConnectionIds,
+    switchExplorerConnection,
   };
 }
