@@ -1,11 +1,6 @@
 {
-    "platforms":  {
-                      "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.4_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUUwV2l6NE1USmdhbzhZTjZGL1E1MWhsenBtUHk0M0ZxeWVIWnJWNXE3YmdPQS9pMSt2Y3JEaHQ3YjNoTTMwZ3hSRjNrbnlDK2g5MFNrbXFJa0pFVEE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3ODUyODc4CWZpbGU6VG9rZXRlb18wLjUuNF94NjRfZW4tVVMubXNpCldwSzdZc1E3OW9YLytoL2JFZm45UHU2MWw3MWd3bmhaOHhGNEFMd3o2cm1UdURMZHowVlJua0RuSmswVzZjQkJndW5oaHVxU2lxdEU0UktlUHczdkFRPT0K"
-                                         }
-                  },
-    "pub_date":  "2026-08-27T17:47:59Z",
-    "version":  "0.5.4",
-    "notes":  "v0.5.4: PostgreSQL search_path now persists across idle-recycled connections (set via connection URL options and applied explicitly on every query); DDL no longer leaks search_path into the pool; guard against empty schema causing \u0027zero-length delimited identifier\u0027."
+    "version":  "0.5.5",
+    "notes":  "v0.5.5: Improved context menu styling in ConnectionSidebar (solid backgrounds, higher z-index, backdrop blur, better hover states); SQL Schema Flow diagram with live query results.",
+    "pub_date":  "2026-08-30T00:00:00Z",
+    "platforms":  {}
 }

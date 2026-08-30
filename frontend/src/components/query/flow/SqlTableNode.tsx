@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useMemo } from 'react';
-import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react';
+import { Handle, Position, NodeResizer, type NodeProps } from '@xyflow/react';
 import {
   Database,
   Table2,
@@ -16,19 +16,13 @@ import { JsonResultsView } from '@/components/ui/JsonResultsView';
 import { cn } from '@/lib/utils';
 import type { DbRow, DbValue } from '@/types/database';
 import toast from 'react-hot-toast';
+import {
+  SqlTableNodeViewMode,
+  type SqlTableNodeType,
+  type DisplayValueResult,
+} from './types';
 
-export interface SqlTableNodeData extends Record<string, unknown> {
-  label: string;
-  isRoot: boolean;
-  alias?: string;
-  tableName: string;
-  columns?: string[];
-  rows?: Record<string, DbValue>[];
-}
-
-export type SqlTableNodeType = Node<SqlTableNodeData, 'sqlTable'>;
-
-function getDisplayValue(val: DbValue): { text: string; isNull?: boolean; isBool?: boolean } {
+function getDisplayValue(val: DbValue): DisplayValueResult {
   if (val === null || val === undefined) {
     return { text: 'null', isNull: true };
   }
@@ -40,19 +34,19 @@ function getDisplayValue(val: DbValue): { text: string; isNull?: boolean; isBool
 
 export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType>) => {
   const isRoot = data.isRoot;
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [viewMode, setViewMode] = useState<'table' | 'json'>('json');
-  const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<SqlTableNodeViewMode>(SqlTableNodeViewMode.JSON);
+  const [copied, setCopied] = useState<boolean>(false);
 
-  const rows = useMemo(() => data.rows ?? [], [data.rows]);
+  const rows = useMemo<Record<string, DbValue>[]>(() => data.rows ?? [], [data.rows]);
   const hasRows = rows.length > 0;
-  const columns = useMemo(() => {
+  const columns = useMemo<string[]>(() => {
     if (data.columns && data.columns.length > 0) return data.columns;
-    if (hasRows) return Object.keys(rows[0]);
+    if (hasRows && rows[0]) return Object.keys(rows[0]);
     return [];
   }, [data.columns, hasRows, rows]);
 
-  const handleCopyJson = useCallback((e: React.MouseEvent) => {
+  const handleCopyJson = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     try {
       navigator.clipboard.writeText(JSON.stringify(rows, null, 2));
@@ -75,7 +69,6 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
         selected && 'ring-2 ring-primary border-primary'
       )}
     >
-      {/* Node Resizer Control */}
       <NodeResizer
         minWidth={300}
         minHeight={180}
@@ -84,7 +77,6 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
         handleClassName="!h-2.5 !w-2.5 !bg-primary !rounded !border-2 !border-background"
       />
 
-      {/* Target Handles */}
       <Handle
         type="target"
         position={Position.Left}
@@ -102,7 +94,6 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
         )}
       />
 
-      {/* Header */}
       <div
         className={cn(
           'px-3.5 py-2.5 border-b flex items-center justify-between gap-2 select-none shrink-0',
@@ -146,7 +137,6 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
         </div>
       </div>
 
-      {/* Table Metadata Subheader & View Controls */}
       <div className="px-3 py-1.5 bg-muted/30 border-b border-border/60 text-xs flex items-center justify-between text-muted-foreground shrink-0">
         <div className="flex items-center gap-2">
           {data.alias && (
@@ -163,10 +153,10 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
           {hasRows && (
             <div className="flex items-center bg-background/80 border border-border/70 rounded-md p-0.5 mr-1">
               <button
-                onClick={() => setViewMode('table')}
+                onClick={() => setViewMode(SqlTableNodeViewMode.TABLE)}
                 className={cn(
                   'px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-colors',
-                  viewMode === 'table'
+                  viewMode === SqlTableNodeViewMode.TABLE
                     ? 'bg-primary/20 text-primary'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
@@ -176,10 +166,10 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
                 Tabla
               </button>
               <button
-                onClick={() => setViewMode('json')}
+                onClick={() => setViewMode(SqlTableNodeViewMode.JSON)}
                 className={cn(
                   'px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-colors',
-                  viewMode === 'json'
+                  viewMode === SqlTableNodeViewMode.JSON
                     ? 'bg-primary/20 text-primary'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
@@ -224,12 +214,11 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
         </div>
       </div>
 
-      {/* Body: Table or JSON View */}
       {data.rows !== undefined ? (
         isExpanded && (
           <div className="p-2 bg-background/70 flex-1 min-h-0 flex flex-col">
             {hasRows && columns.length > 0 ? (
-              viewMode === 'table' ? (
+              viewMode === SqlTableNodeViewMode.TABLE ? (
                 <div className="border border-border/80 rounded-lg overflow-hidden bg-card/60 shadow-inner flex-1 min-h-0 flex flex-col">
                   <div className="overflow-auto scrollbar-thin flex-1 min-h-[100px]">
                     <table className="w-full border-collapse text-left font-mono text-[11px]">
@@ -293,7 +282,6 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
                   </div>
                 </div>
               ) : (
-                /* JSON View Mode (Idéntico a ResultsPanel) */
                 <div className="border border-border/80 rounded-lg overflow-hidden bg-card/80 flex-1 min-h-[100px] relative">
                   <JsonResultsView rows={rows as DbRow[]} />
                 </div>
@@ -319,7 +307,6 @@ export const SqlTableNode = memo(({ data, selected }: NodeProps<SqlTableNodeType
         </div>
       )}
 
-      {/* Output Source Handles */}
       <Handle
         type="source"
         position={Position.Right}

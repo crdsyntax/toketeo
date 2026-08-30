@@ -57,6 +57,7 @@ import {
   generateUpdateByIds,
   parseInputValue,
 } from '@/lib/sqlGenerator';
+import { MongoJsonFormat, simplifyMongoDocument } from '@/lib/mongoJsonHelper';
 import { toast } from 'react-hot-toast';
 
 interface DataTabProps {
@@ -184,6 +185,7 @@ export function DataTab({
   const inlineEditReview = useAppStore((s) => s.inlineEditReview);
   const viewMode = useAppStore((s) => s.dataTabViewMode);
   const setViewMode = useAppStore((s) => s.setDataTabViewMode);
+  const [mongoJsonFormat, setMongoJsonFormat] = useState<MongoJsonFormat>(MongoJsonFormat.SIMPLIFIED);
 
   const [mongoInputs, setMongoInputs] = useState(() => {
     if (!filter) return { $find: '', $project: '', $sort: '', $collation: '', $hint: '' };
@@ -271,6 +273,13 @@ export function DataTab({
       return sortState.direction === 'desc' ? -cmp : cmp;
     });
   }, [queryData, sortState]);
+
+  const displayJsonRows = useMemo(() => {
+    if (!isMongo || mongoJsonFormat === MongoJsonFormat.EXTENDED) {
+      return sortedRows;
+    }
+    return sortedRows.map((r) => simplifyMongoDocument(r) as DbRow);
+  }, [isMongo, mongoJsonFormat, sortedRows]);
 
   const primaryKeys = useMemo(() => queryData?.primary_keys ?? [], [queryData]);
 
@@ -755,26 +764,57 @@ export function DataTab({
           )}
 
           {isMongo && (
-            <div className="ml-auto flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40">
-              {([
-                { mode: 'table' as DataTabViewMode, icon: <Table2 className="w-3.5 h-3.5" />, title: 'Table View' },
-                { mode: 'list' as DataTabViewMode, icon: <Rows3 className="w-3.5 h-3.5" />, title: 'List View' },
-                { mode: 'json' as DataTabViewMode, icon: <FileJson className="w-3.5 h-3.5" />, title: 'JSON View' },
-              ]).map(({ mode, icon, title }) => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={cn(
-                    "px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors",
-                    viewMode === mode
-                      ? "bg-background shadow-sm text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  title={title}
-                >
-                  {icon}
-                </button>
-              ))}
+            <div className="ml-auto flex items-center gap-2">
+              {viewMode === 'json' && (
+                <div className="flex items-center bg-muted/40 p-0.5 rounded-md border border-border/50 text-[var(--ch-text-10)] font-medium">
+                  <button
+                    onClick={() => setMongoJsonFormat(MongoJsonFormat.SIMPLIFIED)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-sm transition-colors",
+                      mongoJsonFormat === MongoJsonFormat.SIMPLIFIED
+                        ? "bg-background shadow-sm text-foreground font-bold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Simplified JSON format with clean { key: value }"
+                  >
+                    Simple
+                  </button>
+                  <button
+                    onClick={() => setMongoJsonFormat(MongoJsonFormat.EXTENDED)}
+                    className={cn(
+                      "px-2 py-0.5 rounded-sm transition-colors",
+                      mongoJsonFormat === MongoJsonFormat.EXTENDED
+                        ? "bg-background shadow-sm text-foreground font-bold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Raw MongoDB Extended JSON (EJSON) format with $oid, $date, etc."
+                  >
+                    Raw EJSON
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center bg-muted/30 p-0.5 rounded-md border border-border/40">
+                {([
+                  { mode: 'table' as DataTabViewMode, icon: <Table2 className="w-3.5 h-3.5" />, title: 'Table View' },
+                  { mode: 'list' as DataTabViewMode, icon: <Rows3 className="w-3.5 h-3.5" />, title: 'List View' },
+                  { mode: 'json' as DataTabViewMode, icon: <FileJson className="w-3.5 h-3.5" />, title: 'JSON View' },
+                ]).map(({ mode, icon, title }) => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={cn(
+                      "px-2 py-1 text-[var(--ch-text-10)] font-medium rounded-sm transition-colors",
+                      viewMode === mode
+                        ? "bg-background shadow-sm text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title={title}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -911,7 +951,7 @@ export function DataTab({
             />
           ) : isMongo && viewMode === 'json' ? (
             <div className="h-full relative">
-              <JsonResultsView rows={sortedRows} />
+              <JsonResultsView rows={displayJsonRows} />
             </div>
           ) : (
           <div className="min-w-full inline-block align-middle">
