@@ -95,7 +95,7 @@ export function DataDefenderGame({ onClose }: { onClose: () => void }) {
             DATA DEFENDER
           </span>
           <span className="hidden text-sm font-bold uppercase tracking-widest text-[#6a6a74] sm:inline">
-            {t('Case: The Quesera Murders', 'Caso: Los asesinatos de la Quesera')}
+            {t('Case: The Cheesemaker Murders', 'Caso: Los asesinatos de la Quesera')}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <button

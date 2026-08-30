@@ -5,7 +5,7 @@ const p1: Puzzle = {
   kind: 'mystery',
   engine: 'sql',
   xp: 400,
-  title: { en: 'The Quesera of the Corner (Jan 2, 2 AM)', es: 'La Quesera de la Esquina (2 de enero, 2 AM)' },
+  title: { en: 'The Cheesemaker of the Corner (Jan 2, 2 AM)', es: 'La Quesera de la Esquina (2 de enero, 2 AM)' },
   story: {
     en: 'At 2 AM on January 2nd the owner of the corner cheese shop was murdered and dismembered. The walls still keep the scream. Three tables remember what the street saw: a scarred left hand, whey on fleeing boots, and the blade the Watch found.',
     es: 'A las 2 AM del 2 de enero la dueña de la quesería fue asesinada y descuartizada. Las paredes aún guardan el grito. Tres tablas recuerdan lo que vio la calle: una mano izquierda cicatrizada, suero en las botas que huyeron y el cuchillo que encontró la Guardia.',

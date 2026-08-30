@@ -23,7 +23,7 @@ export function IntroCinematic({ lang, onFinish }: IntroCinematicProps) {
       ? [
           { who: 'coroner', en: 'Another one in Tallow Lane. Third this week... strangled. The rain washed everything, as always.', es: '' },
           { who: 'hero', en: 'Then the ledger will talk for them. Every crime leaves rows, Coroner.', es: '' },
-          { who: 'coroner', en: 'Rows nobody can read! The Quesera of the Corner - murdered on January 2nd at 2 AM, dismembered. The Watch found nothing.', es: '' },
+          { who: 'coroner', en: 'Rows nobody can read! The Cheesemaker of the Corner - murdered on January 2nd at 2 AM, dismembered. The Watch found nothing.', es: '' },
           { who: 'hero', en: "SELECT reads what the dead left behind. WHERE keeps only what matches. Start there.", es: '' },
           { who: 'coroner', en: 'Witnesses contradict each other. You will have to JOIN their testimonies... and count what repeats with GROUP BY.', es: '' },
           { who: 'hero', en: 'And beyond SQL?', es: '' },
