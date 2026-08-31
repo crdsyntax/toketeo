@@ -1,4 +1,4 @@
-import { Palette, Sun, Moon, Type, Minus, Plus, Monitor, Table2, ToggleLeft, ToggleRight, Ruler, Sparkles, Check, Notebook } from 'lucide-react'
+import { Palette, Sun, Moon, Type, Minus, Plus, Monitor, Table2, ToggleLeft, ToggleRight, Ruler, Sparkles, Check, Notebook, Newspaper, Terminal } from 'lucide-react'
 import { useAppStore, DEFAULT_EDITOR_FONT } from '@/store/useAppStore'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
 import { ProviderSettings } from '@/components/assistant/ProviderSettings'
@@ -205,11 +205,39 @@ export function SettingsPage() {
                       <Notebook className="w-4 h-4" />
                       Paper
                     </button>
+                    <button
+                      onClick={() => setTheme('editorial')}
+                      className={cn(
+                        'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
+                        theme === 'editorial'
+                          ? 'border-accent bg-accent-muted text-accent'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
+                      )}
+                    >
+                      <Newspaper className="w-4 h-4" />
+                      Editorial
+                    </button>
+                    <button
+                      onClick={() => setTheme('terminal')}
+                      className={cn(
+                        'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
+                        theme === 'terminal'
+                          ? 'border-accent bg-accent-muted text-accent'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
+                      )}
+                    >
+                      <Terminal className="w-4 h-4" />
+                      Terminal
+                    </button>
                   </div>
-                  {theme === 'paper' && (
+                  {(theme === 'paper' || theme === 'editorial' || theme === 'terminal') && (
                     <p className="text-xs text-muted-foreground">
-                      Brutalist paper look from the landing page: warm background, black hairlines,
-                      ink accents. Custom colors below apply to Dark / Light only.
+                      {theme === 'paper'
+                        ? 'Brutalist paper look from the landing page: warm background, black hairlines, ink accents.'
+                        : theme === 'editorial'
+                          ? 'Editorial noir: serif type on warm charcoal, high contrast, no pastels.'
+                          : 'Terminal dev-tool look from the landing: dark, monospace, green accent.'}{' '}
+                      The accent palette below works in every theme; full custom colors apply to Dark / Light only.
                     </p>
                   )}
                 </section>
@@ -222,7 +250,7 @@ export function SettingsPage() {
                   <div className="flex flex-wrap gap-3">
                     {ACCENT_PALETTE_NAMES.map((name) => {
                       const p = themePalettes[name]
-                      const accentColor = theme === 'dark' ? p.dark.accent : p.light.accent
+                      const accentColor = theme === 'dark' || theme === 'editorial' || theme === 'terminal' ? p.dark.accent : p.light.accent
                       const isActive = accentPalette === name
                       return (
                         <button
@@ -332,7 +360,7 @@ export function SettingsPage() {
                   </div>
                 </section>
 
-                  {theme !== 'paper' && (
+                  {theme !== 'paper' && theme !== 'editorial' && theme !== 'terminal' && (
                     <section className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">

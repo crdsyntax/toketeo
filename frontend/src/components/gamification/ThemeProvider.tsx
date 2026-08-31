@@ -5,7 +5,14 @@ import { themePalettes, type AccentPalette } from '@/lib/themes'
 
 const THEME_VARS = ['--ch-primary', '--ch-secondary', '--ch-accent', '--ch-background'] as const
 
-const PAPER_ACCENT = { accent: '#0a0a0a', accentHover: '#33302a', accentMuted: '#e3ded1' }
+const PRESET_THEMES = new Set(['paper', 'editorial', 'terminal'])
+
+const THEME_CLASSES: Record<string, string> = {
+  dark: 'dark',
+  paper: 'paper',
+  editorial: 'editorial',
+  terminal: 'terminal',
+}
 
 interface SettingsChangePayload {
   kind: 'theme' | 'accent' | 'colors'
@@ -33,7 +40,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     listen<SettingsChangePayload>('app:settings-change', (event) => {
       const p = event.payload
       const store = useAppStore.getState()
-      if (p.kind === 'theme' && (p.value === 'light' || p.value === 'dark' || p.value === 'paper')) {
+      if (p.kind === 'theme' && (p.value === 'light' || p.value === 'dark' || p.value === 'paper' || p.value === 'editorial' || p.value === 'terminal')) {
         store.setTheme(p.value)
       } else if (p.kind === 'accent' && typeof p.value === 'string' && p.value in themePalettes) {
         store.setAccentPalette(p.value as AccentPalette)
@@ -51,12 +58,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const modeColors = theme === 'dark' ? darkColors : lightColors
 
   useEffect(() => {
-    document.documentElement.className = theme === 'dark' ? 'dark' : theme === 'paper' ? 'paper' : ''
+    document.documentElement.className = THEME_CLASSES[theme] ?? ''
   }, [theme])
 
   useEffect(() => {
     const root = document.documentElement
-    if (theme === 'paper') {
+    if (PRESET_THEMES.has(theme)) {
       THEME_VARS.forEach(v => root.style.removeProperty(v))
       return
     }
@@ -72,8 +79,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement
-    const isDark = theme === 'dark'
-    const accent = theme === 'paper' ? PAPER_ACCENT : getAccentColors(accentPalette, isDark)
+    const isDark = theme === 'dark' || theme === 'editorial' || theme === 'terminal'
+    const accent = getAccentColors(accentPalette, isDark)
     root.style.setProperty('--accent', accent.accent)
     root.style.setProperty('--accent-hover', accent.accentHover)
     root.style.setProperty('--accent-muted', accent.accentMuted)

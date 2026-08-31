@@ -219,7 +219,7 @@ export default function Connections() {
           <button
             onClick={handleImport}
             disabled={isImporting}
-            className="clay-btn flex items-center gap-2 bg-secondary text-secondary-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest disabled:opacity-50"
+            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 sm:px-4 py-2 rounded-lg text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest disabled:opacity-50 hover:brightness-110 transition-all"
           >
             <UploadCloud className="w-4 h-4" />
             <span className="hidden sm:inline">Import JSON</span>
@@ -228,7 +228,7 @@ export default function Connections() {
           <button
             onClick={handleExportAll}
             disabled={isExporting}
-            className="clay-btn flex items-center gap-2 bg-secondary text-secondary-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest disabled:opacity-50"
+            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-3 sm:px-4 py-2 rounded-lg text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest disabled:opacity-50 hover:brightness-110 transition-all"
           >
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Export All</span>
@@ -236,7 +236,7 @@ export default function Connections() {
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="clay-btn flex items-center gap-2 bg-primary text-primary-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest"
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-3 sm:px-4 py-2 rounded-lg text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest hover:brightness-110 transition-all"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">New Connection</span>
@@ -244,7 +244,7 @@ export default function Connections() {
           </button>
           <button
             onClick={() => setShowWizard(true)}
-            className="clay-btn flex items-center gap-2 bg-muted text-foreground px-3 sm:px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest border border-border"
+            className="flex items-center gap-2 bg-muted text-foreground px-3 sm:px-4 py-2 rounded-lg text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest border border-border hover:brightness-110 transition-all"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Wizard
@@ -262,7 +262,7 @@ export default function Connections() {
         <button
           onClick={() => setActiveEngineFilter('all')}
           className={cn(
-            'clay-btn flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest transition-all whitespace-nowrap',
+            'flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest transition-all whitespace-nowrap',
             activeEngineFilter === 'all'
               ? 'bg-primary/15 text-primary'
               : 'bg-muted/40 text-muted-foreground hover:text-foreground'
@@ -285,7 +285,7 @@ export default function Connections() {
               key={engineType}
               onClick={() => setActiveEngineFilter(engineType)}
               className={cn(
-                'clay-btn flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest transition-all whitespace-nowrap',
+                'flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-[var(--ch-text-10)] font-bold uppercase tracking-wide sm:tracking-widest transition-all whitespace-nowrap',
                 activeEngineFilter === engineType
                   ? 'bg-primary/15 text-primary'
                   : 'bg-muted/40 text-muted-foreground hover:text-foreground'
@@ -317,7 +317,7 @@ export default function Connections() {
       {isLoading ? (
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="clay-card h-44 bg-secondary/30 animate-pulse w-full min-w-0" />
+            <div key={i} className="h-44 bg-secondary/40 animate-pulse rounded-xl w-full min-w-0" />
           ))}
         </div>
       ) : (

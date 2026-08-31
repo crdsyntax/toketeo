@@ -71,8 +71,8 @@ export interface CustomColors {
 export const DEFAULT_EDITOR_FONT = "'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', Consolas, 'Courier New', monospace"
 
 interface AppState {
-  theme: 'light' | 'dark' | 'paper'
-  setTheme: (theme: 'light' | 'dark' | 'paper') => void
+  theme: 'light' | 'dark' | 'paper' | 'editorial' | 'terminal'
+  setTheme: (theme: 'light' | 'dark' | 'paper' | 'editorial' | 'terminal') => void
   lightColors: CustomColors | null
   setLightColors: (colors: Partial<CustomColors> | null) => void
   darkColors: CustomColors | null

@@ -42,7 +42,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
     <div
       onDoubleClick={() => onConnect(connection)}
       className={cn(
-        'clay-card group relative w-full min-w-0 cursor-pointer overflow-hidden flex flex-col',
+        'group relative w-full min-w-0 cursor-pointer overflow-hidden flex flex-col rounded-xl bg-surface border border-border shadow-sm hover:shadow-md hover:border-border/80 transition-all duration-200',
         connection.environment === Environment.PRODUCTION &&
           'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-red-500 before:rounded-l-[var(--radius-2xl)] before:rounded-r-full',
         isActive && 'ring-2 ring-emerald-500/40 border-emerald-500/40',
