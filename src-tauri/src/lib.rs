@@ -20,12 +20,8 @@ use tauri::Manager;
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                // Keep sqlx at `warn`: by default it logs every executed statement
-                // (query text + timings) at `info`, which floods the terminal during
-                // bulk operations like database restores. Warnings/errors are kept.
-                tracing_subscriber::EnvFilter::new("info,sqlx=warn")
-            }),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sqlx=warn")),
         )
         .init();
 
@@ -66,10 +62,6 @@ pub fn run() {
             let known_hosts = state.known_hosts.clone();
             let storage_arc = state.storage.clone();
 
-            // One-off cleanup + knowledge vector pipeline (startup only, not
-            // per chat turn): 1) purge polluted tool-result cases,
-            // 2) backfill embeddings for cases missing them (batches of 32),
-            // 3) load the whole embeddings table into the in-memory index.
             let knowledge_storage = storage_arc.clone();
             let knowledge_vectors = Arc::clone(&state.knowledge_vectors);
             tauri::async_runtime::spawn(async move {
@@ -83,7 +75,6 @@ pub fn run() {
                     }
                 }
 
-                // Backfill embeddings for unindexed cases.
                 let configs = knowledge_storage
                     .load_provider_configs()
                     .await
@@ -120,7 +111,6 @@ pub fn run() {
                     }
                 }
 
-                // Load the full embedding table into the in-memory index.
                 match knowledge_storage.list_knowledge_embeddings().await {
                     Ok(rows) => {
                         let entries = rows.into_iter().map(|(id, kind, v)| {
@@ -139,7 +129,6 @@ pub fn run() {
                 .unwrap()
                 .set_app_handle(app.handle().clone());
 
-            // Store job engine in AppState
             {
                 let state_handle = app.state::<AppState>();
                 let mut job_engine_guard =
@@ -155,7 +144,6 @@ pub fn run() {
                 std::time::Duration::from_secs(1800),
             );
 
-            // Set window icon (rounded principal.png)
             if let Some(window) = app.get_webview_window("main") {
                 let icon_bytes = include_bytes!("../icons/128x128.png");
                 let img = image::load_from_memory(icon_bytes)

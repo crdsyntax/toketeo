@@ -7,9 +7,6 @@ pub mod table_comparator;
 pub mod trigger_comparator;
 pub mod view_comparator;
 
-/// Concurrencia máxima de tareas de introspección por tabla.
-/// Limitado por el pool de conexiones (por defecto `max_connections: 5`),
-/// de modo que las queries pendientes esperan en cola sin saturar la BD.
 pub(crate) const INTROSPECTION_CONCURRENCY: usize = 4;
 
 pub use constraint_comparator::{compare_constraints_for_table, compare_table_constraints};

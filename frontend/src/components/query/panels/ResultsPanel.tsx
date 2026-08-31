@@ -195,8 +195,6 @@ export function ResultsPanel({
               <span className="text-xs italic">No data rows returned or empty dataset</span>
             </div>
           )}
-
-          {/* Review Change panel for inline cell edits (centered fallback) */}
           {pendingEdit && (
             <ReviewChangePanel
               column={pendingEdit.column}

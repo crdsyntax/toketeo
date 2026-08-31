@@ -6,8 +6,8 @@ describe('SqlGeneratorModal', () => {
   it('renders correctly', () => {
     render(<SqlGeneratorModal isOpen={true} onClose={() => {}} initialSql="SELECT * FROM table" />);
     expect(screen.getByText('SQL Generator')).toBeDefined();
-    
-    // El textarea ahora es el que contiene el valor
+
+
     const textarea = screen.getByRole('textbox');
     expect((textarea as HTMLTextAreaElement).value).toBe("SELECT * FROM table");
   });

@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-// ============================================================
-// Compare Session (SQLite persistence)
-// ============================================================
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompareSession {
     pub id: String,
@@ -33,10 +29,6 @@ pub struct CompareSession {
     pub updated_at: String,
 }
 
-// ============================================================
-// Schema Compare Types
-// ============================================================
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CompareStatus {
@@ -46,7 +38,6 @@ pub enum CompareStatus {
     New,
 }
 
-/// Full schema comparison report.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SchemaReport {
     pub source_name: String,
@@ -62,12 +53,11 @@ pub struct SchemaReport {
     pub constraints: Vec<ConstraintDiff>,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
-    /// Resumen en lenguaje natural de los resultados (generado en backend).
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
 }
 
-/// Generic schema object difference.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ObjectDiff {
     pub name: String,
@@ -76,7 +66,6 @@ pub struct ObjectDiff {
     pub details: Option<serde_json::Value>,
 }
 
-/// Detailed table difference (columns + metadata).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TableDiff {
     pub status: CompareStatus,
@@ -91,7 +80,6 @@ pub struct TableDiff {
     pub comment_changed: Option<(String, String)>,
 }
 
-/// Detailed column difference.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ColumnDiffDetail {
     pub name: String,
@@ -110,7 +98,6 @@ pub struct ColumnDiffDetail {
     pub target_default: Option<String>,
 }
 
-/// Index difference.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexDiff {
     pub name: String,
@@ -124,7 +111,6 @@ pub struct IndexDiff {
     pub type_changed: Option<(String, String)>,
 }
 
-/// Foreign key difference.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FkDiff {
     pub name: String,
@@ -140,7 +126,6 @@ pub struct FkDiff {
     pub columns: Option<(Vec<String>, Vec<String>)>,
 }
 
-/// Constraint difference (CHECK, UNIQUE).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ConstraintDiff {
     pub name: String,
@@ -152,7 +137,6 @@ pub struct ConstraintDiff {
     pub definition_changed: Option<(String, String)>,
 }
 
-/// View difference (normalized hash comparison).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ViewDiff {
     pub name: String,
@@ -161,7 +145,6 @@ pub struct ViewDiff {
     pub target_hash: String,
 }
 
-/// Routine difference (procedure or function).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RoutineDiff {
     pub name: String,
@@ -171,7 +154,6 @@ pub struct RoutineDiff {
     pub target_hash: String,
 }
 
-/// Trigger difference.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TriggerDiff {
     pub name: String,
@@ -185,17 +167,11 @@ pub struct TriggerDiff {
     pub body_hash_changed: Option<(String, String)>,
 }
 
-// ============================================================
-// Data Compare Types
-// ============================================================
-
-/// Full data comparison report.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DataReport {
     pub tables: Vec<TableDataDiff>,
 }
 
-/// Per-table data difference.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TableDataDiff {
     pub table: String,
@@ -209,15 +185,14 @@ pub struct TableDataDiff {
     pub pk_columns: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub column_diffs: Vec<RowColumnDiff>,
-    /// Full row data for rows that exist only in source (for INSERT statements).
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_only_rows: Vec<RowColumnDiff>,
-    /// Full row data for rows that exist only in target (for DELETE statements).
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub target_only_rows: Vec<RowColumnDiff>,
 }
 
-/// Column-level difference on a modified row.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RowColumnDiff {
     pub pk_value: String,
@@ -226,18 +201,12 @@ pub struct RowColumnDiff {
     pub target_value: Option<serde_json::Value>,
 }
 
-// ============================================================
-// Script Generator Types
-// ============================================================
-
-/// Generated synchronization script.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncScript {
     pub statements: Vec<ScriptStatement>,
     pub target_db_type: String,
 }
 
-/// Single SQL statement in the sync script.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptStatement {
     pub id: String,
@@ -253,7 +222,6 @@ pub struct ScriptStatement {
     pub backup_sql: Option<String>,
 }
 
-/// Options controlling which diffs are included in the script.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptOptions {
     pub include_creates: bool,
@@ -266,8 +234,7 @@ pub struct ScriptOptions {
     pub wrap_in_transaction: bool,
     #[serde(default = "default_true")]
     pub data_preservation: bool,
-    /// When false (default): only CREATE source objects in target.
-    /// When true: also DROP objects that exist only in target.
+
     #[serde(default)]
     pub drop_target_extras: bool,
 }

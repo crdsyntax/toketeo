@@ -35,13 +35,13 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
 
   return (
     <div className="border-b border-border bg-background/80 backdrop-blur shrink-0">
-      {/* Header row: always visible */}
+
       <div className="flex items-center gap-2 px-3 h-9">
         <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-emerald-400/80 shrink-0">
           Filter
         </span>
 
-        {/* Main filter (find) always visible */}
+
         <input
           className="flex-1 max-w-sm bg-background border border-border/70 px-2.5 py-1 rounded text-xs outline-none focus:ring-1 focus:ring-emerald-500/50 placeholder:text-muted-foreground/40 font-mono"
           placeholder='{ "field": "value" }'
@@ -49,8 +49,6 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
           onChange={(e) => onChange({ find: e.target.value })}
           onKeyDown={handleKeyDown}
         />
-
-        {/* Run button */}
         <button
           onClick={onExecute}
           className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 text-white rounded text-[var(--ch-text-9)] font-semibold hover:bg-emerald-500 transition-all shrink-0"
@@ -59,7 +57,7 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
           Find
         </button>
 
-        {/* Toggle advanced */}
+
         <button
           onClick={() => setExpanded(!expanded)}
           className={cn(
@@ -77,7 +75,7 @@ export function MongoFilterBar({ filter, onChange, onExecute }: MongoFilterBarPr
         </button>
       </div>
 
-      {/* Advanced panel */}
+
       {expanded && (
         <div className="px-3 pb-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
           {FIELDS.slice(1).map(({ key, label, placeholder }) => (

@@ -3,8 +3,8 @@ import { ASSISTANT_TABS, ASSISTANT_PANELS } from './assistantTabs'
 import { useAssistantStore } from '@/store/assistantStore'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
 
-/** Full assistant layout with sidebar + inline panel.
- *  Used by QueryEditor side-panel (w-80 container). */
+
+
 export function AssistantLayout() {
   const activeTab = useAssistantStore((s) => s.activeTab)
 

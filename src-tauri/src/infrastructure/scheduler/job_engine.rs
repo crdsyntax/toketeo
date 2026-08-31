@@ -94,10 +94,7 @@ impl JobEngine {
 
     pub fn start(self: Arc<Self>) {
         let (tx, mut rx) = oneshot::channel();
-        // Store shutdown sender so Drop sends the signal
-        // We use unsafe to mutably access the field through the Arc
-        // Actually, let's use a separate approach: store shutdown_tx before Arc-ifying
-        // Since this is called on Arc<Self> and we need to set shutdown_tx, we do it here
+
         unsafe {
             let ptr = Arc::as_ptr(&self) as *mut Self;
             (*ptr).shutdown_tx = Some(tx);

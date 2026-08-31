@@ -56,7 +56,7 @@ export function Sidebar({
 
   const isMultiSelectTab = sidebarTab === SidebarTab.TABLES && !isMongoDB && !isRedis
 
-  // Multi-selection is scoped to the current schema/tab: reset when either changes.
+
   const selectionScope = `${sidebarTab}|${currentSchema ?? ''}|${connectionId ?? ''}`
   const [selectionScopeState, setSelectionScopeState] = useState(selectionScope)
   if (selectionScopeState !== selectionScope) {
@@ -77,8 +77,7 @@ export function Sidebar({
   }
 
   const handleItemClick = (e: React.MouseEvent, name: string) => {
-    // Single click only selects/highlights the row. Opening and loading the
-    // object (data, columns, DDL) happens on double-click only.
+
     if (!isMultiSelectTab) {
       setHighlightedObject(name)
       return
@@ -147,8 +146,7 @@ export function Sidebar({
     }
   }
 
-  // For MongoDB only show Collections (= Tables) and Views (if any)
-  // For Redis only show Keys (= Tables)
+
   const visibleTabs = isMongoDB || isRedis
     ? [SidebarTab.TABLES]
     : [SidebarTab.TABLES, SidebarTab.VIEWS, SidebarTab.PROCEDURES, SidebarTab.TRIGGERS, SidebarTab.FUNCTIONS]
@@ -187,7 +185,7 @@ export function Sidebar({
       isCollapsed ? "w-12" : "w-80"
     )}>
       <div className="w-12 flex flex-col items-center py-4 gap-4 border-r border-border bg-muted/20">
-        <button 
+        <button
           onClick={onToggle}
           className="p-2 hover:bg-muted text-muted-foreground mb-2 transition-colors"
           title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
@@ -286,15 +284,13 @@ export function Sidebar({
                   case SidebarTab.FUNCTIONS: type = DatabaseObjectType.FUNCTION; break
                 }
                 return (
-                  <button 
-                    key={item.name} 
+                  <button
+                    key={item.name}
                     onClick={(e) => {
                       handleItemClick(e, item.name)
-                    }} 
+                    }}
                     onDoubleClick={() => {
-                      // Doble-click: abrir el objeto (carga datos/columnas/DDL) y
-                      // colapsar el sidebar para maximizar la vista. El click
-                      // simple solo selecciona/resalta.
+
                       selectObject({ name: item.name, type })
                       if (!isCollapsed && onToggle) onToggle()
                     }}
@@ -310,7 +306,7 @@ export function Sidebar({
                       setContextMenu({ x: e.pageX, y: e.pageY, item: { name: item.name, type }, selected: effective });
                     }}
                     className={cn(
-                      "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left", 
+                      "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-none transition-colors group text-left",
                       (selectedItem?.name === item.name || highlightedObject === item.name || (isMultiSelectTab && selectedTables.includes(item.name))) ? "bg-primary/10 text-primary" : "hover:bg-muted"
                     )}
                   >

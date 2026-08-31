@@ -103,7 +103,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
     return () => { unlisten.then((f) => f()) }
   }, [startTime])
 
-  // Elapsed time ticker
+
   useEffect(() => {
     if (run.status !== PipelineStatus.Running) return
     const interval = setInterval(() => {
@@ -127,7 +127,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
 
   return (
     <div className="border border-border bg-muted/20 space-y-0 divide-y divide-border">
-      {/* Header */}
+
       <div className="p-4 flex items-center gap-3">
         {isRunning ? (
           <div className="w-10 h-10 bg-primary/10 border border-primary/20 flex items-center justify-center">
@@ -159,7 +159,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
         )}
       </div>
 
-      {/* Big counter */}
+
       <div className="p-6 flex items-center justify-center gap-6">
         <div className="text-center">
           <p className="text-4xl font-bold font-mono tabular-nums">
@@ -190,7 +190,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
         )}
       </div>
 
-      {/* Progress bar */}
+
       <div className="px-4 pb-4">
         <div className="h-3 bg-muted border border-border overflow-hidden relative">
           <div
@@ -202,7 +202,6 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
             )}
             style={{ width: `${isCompleted ? 100 : Math.max(pct, 2)}%` }}
           />
-          {/* Animated stripe effect while running */}
           {isRunning && (
             <div className="absolute inset-0 overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
@@ -217,7 +216,7 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
         </div>
       </div>
 
-      {/* Mini logs */}
+
       <div className="p-4">
         <p className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground mb-2">Últimas operaciones</p>
         <div className="space-y-1 max-h-[120px] overflow-y-auto">

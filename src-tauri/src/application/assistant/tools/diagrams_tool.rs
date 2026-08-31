@@ -9,7 +9,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Save, load, list, generate from schema and delete schema diagrams.
 pub struct DiagramsTool;
 
 #[async_trait]
@@ -177,9 +176,6 @@ const ROW_HEIGHT: i64 = 250;
 const COLS: i64 = 4;
 
 impl DiagramsTool {
-    /// Build a real diagram from the connection's schema: nodes carry the
-    /// actual columns and FK relationships are rendered as cardinality edges
-    /// (same format the frontend editor consumes).
     async fn create_from_tables(
         &self,
         args: serde_json::Value,
@@ -193,7 +189,6 @@ impl DiagramsTool {
             return missing("connection_id is required for createFromTables");
         }
 
-        // Schema defaults to the connection's configured database.
         let schema = match args.get("schema").and_then(|v| v.as_str()) {
             Some(s) if !s.is_empty() => s.to_string(),
             _ => match state.storage.get_connection(connection_id).await {
@@ -214,9 +209,6 @@ impl DiagramsTool {
             );
         }
 
-        // Tables: from args, or all tables of the schema when omitted. The
-        // requested names are validated against the real schema — the diagram
-        // is never created from tables that do not exist.
         let driver = match state.get_connection(connection_id).await {
             Ok(d) => d,
             Err(e) => {
@@ -253,7 +245,6 @@ impl DiagramsTool {
         if tables.is_empty() {
             tables = existing.clone();
         } else {
-            // Strip quoting/backticks the model may have added, then compare.
             let existing_set: std::collections::HashSet<String> = existing
                 .iter()
                 .map(|t| strip_quotes(t).to_string())
@@ -285,7 +276,7 @@ impl DiagramsTool {
                     )),
                 });
             }
-            // Keep original requested order.
+
             tables = tables.iter().map(|t| strip_quotes(t).to_string()).collect();
         }
 
@@ -414,7 +405,6 @@ impl DiagramsTool {
     }
 }
 
-/// Strip backticks/quotes a model may add around table names.
 fn strip_quotes(t: &str) -> &str {
     t.trim_matches(|c| c == '`' || c == '"' || c == '\'')
 }

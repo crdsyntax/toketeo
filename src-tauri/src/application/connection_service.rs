@@ -13,9 +13,6 @@ use crate::infrastructure::drivers::driver_factory::DriverFactory;
 
 pub struct ConnectionService;
 
-/// Placeholder returned to the frontend in place of real secrets. The backend
-/// treats this sentinel as "keep the stored secret" during merge, so a hostile
-/// webview can never read the actual credential nor accidentally overwrite it.
 pub const REDACTED: &str = "********";
 
 impl ConnectionService {
@@ -53,7 +50,7 @@ impl ConnectionService {
                     crypto::encrypt(&ssh_json, key).map_err(crate::error::AppError::Auth)?;
                 config.ssh_enc = Some(enc);
                 config.ssh_nonce = Some(nonce.to_vec());
-                // Never persist plaintext SSH secrets; they are restored from ssh_enc on decrypt.
+
                 if let Some(ref mut ssh) = config.ssh_tunnel {
                     ssh.password = None;
                     ssh.private_key = None;
@@ -149,8 +146,6 @@ impl ConnectionService {
         Ok(())
     }
 
-    /// Replaces all secrets with the REDACTED sentinel so they are never sent
-    /// to the frontend. Used by `get_connection` (the webview is untrusted).
     fn mask_secrets(config: &mut DbConnectionConfig) {
         if config.password.is_some() {
             config.password = Some(secrecy::SecretString::from(REDACTED));
@@ -175,17 +170,16 @@ impl ConnectionService {
     async fn merge_sensitive_data(state: &AppState, config: &mut DbConnectionConfig) {
         if let Some(id) = config.id {
             if let Ok(mut db_config) = state.storage.get_connection(&id.to_string()).await {
-                tracing::debug!("merge_sensitive_data: loaded from storage, auth_enabled={:?}, incoming_password_present={}, stored_password_enc_present={}", 
+                tracing::debug!("merge_sensitive_data: loaded from storage, auth_enabled={:?}, incoming_password_present={}, stored_password_enc_present={}",
                     config.auth_enabled,
                     config.password.as_ref().map(|p| !p.expose_secret().is_empty()).unwrap_or(false),
                     db_config.password_enc.is_some()
                 );
-                // Decrypt stored secrets using the decryption key (available regardless of UI lock state)
+
                 if let Ok(key) = state.get_decryption_key().await {
                     let _ = Self::decrypt_connection(&mut db_config, &key);
                 }
 
-                // When auth is explicitly disabled, clear password and skip merge
                 if config.auth_enabled == Some(false) {
                     config.password = None;
                 } else if Self::is_redacted(&config.password)
@@ -199,7 +193,6 @@ impl ConnectionService {
                     config.password = db_config.password;
                 }
 
-                // Merge SSH secrets
                 if let Some(ref mut incoming_ssh) = config.ssh_tunnel {
                     if let Some(ref db_ssh) = db_config.ssh_tunnel {
                         if Self::is_redacted(&incoming_ssh.password)
@@ -252,7 +245,7 @@ impl ConnectionService {
         mut config: DbConnectionConfig,
     ) -> AppResult<String> {
         tracing::debug!("Saving connection: {:?}", config.name);
-        // Redis always needs auth — force auth_enabled before merge so password is never cleared
+
         if config.db_type == crate::db::DbType::Redis {
             config.auth_enabled = Some(true);
         }
@@ -331,8 +324,7 @@ impl ConnectionService {
     pub async fn get_connection(state: &AppState, id: &str) -> AppResult<DbConnectionConfig> {
         tracing::debug!("Fetching single connection config: {}", id);
         let mut conn = state.storage.get_connection(id).await?;
-        // Secrets are decrypted (in-memory) so the merge logic on save can work,
-        // then masked with the REDACTED sentinel — the webview never receives them.
+
         if let Ok(key) = state.require_unlock().await {
             Self::decrypt_connection(&mut conn, &key)?;
         }
@@ -340,11 +332,6 @@ impl ConnectionService {
         Ok(conn)
     }
 
-    /// Returns a single secret field for a connection. The session must already
-    /// be unlocked (gated at the command boundary). Only the requested field is
-    /// returned, never the whole config, and only while the caller is
-    /// authenticated. Field names: `password`, `ssh_password`,
-    /// `ssh_private_key`, `ssh_passphrase`.
     pub async fn reveal_secret(
         state: &AppState,
         id: &str,
@@ -381,7 +368,7 @@ impl ConnectionService {
                 )))
             }
         };
-        // Drop any decrypted material that is not being returned.
+
         conn.strip_secrets();
         Ok(value)
     }
@@ -391,8 +378,6 @@ impl ConnectionService {
         state.storage.delete_connection(id).await
     }
 
-    /// Returns the stored per-database credential with the password decrypted
-    /// and replaced by the REDACTED sentinel (never send secrets to the webview).
     pub async fn get_database_credential(
         state: &AppState,
         id: &str,
@@ -412,9 +397,6 @@ impl ConnectionService {
         Ok(cred)
     }
 
-    /// Persists a per-database credential. `password` is only encrypted when a
-    /// non-empty value is provided; an empty/REDACTED password keeps the stored
-    /// one so a hostile webview can't overwrite it with the sentinel.
     pub async fn save_database_credential(
         state: &AppState,
         id: &str,
@@ -470,8 +452,6 @@ impl ConnectionService {
         state.storage.delete_database_credential(id, database).await
     }
 
-    /// For MongoDB, override the connection-level credentials with the
-    /// per-database credentials when one is configured for the target database.
     pub async fn apply_database_credential(
         state: &AppState,
         config: &mut DbConnectionConfig,
@@ -514,14 +494,12 @@ impl ConnectionService {
     }
 
     pub async fn connect(state: &AppState, mut config: DbConnectionConfig) -> AppResult<String> {
-        // Redis always needs auth capability — force auth_enabled before merge so password is never cleared
         if config.db_type == crate::db::DbType::Redis {
             config.auth_enabled = Some(true);
         }
 
         Self::merge_sensitive_data(state, &mut config).await;
 
-        // MongoDB: use per-database credentials when available for the target db
         Self::apply_database_credential(state, &mut config).await?;
 
         tracing::info!(
@@ -656,10 +634,8 @@ impl ConnectionService {
         }
         config.database = Some(new_db.to_string());
 
-        // MongoDB: use per-database credentials when available for the target db
         Self::apply_database_credential(state, &mut config).await?;
 
-        // For SSH connections, reuse the existing tunnel's local port
         if config.ssh_tunnel.is_some() {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
@@ -677,7 +653,6 @@ impl ConnectionService {
         let metadata_cache_ttl =
             Duration::from_secs(config.metadata_cache_ttl.unwrap_or(300) as u64);
 
-        // Swap driver while preserving the existing SSH tunnel (dropping it would kill the tunnel)
         let old_driver = {
             let mut conns = state.connections.write().await;
             if let Some(mut session) = conns.remove(id) {

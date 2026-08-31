@@ -1,23 +1,10 @@
 import { Diff, ArrowRightLeft, Check, X } from 'lucide-react'
 import { formatCellValue } from '@/lib/formatCellValue'
 import { useEffect } from 'react'
-import type { DbValue } from '@/types/database'
+import type { ReviewChangePanelProps } from '@/types/ui'
 
-interface ReviewChangePanelProps {
-  column: string
-  prevValue: DbValue
-  nextValue: DbValue
-  onConfirm: () => void
-  onDiscard: () => void
-  /** Viewport position (near the edited cell). Falls back to screen-center. */
-  position?: { top: number; left: number } | null
-}
+export type { ReviewChangePanelProps } from '@/types/ui'
 
-/**
- * Visual diff panel shown before committing an inline cell edit. Used by the
- * data explorer and the query results panel. Positioned near the edited cell
- * when `position` is given, otherwise centered on screen.
- */
 export function ReviewChangePanel({ column, prevValue, nextValue, onConfirm, onDiscard, position }: ReviewChangePanelProps) {
   const centered = !position
 

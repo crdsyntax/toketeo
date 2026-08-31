@@ -30,7 +30,7 @@ export function TransactionBanner({
   const elapsed = useElapsed(startedAt)
   const [pulse, setPulse] = useState(false)
 
-  // Pulse visually every 30 s to draw attention
+
   useEffect(() => {
     const id = setInterval(() => {
       setPulse(true)

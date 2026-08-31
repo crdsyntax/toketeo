@@ -64,8 +64,7 @@ export function JoinQueryModal({ open, onClose, connectionId, schema, dbType, ta
   const [loading, setLoading] = useState(true)
   const [joins, setJoins] = useState<JoinDef[]>([])
 
-  // Scope key: when the modal opens with a different set of tables/schema, reset
-  // the local state (allowed React pattern: adjusting state during render).
+
   const scopeKey = open ? `${connectionId}|${schema ?? ''}|${tables.join('\u0001')}` : ''
   const [scopeState, setScopeState] = useState(scopeKey)
   if (scopeState !== scopeKey) {

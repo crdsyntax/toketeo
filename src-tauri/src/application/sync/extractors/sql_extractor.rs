@@ -2,12 +2,6 @@ use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 use crate::db::DataReader;
 use crate::error::AppResult;
 
-/// Extractor para motores SQL (MySQL, MariaDB, PostgreSQL, SQL Server).
-///
-/// Usa paginación por keyset:
-/// ```sql
-/// WHERE pk > last_key ORDER BY pk LIMIT batch_size
-/// ```
 pub struct SqlExtractor<'a> {
     reader: &'a dyn DataReader,
 }

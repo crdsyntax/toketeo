@@ -50,21 +50,7 @@ export function useExplorer() {
     ? explorerTabs[activeExplorerTabId]
     : null;
 
-  // Each explorer tab carries its own connection context (connectionId +
-  // database). All operations below resolve against the ACTIVE tab's
-  // connection, falling back to the global activeConnection when no tabs are
-  // open, when the tab has no connection (legacy) or when it can't be found.
-  // Resolving against activeConnection (instead of null) when all tabs are
-  // closed keeps the sidebar showing the last connection's objects instead of
-  // requiring a manual refresh.
-  // activeConnection is intentionally NOT persisted, so after a reload it is
-  // null. The persisted lastExplorerContext (set whenever a tab is opened or
-  // closed) provides the fallback in that case, so the sidebar still shows the
-  // last connection's objects.
-  // Once the connections list has loaded, a fallback connection that is no
-  // longer in the list (deleted/ghost) is treated as null so the explorer
-  // never surfaces a connection that no longer exists. While the list is
-  // still loading, the fallback is trusted to avoid a flicker.
+
   const resolvedConnection = useMemo(() => {
     const hasExplorerTabs = Object.keys(explorerTabs).length > 0;
     const tabConnId = hasExplorerTabs ? activeTabState?.connectionId : undefined;
@@ -121,9 +107,7 @@ export function useExplorer() {
   const switchExplorerConnection = useCallback(
     (connection: typeof activeConnection) => {
       if (!connection) return;
-      // Restore the database the user was browsing on this connection: the raw
-      // connection object often has no `database` (e.g. MongoDB picks it per
-      // session), so carry over the lastExplorerContext when it belongs to it.
+
       const ctxMatches =
         lastExplorerContext?.connectionId === connection.id
           ? lastExplorerContext.database
@@ -136,9 +120,7 @@ export function useExplorer() {
         (t) => t.connectionId === connection.id,
       );
       setExplorerState({
-        // Focus the connection's most recent tab so the explorer actually
-        // switches. When the connection has no open tabs yet, clear the active
-        // tab so the sidebar falls back to showing the new connection's objects.
+
         activeExplorerTabId:
           connTabs.length > 0 ? connTabs[connTabs.length - 1].id : null,
       });
@@ -202,11 +184,7 @@ export function useExplorer() {
     [activeExplorerTabId, updateExplorerTab],
   );
 
-  // Only fall back to the persisted lastExplorerContext when it belongs to the
-  // connection we are actually resolving. Otherwise a Mongo connection (which
-  // typically has no `database` field) would inherit the schema of whatever
-  // connection was browsed last (e.g. Postgres 'public') and the sidebar would
-  // query the wrong database after closing the last tab.
+
   const currentSchema =
     activeTabState?.database ||
     activeConnection?.database ||
@@ -293,10 +271,7 @@ export function useExplorer() {
 
   const handleSelectItem = useCallback(
     (item: DatabaseObject) => {
-      // Tras desconectar/volver a conectar, los explorer tabs se limpian y
-      // `resolvedConnection` puede ser null; se cae a `activeConnection` para
-      // que el doble-click siga abriendo/recargando la tabla. Una vez creado el
-      // tab, `resolvedConnection` se resuelve y dispara la carga de datos.
+
       const conn = resolvedConnection ?? activeConnection;
       if (!conn) return;
 
@@ -319,9 +294,7 @@ export function useExplorer() {
         explorerTabs[activeExplorerTabId] &&
         !explorerTabs[activeExplorerTabId].selectedItem?.name
       ) {
-        // The active tab is an empty slot left after switching databases via
-        // the connections sidebar. Reuse it (re-keyed to the new object)
-        // instead of accumulating hidden tabs.
+
         removeExplorerTab(activeExplorerTabId);
         addExplorerTab({
           id: tabId,
@@ -354,9 +327,7 @@ export function useExplorer() {
         });
       }
 
-      // Nota: el sidebar NO se colapsa al seleccionar (para poder hacer
-      // multi-selección sin perder la vista). Se colapsa solo con doble-click
-      // desde el propio Sidebar.
+
     },
     [
       resolvedConnection,
@@ -455,15 +426,8 @@ export function useExplorer() {
     setExecutionStatus,
   ]);
 
-  /**
-   * Refresh everything the Explorer shows for the current object after a
-   * schema mutation (add/edit/drop column, index, FK, DDL, …):
-   * - clears the backend metadata cache,
-   * - invalidates the React Query caches (columns, indexes, FKs, constraints,
-   *   DDL, parameters),
-   * - refetches the sidebar lists,
-   * - re-runs the Data tab so the grid picks up the new schema.
-   */
+
+
   const refreshExplorerData = useCallback(() => {
     if (resolvedConnection?.id) {
       schemaService.clearMetadataCache(resolvedConnection.id).catch(() => undefined)
@@ -868,9 +832,7 @@ export function useExplorer() {
           const store = useAppStore.getState();
           const tabId = activeExplorerTabId ?? store.explorer.activeExplorerTabId;
           const currentFilter = tabId ? store.explorerTabs[tabId]?.filter ?? '' : '';
-          // Normaliza comillas dobles → simples para motores donde "..." es un
-          // identificador (Postgres/SQL Server/SQLite), usando las columnas de
-          // la tabla para no convertir identificadores reales.
+
           const normalizedFilter = normalizeFilterQuotes(
             currentFilter,
             (columns ?? []).map((c) => c.name),
@@ -988,7 +950,7 @@ export function useExplorer() {
     );
   }, [sidebarTab, tables, views, procedures, triggers, functions, search]);
 
-  // Resolve db type: prefer resolvedConnection.type (already stored), confirm from backend only if needed
+
   const dbType: DatabaseType | undefined = (() => {
     if (!resolvedConnection?.type) return undefined;
     switch (resolvedConnection.type) {

@@ -17,6 +17,7 @@ import { AlertTriangle, CheckCircle, Loader2, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { openScriptTabForConnection } from '@/lib/connectionScript'
 import { AssistantDrawer } from '@/components/assistant/AssistantDrawer'
+import type { ConnectionErrorModalState } from '@/types/layout'
 
 export default function MainLayout() {
   const queryClient = useQueryClient()
@@ -36,9 +37,6 @@ export default function MainLayout() {
     queryFn: () => connectionService.getAll(),
   })
 
-  // The bottom Commit/Rollback bar must target the connection that actually
-  // serves queries: the active query tab's connection (or the active explorer
-  // tab's connection), falling back to the sidebar's active connection.
   const activeQueryTab = tabs.find((t) => t.id === activeTabId)
   const activeExplorerTab = activeExplorerTabId ? explorerTabs[activeExplorerTabId] : null
   const txConnectionId =
@@ -52,16 +50,12 @@ export default function MainLayout() {
     !!txConnection && txConnection.environment?.toLowerCase() === Environment.PRODUCTION
 
   const checkStreak = useGamificationStore(state => state.checkStreak)
-  
+
   useEffect(() => {
     checkStreak()
   }, [checkStreak])
 
-  const [connectionErrorModal, setConnectionErrorModal] = useState<{
-    connectionId: string
-    connectionName: string
-    error: string
-  } | null>(null)
+  const [connectionErrorModal, setConnectionErrorModal] = useState<ConnectionErrorModalState | null>(null)
 
   useEffect(() => {
     const unlisten = listen<{ connection_id: string; error: string }>('connection:error', (event) => {
@@ -155,7 +149,7 @@ export default function MainLayout() {
     },
     onSuccess: () => {
       if (!editingConnection?.id) {
-        addXP(50); // XP for connection
+        addXP(50);
         trackAction('CREATE_CONNECTION')
       }
       queryClient.invalidateQueries({ queryKey: ['connections'] })
@@ -189,7 +183,7 @@ export default function MainLayout() {
       const message =
         error instanceof Error ? error.message : 'Failed to connect to database'
       console.error('Failed to connect to database:', error)
-      // Surface the failure to the user: store it, show the error modal, and a toast.
+
       setConnectionError(conn.id, message)
       setConnectionErrorModal({
         connectionId: conn.id,
@@ -213,10 +207,10 @@ export default function MainLayout() {
 
       <div className="flex flex-1 overflow-hidden">
         {isSidebarOpen && (
-          <ConnectionsSidebar 
-            connections={connections} 
-            activeConnection={activeConnection} 
-            onConnect={handleConnect} 
+          <ConnectionsSidebar
+            connections={connections}
+            activeConnection={activeConnection}
+            onConnect={handleConnect}
             onEdit={handleEdit}
             onNew={() => { setEditingConnection(null); setIsModalOpen(true); }}
             onDisconnect={handleDisconnect}
@@ -262,7 +256,7 @@ export default function MainLayout() {
         </div>
       )}
 
-      <ConnectionModal 
+      <ConnectionModal
         key={editingConnection?.id || 'new'}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -274,9 +268,9 @@ export default function MainLayout() {
         testMessage={testMessage}
       />
 
-      <GamificationModal 
-        isOpen={isGamificationModalOpen} 
-        onClose={() => setIsGamificationModalOpen(false)} 
+      <GamificationModal
+        isOpen={isGamificationModalOpen}
+        onClose={() => setIsGamificationModalOpen(false)}
       />
 
       {connectionErrorModal && (

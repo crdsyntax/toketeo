@@ -49,7 +49,7 @@ export function IndexesTab({
   return (
     <div className="flex-1 flex flex-col min-w-0">
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex justify-end">
-        <button 
+        <button
           onClick={onAdd}
           className="flex items-center gap-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wider bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1 rounded transition-colors"
         >
@@ -85,8 +85,8 @@ export function IndexesTab({
                 const isUnique = idx.isUnique || idx.NON_UNIQUE === 0 || idx.non_unique === 0;
 
                 return (
-                  <tr 
-                    key={i} 
+                  <tr
+                    key={i}
                     className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -117,7 +117,7 @@ export function IndexesTab({
                       ) : (
                         <div className="flex items-center gap-2 group">
                           <span className="truncate max-w-[150px]" title={name}>{name}</span>
-                          <button 
+                          <button
                             onClick={() => handleStartEdit(name)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all"
                           >

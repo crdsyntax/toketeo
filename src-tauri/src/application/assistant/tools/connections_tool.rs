@@ -7,8 +7,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// List and inspect connections. Never exposes credentials — only metadata
-/// (id, name, type, host, port, user, database, environment, connectivity).
 pub struct ConnectionsTool;
 
 #[async_trait]

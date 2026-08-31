@@ -14,7 +14,7 @@ interface LevelBadgeProps {
 
 export function LevelBadge({ className, onClick, collapsed, hideWizard }: LevelBadgeProps) {
   const { level, xp, streak } = useGamificationStore();
-  
+
   const xpForNext = getXPForNextLevel(level);
   const xpForCurrent = level === 1 ? 0 : getXPForNextLevel(level - 1);
   const xpInLevel = xp - xpForCurrent;
@@ -22,7 +22,7 @@ export function LevelBadge({ className, onClick, collapsed, hideWizard }: LevelB
   const progressPercentage = Math.min(100, Math.max(0, (xpInLevel / xpNeeded) * 100));
 
   return (
-    <div 
+    <div
       onClick={onClick}
       className={cn(
         "relative flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity",

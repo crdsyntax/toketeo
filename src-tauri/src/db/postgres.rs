@@ -13,9 +13,8 @@ pub(crate) fn quote_pg(id: &str) -> String {
     format!("\"{}\"", id.replace('"', "\"\""))
 }
 
-/// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
-/// Fail fast if a connection cannot be acquired within 5 seconds.
+
 const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct PostgresDriver {
@@ -29,8 +28,6 @@ impl PostgresDriver {
         pool_config: Option<PoolConfig>,
     ) -> AppResult<Self> {
         let pool = if transactional {
-            // Transactional sessions use a single connection to guarantee
-            // that BEGIN / COMMIT / ROLLBACK operate on the same connection.
             PgPoolOptions::new()
                 .max_connections(1)
                 .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
@@ -142,7 +139,6 @@ impl DbDriver for PostgresDriver {
                 })
                 .collect();
 
-            // Detectar claves primarias
             let primary_keys = if let Some(table) = self.extract_table_name(query) {
                 self.get_primary_keys(&table)
                     .await
@@ -266,11 +262,6 @@ impl DbDriver for PostgresDriver {
         use sqlx::Executor;
         let conn: &mut sqlx::postgres::PgConnection = &mut pool_conn;
 
-        // Guardar el search_path anterior para restaurarlo antes de devolver
-        // la conexión al pool (evita contaminar el estado de otras consultas).
-        // Si el esquema está vacío no tiene sentido hacer SET search_path y
-        // además produciría un identificador delimitado de longitud cero
-        // ("zero-length delimited identifier at or near """).
         let schema = schema.trim();
         let (previous_path, search_path_set) = if schema.is_empty() {
             (None, false)
@@ -389,14 +380,12 @@ impl DbDriver for PostgresDriver {
         }
     }
 
-    // ==================== METADATOS ====================
-
     async fn fetch_databases(&self) -> AppResult<Vec<String>> {
         let rows = sqlx::query(
             r#"
-            SELECT datname 
-            FROM pg_database 
-            WHERE datistemplate = false 
+            SELECT datname
+            FROM pg_database
+            WHERE datistemplate = false
             ORDER BY datname
             "#,
         )
@@ -409,7 +398,7 @@ impl DbDriver for PostgresDriver {
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
         let rows = sqlx::query(
             r#"
-            SELECT n.nspname 
+            SELECT n.nspname
             FROM pg_namespace n
             WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
               AND n.nspname NOT LIKE 'pg_temp_%'
@@ -458,8 +447,8 @@ impl DbDriver for PostgresDriver {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
-            SELECT table_name 
-            FROM information_schema.tables 
+            SELECT table_name
+            FROM information_schema.tables
             WHERE table_schema = $1 AND table_type = 'VIEW'
             ORDER BY table_name
             "#,
@@ -479,8 +468,8 @@ impl DbDriver for PostgresDriver {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
-            SELECT routine_name 
-            FROM information_schema.routines 
+            SELECT routine_name
+            FROM information_schema.routines
             WHERE routine_schema = $1 AND routine_type = 'FUNCTION'
             ORDER BY routine_name
             "#,
@@ -500,8 +489,8 @@ impl DbDriver for PostgresDriver {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
-            SELECT routine_name 
-            FROM information_schema.routines 
+            SELECT routine_name
+            FROM information_schema.routines
             WHERE routine_schema = $1 AND routine_type = 'PROCEDURE'
             ORDER BY routine_name
             "#,
@@ -521,8 +510,8 @@ impl DbDriver for PostgresDriver {
         let schema = schema.unwrap_or_else(|| "public".to_string());
         let rows = sqlx::query(
             r#"
-            SELECT trigger_name 
-            FROM information_schema.triggers 
+            SELECT trigger_name
+            FROM information_schema.triggers
             WHERE trigger_schema = $1
             ORDER BY trigger_name
             "#,
@@ -543,7 +532,7 @@ impl DbDriver for PostgresDriver {
 
         let rows = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 a.attname AS name,
                 pg_catalog.format_type(a.atttypid, a.atttypmod) AS type,
                 NOT a.attnotnull AS is_nullable,
@@ -628,7 +617,7 @@ impl DbDriver for PostgresDriver {
 
         let rows = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 i.relname as name,
                 a.attname as column,
                 ix.indisunique as is_unique,
@@ -671,20 +660,20 @@ impl DbDriver for PostgresDriver {
 
         let rows = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 tc.constraint_name as constraint_name,
                 kcu.column_name as column_name,
                 ccu.table_name as referenced_table,
                 ccu.column_name as referenced_column
             FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu 
-              ON tc.constraint_name = kcu.constraint_name 
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
              AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu 
-              ON ccu.constraint_name = tc.constraint_name 
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_name = tc.constraint_name
              AND ccu.table_schema = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
-              AND tc.table_name = $1 
+              AND tc.table_name = $1
               AND tc.table_schema = $2
             "#,
         )
@@ -788,7 +777,7 @@ impl DbDriver for PostgresDriver {
         let rows = sqlx::query(
             r#"
             SELECT constraint_name as name, constraint_type as type
-            FROM information_schema.table_constraints 
+            FROM information_schema.table_constraints
             WHERE table_name = $1 AND table_schema = $2
             ORDER BY constraint_name
             "#,
@@ -835,11 +824,11 @@ impl DbDriver for PostgresDriver {
 
         let rows = sqlx::query(
             r#"
-            SELECT parameter_name as name, 
-                   data_type as type, 
+            SELECT parameter_name as name,
+                   data_type as type,
                    parameter_mode as mode
-            FROM information_schema.parameters 
-            WHERE specific_schema = $2 
+            FROM information_schema.parameters
+            WHERE specific_schema = $2
               AND specific_name LIKE $1 || '%'
             ORDER BY ordinal_position
             "#,
@@ -975,9 +964,6 @@ impl DataReader for PostgresDriver {
     async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64> {
         let schema_name = schema.filter(|s| !s.is_empty()).unwrap_or("public");
 
-        // Estimación rápida vía pg_class para tablas grandes: evita el
-        // `COUNT(*)` (full scan) que bloquea el inicio del sync y el primer
-        // evento de progreso. Exacto solo por debajo del umbral.
         if let Ok(row) = sqlx::query(
             "SELECT GREATEST(c.reltuples, 0)::bigint AS est \
              FROM pg_class c \
@@ -1009,8 +995,6 @@ impl DataReader for PostgresDriver {
     }
 }
 
-/// Tablas con al menos este número estimado de filas usan `reltuples` de
-/// `pg_class` en vez de `COUNT(*)` para el conteo de progreso.
 const COUNT_ESTIMATE_THRESHOLD: i64 = 1_000_000;
 
 #[async_trait]
@@ -1039,9 +1023,6 @@ impl DataWriter for PostgresDriver {
         let quoted_cols: Vec<String> = columns.iter().map(|c| quote_pg(c)).collect();
         let cols_str = quoted_cols.join(", ");
 
-        // Build placeholders with explicit ::type casts so PostgreSQL
-        // handles type conversion server-side. This avoids the need for
-        // Rust-side type matching and works for ALL PostgreSQL types.
         let mut param_idx = 1;
         let mut all_placeholders = Vec::new();
         for _ in 0..rows.len() {
@@ -1139,8 +1120,6 @@ impl DataWriter for PostgresDriver {
     }
 }
 
-// ==================== MÉTODOS AUXILIARES ====================
-
 impl PostgresDriver {
     async fn restore_search_path(
         conn: &mut sqlx::postgres::PgConnection,
@@ -1189,9 +1168,7 @@ impl PostgresDriver {
                     )
                 })
                 .unwrap_or(serde_json::Value::Null),
-            // NUMERIC/DECIMAL(p,s): sqlx no lo decodifica como f64; se usa
-            // rust_decimal (conserva precisión) y se emite como número cuando
-            // encaja en f64, o como string para precisiones grandes.
+
             "NUMERIC" => row
                 .try_get::<Option<rust_decimal::Decimal>, _>(i)
                 .ok()
@@ -1250,14 +1227,10 @@ impl PostgresDriver {
                 .map(|v| serde_json::Value::String(v.to_string()))
                 .unwrap_or(serde_json::Value::Null),
             _ => {
-                // Tipos custom: pgvector `vector`/`halfvec`/`sparsevec` llegan
-                // en formato binario (int32 dim + float32) o texto `[...]`;
-                // enums/dominios llegan en texto.
                 let is_vector = type_name.eq_ignore_ascii_case("vector")
                     || type_name.eq_ignore_ascii_case("halfvec")
                     || type_name.eq_ignore_ascii_case("sparsevec");
 
-                // Fast path: tipos de la familia texto.
                 if let Ok(Some(s)) = row.try_get::<Option<String>, _>(i) {
                     serde_json::Value::String(sanitize_string(&s))
                 } else if let Ok(raw) = row.try_get_raw(i) {
@@ -1281,11 +1254,6 @@ impl PostgresDriver {
         }
     }
 
-    /// Query the target table's column types from information_schema.
-    /// Returns a map of column_name -> SQL cast suffix for the upsert
-    /// placeholders (e.g. `::text`, `::"public"."status_enum"`, or empty).
-    /// USER-DEFINED (enum) columns get a fully-qualified cast so text values
-    /// binded from the source are converted to the enum type server-side.
     async fn fetch_column_types(
         &self,
         table: &str,
@@ -1319,10 +1287,6 @@ impl PostgresDriver {
         }
     }
 
-    /// Sufijo de cast para un parámetro de upsert según la columna del target.
-    /// Tipos built-in → cast simple; USER-DEFINED (enums) → cast al tipo con su
-    /// esquema, de modo que un texto proveniente del source se inserte en una
-    /// columna enum sin error `... is of type X but expression is of type text`.
     fn pg_column_cast(data_type: &str, udt_schema: Option<&str>, udt_name: Option<&str>) -> String {
         if let Some(c) = Self::pg_type_cast(data_type) {
             return format!("::{c}");
@@ -1339,9 +1303,6 @@ impl PostgresDriver {
         String::new()
     }
 
-    /// Map information_schema.columns.data_type to a PostgreSQL type cast name
-    /// for built-in types. USER-DEFINED (enum/composite) types are handled by
-    /// `pg_column_cast` using the UDT schema/name.
     fn pg_type_cast(data_type: &str) -> Option<&'static str> {
         match data_type {
             "smallint" => Some("smallint"),
@@ -1365,10 +1326,6 @@ impl PostgresDriver {
         }
     }
 
-    /// Bind a JSON value as a query parameter. Since SQL placeholders use
-    /// explicit ::type casts, we only need to bind the raw value — PostgreSQL
-    /// handles the type conversion.
-    /// Null bytes (0x00) are stripped from strings to avoid UTF8 encoding errors.
     fn bind_json_value<'a>(
         qb: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
         val: Option<serde_json::Value>,
@@ -1390,7 +1347,6 @@ impl PostgresDriver {
             }
             Some(serde_json::Value::Bool(b)) => qb.bind(b),
             Some(v) => {
-                // Array, Object, or any other — sanitize null bytes then serialize to JSON string
                 let clean = sanitize_json_value(v);
                 let s = serde_json::to_string(&clean).unwrap_or_default();
                 qb.bind(s)
@@ -1481,7 +1437,7 @@ impl PostgresDriver {
     async fn fetch_table_ddl(&self, name: &str, schema: &str) -> AppResult<String> {
         let columns = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 c.column_name,
                 c.data_type,
                 c.character_maximum_length,
@@ -1510,8 +1466,8 @@ impl PostgresDriver {
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
             WHERE i.indrelid = (
-                SELECT oid FROM pg_class 
-                WHERE relname = $1 
+                SELECT oid FROM pg_class
+                WHERE relname = $1
                 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = $2)
             )
             AND i.indisprimary
@@ -1561,7 +1517,6 @@ impl PostgresDriver {
                     }
                 }
                 "user-defined" => {
-                    // User-defined types (enums etc.) won't exist on target — map to text
                     if let Some(ref udt) = udt_name {
                         if udt.starts_with('_') {
                             "text[]".to_string()
@@ -1611,8 +1566,6 @@ impl PostgresDriver {
     }
 }
 
-/// Remove null bytes (0x00) from a string.
-/// PostgreSQL rejects strings containing null bytes when the database encoding is UTF8.
 fn sanitize_string(s: &str) -> String {
     if s.contains('\0') {
         s.replace('\0', "")
@@ -1621,10 +1574,6 @@ fn sanitize_string(s: &str) -> String {
     }
 }
 
-/// Decodifica un valor pgvector (`vector`, `halfvec`, `sparsevec`) para mostrar.
-/// - Formato texto: `[0.1, 0.2, ...]` → se devuelve tal cual.
-/// - Formato binario (int32 dimensión + dim × float32 LE, endianness poco/común):
-///   se parsea a `[f1, f2, ...]`.
 fn decode_vector_bytes(bytes: &[u8]) -> serde_json::Value {
     if bytes.first() == Some(&b'[') {
         return serde_json::Value::String(sanitize_string(&String::from_utf8_lossy(bytes)));
@@ -1656,9 +1605,6 @@ fn decode_vector_bytes(bytes: &[u8]) -> serde_json::Value {
     serde_json::Value::String(sanitize_string(&String::from_utf8_lossy(bytes)))
 }
 
-/// Recursively strip null bytes (0x00) from all string values and keys
-/// inside a serde_json::Value tree. This prevents null bytes from reaching
-/// PostgreSQL where they cause UTF-8 encoding errors, especially in JSONB columns.
 fn sanitize_json_value(val: serde_json::Value) -> serde_json::Value {
     match val {
         serde_json::Value::String(s) => serde_json::Value::String(sanitize_string(&s)),
@@ -1676,29 +1622,25 @@ fn sanitize_json_value(val: serde_json::Value) -> serde_json::Value {
     }
 }
 
-/// Check if a column_default value is safe to include in cross-database DDL.
-/// Unsafe defaults reference source-specific state (sequences, USER keyword, etc.)
-/// that doesn't exist on the target database.
 fn is_safe_default(default: &str) -> bool {
     let lower = default.to_lowercase().trim().to_string();
 
-    // String literals: 'value' or 'value'::type
     if default.trim().starts_with('\'') {
         return true;
     }
-    // Numeric literals
+
     if default.trim().parse::<f64>().is_ok() {
         return true;
     }
-    // Boolean
+
     if lower == "true" || lower == "false" {
         return true;
     }
-    // NULL
+
     if lower == "null" {
         return true;
     }
-    // now() and time functions
+
     if lower == "now()"
         || lower == "current_timestamp"
         || lower == "current_date"
@@ -1706,16 +1648,15 @@ fn is_safe_default(default: &str) -> bool {
     {
         return true;
     }
-    // gen_random_uuid()
+
     if lower == "gen_random_uuid()" {
         return true;
     }
-    // Expression with cast: ('value')::type
+
     if default.trim().starts_with('(') && default.contains("::") {
         return true;
     }
 
-    // Everything else is unsafe: USER, CURRENT_USER, nextval(), etc.
     false
 }
 
@@ -1736,8 +1677,6 @@ impl CapabilityProvider for PostgresDriver {
     }
 }
 
-/// Sesión transaccional de script sobre PostgreSQL.
-/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
 pub struct PostgresScriptTransaction {
     tx: sqlx::Transaction<'static, sqlx::Postgres>,
 }
@@ -1859,7 +1798,6 @@ mod tests {
 
     #[test]
     fn decode_vector_binary_little_endian() {
-        // dim = 2 (LE), floats 1.5 y -2.25 (f32 LE)
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&2i32.to_le_bytes());
         bytes.extend_from_slice(&1.5f32.to_le_bytes());

@@ -4,8 +4,6 @@ use crate::error::{AppError, AppResult};
 use crate::models::QueryResult;
 use crate::state::AppState;
 
-/// Maximum allowed page size to prevent runaway queries on large tables.
-/// Rule: no more than 1000 rows per page, enforced server-side.
 const MAX_PAGE_SIZE: u32 = 1000;
 
 pub struct ExplorerService;
@@ -13,7 +11,7 @@ pub struct ExplorerService;
 impl ExplorerService {
     fn is_destructive_query(query: &str) -> bool {
         let upper = query.to_uppercase();
-        // A simple heuristic for destructive queries. For a robust solution, a proper SQL parser is needed.
+
         upper.contains("INSERT ")
             || upper.contains("UPDATE ")
             || upper.contains("DELETE ")
@@ -38,8 +36,6 @@ impl ExplorerService {
         Self::execute_query_with_origin(state, id, query, schema, "user").await
     }
 
-    /// Same as [execute_query] but attributes the audit entry to `origin`
-    /// (e.g. "assistant") so the audit log can distinguish who ran it.
     pub async fn execute_query_with_origin(
         state: &AppState,
         id: &str,
@@ -64,7 +60,6 @@ impl ExplorerService {
             } else {
                 match db_type {
                     crate::db::DbType::Mongodb => {
-                        // Inject the database name into MongoDB JSON commands
                         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(query) {
                             if let Some(obj) = json_val.as_object_mut() {
                                 if !obj.contains_key("database") {
@@ -92,7 +87,6 @@ impl ExplorerService {
             query.to_string()
         };
 
-        // Handle MongoDB use <db> command — switch the connection's database
         if db_type == crate::db::DbType::Mongodb {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&final_query) {
                 if let Some(obj) = json_val.as_object() {
@@ -122,13 +116,6 @@ impl ExplorerService {
             }
         }
 
-        // Resolve the schema used to scope the query. For schema-based engines
-        // (PostgreSQL search_path, MySQL database) we always run the statement
-        // with an explicit schema so unqualified identifiers resolve correctly
-        // even after a pooled connection is recycled on idle. When the caller
-        // omits the schema we fall back to the connection's configured default
-        // schema; without that, plain `execute` would rely on ambient pool state
-        // that is lost when the connection is re-established.
         let effective_schema: Option<String> = match db_type {
             crate::db::DbType::Postgres | crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
                 match &schema {
@@ -458,8 +445,6 @@ impl ExplorerService {
         Ok(data)
     }
 
-    // ─── Cached metadata accessors ───────────────────────────────────────────
-
     pub async fn get_columns(
         state: &AppState,
         id: &str,
@@ -473,7 +458,6 @@ impl ExplorerService {
             kind: MetadataKind::Columns,
         };
 
-        // Check cache first (read lock)
         {
             let conns = state.connections.read().await;
             if let Some(session) = conns.get(id) {
@@ -484,11 +468,9 @@ impl ExplorerService {
             }
         }
 
-        // Cache miss — fetch from driver
         let driver = state.get_connection(id).await?;
         let data = driver.fetch_columns(table, schema.clone()).await?;
 
-        // Store in cache (write lock)
         {
             let mut conns = state.connections.write().await;
             if let Some(session) = conns.get_mut(id) {
@@ -645,7 +627,6 @@ impl ExplorerService {
         Ok(data)
     }
 
-    /// Invalidate cached metadata for a given table (called after schema mutations).
     pub async fn invalidate_metadata_cache(
         state: &AppState,
         id: &str,
@@ -659,15 +640,12 @@ impl ExplorerService {
         }
     }
 
-    /// Clear the entire metadata cache for a connection (called on manual refresh).
     pub async fn clear_metadata_cache(state: &AppState, id: &str) {
         let mut conns = state.connections.write().await;
         if let Some(session) = conns.get_mut(id) {
             session.metadata_cache.clear();
         }
     }
-
-    // ─── Non-cached accessors ─────────────────────────────────────────────────
 
     pub async fn get_ddl(
         state: &AppState,
@@ -691,8 +669,6 @@ impl ExplorerService {
         driver.fetch_parameters(name, object_type, schema).await
     }
 
-    // ─── Execute explorer (paginated, capped at MAX_PAGE_SIZE) ────────────────
-
     pub async fn execute_explorer(
         state: &AppState,
         id: &str,
@@ -706,7 +682,6 @@ impl ExplorerService {
         let driver = state.get_connection(id).await?;
         let db_type = driver.db_type();
 
-        // Enforce hard cap: >1000 rows per page is not allowed
         if page_size > MAX_PAGE_SIZE {
             return Err(AppError::Validation(format!(
                 "Page size {} exceeds maximum allowed ({} rows). Reduce page size to continue.",
@@ -720,14 +695,12 @@ impl ExplorerService {
 
         let start = std::time::Instant::now();
 
-        // Identifier quoting based on DB type
         let (q_open, q_close, q_esc) = match db_type {
             crate::db::DbType::Postgres => ("\"", "\"", "\"\""),
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => ("`", "`", "``"),
-            _ => ("\"", "\"", "\"\""), // Default
+            _ => ("\"", "\"", "\"\""),
         };
 
-        // Handle MongoDB separately
         if matches!(db_type, crate::db::DbType::Mongodb) {
             let mut mongo_query_map = serde_json::Map::new();
             mongo_query_map.insert(
@@ -900,7 +873,6 @@ impl ExplorerService {
 
             coerce_id_values(&mut find_filter);
 
-            // Validate field names against known columns
             let find_keys = collect_field_keys(&find_filter);
             let project_keys = mongo_query_map
                 .get("project")
@@ -955,7 +927,6 @@ impl ExplorerService {
             return driver.execute(&mongo_query.to_string()).await;
         }
 
-        // Handle Redis separately
         if matches!(db_type, crate::db::DbType::Redis) {
             let query_str =
                 if let Some(f) = filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
@@ -985,7 +956,6 @@ impl ExplorerService {
 
         let result = match object_type.to_lowercase().as_str() {
             "table" | "view" => {
-                // Use cached columns when possible
                 let columns = Self::get_columns(state, id, name, database.clone()).await?;
                 let col_names: Vec<String> = columns
                     .iter()
@@ -1008,11 +978,10 @@ impl ExplorerService {
                     query.push_str(&format!(" WHERE {}", f));
                 }
 
-                // Deterministic ordering is required for paginated queries
                 let order_by = if col_names.is_empty() {
-                    "ORDER BY (SELECT NULL)".to_string() // Fallback
+                    "ORDER BY (SELECT NULL)".to_string()
                 } else {
-                    format!("ORDER BY {}", col_names[0]) // Use first column as basic deterministic order
+                    format!("ORDER BY {}", col_names[0])
                 };
 
                 query.push_str(&format!(
@@ -1089,7 +1058,6 @@ impl ExplorerService {
             output.push_str(&format!("SET search_path TO {};\n\n", schema_quoted));
         }
 
-        // Helper to filter names from all available
         let filter_names = |all: Vec<String>, selected: &[String]| -> Vec<String> {
             if selected.is_empty() {
                 all
@@ -1252,10 +1220,6 @@ impl ExplorerService {
 
         let driver = state.get_connection(id).await?;
 
-        // On a transactional session (production) the restore runs INSIDE the
-        // session transaction: no own BEGIN/COMMIT, so nothing persists until
-        // the user presses Commit. Otherwise begin an atomic restore when
-        // possible (Postgres DDL is transactional).
         let transactional = state.is_transactional(id).await.unwrap_or(false);
         if !transactional {
             let _ = driver.execute("BEGIN").await;
@@ -1321,9 +1285,6 @@ impl ExplorerService {
             )));
         }
 
-        // For MySQL/MariaDB, schema == database. Rebuild the pool with the new database
-        // in the connection URL so all pool connections start on the right database.
-        // For other databases, SET search_path / USE would need a single-connection approach.
         match driver.db_type() {
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
                 drop(driver);
@@ -1343,9 +1304,6 @@ impl ExplorerService {
         driver.fetch_mongo_structure().await
     }
 
-    /// Fetch metadata for selected tables in a schema diagram.
-    /// Only fetches columns + foreign keys for the specified table names.
-    /// Returns tables with columns + foreign keys.
     pub async fn get_schema_diagram_data(
         state: &AppState,
         id: &str,
@@ -1370,8 +1328,6 @@ impl ExplorerService {
         }))
     }
 
-    /// Fetch table sizes in bytes for a given schema.
-    /// Returns a map of table_name -> size_bytes.
     pub async fn get_table_sizes(
         state: &AppState,
         id: &str,
@@ -1428,14 +1384,6 @@ impl ExplorerService {
         }
     }
 
-    /// Truncate a set of tables in foreign-key-safe order (children first).
-    /// Returns the execution order, the generated SQL, per-table outcomes and
-    /// warnings. Execution is engine-specific:
-    /// - Postgres: single `TRUNCATE TABLE a, b` statement (FK-aware).
-    /// - MySQL/MariaDB: `SET FOREIGN_KEY_CHECKS = 0; TRUNCATE ...; SET FOREIGN_KEY_CHECKS = 1;`.
-    /// - SQLite: `DELETE FROM` per table in order (no TRUNCATE in SQLite).
-    /// - SQL Server: disables incoming FK constraints (selected set only),
-    ///   truncates, then re-enables them.
     pub async fn truncate_tables(
         state: &AppState,
         id: &str,
@@ -1472,7 +1420,6 @@ impl ExplorerService {
             ));
         }
 
-        // Dedupe preserving selection order.
         let mut seen: HashSet<String> = HashSet::new();
         let mut unique: Vec<String> = Vec::new();
         for t in tables {
@@ -1486,8 +1433,6 @@ impl ExplorerService {
             .map(|(i, t)| (t.clone(), i))
             .collect();
 
-        // Build the FK graph among the selected tables. Edge child -> parent
-        // means the child must be truncated before the parent.
         let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); unique.len()];
         let mut in_degree = vec![0usize; unique.len()];
 
@@ -1510,10 +1455,6 @@ impl ExplorerService {
             }
         }
 
-        // Detect tables outside the selection that reference selected tables.
-        // These are left intact and foreign key enforcement stays ON so the
-        // engine rejects truncating any referenced parent instead of orphaning
-        // data (MySQL would otherwise allow it silently with FK checks off).
         let mut unselected_refs: Vec<String> = Vec::new();
         for table in &unique {
             let referenced_by = driver
@@ -1529,7 +1470,6 @@ impl ExplorerService {
         }
         let has_unselected_refs = !unselected_refs.is_empty();
 
-        // Topological sort (Kahn): children (in-degree 0) come first.
         let mut warnings: Vec<String> = Vec::new();
         if has_unselected_refs {
             warnings.push(format!(
@@ -1552,7 +1492,6 @@ impl ExplorerService {
             }
         }
 
-        // Tables not reached by the sort participate in an FK cycle.
         let remaining: Vec<usize> = (0..unique.len()).filter(|&i| !placed[i]).collect();
         if !remaining.is_empty() {
             let cycle: Vec<String> = remaining.iter().map(|&i| unique[i].clone()).collect();
@@ -1563,12 +1502,11 @@ impl ExplorerService {
             order.extend(remaining.into_iter().map(|i| unique[i].clone()));
         }
 
-        // Identifier quoting per engine.
         let (q_open, q_close, q_esc) = match db_type {
             crate::db::DbType::Postgres => ("\"", "\"", "\"\""),
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => ("`", "`", "``"),
             crate::db::DbType::Sqlserver => ("[", "]", "]]"),
-            _ => ("\"", "\"", "\"\""), // SQLite
+            _ => ("\"", "\"", "\"\""),
         };
 
         let quote_table = |name: &str| -> String {
@@ -1601,8 +1539,6 @@ impl ExplorerService {
         match db_type {
             crate::db::DbType::Postgres => {
                 if has_unselected_refs {
-                    // Fall back to per-table statements so the engine decides
-                    // table by table (children succeed, referenced parents fail).
                     for t in &order {
                         let sql = format!("TRUNCATE TABLE {}", quote_table(t));
                         statements.push(sql.clone());
@@ -1636,9 +1572,6 @@ impl ExplorerService {
             }
             crate::db::DbType::Mysql | crate::db::DbType::Mariadb => {
                 if has_unselected_refs {
-                    // Per-table so the engine decides. FK checks stay ON so a
-                    // referenced parent is rejected instead of orphaning rows
-                    // in the unselected referencing tables.
                     for t in &order {
                         let sql = format!("TRUNCATE TABLE {}", quote_table(t));
                         statements.push(sql.clone());
@@ -1687,8 +1620,6 @@ impl ExplorerService {
                 }
             }
             crate::db::DbType::Sqlserver => {
-                // Incoming FK constraints from selected children (needed to
-                // TRUNCATE a referenced table).
                 let mut disable_map: HashMap<String, Vec<String>> = HashMap::new();
                 for table in &order {
                     let referenced_by = driver
@@ -1713,7 +1644,6 @@ impl ExplorerService {
                     let full = quote_table(t);
                     let names = disable_map.get(t).cloned().unwrap_or_default();
 
-                    // 1. Disable incoming FK constraints.
                     let mut disabled: Vec<String> = Vec::new();
                     let mut disable_failed = false;
                     for fk in &names {
@@ -1734,7 +1664,6 @@ impl ExplorerService {
                     }
 
                     if disable_failed {
-                        // Best-effort re-enable of what was disabled.
                         for fk in &disabled {
                             let sql = format!(
                                 "ALTER TABLE {} WITH CHECK CHECK CONSTRAINT {}",
@@ -1747,7 +1676,6 @@ impl ExplorerService {
                         continue;
                     }
 
-                    // 2. Truncate.
                     let sql = format!("TRUNCATE TABLE {}", full);
                     statements.push(sql.clone());
                     match Self::execute_query(state, id, &sql, schema.clone()).await {
@@ -1759,7 +1687,6 @@ impl ExplorerService {
                         }
                     }
 
-                    // 3. Re-enable constraints (best effort).
                     for fk in &names {
                         let sql = format!(
                             "ALTER TABLE {} WITH CHECK CHECK CONSTRAINT {}",
@@ -1778,7 +1705,6 @@ impl ExplorerService {
             }
         }
 
-        // Invalidate cached metadata for the affected tables.
         for t in &unique {
             Self::invalidate_metadata_cache(state, id, t, schema.as_deref()).await;
         }
@@ -1791,7 +1717,6 @@ impl ExplorerService {
         })
     }
 
-    /// Verify dump file integrity: count statements vs expected tables.
     pub fn verify_dump_integrity(
         file_path: &str,
         expected_tables: usize,
@@ -1821,8 +1746,6 @@ impl ExplorerService {
         }))
     }
 
-    /// Parse a SQL dump file and extract unique table names from
-    /// CREATE TABLE and INSERT INTO statements.
     pub fn parse_dump_tables(content: &str) -> Vec<String> {
         let mut tables: Vec<String> = Vec::new();
         let upper = content.to_uppercase();
@@ -1854,11 +1777,6 @@ impl ExplorerService {
         tables
     }
 
-    /// Restore only the selected tables from a dump file.
-    /// Splits the file into top-level SQL statements with dollar-quote awareness
-    /// (handles PostgreSQL $function$ / $body$ blocks), then executes only
-    /// statements that reference any of the selected table names.
-    /// Uses execute_with_schema for PostgreSQL to ensure search_path is set.
     pub async fn restore_database_selected(
         state: &AppState,
         id: &str,
@@ -1881,10 +1799,6 @@ impl ExplorerService {
         let statements = split_sql_statements(&content);
         let mut errors = Vec::new();
 
-        // MySQL/MariaDB restores must run on a single dedicated connection with the
-        // target database selected. A bare `DROP TABLE` otherwise fails with
-        // "No database selected" because each pooled `execute` may use a different
-        // connection. `begin_script` issues `USE `schema'` on that connection.
         let mut script = if is_mysql && !schema.is_empty() {
             match driver.begin_script(Some(schema)).await {
                 Ok(s) => Some(s),
@@ -1916,24 +1830,17 @@ impl ExplorerService {
                         || upper_stmt.contains(&format!(" {}\n", tu))
                         || upper_stmt.contains(&format!(" {};", tu))
                         || upper_stmt.contains(&format!(" {},", tu))
-                        // Schema-qualified: "schema"."table"
                         || upper_stmt.contains(&format!(".\\\"{}\\\"", tu))
-                        // At start: TABLE ... or TABLE(...)
                         || upper_stmt.starts_with(&format!("{} ", tu))
                         || upper_stmt.starts_with(&format!("{}(", tu))
                 });
 
             if should_execute {
-                // mysqldump emits LOCK TABLES/UNLOCK TABLES for load speed. They are not
-                // required for a correct restore and conflict with the dedicated-connection
-                // transaction used here (MySQL forbids LOCK TABLES inside a transaction),
-                // so skip them.
                 if upper_stmt.starts_with("LOCK TABLES") || upper_stmt.starts_with("UNLOCK TABLES")
                 {
                     continue;
                 }
 
-                // Before CREATE TABLE for a selected table, drop the table first
                 if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
                     if let Some(table_name) = extract_table_name_from_create(trimmed) {
                         if tables.is_empty()
@@ -1983,15 +1890,6 @@ impl ExplorerService {
     }
 }
 
-/// Splits SQL text into top-level statements while respecting:
-/// - PostgreSQL dollar-quoting ($tag$...$tag$)
-/// - Single-quoted string literals (''...'')
-/// - Single-line (--) and block (/* */) comments
-/// - MySQL conditional comments (/*! ... */): MySQL executes these, so their
-///   contents are kept and run as statements (mysqldump relies on them for
-///   SET SQL_MODE, CREATE TRIGGER/PROCEDURE, etc.)
-/// - `DELIMITER` directives: the statement separator switches to the given
-///   token (used by mysqldump for routines whose bodies contain `;`)
 fn split_sql_statements(content: &str) -> Vec<String> {
     let mut statements = Vec::new();
     let mut current = String::new();
@@ -1999,7 +1897,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
     let len = chars.len();
     let mut i = 0;
 
-    // State tracking
     let mut in_single_quote = false;
     let mut in_dollar_tag: Option<String> = None;
     let mut in_block_comment = false;
@@ -2007,7 +1904,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
     let mut delimiter = ";".to_string();
 
     while i < len {
-        // Comment open: /* ... */ (skipped) vs /*! ... */ (executed by MySQL)
         if !in_single_quote
             && in_dollar_tag.is_none()
             && !in_block_comment
@@ -2017,8 +1913,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             && chars[i + 1] == '*'
         {
             if i + 2 < len && chars[i + 2] == '!' {
-                // Conditional comment: keep contents, just skip the /*! marker and
-                // the optional version number (e.g. /*!50003 ... */).
                 in_conditional_comment = true;
                 i += 3;
                 while i < len && chars[i].is_ascii_digit() {
@@ -2050,7 +1944,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
 
-        // DELIMITER directive (mysql client command): switch the statement separator.
         if !in_single_quote && in_dollar_tag.is_none() && current.trim().is_empty() {
             let mut j = i;
             while j < len && chars[j].is_whitespace() {
@@ -2084,7 +1977,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
         }
 
-        // Single-line comment: -- ...
         if !in_single_quote
             && in_dollar_tag.is_none()
             && !in_block_comment
@@ -2102,7 +1994,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
 
-        // Dollar quote start: $tag$
         if !in_single_quote
             && !in_block_comment
             && !in_conditional_comment
@@ -2120,7 +2011,7 @@ fn split_sql_statements(content: &str) -> Vec<String> {
                 continue;
             }
         }
-        // Dollar quote end: $tag$
+
         if !in_single_quote && !in_block_comment && !in_conditional_comment {
             if let Some(ref tag) = in_dollar_tag {
                 if chars[i] == '$' {
@@ -2140,7 +2031,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
         }
 
-        // Single quote toggle (skip doubled quotes inside strings)
         if in_dollar_tag.is_none() && chars[i] == '\'' {
             in_single_quote = !in_single_quote;
             current.push(chars[i]);
@@ -2152,7 +2042,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
 
-        // Statement separator (honors DELIMITER for routines)
         if !in_single_quote && in_dollar_tag.is_none() {
             let is_sep = if delimiter == ";" {
                 chars[i] == ';'
@@ -2180,7 +2069,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
         i += 1;
     }
 
-    // Final trailing statement
     let remaining = current.trim().to_string();
     if !remaining.is_empty() {
         statements.push(remaining);
@@ -2189,8 +2077,6 @@ fn split_sql_statements(content: &str) -> Vec<String> {
     statements
 }
 
-/// Find the closing `$` of a dollar tag starting at position `start` (where chars[start] == '$').
-/// Returns the index of the closing `$` if found, or None.
 fn find_dollar_tag_end(chars: &[char], start: usize, len: usize) -> Option<usize> {
     let mut j = start + 1;
     while j < len && chars[j] != '$' {
@@ -2203,9 +2089,6 @@ fn find_dollar_tag_end(chars: &[char], start: usize, len: usize) -> Option<usize
     }
 }
 
-/// Extracts the unquoted table name from a CREATE TABLE statement.
-/// Handles: `CREATE TABLE "schema"."table"`, `CREATE TABLE "table"`,
-/// `CREATE TABLE IF NOT EXISTS "schema"."table"`, and unquoted variants.
 fn extract_table_name_from_create(stmt: &str) -> Option<String> {
     let upper = stmt.to_uppercase();
     let after = if upper.starts_with("CREATE TABLE IF NOT EXISTS") {

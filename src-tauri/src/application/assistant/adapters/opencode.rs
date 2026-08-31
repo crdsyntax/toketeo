@@ -9,8 +9,6 @@ use crate::models::assistant::{AiRequest, AiResponse, ModelInfo};
 use super::openai_format;
 use super::AiAdapter;
 
-/// Raw model IDs that are only served by the Zen free endpoint (populated by
-/// `list_models`, which queries both the configured and the free endpoint).
 static FREE_MODEL_IDS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 fn free_model_ids() -> &'static Mutex<HashSet<String>> {
@@ -20,11 +18,10 @@ fn free_model_ids() -> &'static Mutex<HashSet<String>> {
 pub struct OpenCodeAdapter {
     api_key: String,
     base_url: String,
-    /// Free tier endpoint, derived from `base_url` (e.g. `.../zen/go/v1` →
-    /// `https://opencode.ai/zen/v1`).
+
     free_base_url: String,
-    model: String,     // display format – may include `opencode/` prefix
-    model_raw: String, // raw ID sent to the API (prefix stripped)
+    model: String,
+    model_raw: String,
     client: reqwest::Client,
 }
 
@@ -33,7 +30,7 @@ impl OpenCodeAdapter {
         let model = model.unwrap_or_else(|| "opencode/gpt-5.5".to_string());
         let model_raw = Self::strip_prefix(&model);
         let base_url = base_url.unwrap_or_else(|| "https://opencode.ai/zen/v1".to_string());
-        // Free tier endpoint: Zen exposes the free models under the non-`go` path.
+
         let free_base_url = if base_url.contains("/go/") {
             base_url.replacen("/go/", "/", 1)
         } else {
@@ -49,8 +46,6 @@ impl OpenCodeAdapter {
         }
     }
 
-    /// Strip the `opencode/` prefix if present. The Zen API expects the raw
-    /// model ID (e.g. `deepseek-v4-flash` not `opencode/deepseek-v4-flash`).
     fn strip_prefix(m: &str) -> String {
         let cleaned: String = m
             .chars()
@@ -73,7 +68,6 @@ impl OpenCodeAdapter {
         false
     }
 
-    /// GET the model list from one Zen endpoint, returning raw IDs.
     async fn fetch_model_ids(&self, url: &str, api_key: &str) -> Vec<String> {
         let mut req = self.client.get(url);
         if !api_key.is_empty() {
@@ -116,7 +110,6 @@ impl AiAdapter for OpenCodeAdapter {
             "max_tokens": req.max_tokens,
         });
 
-        // Free models are served by the free tier endpoint (no API key needed).
         let is_free = self.is_free_model();
         let url = if is_free {
             format!("{}/chat/completions", self.free_base_url)
@@ -166,7 +159,6 @@ impl AiAdapter for OpenCodeAdapter {
             "max_tokens": req.max_tokens,
         });
 
-        // Free models are served by the free tier endpoint (no API key needed).
         let is_free = self.is_free_model();
         let base_url = if is_free {
             self.free_base_url.clone()
@@ -188,9 +180,6 @@ impl AiAdapter for OpenCodeAdapter {
     }
 
     async fn list_models(&self) -> AppResult<Vec<ModelInfo>> {
-        // Two endpoints: the configured one (Zen Go plan, paid models) and the
-        // free tier one, which also exposes the `-free` models and the rest of
-        // the general Zen catalog.
         let go_ids = self
             .fetch_model_ids(&format!("{}/models", self.base_url), &self.api_key)
             .await;
@@ -217,7 +206,6 @@ impl AiAdapter for OpenCodeAdapter {
 
         let mut models: Vec<ModelInfo> = Vec::new();
 
-        // Zen Go plan models (paid).
         for id in &go_ids {
             models.push(ModelInfo {
                 id: format!("opencode/{id}"),
@@ -229,7 +217,6 @@ impl AiAdapter for OpenCodeAdapter {
             });
         }
 
-        // Free tier models.
         for id in &free_set {
             models.push(ModelInfo {
                 id: format!("opencode/{id}"),
@@ -241,7 +228,6 @@ impl AiAdapter for OpenCodeAdapter {
             });
         }
 
-        // Rest of the general Zen catalog (available but not part of the Go plan).
         for id in &zen_ids {
             if !go_set.contains(id) && !free_set.contains(id) {
                 models.push(ModelInfo {

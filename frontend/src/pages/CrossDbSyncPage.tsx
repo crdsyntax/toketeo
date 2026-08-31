@@ -77,7 +77,7 @@ export function CrossDbSyncPage() {
 
   const connMap = new Map(connections?.map((c) => [c.id, c]) ?? [])
 
-  // Fetch latest run for each pipeline
+
   useEffect(() => {
     if (!pipelines) return
     pipelines.forEach((p) => {
@@ -116,7 +116,7 @@ export function CrossDbSyncPage() {
     setEditingPipeline(null)
     setWizardMinimized(false)
     await queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
-    // Refresh selectedPipeline with fresh data from cache after save
+
     if (selectedPipeline) {
       const fresh = queryClient.getQueryData<SyncPipeline[]>(['sync-pipelines'])
       const updated = fresh?.find((p) => p.id === selectedPipeline.id)
@@ -214,7 +214,7 @@ export function CrossDbSyncPage() {
         const pipeId = executingPipelineIdRef.current
         setExecutingId(null)
         executingPipelineIdRef.current = null
-        // Optimistic: mark run as completed immediately so detail panel shows "Completado"
+
         setActiveRun((prev) => prev ? { ...prev, status: PipelineStatus.Completed, completed_at: new Date().toISOString() } : prev)
         if (pipeId) {
           queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>
@@ -223,7 +223,7 @@ export function CrossDbSyncPage() {
         }
         queryClient.invalidateQueries({ queryKey: ['sync-runs'] })
         queryClient.invalidateQueries({ queryKey: ['sync-pipelines'] })
-        // Fetch the latest run so the "Registros" tab updates to the newest execution
+
         if (pipeId) {
           syncService.listRuns(pipeId).then((runs) => {
             if (runs.length > 0) {
@@ -239,7 +239,7 @@ export function CrossDbSyncPage() {
         const pipeId = executingPipelineIdRef.current
         setExecutingId(null)
         executingPipelineIdRef.current = null
-        // Optimistic: mark run as failed immediately
+
         setActiveRun((prev) => prev ? { ...prev, status: PipelineStatus.Failed, error_count: prev.error_count + 1 } : prev)
         if (pipeId) {
           queryClient.setQueryData(['sync-pipelines'], (old: SyncPipeline[] | undefined) =>

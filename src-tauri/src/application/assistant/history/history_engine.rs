@@ -1,7 +1,6 @@
 use crate::models::assistant::KnowledgeCase;
 use crate::models::{AssistantMessage, QueryHistoryEntry};
 
-/// Unified timeline entry combining assistant messages and query history.
 #[derive(Debug, Clone)]
 pub enum TimelineEntry {
     AssistantMessage(AssistantMessage),
@@ -22,7 +21,6 @@ impl TimelineEntry {
 pub struct HistoryEngine;
 
 impl HistoryEngine {
-    /// Merge assistant messages and query history into a unified, sorted timeline.
     pub fn build_timeline(
         messages: Vec<AssistantMessage>,
         history: Vec<QueryHistoryEntry>,
@@ -40,7 +38,6 @@ impl HistoryEngine {
         entries
     }
 
-    /// Find assistant messages that are related to a specific executed query.
     pub fn find_related_messages<'a>(
         query: &str,
         messages: &'a [AssistantMessage],
@@ -64,7 +61,6 @@ impl HistoryEngine {
             }
         }
 
-        // Filter by time proximity (within max_distance seconds)
         related.retain(|msg| {
             let other_time: Option<i64> = messages
                 .iter()
@@ -79,7 +75,6 @@ impl HistoryEngine {
         related
     }
 
-    /// Calculate usage statistics for the assistant.
     pub fn calculate_stats(
         messages: &[AssistantMessage],
         cases: &[KnowledgeCase],

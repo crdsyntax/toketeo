@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-/// Modo de sincronización.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncMode {
@@ -8,7 +7,6 @@ pub enum SyncMode {
     Incremental,
 }
 
-/// Estado del pipeline.
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PipelineStatus {
@@ -23,18 +21,16 @@ pub enum PipelineStatus {
     Failed,
 }
 
-/// Estrategia de upsert por engine.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum UpsertStrategy {
-    OnConflict,     // PostgreSQL
-    OnDuplicateKey, // MySQL / MariaDB
-    Merge,          // SQL Server
-    UpsertDoc,      // MongoDB
-    Hset,           // Redis
+    OnConflict,
+    OnDuplicateKey,
+    Merge,
+    UpsertDoc,
+    Hset,
 }
 
-/// Capacidades expuestas por cada driver.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DriverCapabilities {
     pub supports_transactions: bool,
@@ -49,7 +45,6 @@ pub struct DriverCapabilities {
     pub max_batch_size: usize,
 }
 
-/// Pipeline de sincronización.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncPipeline {
     #[serde(default)]
@@ -77,7 +72,6 @@ fn default_batch_size() -> usize {
     1000
 }
 
-/// Configuración de una tabla dentro del pipeline.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncTableConfig {
     pub source_table: String,
@@ -87,7 +81,6 @@ pub struct SyncTableConfig {
     pub primary_key: Option<Vec<String>>,
 }
 
-/// Mapeo columna-a-columna.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ColumnMapping {
     pub source_column: String,
@@ -95,7 +88,6 @@ pub struct ColumnMapping {
     pub transform: Option<ColumnTransform>,
 }
 
-/// Transformación configurable por columna.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum ColumnTransform {
@@ -120,7 +112,6 @@ pub enum ColumnTransform {
     },
 }
 
-/// Ejecución de un pipeline.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncRun {
     pub id: String,
@@ -134,7 +125,6 @@ pub struct SyncRun {
     pub batch_count: u64,
 }
 
-/// Checkpoint para reanudación.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncCheckpoint {
     pub id: String,
@@ -145,7 +135,6 @@ pub struct SyncCheckpoint {
     pub batch_number: u64,
 }
 
-/// Batch individual.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncBatch {
     pub id: String,
@@ -160,7 +149,6 @@ pub struct SyncBatch {
     pub error_message: Option<String>,
 }
 
-/// Error por fila.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncRowError {
     pub id: String,
@@ -171,7 +159,6 @@ pub struct SyncRowError {
     pub raw_value: Option<String>,
 }
 
-/// Reporte de validación.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ValidationReport {
     pub is_valid: bool,

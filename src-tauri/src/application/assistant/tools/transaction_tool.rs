@@ -7,7 +7,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Control the transaction state of a connection (begin/commit/rollback).
 pub struct TransactionTool;
 
 #[async_trait]

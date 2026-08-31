@@ -1,7 +1,6 @@
 use crate::models::compare::{CompareStatus, DataReport, SchemaReport};
 use serde_json::json;
 
-/// Genera un reporte JSON combinado de schema + data.
 pub fn generate_full_report(
     schema_report: &SchemaReport,
     data_report: Option<&DataReport>,
@@ -20,7 +19,6 @@ pub fn generate_full_report(
     report
 }
 
-/// Cuenta estadísticas de un SchemaReport.
 pub fn count_schema_differences(report: &SchemaReport) -> serde_json::Value {
     json!({
         "tables": report.tables.len(),
@@ -44,7 +42,6 @@ pub fn count_schema_differences(report: &SchemaReport) -> serde_json::Value {
     })
 }
 
-/// Filtra un SchemaReport para incluir solo las diferencias (sin Equal).
 pub fn filter_differences_only(report: &SchemaReport) -> SchemaReport {
     SchemaReport {
         tables: report

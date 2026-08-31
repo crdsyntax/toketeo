@@ -1,8 +1,8 @@
 import { tauriApi } from '@/lib/api'
-import type { 
-  TableResponse, 
-  ColumnResponse, 
-  IndexResponse, 
+import type {
+  TableResponse,
+  ColumnResponse,
+  IndexResponse,
   ForeignKeyResponse,
   ReferencedByKeyResponse,
   ConstraintResponse,
@@ -187,7 +187,7 @@ executeExplorer: async (payload: {
   })
   },
   switchSchema: async (id: string, schema: string) => {
-    // Rust side might need to handle switching the default database in the pool
+
     return await tauriApi.invoke<void>('switch_schema', { id, schema })
   },
 
@@ -281,7 +281,7 @@ executeExplorer: async (payload: {
     return await tauriApi.invoke<string | null>('mongo_restore_database', { id, dbName })
   },
 
-  // ── Assistant / Query History ──
+
 
   saveAssistantMessages: async (messages: AssistantMessagePayload[]) => {
     await tauriApi.invoke<void>('save_assistant_messages', { messages })

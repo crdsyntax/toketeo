@@ -37,7 +37,7 @@ export function ColumnPicker({
 
   return (
     <div className="flex items-center gap-4 flex-wrap">
-      {/* X axis: category / date */}
+
       <div className="flex items-center gap-1.5">
         <label className="text-[var(--ch-text-9)] font-semibold text-muted-foreground uppercase tracking-wider">
           Axis
@@ -59,7 +59,7 @@ export function ColumnPicker({
         </select>
       </div>
 
-      {/* Y axis: numeric values */}
+
       <div className="flex items-center gap-1.5 flex-1 min-w-0">
         <label className="text-[var(--ch-text-9)] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
           Values
@@ -96,7 +96,7 @@ export function ColumnPicker({
         </div>
       </div>
 
-      {/* Group / color */}
+
       {groupOptions.length > 0 && (
         <div className="flex items-center gap-1.5">
           <label className="text-[var(--ch-text-9)] font-semibold text-muted-foreground uppercase tracking-wider">

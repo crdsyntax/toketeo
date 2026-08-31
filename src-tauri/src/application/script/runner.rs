@@ -8,19 +8,16 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 
-/// Decisión del usuario ante un statement fallido.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ScriptDecision {
-    /// Saltar este statement y continuar con el siguiente.
     Skip,
-    /// Saltar este y todos los errores futuros sin volver a preguntar.
+
     SkipAll,
-    /// Cancelar el script completo (rollback de lo aplicado).
+
     Cancel,
 }
 
-/// Resultado individual de un statement dentro del script.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatementResult {
@@ -33,7 +30,6 @@ pub struct StatementResult {
     pub error: Option<String>,
 }
 
-/// Reporte final del script, devuelto al frontend.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptReport {
@@ -43,23 +39,16 @@ pub struct ScriptReport {
     pub failed: usize,
     pub skipped: usize,
     pub rolled_back: bool,
-    /// True when the script ran inside a transactional (production) session:
-    /// changes are NOT committed and require the user to press Commit.
+
     pub pending_commit: bool,
     pub results: Vec<StatementResult>,
 }
 
-/// Cuánto tiempo espera el runner una respuesta del usuario ante un error
-/// antes de tratar el script como cancelado (rollback).
 const PROMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// Ejecuta un script SQL statement a statement dentro de una transacción,
-/// pausando ante errores para pedir decisión al usuario (skip / skip_all /
-/// cancel = rollback).
 pub struct ScriptRunner;
 
 impl ScriptRunner {
-    /// Crea el canal de decisión para un run en curso y devuelve el receiver.
     pub async fn register_prompt(
         prompts: &RwLock<HashMap<String, mpsc::Sender<ScriptDecision>>>,
         run_id: &str,
@@ -93,9 +82,7 @@ impl ScriptRunner {
         }
 
         let driver = state.get_connection(conn_id).await?;
-        // Production (transactional) sessions run scripts inside the session
-        // transaction: no nested transaction and NO auto-commit — changes only
-        // take effect when the user presses Commit on the bottom bar.
+
         let transactional = state.is_transactional(conn_id).await.unwrap_or(false);
         let mut tx = if transactional {
             None
@@ -220,7 +207,6 @@ impl ScriptRunner {
                         continue;
                     }
 
-                    // Pedir decisión al usuario.
                     let _ = app.emit(
                         "script:error-prompt",
                         serde_json::json!({
@@ -251,12 +237,9 @@ impl ScriptRunner {
             }
         }
 
-        // Statements no intentados (cancelados) → skipped.
         report.skipped = report.total - report.ok - report.failed;
         report.rolled_back = cancelled;
 
-        // Añadir al reporte los statements saltados (para que el resumen
-        // pueda mostrarlos/filtrarlos; no se ejecutaron).
         if report.skipped > 0 {
             let executed = report.ok + report.failed;
             for (index, sql) in statements.iter().enumerate().skip(executed) {
@@ -276,10 +259,6 @@ impl ScriptRunner {
         drop(decision_rx);
 
         if transactional {
-            // Session transaction stays open: changes only take effect when the
-            // user presses Commit on the bottom bar. Never auto-commit and never
-            // roll back the whole session (that could discard other pending
-            // changes the user has made).
             report.rolled_back = false;
             report.pending_commit = true;
             Self::emit_progress(app, &report, "pending");
@@ -318,7 +297,6 @@ impl ScriptRunner {
     }
 }
 
-/// Almacén de prompts de script en curso: run_id → canal de decisión.
 #[derive(Default)]
 pub struct ScriptPromptStore {
     pub prompts: Arc<RwLock<HashMap<String, mpsc::Sender<ScriptDecision>>>>,
@@ -329,8 +307,6 @@ impl ScriptPromptStore {
         Self::default()
     }
 
-    /// Envía una decisión a un run en curso. Devuelve false si el run ya no
-    /// existe o su canal está cerrado.
     pub async fn respond(&self, run_id: &str, decision: ScriptDecision) -> AppResult<()> {
         let sender = {
             let guard = self.prompts.read().await;
@@ -350,7 +326,6 @@ impl ScriptPromptStore {
         }
     }
 
-    /// Cancela un run en curso enviando la decisión Cancel.
     pub async fn cancel(&self, run_id: &str) -> AppResult<()> {
         self.respond(run_id, ScriptDecision::Cancel).await
     }

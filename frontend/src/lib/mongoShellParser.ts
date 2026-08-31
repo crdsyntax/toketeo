@@ -1,31 +1,6 @@
-/**
- * MongoDB Shell Syntax Parser
- *
- * Transforms shell-style queries:
- *   db.orders.find({ status: "active" }).sort({ date: -1 }).limit(10)
- *
- * Into the internal JSON protocol:
- *   { collection: "orders", find: { status: "active" }, sort: { date: -1 }, limit: 10 }
- *
- * Supported methods:
- *   .find(filter, projection?)
- *   .findOne(filter, projection?)
- *   .sort(sortDoc)
- *   .project(projDoc) / .projection(projDoc)
- *   .limit(n)
- *   .skip(n)
- *   .count() / .countDocuments()
- *   .aggregate(pipeline)
- *   .insertOne(doc)
- *   .insertMany(docs)
- *   .updateOne(filter, update, options?)
- *   .updateMany(filter, update, options?)
- *   .deleteOne(filter)
- *   .deleteMany(filter)
- *   .drop()
- *   .createIndex(keys, options?)
- *   .distinct(field, filter?)
- */
+
+
+
 
 export interface MongoShellProtocol {
   collection?: string;
@@ -57,26 +32,22 @@ export interface ParseError {
 
 export type MongoParseResult = ParseResult | ParseError;
 
-// ─── Detection ──────────────────────────────────────────────────────────────
+
 
 const MONGO_SHELL_PATTERN = /^\s*db\s*\.\s*\w+\s*\.\s*\w+\s*\(/m;
 const MONGO_SHELL_HELP_PATTERN = /^\s*(show\s+\w+|use\s+\w+)/im;
 const MONGO_SHELL_ADMIN_PATTERN = /^\s*db\s*\.\s*[a-z][A-Za-z0-9_]*\s*\(/m;
 
-/**
- * Returns true if the query looks like MongoDB shell syntax.
- */
+
+
 export function isMongoShellSyntax(query: string): boolean {
   return MONGO_SHELL_PATTERN.test(query) || MONGO_SHELL_HELP_PATTERN.test(query) || MONGO_SHELL_ADMIN_PATTERN.test(query);
 }
 
-// ─── Tokenizer / bracket-aware argument splitter ────────────────────────────
 
-/**
- * Given a string starting AFTER an opening paren, extract the content up to
- * the matching closing paren and return the rest of the string (the remainder
- * after the closing paren).
- */
+
+
+
 function extractBalanced(
   src: string,
   open = '(',
@@ -89,7 +60,7 @@ function extractBalanced(
   while (i < src.length) {
     const ch = src[i];
 
-    // Handle string literals so we don't confuse braces/parens inside strings
+
     if (inString) {
       if (ch === '\\') {
         i += 2;
@@ -108,7 +79,7 @@ function extractBalanced(
     if (ch === open) {
       depth++;
       if (depth === 1) {
-        // Start recording after this char
+
         i++;
         depth = 0;
         break;
@@ -144,73 +115,65 @@ function extractBalanced(
   return null;
 }
 
-/**
- * Parse a JS/JSON-like object/array/scalar into a real JS value.
- * Handles JS object shorthand (unquoted keys) and single-quoted strings.
- */
+
+
 function parseJsValue(raw: string): unknown {
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
 
-  // Try native JSON first
+
   try {
     return JSON.parse(trimmed);
   } catch {
-    // Fall through to JS-aware parser
+
   }
 
-  // Convert JS-style to JSON:
-  // 1. Quote unquoted keys:  { field: val } → { "field": val }
-  // 2. Replace single quotes with double quotes
-  // 3. Handle trailing commas
-  // 4. Handle undefined → null
+
   const jsonLike = trimmed
-    // single-quoted strings → double-quoted
+
     .replace(/'/g, '"')
-    // undefined → null
+
     .replace(/\bundefined\b/g, 'null')
-    // ObjectId("...") → "..." (lossy but functional for filter)
+
     .replace(/\bObjectId\s*\(\s*"([^"]+)"\s*\)/g, '"$1"')
-    // ISODate("...") → "..."
+
     .replace(/\bISODate\s*\(\s*"([^"]+)"\s*\)/g, '"$1"')
-    // new Date("...") → "..."
+
     .replace(/\bnew\s+Date\s*\(\s*"([^"]+)"\s*\)/g, '"$1"')
-    // NumberLong(n) → n
+
     .replace(/\bNumberLong\s*\(\s*(\d+)\s*\)/g, '$1')
-    // Trailing commas before } or ]
+
     .replace(/,\s*([\]}])/g, '$1')
-    // Quote unquoted object keys (basic heuristic)
+
     .replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)(\s*:)/g, '$1"$2"$3');
 
   try {
     return JSON.parse(jsonLike);
   } catch {
-    // Return as raw string if all parsing fails
+
     return trimmed;
   }
 }
 
-// ─── Method chain parser ─────────────────────────────────────────────────────
+
 
 interface MethodCall {
   method: string;
   args: unknown[];
 }
 
-/**
- * Parse chained method calls from the remainder after the collection+operation:
- * e.g.  ".sort({ date: -1 }).limit(10)"  → [ {method:'sort', args:[...]}, {method:'limit', args:[10]} ]
- */
+
+
 function parseChain(chain: string): MethodCall[] {
   const calls: MethodCall[] = [];
   let rest = chain.trim();
 
   while (rest.startsWith('.')) {
-    // Method name
+
     const dotMatch = rest.match(/^\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
     if (!dotMatch) break;
     const method = dotMatch[1];
-    const afterMethodName = rest.slice(dotMatch[0].length - 1); // keep the '('
+    const afterMethodName = rest.slice(dotMatch[0].length - 1);
 
     const balanced = extractBalanced(afterMethodName);
     if (!balanced) break;
@@ -226,13 +189,12 @@ function parseChain(chain: string): MethodCall[] {
   return calls;
 }
 
-// ─── Main parser ─────────────────────────────────────────────────────────────
 
-/**
- * Parse a single MongoDB shell statement.
- */
+
+
+
 function parseStatement(statement: string): MongoShellProtocol | null {
-  // Match:  db   .  collectionName  .  operation  (
+
   const headMatch = statement.match(
     /^\s*db\s*\.\s*([A-Za-z_$][A-Za-z0-9_$.]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/,
   );
@@ -241,18 +203,18 @@ function parseStatement(statement: string): MongoShellProtocol | null {
   const collection = headMatch[1];
   const operation = headMatch[2];
 
-  // Extract arguments from the first method call
-  const afterHead = statement.slice(headMatch[0].length - 1); // keep '('
+
+  const afterHead = statement.slice(headMatch[0].length - 1);
   const balanced = extractBalanced(afterHead);
   if (!balanced) return null;
 
   const rawArgs = balanced.inner.trim();
   const chain = parseChain(balanced.rest.trim());
 
-  // Build base protocol
+
   const proto: MongoShellProtocol = {
     collection,
-    operation: 'find', // default, overridden below
+    operation: 'find',
   };
 
   switch (operation) {
@@ -260,10 +222,10 @@ function parseStatement(statement: string): MongoShellProtocol | null {
     case 'findOne': {
       proto.operation = operation;
       if (operation === 'findOne') proto.limit = 1;
-      // find(filter, projection?)
+
       const filterStr = rawArgs;
       if (filterStr) proto.find = parseJsValue(filterStr) as Record<string, unknown> ?? {};
-      // projection from second arg (naive split not supported; rely on .project() chain)
+
       break;
     }
     case 'count':
@@ -291,10 +253,7 @@ function parseStatement(statement: string): MongoShellProtocol | null {
     case 'updateOne':
     case 'updateMany': {
       proto.operation = operation;
-      // updateOne(filter, update, options?)
-      // Simple: take everything as raw args — split on top-level commas is complex,
-      // so we store the full parsed value as `find` and `update`
-      // For now: parse as array then destructure
+
       const updateParsed = parseJsValue(`[${rawArgs}]`) as unknown[];
       if (Array.isArray(updateParsed)) {
         proto.find = (updateParsed[0] as Record<string, unknown>) ?? {};
@@ -332,12 +291,12 @@ function parseStatement(statement: string): MongoShellProtocol | null {
       break;
     }
     default:
-      // Unknown operation — still build a best-effort protocol
+
       proto.operation = 'find';
       if (rawArgs) proto.find = parseJsValue(rawArgs) as Record<string, unknown>;
   }
 
-  // Apply chained methods
+
   for (const { method, args } of chain) {
     switch (method) {
       case 'sort':
@@ -359,7 +318,7 @@ function parseStatement(statement: string): MongoShellProtocol | null {
       case 'pretty':
       case 'toArray':
       case 'forEach':
-        // no-op modifiers
+
         break;
     }
   }
@@ -367,11 +326,10 @@ function parseStatement(statement: string): MongoShellProtocol | null {
   return proto;
 }
 
-// ─── Multi-statement support ──────────────────────────────────────────────────
 
-/**
- * Split input into individual statements (split on `;` outside of brackets/strings).
- */
+
+
+
 function splitStatements(src: string): string[] {
   const stmts: string[] = [];
   let buf = '';
@@ -402,13 +360,10 @@ function splitStatements(src: string): string[] {
   return stmts;
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
 
-/**
- * Parse MongoDB shell syntax and return the internal JSON protocol string.
- *
- * If the query is not shell syntax, returns { success: false }.
- */
+
+
+
 export function parseMongoShell(query: string): MongoParseResult {
   if (!isMongoShellSyntax(query)) {
     return { success: false, error: 'Not MongoDB shell syntax' };
@@ -416,7 +371,7 @@ export function parseMongoShell(query: string): MongoParseResult {
 
   const cleaned = query.trim().replace(/;\s*$/, '');
 
-  // Handle shell helper commands: show collections, show dbs, show databases
+
   const showMatch = cleaned.match(/^\s*show\s+(collections|dbs|databases)\s*$/im);
   if (showMatch) {
     const what = showMatch[1].toLowerCase();
@@ -425,8 +380,7 @@ export function parseMongoShell(query: string): MongoParseResult {
     return { success: true, protocol: command as unknown as MongoShellProtocol, rawJson: JSON.stringify(command, null, 2) };
   }
 
-  // Handle use <db> — convert to a raw command signal
-  // The frontend/backend will handle switching via the connection manager
+
   const useMatch = cleaned.match(/^\s*use\s+(\S+)\s*$/im);
   if (useMatch) {
     const dbName = useMatch[1];
@@ -434,7 +388,7 @@ export function parseMongoShell(query: string): MongoParseResult {
     return { success: true, protocol: command as unknown as MongoShellProtocol, rawJson: JSON.stringify(command, null, 2) };
   }
 
-  // Handle db.<adminMethod>(<args>) — e.g., db.createCollection("students"), db.dropDatabase()
+
   const adminMatch = cleaned.match(/^\s*db\s*\.\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/);
   if (adminMatch) {
     const method = adminMatch[1];
@@ -478,7 +432,7 @@ export function parseMongoShell(query: string): MongoParseResult {
     return { success: false, error: 'No valid db.collection.method() statement found' };
   }
 
-  // For now, use the first statement
+
   const stmt = mongoStatements[0];
   const proto = parseStatement(stmt);
 
@@ -494,10 +448,8 @@ export function parseMongoShell(query: string): MongoParseResult {
   }
 }
 
-/**
- * Convert a MongoShellProtocol into the backend JSON wire format.
- * This is the format that buildMongoJsonQuery already handles.
- */
+
+
 export function protocolToWireJson(proto: MongoShellProtocol): string {
   return JSON.stringify(proto);
 }

@@ -59,7 +59,6 @@ export function ChartTour({ open, onClose }: ChartTourProps) {
     <div className="fixed inset-0 z-[300] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -75,12 +74,12 @@ export function ChartTour({ open, onClose }: ChartTourProps) {
           </button>
         </div>
 
-        {/* Body */}
+
         <div className="px-5 py-4">
           <p className="text-sm text-muted-foreground leading-relaxed">{current.description}</p>
         </div>
 
-        {/* Steps indicator + navigation */}
+
         <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
           <div className="flex items-center gap-1.5">
             {STEPS.map((_, i) => (

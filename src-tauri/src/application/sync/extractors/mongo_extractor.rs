@@ -2,12 +2,6 @@ use crate::application::sync::extractors::{DataExtractor, ExtractOutput};
 use crate::db::DataReader;
 use crate::error::AppResult;
 
-/// Extractor para MongoDB.
-///
-/// Usa paginación por `_id`:
-/// ```js
-/// { _id: { $gt: last_id } }
-/// ```
 pub struct MongoExtractor<'a> {
     reader: &'a dyn DataReader,
 }

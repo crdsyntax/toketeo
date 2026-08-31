@@ -89,8 +89,6 @@ impl fmt::Debug for DbConnectionConfig {
     }
 }
 
-/// Per-database credentials override for a connection (currently used for
-/// MongoDB where each database may have its own user/password/authSource).
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DatabaseCredential {
     pub connection_id: Uuid,
@@ -209,8 +207,7 @@ impl fmt::Debug for SshConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct QueryResult {
     pub columns: Vec<String>,
-    /// DB engine type names for each column (e.g. "int4", "varchar") when the
-    /// driver exposes them; used by the UI to render name + type headers.
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub column_types: Option<Vec<String>>,
     pub rows: Vec<serde_json::Value>,
@@ -251,9 +248,6 @@ pub struct SqlGenerationInput {
     pub context: RowContext,
 }
 
-/// Resultado de truncar un set de tablas respetando el orden impuesto por las
-/// claves foráneas (hijas antes que padres). `order` es el orden de ejecución,
-/// `statements` el SQL generado y `outcomes` el resultado por tabla.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TruncateTablesResult {
@@ -277,10 +271,7 @@ pub struct TruncateTableOutcome {
 pub struct SafeDeleteInput {
     pub table: String,
     pub schema: Option<String>,
-    /// Optional WHERE clause of the original DELETE (e.g. `id IN (252, 236)`).
-    /// When present, the safe delete script only removes the dependent rows
-    /// referencing the rows matched by this clause instead of wiping the
-    /// referencing tables entirely.
+
     #[serde(default)]
     pub where_clause: Option<String>,
 }
@@ -346,9 +337,6 @@ pub struct ScheduledJob {
     pub created_at: DateTime<Utc>,
 }
 
-/// Typed IPC DTO for the `config` payload of scheduled jobs. Known fields are
-/// mapped explicitly; anything else (e.g. connection details injected by the
-/// backend for backup jobs) is preserved via `extra`.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct JobConfigDto {
@@ -475,11 +463,10 @@ mod tests {
         };
 
         let json = serde_json::to_string(&config).unwrap();
-        // Now passwords ARE serialized for local storage persistence
+
         assert!(json.contains("super-secret"));
         assert!(json.contains("password"));
 
-        // Other fields should be there
         assert!(json.contains("Secret Conn"));
         assert!(json.contains("sensitive-host.com"));
     }
@@ -534,8 +521,7 @@ mod job_config_tests {
         }))
         .unwrap();
         let value = dto.to_value();
-        // The scheduler executor reads config["outputDir"] — the key must be
-        // camelCase, not snake_case.
+
         assert_eq!(value["outputDir"], "/backups/db");
         assert!(value.get("output_dir").is_none());
         assert_eq!(value["database"], "app");

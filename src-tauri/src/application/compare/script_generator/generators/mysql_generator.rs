@@ -4,10 +4,6 @@ fn backup_table_name(table: &str) -> String {
     format!("{}_bak", table)
 }
 
-/// Envuelve el cuerpo de una rutina (procedure/function/trigger) en
-/// directivas `DELIMITER` para que el script generado sea ejecutable desde
-/// cualquier cliente SQL (cliente CLI de MySQL/MariaDB, DBeaver, HeidiSQL,
-/// phpMyAdmin, etc.) sin partir el cuerpo en statements.
 fn wrap_routine(sql: &str) -> String {
     let body = sql.trim_end_matches(';').trim_end();
     format!("DELIMITER $$\n{}\n$$\nDELIMITER ;", body)

@@ -41,8 +41,7 @@ describe('extractStatementAtCursor', () => {
     const insert = sql.indexOf('INSERT')
     const insertEnd = sql.indexOf(';', insert)
     expect(extractStatementAtCursor(sql, insert + 5)).toBe('INSERT INTO a VALUES (1);')
-    // Cursor right after a ';' runs the statement that ENDS there (the preceding
-    // one), not the next — so Ctrl+Enter at the end of a finished line is safe.
+
     expect(extractStatementAtCursor(sql, insertEnd)).toBe('INSERT INTO a VALUES (1);')
     const create = sql.indexOf('CREATE')
     expect(extractStatementAtCursor(sql, create + 2)).toBe('CREATE TABLE a (id INT);')

@@ -54,7 +54,7 @@ export function ModelExportModal({ isOpen, onClose, tableName, schema, connectio
           <h3 className="font-bold flex items-center gap-2"><Code className="w-4 h-4" /> Export Model: {tableName}</h3>
           <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="w-4 h-4" /></button>
         </div>
-        
+
         <div className="p-4 border-b border-border flex gap-2">
           {FRAMEWORKS.map((fw) => (
             <button
@@ -85,8 +85,8 @@ export function ModelExportModal({ isOpen, onClose, tableName, schema, connectio
         </div>
 
         <div className="p-4 flex justify-end gap-2 border-t border-border">
-          <button 
-            onClick={() => navigator.clipboard.writeText(modelCode)} 
+          <button
+            onClick={() => navigator.clipboard.writeText(modelCode)}
             className="px-4 py-2 text-sm font-bold bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded flex items-center gap-2"
           >
             <Copy className="w-4 h-4" />

@@ -304,15 +304,15 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
 }
 
 function drawTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
-  // Trunk
+
   ctx.fillStyle = '#422817'
   ctx.fillRect(x - 1, y - 4, 3, 5)
   ctx.fillStyle = '#2d1a0e'
   ctx.fillRect(x + 1, y - 4, 1, 5)
 
-  // Foliage cluster (3 tiers of lush pixel art green)
+
   const r = 4 + Math.floor(rng() * 2)
-  // Base dark foliage
+
   ctx.fillStyle = '#174a1e'
   ctx.beginPath()
   ctx.arc(x, y - 7, r + 1.2, 0, Math.PI * 2)
@@ -322,7 +322,7 @@ function drawTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
   ctx.arc(x + 3, y - 6, r - 0.5, 0, Math.PI * 2)
   ctx.fill()
 
-  // Midtone lush green
+
   ctx.fillStyle = '#2f8737'
   ctx.beginPath()
   ctx.arc(x - 0.5, y - 8, r, 0, Math.PI * 2)
@@ -332,7 +332,7 @@ function drawTree(ctx: Ctx, x: number, y: number, rng: () => number): void {
   ctx.arc(x + 2, y - 7.5, r - 1, 0, Math.PI * 2)
   ctx.fill()
 
-  // Light green highlights on top
+
   ctx.fillStyle = '#52b75a'
   ctx.beginPath()
   ctx.arc(x - 1, y - 9.5, r - 1.6, 0, Math.PI * 2)
@@ -367,7 +367,7 @@ function drawRock(ctx: Ctx, x: number, y: number): void {
 }
 
 function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
-  // Mountain base shadow / body
+
   ctx.fillStyle = '#454c56'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
@@ -376,7 +376,7 @@ function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Left lighted face
+
   ctx.fillStyle = '#7a8391'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
@@ -385,7 +385,7 @@ function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Right shaded face
+
   ctx.fillStyle = '#565d68'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
@@ -394,7 +394,7 @@ function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Snowcap
+
   ctx.fillStyle = '#f0f4f8'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
@@ -405,7 +405,7 @@ function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Snowcap shaded side
+
   ctx.fillStyle = '#ccd5e0'
   ctx.beginPath()
   ctx.moveTo(x, y - s)
@@ -416,50 +416,50 @@ function drawMountain(ctx: Ctx, x: number, y: number, s: number): void {
 }
 
 function drawCastle(ctx: Ctx, x: number, y: number): void {
-  // Castle Base & Twin Towers (Deadlock Fortress)
+
   const tw = 8
   const th = 26
   const cw = 20
   const ch = 18
 
-  // Shadow behind castle
+
   ctx.fillStyle = 'rgba(15,25,18,0.35)'
   ctx.fillRect(x - cw - 4, y - 2, cw * 2 + 8, 4)
 
-  // Left Tower
+
   ctx.fillStyle = '#545b66'
   ctx.fillRect(x - cw, y - th, tw, th)
   ctx.fillStyle = '#7a8391'
   ctx.fillRect(x - cw, y - th, 2, th)
-  // Left Tower battlements
+
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = '#7a8391'
     ctx.fillRect(x - cw + i * 3, y - th - 3, 2, 3)
   }
 
-  // Right Tower
+
   ctx.fillStyle = '#444a54'
   ctx.fillRect(x + cw - tw, y - th, tw, th)
   ctx.fillStyle = '#6a727f'
   ctx.fillRect(x + cw - tw, y - th, 2, th)
-  // Right Tower battlements
+
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = '#6a727f'
     ctx.fillRect(x + cw - tw + i * 3, y - th - 3, 2, 3)
   }
 
-  // Center Fortress Wall & Gatehouse
+
   ctx.fillStyle = '#5c6370'
   ctx.fillRect(x - cw + tw, y - ch, (cw - tw) * 2, ch)
   ctx.fillStyle = '#7a8391'
   ctx.fillRect(x - cw + tw, y - ch, 2, ch)
-  // Center battlements
+
   for (let i = 0; i < 5; i++) {
     ctx.fillStyle = '#7a8391'
     ctx.fillRect(x - cw + tw + i * 4.5, y - ch - 3, 2.5, 3)
   }
 
-  // Brick horizontal mortar lines
+
   ctx.fillStyle = '#3a3f48'
   for (let by = y - ch + 4; by < y; by += 4) {
     ctx.fillRect(x - cw + tw, by, (cw - tw) * 2, 1)
@@ -469,7 +469,7 @@ function drawCastle(ctx: Ctx, x: number, y: number): void {
     ctx.fillRect(x + cw - tw, by, tw, 1)
   }
 
-  // Arched Entrance Portcullis
+
   ctx.fillStyle = '#14161b'
   ctx.beginPath()
   ctx.arc(x, y - 8, 4.5, Math.PI, 0)
@@ -478,7 +478,7 @@ function drawCastle(ctx: Ctx, x: number, y: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Gate iron bars
+
   ctx.strokeStyle = '#444952'
   ctx.lineWidth = 1
   ctx.beginPath()
@@ -490,8 +490,7 @@ function drawCastle(ctx: Ctx, x: number, y: number): void {
   ctx.lineTo(x + 4, y - 4)
   ctx.stroke()
 
-  // Red Banners / Flags on towers
-  // Left Flag
+
   ctx.fillStyle = '#1a1a20'
   ctx.fillRect(x - cw + 2, y - th - 10, 1, 10)
   ctx.fillStyle = '#dc2626'
@@ -502,7 +501,7 @@ function drawCastle(ctx: Ctx, x: number, y: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Right Flag
+
   ctx.fillStyle = '#1a1a20'
   ctx.fillRect(x + cw - 3, y - th - 10, 1, 10)
   ctx.fillStyle = '#dc2626'
@@ -517,11 +516,11 @@ function drawCastle(ctx: Ctx, x: number, y: number): void {
 export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void {
   const rng = mulberry32(20260102)
 
-  // Base grass terrain in vibrant rich green palette
+
   ctx.fillStyle = '#54a648'
   ctx.fillRect(0, 0, w, h)
 
-  // Grass variation textures and patches
+
   for (let i = 0; i < 90; i++) {
     const r = rng()
     ctx.fillStyle =
@@ -531,7 +530,7 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     ctx.fill()
   }
 
-  // Dirt Road Polylines (Smooth, textured path connecting districts)
+
   const drawRoadSegment = (color: string, width: number) => {
     ctx.strokeStyle = color
     ctx.lineWidth = width
@@ -542,14 +541,14 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     ctx.stroke()
   }
 
-  // Outer darker earth border
+
   drawRoadSegment('#855d36', 10)
-  // Inner warm dirt/sand road
+
   drawRoadSegment('#deb87a', 7)
-  // Road center highlight
+
   drawRoadSegment('#edd19d', 3.5)
 
-  // Road entry from left edge
+
   ctx.strokeStyle = '#855d36'
   ctx.lineWidth = 10
   ctx.lineCap = 'round'
@@ -572,7 +571,7 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
   ctx.lineTo(nodes[0][0], nodes[0][1])
   ctx.stroke()
 
-  // Road pebbles & dirt flecks
+
   const dtl = mulberry32(918273)
   for (let i = 0; i < nodes.length - 1; i++) {
     const [ax, ay] = nodes[i]
@@ -602,7 +601,7 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     nodes.some((pt) => Math.hypot(pt[0] - x, pt[1] - y) < 14) ||
     nodes.some((pt, i) => i < nodes.length - 1 && distToSegment([x, y] as Pt, pt, nodes[i + 1]) < 10)
 
-  // Scatter lush trees, bushes and rocks around the terrain
+
   let trees = 0
   let bushes = 0
   let rocks = 0
@@ -610,7 +609,7 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     const x = 10 + rng() * (w - 18)
     const y = 6 + rng() * (h - 10)
     if (nearPath(x, y)) continue
-    // Leave room for mountains and castle
+
     if (x > 50 && x < 100 && y > h * 0.7) continue
     if (x > w - 40 && y < h * 0.45) continue
 
@@ -627,15 +626,15 @@ export function drawOverworld(ctx: Ctx, w: number, h: number, nodes: Pt[]): void
     }
   }
 
-  // Mountain range at bottom-center (as in reference Image 1)
+
   drawMountain(ctx, 58, 126, 14)
   drawMountain(ctx, 74, 122, 18)
   drawMountain(ctx, 89, 125, 12)
 
-  // Deadlock Castle Fortress at final node
+
   drawCastle(ctx, nodes[nodes.length - 1][0], nodes[nodes.length - 1][1] - 4)
 
-  // Subtle atmospheric lighting
+
   const mapAtmosphere = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.3, w / 2, h * 0.5, h * 0.9)
   mapAtmosphere.addColorStop(0, 'rgba(255,255,255,0.03)')
   mapAtmosphere.addColorStop(1, 'rgba(10,25,12,0.18)')
@@ -669,7 +668,7 @@ function stars(ctx: Ctx, w: number, h: number, maxY: number): void {
 }
 
 function bigMoon(ctx: Ctx, cx: number, cy: number, r: number, color: string, glow: string): void {
-  // Soft outer celestial glows
+
   const glowGrad = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r + 26)
   glowGrad.addColorStop(0, glow)
   glowGrad.addColorStop(0.5, 'rgba(190, 205, 240, 0.08)')
@@ -679,13 +678,13 @@ function bigMoon(ctx: Ctx, cx: number, cy: number, r: number, color: string, glo
   ctx.arc(cx, cy, r + 26, 0, Math.PI * 2)
   ctx.fill()
 
-  // Moon base disc
+
   ctx.fillStyle = color
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
   ctx.fill()
 
-  // Detailed Lunar Maria & Craters (matching Image 2)
+
   ctx.fillStyle = 'rgba(100, 115, 148, 0.28)'
   ctx.beginPath()
   ctx.arc(cx - r * 0.3, cy - r * 0.2, r * 0.38, 0, Math.PI * 2)
@@ -700,7 +699,7 @@ function bigMoon(ctx: Ctx, cx: number, cy: number, r: number, color: string, glo
   ctx.arc(cx + r * 0.22, cy + r * 0.15, r * 0.22, 0, Math.PI * 2)
   ctx.fill()
 
-  // Moon crater rim highlights
+
   ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
   ctx.beginPath()
   ctx.arc(cx - r * 0.45, cy - r * 0.45, 1.5, 0, Math.PI * 2)
@@ -729,11 +728,11 @@ function buildingRow(
     ctx.fillStyle = color
     ctx.fillRect(x, baseY - bh, bw, bh)
 
-    // Roof & Antenna Mast
+
     ctx.fillStyle = roofColor
     ctx.fillRect(x - 1, baseY - bh - 4, bw + 2, 4)
 
-    // Antenna on taller buildings with blinking red light
+
     if (i % 2 === 0) {
       const antX = Math.round(x + bw * 0.5)
       ctx.fillStyle = '#221a30'
@@ -744,7 +743,7 @@ function buildingRow(
       ctx.fillRect(antX - 3, baseY - bh - 20, 8, 7)
     }
 
-    // Windows Grid
+
     for (let wy = baseY - bh + 10; wy <= baseY - 16; wy += 20) {
       for (let wx = x + 6; wx <= x + bw - 12; wx += 16) {
         const lit = ((wx * 37 + wy * 19 + i * 11) % 100) / 100 < litChance
@@ -795,7 +794,7 @@ function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
   const lx = x + 34
   const ly = groundY - 110
 
-  // Volumetric Triangular Light Cone (Soft glowing warm beam down to street)
+
   const cone = ctx.createLinearGradient(0, ly, 0, groundY + 10)
   cone.addColorStop(0, `rgba(255, 215, 110, ${0.48 * flicker})`)
   cone.addColorStop(0.35, `rgba(255, 205, 95, ${0.28 * flicker})`)
@@ -810,7 +809,7 @@ function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
   ctx.closePath()
   ctx.fill()
 
-  // Ground Illuminated Light Pool
+
   const groundGlow = ctx.createRadialGradient(lx, groundY + 2, 4, lx, groundY + 2, 48)
   groundGlow.addColorStop(0, `rgba(255, 220, 120, ${0.36 * flicker})`)
   groundGlow.addColorStop(0.5, `rgba(255, 205, 90, ${0.18 * flicker})`)
@@ -820,7 +819,7 @@ function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
   ctx.ellipse(lx, groundY + 2, 46, 10, 0, 0, Math.PI * 2)
   ctx.fill()
 
-  // Metallic Lamp Post Stem & Base
+
   ctx.fillStyle = '#1c1b26'
   ctx.fillRect(x - 1, groundY - 96, 4, 96)
   ctx.fillStyle = '#2d2b3d'
@@ -828,7 +827,7 @@ function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
   ctx.fillStyle = '#14131c'
   ctx.fillRect(x - 4, groundY - 3, 10, 4)
 
-  // Curved Curved Lamp Neck
+
   ctx.strokeStyle = '#1c1b26'
   ctx.lineWidth = 4
   ctx.beginPath()
@@ -843,13 +842,13 @@ function lampPost(ctx: Ctx, x: number, groundY: number, t: number): void {
   ctx.quadraticCurveTo(x, ly - 7, lx, ly - 5)
   ctx.stroke()
 
-  // Lamp Fixture Head
+
   ctx.fillStyle = '#181722'
   ctx.fillRect(lx - 7, ly - 6, 14, 6)
   ctx.fillStyle = '#2d2b3d'
   ctx.fillRect(lx - 5, ly - 7, 10, 2)
 
-  // Glowing Bulb / Lantern Glow
+
   ctx.fillStyle = `rgba(255, 235, 160, ${0.95 * flicker})`
   ctx.fillRect(lx - 4, ly - 1, 8, 4)
   ctx.fillStyle = `rgba(255, 210, 110, ${0.5 * flicker})`
@@ -863,7 +862,7 @@ export function drawScene(ctx: Ctx, scene: SceneKey, w: number, h: number, t: nu
 
   switch (scene) {
     case 'street': {
-      // 1. Night Sky (Deep violet to purple gradient)
+
       vgrad(ctx, w, h, [
         [0, '#150d24'],
         [0.35, '#231438'],
@@ -871,33 +870,33 @@ export function drawScene(ctx: Ctx, scene: SceneKey, w: number, h: number, t: nu
         [1, '#1b1228'],
       ])
 
-      // 2. Stars & Celestial Full Moon (Image 2)
+
       stars(ctx, w, h, h * 0.42)
       bigMoon(ctx, w * 0.82, h * 0.22, 34, '#f0f3fa', 'rgba(215, 226, 250, 0.18)')
 
-      // 3. Layered Skyline (Back & Front City Skyline)
+
       buildingRow(ctx, w, gy + 8, '#211535', '#160c24', 'rgba(180, 140, 220, 0.35)', 110, 210, 104, 0.38)
       buildingRow(ctx, w, gy + 4, '#170f26', '#0f081c', 'rgba(255, 195, 75, 0.88)', 75, 165, 88, 0.65)
 
-      // 4. Asphalt Road & Sidewalk Curb
+
       streetBase(ctx, w, h, gy, '#201d2a', '#403850')
 
-      // Sidewalk Paving
+
       ctx.fillStyle = '#2f273d'
       ctx.fillRect(0, gy, w, 12)
       ctx.fillStyle = '#423755'
       ctx.fillRect(0, gy + 11, w, 2)
 
-      // Road Lane Dashes
+
       ctx.fillStyle = 'rgba(240, 235, 250, 0.75)'
       for (let x = 16; x < w; x += 54) {
         ctx.fillRect(x, gy + 32, 28, 3)
       }
 
-      // 5. Volumetric Streetlamps with Soft Cones of Light
+
       for (const fx of [w * 0.06, w * 0.31, w * 0.56, w * 0.81]) lampPost(ctx, fx, gy, t)
 
-      // 6. Lush Shrubs & Berry Bushes along the road border (Image 2)
+
       ctx.fillStyle = '#122617'
       for (let x = 2; x < w; x += 22) {
         const bh = 10 + ((x * 13) % 9)
@@ -916,7 +915,7 @@ export function drawScene(ctx: Ctx, scene: SceneKey, w: number, h: number, t: nu
         ctx.fillRect(x + 4, gy - 6 - ((x * 11) % 6), 2, 2)
       }
 
-      // 7. Atmospheric Fog & Vignette
+
       fogBand(ctx, w, h, t, gy - 24, 0.05, 0.01)
       vignette(ctx, w, h)
       break

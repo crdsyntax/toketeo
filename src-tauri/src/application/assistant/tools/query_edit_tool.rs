@@ -10,7 +10,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Update a single cell in a table (generates the engine-specific UPDATE).
 pub struct QueryEditTool;
 
 #[async_trait]

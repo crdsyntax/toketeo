@@ -59,12 +59,6 @@ impl ToolEngine {
             .collect()
     }
 
-    /// Resolve the effective driver for a tool call: if the arguments carry a
-    /// `connection_id`, use that connection's driver so tools can operate on
-    /// any connection, not just the chat's active one. **Opening a connection
-    /// that is not currently active is a side effect that requires user
-    /// confirmation** — unless `confirm_destructive` was given, a
-    /// `requires_confirmation` result is returned and nothing is connected.
     async fn resolve_driver(
         &self,
         args: &serde_json::Value,
@@ -80,7 +74,6 @@ impl ToolEngine {
             return Ok(None);
         };
 
-        // Already active — reuse it without confirmation.
         if let Ok(d) = state.get_connection(cid).await {
             return Ok(Some(d));
         }
@@ -129,8 +122,6 @@ impl ToolEngine {
                         message: Some("This operation is destructive. Call again with confirm_destructive=true to proceed.".to_string()),
                     })
                 } else {
-                    // Production guard still applies to non-flagged tools that
-                    // carry a destructive payload (defence in depth).
                     if let Some(blocked) = self
                         .production_guard(name, tool.as_ref(), &args, state, None)
                         .await
@@ -166,8 +157,6 @@ impl ToolEngine {
     ) -> AppResult<ToolResult> {
         match self.tools.get(name) {
             Some(tool) => {
-                // HARD GUARD: destructive operations are never allowed on a
-                // connection marked as production — even with user confirmation.
                 if let Some(blocked) = self
                     .production_guard(name, tool.as_ref(), &args, state, default_connection_id)
                     .await
@@ -204,9 +193,6 @@ impl ToolEngine {
         }
     }
 
-    /// Whether this specific tool call would modify data or schema. For the
-    /// generic `query` tool the SQL payload decides; other tools flagged as
-    /// destructive are always considered so.
     fn effective_destructive(
         name: &str,
         tool: &dyn AssistantTool,
@@ -222,9 +208,6 @@ impl ToolEngine {
         true
     }
 
-    /// Returns a blocking result when the target connection is marked as
-    /// production and the call would modify data or schema. The assistant has
-    /// no write access to production, period.
     async fn production_guard(
         &self,
         name: &str,
@@ -258,13 +241,10 @@ impl ToolEngine {
     }
 }
 
-/// A connection belongs to production when its environment label matches
-/// "production" case-insensitively.
 pub fn is_production_environment(environment: &str) -> bool {
     environment.eq_ignore_ascii_case("production")
 }
 
-/// Classify whether a SQL statement is destructive (modifies data/schema).
 pub struct SafetyClassifier;
 
 impl SafetyClassifier {

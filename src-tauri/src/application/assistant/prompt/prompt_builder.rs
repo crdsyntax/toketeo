@@ -3,11 +3,6 @@ use crate::models::assistant::{ChatMessage, Preference, SchemaContext};
 pub struct PromptBuilder;
 
 impl PromptBuilder {
-    /// Build a system prompt describing the database schema and user preferences.
-    ///
-    /// `connections` is a slice of `(name, id)` tuples for every saved database
-    /// connection — injected so the model can reference them when calling tools
-    /// that accept a `connection_id` argument (e.g. `compare_schema`, `backup`).
     pub fn build_system_prompt(
         ctx: &SchemaContext,
         prefs: &[Preference],
@@ -202,14 +197,12 @@ impl PromptBuilder {
         parts.join("\n")
     }
 
-    /// Estimate token count (rough: 4 chars per token for English/SQL, ~1.3 for CJK).
     pub fn estimate_tokens(text: &str) -> usize {
         let ascii_count = text.chars().filter(|c| c.is_ascii()).count();
         let non_ascii_count = text.len() - ascii_count;
         ascii_count / 4 + non_ascii_count
     }
 
-    /// Truncate context to fit within max_tokens, preserving the most relevant parts.
     pub fn truncate_context(ctx: &SchemaContext, max_context_tokens: usize) -> SchemaContext {
         let system_estimate = Self::estimate_tokens("");
         let remaining = max_context_tokens.saturating_sub(system_estimate);
@@ -239,7 +232,6 @@ impl PromptBuilder {
         ctx
     }
 
-    /// Build the full chat message list (system + conversation + user question).
     pub fn build_messages(
         ctx: &SchemaContext,
         prefs: &[Preference],
@@ -300,7 +292,7 @@ mod tests {
         let prompt = PromptBuilder::build_system_prompt(&ctx(), &[], &[]);
         assert!(prompt.contains("SCOPE DISCIPLINE"));
         assert!(prompt.contains("NEVER chain, combine or proactively add"));
-        // Rule 15 keeps operations inside the named scope.
+
         assert!(prompt.contains("Stay strictly inside the scope"));
     }
 

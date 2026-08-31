@@ -58,21 +58,3 @@ export function FeatureGate({ perkId, children, fallback, showLocked = true }: F
     </div>
   )
 }
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function useFeatureLock(perkId: string) {
-  const unlockedPerks = useGamificationStore((s) => s.unlockedPerks)
-  const completedMissions = useGamificationStore((s) => s.completedMissions)
-  const isUnlocked = unlockedPerks.includes(perkId)
-  const perk = APP_PERKS.find((p) => p.id === perkId)
-  const missingQuests = (perk?.requiredQuests ?? [])
-    .map(qId => MISSIONS.find(m => m.id === qId))
-    .filter(Boolean)
-    .filter(m => !completedMissions.includes(m!.id))
-  return {
-    isUnlocked,
-    requiredLevel: perk?.requiredLevel ?? 0,
-    requiredQuests: perk?.requiredQuests ?? [],
-    missingQuests: missingQuests.map(m => m!.id),
-  }
-}

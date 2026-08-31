@@ -8,9 +8,6 @@ use crate::state::AppState;
 
 use super::tool_engine::{AssistantTool, SafetyClassifier};
 
-/// Execute SQL on a connection. Marked destructive so every execution goes
-/// through user confirmation; the classifier is still used to report whether
-/// the statement modifies data.
 pub struct QueryTool;
 
 #[async_trait]
@@ -73,7 +70,6 @@ impl AssistantTool for QueryTool {
             });
         }
 
-        // Reject writes on read-only connections.
         if SafetyClassifier::is_destructive_query(sql)
             && state.is_read_only(cid).await.unwrap_or(false)
         {

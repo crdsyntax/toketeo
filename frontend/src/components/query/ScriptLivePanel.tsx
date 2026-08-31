@@ -16,10 +16,8 @@ const PHASE_META: Record<ScriptLiveStatement['phase'], { label: string; icon: ty
   skipped: { label: 'Skipped', icon: SkipForward, className: 'text-yellow-500' },
 };
 
-/**
- * Vista estilo Workbench del script multi-statement: muestra cada statement
- * con su estado en vivo (pendiente, ejecutando, ok, fallado, omitido).
- */
+
+
 export function ScriptLivePanel({ statements, running, onShowSummary }: ScriptLivePanelProps) {
   if (!statements) return null;
 
@@ -30,7 +28,7 @@ export function ScriptLivePanel({ statements, running, onShowSummary }: ScriptLi
 
   return (
     <div className="h-full flex flex-col">
-      {/* Barra de estado del script */}
+
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/20 text-xs">
         <span className="font-bold text-muted-foreground">
           {running ? (
@@ -57,7 +55,7 @@ export function ScriptLivePanel({ statements, running, onShowSummary }: ScriptLi
         )}
       </div>
 
-      {/* Lista en vivo */}
+
       <div className="flex-1 overflow-auto">
         {statements.map((s) => {
           const meta = PHASE_META[s.phase];

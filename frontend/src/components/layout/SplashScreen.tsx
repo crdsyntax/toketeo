@@ -20,12 +20,12 @@ export function SplashScreen() {
     <div className="splash-screen">
       <div className="splash-backdrop" />
 
-      {/* Rings decorativos pulsantes */}
+
       <div className="splash-ring splash-ring--outer" />
       <div className="splash-ring splash-ring--middle" />
       <div className="splash-ring splash-ring--inner" />
 
-      {/* Logo container con efecto pulsante */}
+
       <div className="splash-logo-wrapper">
         <div className="splash-logo-glow" />
         <div className="splash-logo-pulse">
@@ -37,7 +37,7 @@ export function SplashScreen() {
         </div>
       </div>
 
-      {/* Texto de estado */}
+
       <div className="splash-status">
         <p className="splash-label">Initializing session</p>
         {version && <p className="splash-version">v{version}</p>}

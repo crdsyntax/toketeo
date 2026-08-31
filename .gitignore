@@ -5,3 +5,7 @@ dist-electron
 /data
 .env
 *.msi
+e2e_out.txt
+test_reproduction.json
+src-tauri/*.txt
+src-tauri/test_bson.rs

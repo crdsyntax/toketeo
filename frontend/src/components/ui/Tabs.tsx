@@ -1,18 +1,8 @@
+import type React from 'react'
 import { cn } from '@/lib/utils'
+import type { TabsProps } from '@/types/ui'
 
-export interface Tab {
-  id: string
-  label: string
-  badge?: string | number
-  disabled?: boolean
-}
-
-export interface TabsProps {
-  tabs: Tab[]
-  activeTab: string
-  onChange: (tabId: string) => void
-  className?: string
-}
+export type { TabsProps, Tab } from '@/types/ui'
 
 export function Tabs({ tabs, activeTab, onChange, className }: TabsProps) {
   return (

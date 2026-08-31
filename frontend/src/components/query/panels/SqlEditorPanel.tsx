@@ -95,7 +95,7 @@ export function SqlEditorPanel({
     }
   }, [activeTab.query, connectionId, connectionName, connectionType]);
 
-  // Keep the latest tab id available to event listeners without re-creating them.
+
   const activeTabIdRef = useRef<string>(activeTab.id);
   useEffect(() => {
     activeTabIdRef.current = activeTab.id;
@@ -108,14 +108,14 @@ export function SqlEditorPanel({
 
   const mode = activeTab.editorMode ?? 'auto';
 
-  // When in 'auto', derive mode from query text; otherwise use the explicit mode
+
   const isShellMode = isMongo && (
     mode === 'mongosh' ? true
     : mode === 'json' ? false
     : isMongoShellSyntax(activeTab.query)
   );
 
-  // Capture the live view state (selection + scroll) keyed by the current tab.
+
   const captureState = useCallback((view: EditorView) => {
     const sel = view.state.selection.main;
     viewStatesRef.current[activeTabIdRef.current] = {
@@ -188,7 +188,7 @@ export function SqlEditorPanel({
     view.scrollDOM.addEventListener('scroll', () => captureState(view));
   }, [editorRef, captureState]);
 
-  // Restore the stored view state once the editor mounts for a given tab.
+
   useEffect(() => {
     const view = localViewRef.current;
     if (!view) return;
@@ -196,7 +196,7 @@ export function SqlEditorPanel({
     if (vs) restoreState(view, vs);
   }, [activeTab.id, activeTab.editorViewState, restoreState]);
 
-  // Ctrl/Cmd + Enter: Execute Current Statement (or selection). F5: Execute All.
+
   const execExtensions: Extension[] = useMemo(() => {
     return [
       Prec.highest(keymap.of([
@@ -222,7 +222,7 @@ export function SqlEditorPanel({
     updateTabQuery(activeTab.id, val);
   }, [activeTab.id, updateTabQuery]);
 
-  // Flush the captured view state of the previous tab when switching tabs.
+
   useEffect(() => {
     if (prevTabIdRef.current !== activeTab.id) {
       const saved = viewStatesRef.current[prevTabIdRef.current];
@@ -231,7 +231,7 @@ export function SqlEditorPanel({
     }
   }, [activeTab.id, updateTabViewState]);
 
-  // Flush the current tab's state on unmount.
+
   useEffect(() => {
     const viewStates = viewStatesRef.current;
     const tabId = prevTabIdRef.current;
@@ -255,7 +255,7 @@ export function SqlEditorPanel({
 
   return (
     <div className="border border-border rounded-none bg-card overflow-hidden flex flex-col flex-1 min-h-0 w-full">
-      {/* Header */}
+
       <div className="h-10 px-3 border-b border-border bg-background/80 backdrop-blur flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <button onClick={onToggle} className="p-1 hover:bg-muted rounded shrink-0">
@@ -324,7 +324,7 @@ export function SqlEditorPanel({
         </div>
       </div>
 
-      {/* Editor */}
+
       <div className="flex-1 min-h-0 relative">
         <SqlCodeEditor
           value={activeTab.query}
@@ -343,7 +343,7 @@ export function SqlEditorPanel({
         />
       </div>
 
-      {/* Status bar */}
+
       <div className="h-6 px-3 border-t border-border bg-muted/20 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-[var(--ch-text-9)] text-muted-foreground/60 font-mono">
@@ -364,7 +364,7 @@ export function SqlEditorPanel({
         </div>
       </div>
 
-      {/* Schema Flow Modal */}
+
       <SchemaFlowModal
         isOpen={isFlowModalOpen}
         onClose={() => setIsFlowModalOpen(false)}

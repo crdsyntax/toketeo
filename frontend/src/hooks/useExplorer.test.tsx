@@ -9,7 +9,7 @@ import React from 'react'
 import { ExecutionStatus, SidebarTab, ExplorerTab, DatabaseType, Environment } from '@/types/database'
 import type { Connection } from '@/types/database'
 
-// Mock the store and service
+
 vi.mock('@/store/useAppStore')
 vi.mock('@/services/schema.service')
 vi.mock('@/services/connection.service')
@@ -82,7 +82,7 @@ describe('useExplorer Performance and Caching', () => {
 
   it('measures metadata loading time', async () => {
     const start = performance.now()
-    vi.mocked(schemaService.getTables).mockImplementation(() => 
+    vi.mocked(schemaService.getTables).mockImplementation(() =>
       new Promise(resolve => setTimeout(() => resolve([{ name: 'table1', type: 'table' }]), 100))
     )
 
@@ -90,7 +90,7 @@ describe('useExplorer Performance and Caching', () => {
 
     await waitFor(() => expect(result.current.isLoadingSidebar).toBe(false))
     const duration = performance.now() - start
-    
+
     console.log(`Metadata loading took ${duration.toFixed(2)}ms`)
     expect(duration).toBeGreaterThan(100)
     expect(result.current.filteredItems).toHaveLength(1)
@@ -98,14 +98,14 @@ describe('useExplorer Performance and Caching', () => {
 
   it('does not refetch if schema is already cached', async () => {
     vi.mocked(schemaService.getTables).mockResolvedValue([{ name: 'table1', type: 'table' }])
-    
+
     const wrapper = createWrapper()
     const { result, rerender } = renderHook(() => useExplorer(), { wrapper })
 
     await waitFor(() => expect(result.current.isLoadingSidebar).toBe(false))
     expect(schemaService.getTables).toHaveBeenCalledTimes(1)
 
-    // Simulate same schema (no change)
+
     rerender()
     expect(schemaService.getTables).toHaveBeenCalledTimes(1)
   })
@@ -244,7 +244,7 @@ describe('useExplorer Performance and Caching', () => {
       filter: '',
     }
 
-    // 1) tab open
+
     vi.mocked(useAppStore).mockReturnValue({
       activeConnection: pgConn,
       explorer: {
@@ -265,7 +265,7 @@ describe('useExplorer Performance and Caching', () => {
       expect(result.current.filteredItems.map((i) => i.name)).toEqual(['users', 'orders'])
     })
 
-    // 2) last tab closed
+
     vi.mocked(useAppStore).mockReturnValue({
       activeConnection: pgConn,
       explorer: {

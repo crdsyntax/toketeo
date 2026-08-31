@@ -27,7 +27,7 @@ import type {
   ColumnDiffDetail,
 } from '@/types/compare';
 
-// ── Descriptions ──
+
 
 function describeObjectDiff(item: ObjectDiff, sectionLabel: string): string {
   const lower = sectionLabel.toLowerCase().replace(/s$/, '');
@@ -139,7 +139,7 @@ function describeConstraintDiff(item: ConstraintDiff): string {
   }
 }
 
-// ── Status components ──
+
 
 function StatusIcon({ status }: { status: CompareStatus }) {
   switch (status) {
@@ -169,7 +169,7 @@ function StatusBadge({ status }: { status: CompareStatus }) {
   );
 }
 
-// ── Column detail pills (for expanded table rows) ──
+
 
 function ColumnDiffPill({ col }: { col: ColumnDiffDetail }) {
   const badge =
@@ -203,7 +203,7 @@ function ColumnDiffPill({ col }: { col: ColumnDiffDetail }) {
   );
 }
 
-// ── Diff row with expand ──
+
 
 interface DiffRowProps {
   item: unknown;
@@ -257,7 +257,7 @@ function DiffRow({ item, getStatus, getName, describe, children }: DiffRowProps)
   );
 }
 
-// ── Section ──
+
 
 interface SectionDef {
   key: string;
@@ -322,7 +322,7 @@ function Section({ section }: { section: SectionDef }) {
   );
 }
 
-// ── Accessors ──
+
 
 function getObjectDiffStatus(item: unknown): CompareStatus {
   return (item as ObjectDiff).status;
@@ -363,7 +363,7 @@ function getConstraintDiffName(item: unknown): string {
   return `${c.table}.${c.name}`;
 }
 
-// ── Table detail renderer ──
+
 
 function renderTableDetail(item: unknown) {
   const obj = item as ObjectDiff;
@@ -380,7 +380,7 @@ function renderTableDetail(item: unknown) {
   );
 }
 
-// ── Index detail renderer ──
+
 
 function renderIndexDetail(item: unknown) {
   const idx = item as IndexDiff;
@@ -410,7 +410,7 @@ function renderIndexDetail(item: unknown) {
   return parts.length ? <div className="space-y-0.5 pt-1">{parts}</div> : null;
 }
 
-// ── FK detail renderer ──
+
 
 function renderFkDetail(item: unknown) {
   const fk = item as FkDiff;
@@ -440,7 +440,7 @@ function renderFkDetail(item: unknown) {
   return parts.length ? <div className="space-y-0.5 pt-1">{parts}</div> : null;
 }
 
-// ── Main tree ──
+
 
 export function SchemaDiffTree({ report }: { report: SchemaReport }) {
   const sections: SectionDef[] = [

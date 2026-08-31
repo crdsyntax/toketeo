@@ -4,7 +4,6 @@ use crate::state::AppState;
 pub struct LearningEngine;
 
 impl LearningEngine {
-    /// Record positive feedback: save as knowledge case + update message feedback.
     pub async fn record_positive(
         state: &AppState,
         message_id: &str,
@@ -16,16 +15,14 @@ impl LearningEngine {
             .update_assistant_feedback(message_id, "positive")
             .await?;
 
-        // Load the message to extract the QA pair
         let messages = storage.load_assistant_messages(connection_id).await?;
         if let Some(msg) = messages.iter().find(|m| m.id == message_id) {
             if let Some(ref sql) = msg.sql {
-                // Find the preceding user question
                 let idx = messages.iter().position(|m| m.id == message_id);
                 if let Some(pos) = idx {
                     if pos > 0 {
                         let question = &messages[pos - 1].content;
-                        // Dedupe: skip if this exact QA pair is already stored.
+
                         let existing = storage.search_knowledge(question, Some(engine), 20).await?;
                         if existing
                             .iter()
@@ -55,7 +52,6 @@ impl LearningEngine {
         Ok(())
     }
 
-    /// Record negative feedback: save as knowledge with "negative" rating + update feedback.
     pub async fn record_negative(
         state: &AppState,
         message_id: &str,
@@ -69,7 +65,6 @@ impl LearningEngine {
             .update_assistant_feedback(message_id, "negative")
             .await?;
 
-        // If user accepted a corrected SQL, save it as a knowledge case
         if let Some(sql) = accepted_sql {
             let messages = storage.load_assistant_messages(connection_id).await?;
             if messages.iter().any(|m| m.id == message_id) {

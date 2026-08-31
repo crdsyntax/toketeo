@@ -323,9 +323,9 @@ export default function Connections() {
       ) : (
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 min-w-0">
           {filteredConnections.map((conn) => (
-            <ConnectionCard 
-              key={conn.id} 
-              connection={conn} 
+            <ConnectionCard
+              key={conn.id}
+              connection={conn}
               onEdit={handleEdit}
               onDelete={(id) => deleteMutation.mutate(id)}
               onConnect={handleConnect}
@@ -340,7 +340,7 @@ export default function Connections() {
         </div>
       )}
 
-      <ConnectionModal 
+      <ConnectionModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSave={handleSave}

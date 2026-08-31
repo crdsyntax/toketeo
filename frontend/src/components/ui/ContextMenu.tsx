@@ -1,41 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import type React from 'react';
 import { cn } from '@/lib/utils';
 import { ChevronRight } from 'lucide-react';
+import type { ContextMenuProps } from '@/types/ui';
 
-export interface ContextMenuItem {
-  label: string;
-  icon?: React.ReactNode;
-  shortcut?: string;
-  variant?: 'default' | 'destructive';
-  onClick: () => void;
-  disabled?: boolean;
-}
+export type { ContextMenuItem, ContextMenuGroup, ContextMenuProps } from '@/types/ui';
 
-export interface ContextMenuGroup {
-  title?: string;
-  items: ContextMenuItem[];
-  initiallyOpen?: boolean;
-}
-
-interface ContextMenuProps {
-  x: number;
-  y: number;
-  groups: ContextMenuGroup[];
-  onDismiss: () => void;
-}
-
-/**
- * Phase 9 — Context-aware right-click menu.
- *
- * Renders at (x, y) using fixed positioning.
- * Auto-adjusts to avoid viewport overflow.
- * Dismisses on outside click, Escape key, or item selection.
- *
- * Groups with a title render as an expandable dropdown: collapsed by
- * default, toggled by clicking the group header.
- *
- * Usage: render conditionally based on `contextMenuState !== null`.
- */
 export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [openGroups, setOpenGroups] = useState<Set<number>>(new Set());
@@ -52,7 +22,6 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
   const isOpen = (gi: number) =>
     groups[gi].initiallyOpen || openGroups.has(gi);
 
-  // Dismiss on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -63,7 +32,6 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [onDismiss]);
 
-  // Dismiss on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onDismiss();
@@ -72,7 +40,6 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
     return () => document.removeEventListener('keydown', handler);
   }, [onDismiss]);
 
-  // Adjust position to stay within viewport after mount
   const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
   const estimatedW = 200;

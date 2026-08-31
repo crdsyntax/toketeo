@@ -5,13 +5,13 @@ import { useAppStore } from '@/store/useAppStore'
 
 interface ExpandableContentProps {
   children: React.ReactNode
-  /** Raw text content (for copy / open-in-editor). */
+
   text: string
-  /** Whether this is a SQL block (adds editor affordance). */
+
   isSql?: boolean
-  /** Max height before truncation (default 200px for SQL, 5em for text). */
+
   maxHeight?: string
-  /** Truncation variant. */
+
   variant?: 'text' | 'sql'
 }
 
@@ -51,7 +51,7 @@ export function ExpandableContent({
 
   return (
     <>
-      {/* Truncated preview */}
+
       <div className="relative">
         <div
           ref={contentRef}
@@ -78,7 +78,7 @@ export function ExpandableContent({
         )}
       </div>
 
-      {/* Resizable modal */}
+
       {expanded && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -95,7 +95,7 @@ export function ExpandableContent({
               minHeight: 200,
             }}
           >
-            {/* Header */}
+
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0">
               <span className="text-xs font-semibold text-foreground flex-1 truncate">
                 {isSql ? 'SQL' : 'Message'}
@@ -123,7 +123,7 @@ export function ExpandableContent({
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            {/* Content */}
+
             <div className="flex-1 overflow-auto p-4">
               {variant === 'sql' ? (
                 <pre className="text-[var(--ch-text-13)] font-mono leading-relaxed text-foreground whitespace-pre-wrap break-all m-0">
@@ -133,7 +133,7 @@ export function ExpandableContent({
                 <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{text}</p>
               )}
             </div>
-            {/* Resize handle indicator */}
+
             <div className="h-3 shrink-0 flex items-center justify-center border-t border-border text-muted-foreground/30">
               <div className="flex gap-0.5">
                 <div className="w-0.5 h-0.5 rounded-full bg-current" />

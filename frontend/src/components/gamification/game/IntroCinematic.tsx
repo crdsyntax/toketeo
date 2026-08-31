@@ -14,34 +14,35 @@ interface Line {
   es: string
 }
 
+const SCRIPT_EN: Line[] = [
+  { who: 'coroner', en: 'Another one in Tallow Lane. Third this week... strangled. The rain washed everything, as always.', es: '' },
+  { who: 'hero', en: 'Then the ledger will talk for them. Every crime leaves rows, Coroner.', es: '' },
+  { who: 'coroner', en: 'Rows nobody can read! The Cheesemaker of the Corner - murdered on January 2nd at 2 AM, dismembered. The Watch found nothing.', es: '' },
+  { who: 'hero', en: "SELECT reads what the dead left behind. WHERE keeps only what matches. Start there.", es: '' },
+  { who: 'coroner', en: 'Witnesses contradict each other. You will have to JOIN their testimonies... and count what repeats with GROUP BY.', es: '' },
+  { who: 'hero', en: 'And beyond SQL?', es: '' },
+  { who: 'coroner', en: 'The Collection preserves documents in jars - MongoDB. The warehouse hums with keys that expire - Redis. And beneath it all, EL DEADLOCK holds court: transactions, ACID, indexes.', es: '' },
+  { who: 'hero', en: 'Ten puzzles per district. Five hearts between me and the archive. Every answer explains itself - every mistake teaches.', es: '' },
+  { who: 'coroner', en: 'Then go, before the trail rots. The Bone Court is in session.', es: '' },
+]
+
+const SCRIPT_ES: Line[] = [
+  { who: 'coroner', en: '', es: 'Otro más en Tallow Lane. Tercero esta semana... estrangulado. La lluvia lo lavó todo, como siempre.' },
+  { who: 'hero', en: '', es: 'Entonces el registro hablará por ellos. Cada crimen deja filas, Forense.' },
+  { who: 'coroner', en: '', es: '¡Filas que nadie supo leer! La Quesera de la Esquina - asesinada el 2 de enero a las 2 AM, descuartizada. La Guardia no encontró nada.' },
+  { who: 'hero', en: '', es: 'SELECT lee lo que los muertos dejaron. WHERE conserva solo lo que coincide. Empieza por ahí.' },
+  { who: 'coroner', en: '', es: 'Los testigos se contradicen. Tendrás que unir sus testimonios con JOIN... y contar lo que se repite con GROUP BY.' },
+  { who: 'hero', en: '', es: '¿Y más allá del SQL?' },
+  { who: 'coroner', en: '', es: 'La Colección preserva documentos en frascos - MongoDB. El almacén zumba con claves que expiran - Redis. Y debajo de todo, EL DEADLOCK dicta sentencia: transacciones, ACID, índices.' },
+  { who: 'hero', en: '', es: 'Diez acertijos por distrito. Cinco corazones entre yo y el archivo. Cada respuesta se explica - cada error enseña.' },
+  { who: 'coroner', en: '', es: 'Entonces ve, antes de que el rastro se pudra. La Corte de Huesos está en sesión.' },
+]
+
 export function IntroCinematic({ lang, onFinish }: IntroCinematicProps) {
   const [pos, setPos] = useState({ line: 0, chars: 0 })
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const script: Line[] =
-    lang === 'en'
-      ? [
-          { who: 'coroner', en: 'Another one in Tallow Lane. Third this week... strangled. The rain washed everything, as always.', es: '' },
-          { who: 'hero', en: 'Then the ledger will talk for them. Every crime leaves rows, Coroner.', es: '' },
-          { who: 'coroner', en: 'Rows nobody can read! The Cheesemaker of the Corner - murdered on January 2nd at 2 AM, dismembered. The Watch found nothing.', es: '' },
-          { who: 'hero', en: "SELECT reads what the dead left behind. WHERE keeps only what matches. Start there.", es: '' },
-          { who: 'coroner', en: 'Witnesses contradict each other. You will have to JOIN their testimonies... and count what repeats with GROUP BY.', es: '' },
-          { who: 'hero', en: 'And beyond SQL?', es: '' },
-          { who: 'coroner', en: 'The Collection preserves documents in jars - MongoDB. The warehouse hums with keys that expire - Redis. And beneath it all, EL DEADLOCK holds court: transactions, ACID, indexes.', es: '' },
-          { who: 'hero', en: 'Ten puzzles per district. Five hearts between me and the archive. Every answer explains itself - every mistake teaches.', es: '' },
-          { who: 'coroner', en: 'Then go, before the trail rots. The Bone Court is in session.', es: '' },
-        ]
-      : [
-          { who: 'coroner', en: '', es: 'Otro más en Tallow Lane. Tercero esta semana... estrangulado. La lluvia lo lavó todo, como siempre.' },
-          { who: 'hero', en: '', es: 'Entonces el registro hablará por ellos. Cada crimen deja filas, Forense.' },
-          { who: 'coroner', en: '', es: '¡Filas que nadie supo leer! La Quesera de la Esquina - asesinada el 2 de enero a las 2 AM, descuartizada. La Guardia no encontró nada.' },
-          { who: 'hero', en: '', es: 'SELECT lee lo que los muertos dejaron. WHERE conserva solo lo que coincide. Empieza por ahí.' },
-          { who: 'coroner', en: '', es: 'Los testigos se contradicen. Tendrás que unir sus testimonios con JOIN... y contar lo que se repite con GROUP BY.' },
-          { who: 'hero', en: '', es: '¿Y más allá del SQL?' },
-          { who: 'coroner', en: '', es: 'La Colección preserva documentos en frascos - MongoDB. El almacén zumba con claves que expiran - Redis. Y debajo de todo, EL DEADLOCK dicta sentencia: transacciones, ACID, índices.' },
-          { who: 'hero', en: '', es: 'Diez acertijos por distrito. Cinco corazones entre yo y el archivo. Cada respuesta se explica - cada error enseña.' },
-          { who: 'coroner', en: '', es: 'Entonces ve, antes de que el rastro se pudra. La Corte de Huesos está en sesión.' },
-        ]
+  const script = lang === 'en' ? SCRIPT_EN : SCRIPT_ES
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -73,8 +74,8 @@ export function IntroCinematic({ lang, onFinish }: IntroCinematicProps) {
       })
     }, 16)
     return () => window.clearInterval(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- script text is static per language
-  }, [lang])
+
+  }, [lang, script])
 
   function advance() {
     if (!done) {

@@ -292,7 +292,7 @@ export const useCompareStore = create<CompareState>()((set, get) => ({
       const saved = await compareService.saveSession(session);
       set({ sessionId: saved.id });
     } catch {
-      // Silently fail — persistence is best-effort
+
     }
   },
 
@@ -357,7 +357,7 @@ export const useCompareStore = create<CompareState>()((set, get) => ({
       try {
         await compareService.deleteSession(sessionId);
       } catch {
-        // ignore — session may already be deleted
+
       }
     }
     set({

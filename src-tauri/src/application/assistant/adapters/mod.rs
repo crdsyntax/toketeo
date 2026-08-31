@@ -15,10 +15,7 @@ use crate::models::assistant::{AiRequest, AiResponse, ModelInfo, ProviderConfig}
 pub trait AiAdapter: Send + Sync {
     fn id(&self) -> &str;
     async fn complete(&self, req: AiRequest) -> AppResult<AiResponse>;
-    /// Streaming variant. Adapters that support token streaming emit content
-    /// deltas through `on_delta`; the default implementation falls back to a
-    /// single-shot `complete` call without emitting anything, so providers
-    /// without SSE support keep working unchanged.
+
     async fn complete_streaming(
         &self,
         req: AiRequest,
@@ -31,7 +28,6 @@ pub trait AiAdapter: Send + Sync {
     fn supports_tools(&self) -> bool;
 }
 
-/// Build the adapter for a provider config.
 pub fn create_adapter(config: &ProviderConfig) -> AppResult<Box<dyn AiAdapter>> {
     match config.provider_id.as_str() {
         "openai" => Ok(Box::new(openai::OpenAiAdapter::new(

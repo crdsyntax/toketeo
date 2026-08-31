@@ -7,16 +7,8 @@ export interface Perk {
   icon: string;
 }
 
-/**
- * Perk configuration file.
- *
- * Add or remove perks from this array to control which features
- * are unlockable. Each perk can require:
- *   - requiredLevel: minimum player level
- *   - requiredQuests: array of quest/mission IDs that must be completed
- *
- * Quest IDs reference the `id` field in missions.ts.
- */
+
+
 export const APP_PERKS: Perk[] = [
   {
     id: 'theme_customizer',

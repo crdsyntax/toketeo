@@ -158,7 +158,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
         </div>
 
         <div className="px-5 space-y-4 pb-5">
-          {/* Name */}
+
           <div>
             <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Name</label>
             <input
@@ -169,7 +169,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             />
           </div>
 
-          {/* Connection */}
+
           <div>
             <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
               <Database className="w-3 h-3" /> Connection
@@ -193,7 +193,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           </div>
 
-          {/* Job Type */}
+
           <div>
             <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Job Type</label>
             <div className="grid grid-cols-3 gap-2 mt-1">
@@ -219,7 +219,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           </div>
 
-          {/* Database (Backup, Report, CSV) */}
+
           {connectionId && (
             <div>
               <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
@@ -247,7 +247,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           )}
 
-          {/* Tables / Collections (Backup, Report, CSV) */}
+
           {selectedDatabase && (
             <div>
               <div className="flex items-center justify-between">
@@ -292,7 +292,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           )}
 
-          {/* Cron Schedule */}
+
           <div>
             <div className="flex items-center justify-between">
               <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
@@ -347,7 +347,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             )}
           </div>
 
-          {/* Query (for Report / CSV when no tables selected) */}
+
           {!isBackup && selectedTables.size === 0 && (
             <div>
               <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">SQL Query</label>
@@ -361,7 +361,7 @@ export function JobFormModal({ job, onClose, onSave, saving }: JobFormModalProps
             </div>
           )}
 
-          {/* Output Directory */}
+
           <div>
             <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">Output Directory</label>
             <div className="flex gap-1.5 mt-1">

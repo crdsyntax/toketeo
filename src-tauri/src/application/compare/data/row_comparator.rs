@@ -2,22 +2,15 @@ use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
 use crate::models::compare::RowColumnDiff;
 
-/// Lado(s) en los que existe un lote de PKs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatchSide {
-    /// Existe en ambos lados (hash divergente): comparar columna a columna.
     Both,
-    /// Solo existe en source: emitir diffs con target_value = None.
+
     SourceOnly,
-    /// Solo existe en target: emitir diffs con source_value = None.
+
     TargetOnly,
 }
 
-/// Compara un lote de filas entre source y target en 1-2 queries por lado
-/// (`WHERE pk IN (...)`), reemplazando el N+1 de `compare_row_columns`.
-///
-/// Para `BatchSide::SourceOnly` / `TargetOnly` solo consulta el lado presente,
-/// eliminando la query innecesaria al otro lado.
 pub async fn compare_rows_batch(
     source: &dyn DbDriver,
     target: &dyn DbDriver,
@@ -37,7 +30,6 @@ pub async fn compare_rows_batch(
     let src_where = build_in_clause(pk_columns, pks, source.db_type());
     let tgt_where = build_in_clause(pk_columns, pks, target.db_type());
 
-    // Incluir siempre las PKs en el SELECT para poder indexar cada fila.
     let mut sel_columns: Vec<String> = all_columns.to_vec();
     for pk in pk_columns {
         if !sel_columns.iter().any(|c| c.eq_ignore_ascii_case(pk)) {
@@ -136,7 +128,6 @@ pub async fn compare_rows_batch(
     Ok(diffs)
 }
 
-/// Indexa filas del QueryResult por el valor string de su(s) PK(s).
 fn index_rows(
     rows: Vec<serde_json::Value>,
     pk_columns: &[String],
@@ -194,8 +185,6 @@ fn quote_column(col: &str, db_type: &DbType) -> String {
     }
 }
 
-/// Construye `pk IN ('a','b')` para PK simple o `(pk1, pk2) IN (('a',1),('b',2))`
-/// para PK compuesta.
 fn build_in_clause(pk_columns: &[String], pks: &[String], db_type: DbType) -> String {
     let quoted_cols: Vec<String> = pk_columns
         .iter()
@@ -246,7 +235,6 @@ fn build_in_clause(pk_columns: &[String], pks: &[String], db_type: DbType) -> St
     }
 }
 
-/// Compara los valores de una fila específica entre source y target columna por columna.
 pub async fn compare_row_columns(
     source: &dyn DbDriver,
     target: &dyn DbDriver,
@@ -348,7 +336,7 @@ fn build_where_clause(
         .iter()
         .map(|col| {
             let quoted = quote_column(col, &db_type);
-            // pk_values can be a String (single PK as raw value) or Object (composite PK)
+
             let val = match pk_values {
                 serde_json::Value::Object(map) => map.get(col),
                 serde_json::Value::String(s) if pk_columns.len() == 1 => {

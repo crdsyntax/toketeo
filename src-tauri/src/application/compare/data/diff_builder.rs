@@ -1,7 +1,6 @@
 use crate::models::compare::{CompareStatus, RowColumnDiff, TableDataDiff};
 use std::collections::HashMap;
 
-/// Ensambla un TableDataDiff a partir de los hashes y diffs de columnas.
 pub fn build_data_report(
     table: &str,
     pk_columns: Vec<String>,

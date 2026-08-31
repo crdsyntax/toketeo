@@ -1,10 +1,6 @@
-import type { ReactNode } from 'react'
+import type { TooltipProps } from '@/types/ui'
 
-interface TooltipProps {
-  children: ReactNode
-  content: string
-  side?: 'top' | 'bottom' | 'left' | 'right'
-}
+export type { TooltipProps, TooltipSide } from '@/types/ui'
 
 export function Tooltip({ children, content, side = 'top' }: TooltipProps) {
   const position = {

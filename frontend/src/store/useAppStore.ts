@@ -39,7 +39,7 @@ export interface QueryHistoryEntry {
   id: string
   query: string
   connectionId: string
-  executedAt: number // epoch ms
+  executedAt: number
   durationMs?: number
   status: 'success' | 'error'
   error?: string
@@ -47,7 +47,7 @@ export interface QueryHistoryEntry {
 }
 
 export interface ExplorerTabState {
-  id: string; // connectionId:database:name
+  id: string;
   connectionId: string;
   database: string;
   selectedItem: DatabaseObject;
@@ -71,8 +71,8 @@ export interface CustomColors {
 export const DEFAULT_EDITOR_FONT = "'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', Consolas, 'Courier New', monospace"
 
 interface AppState {
-  theme: 'light' | 'dark'
-  setTheme: (theme: 'light' | 'dark') => void
+  theme: 'light' | 'dark' | 'paper'
+  setTheme: (theme: 'light' | 'dark' | 'paper') => void
   lightColors: CustomColors | null
   setLightColors: (colors: Partial<CustomColors> | null) => void
   darkColors: CustomColors | null
@@ -125,7 +125,7 @@ interface AppState {
   panels: {
     editor: boolean
     results: boolean
-    editorHeight: number // percentage
+    editorHeight: number
   }
   setEditorHeight: (height: number) => void
   togglePanel: (panel: 'editor' | 'results') => void
@@ -148,7 +148,7 @@ interface AppState {
   connectionErrors: Record<string, string | null>
   setConnectionError: (id: string, error: string | null) => void
   clearConnectionError: (id: string) => void
-  queryHistory: Record<string, QueryHistoryEntry[]> // keyed by connectionId
+  queryHistory: Record<string, QueryHistoryEntry[]>
   addQueryHistory: (entry: QueryHistoryEntry) => void
   clearQueryHistory: (connectionId: string) => void
 }
@@ -192,11 +192,7 @@ export const useAppStore = create<AppState>()(
       setAccessToken: (accessToken) => set({ accessToken }),
       activeConnection: null,
       setActiveConnection: (connection) => {
-        // Selecting a connection in the sidebar must NOT change the explorer's
-        // active tab: the explorer follows its own tabs (see useExplorer
-        // resolvedConnection). Rewriting activeExplorerTabId here would
-        // deselect the connection the user is currently browsing in the
-        // explorer and force them to re-pick connection/db/schema.
+
         return set({ activeConnection: connection })
       },
       setActiveConnectionDatabase: (database) => set((state) => ({
@@ -264,10 +260,7 @@ export const useAppStore = create<AppState>()(
           if (tabIds.length === 0) {
             nextActiveId = null
           } else if (removedConnId) {
-            // Prefer staying in the connection the user was working with.
-            // Otherwise closing the last tab of connection A would activate a
-            // stale tab left over from another connection (e.g. a previous
-            // session) and the explorer would jump back to that connection.
+
             const sameConnTabs = tabIds.filter(
               (tid) => remainingTabs[tid].connectionId === removedConnId,
             )
@@ -278,9 +271,7 @@ export const useAppStore = create<AppState>()(
           }
         }
 
-        // Keep the connection context the user was working with so the explorer
-        // sidebar keeps showing its objects after the last tab is closed (it
-        // survives reloads because activeConnection itself is not persisted).
+
         const lastExplorerContext =
           nextActiveId === null && removedConnId
             ? { connectionId: removedConnId, database: removed?.database ?? '' }
@@ -323,10 +314,10 @@ export const useAppStore = create<AppState>()(
           }
         }
         return {
-          tabs: [...state.tabs, { 
-            id, 
-            name: `Query ${state.tabs.length + 1}`, 
-            query: '', 
+          tabs: [...state.tabs, {
+            id,
+            name: `Query ${state.tabs.length + 1}`,
+            query: '',
             connectionId: effectiveConnId,
             status: ExecutionStatus.IDLE,
             editorMode: 'auto',
@@ -338,10 +329,10 @@ export const useAppStore = create<AppState>()(
       openTab: (name, query, connectionId?: string) => set((state) => {
         const id = Math.random().toString(36).substring(7)
         return {
-          tabs: [...state.tabs, { 
-            id, 
-            name: name.replace(/\.sql$/i, ''), 
-            query, 
+          tabs: [...state.tabs, {
+            id,
+            name: name.replace(/\.sql$/i, ''),
+            query,
             connectionId: connectionId || state.activeConnection?.id,
             status: ExecutionStatus.IDLE,
             editorMode: 'auto',

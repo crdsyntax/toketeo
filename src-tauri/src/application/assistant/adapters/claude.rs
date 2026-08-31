@@ -107,7 +107,6 @@ impl AiAdapter for ClaudeAdapter {
     }
 
     async fn list_models(&self) -> AppResult<Vec<ModelInfo>> {
-        // Claude doesn't have a public models list endpoint.
         Ok(vec![
             ModelInfo {
                 id: "claude-sonnet-4-20250514".to_string(),

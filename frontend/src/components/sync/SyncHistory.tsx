@@ -123,12 +123,12 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
 
           return (
             <div key={run.id} className="relative pl-10 py-3 pr-4">
-              {/* Timeline line */}
+
               {!isLast && (
                 <div className="absolute left-[17px] top-10 bottom-0 w-px bg-border" />
               )}
 
-              {/* Timeline dot */}
+
               <div className={cn(
                 'absolute left-3 top-3 p-1.5 border',
                 isActive ? 'border-primary ring-2 ring-primary/20' : info.border,
@@ -136,7 +136,7 @@ export function SyncHistory({ pipelineId, onSelectRun, activeRunId }: SyncHistor
                 <Icon className={cn('w-3.5 h-3.5', info.color, run.status === PipelineStatus.Running && 'animate-spin')} />
               </div>
 
-              {/* Content */}
+
               <div className={cn(
                 'border p-3 cursor-pointer transition-all',
                 isActive ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:border-border',

@@ -7,9 +7,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Read-only exploration of database metadata: databases, schemas, tables,
-/// views, procedures, triggers, functions, columns, indexes, foreign keys,
-/// constraints, DDL, row preview and the connection's database type.
 pub struct ExplorerTool;
 
 #[async_trait]

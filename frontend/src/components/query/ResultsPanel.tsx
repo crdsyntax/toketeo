@@ -30,7 +30,7 @@ export function ResultsPanel({
     )}>
       <div className="p-2 border-b border-border bg-muted/20 flex justify-between items-center px-4">
         <div className="flex items-center gap-2">
-          <button 
+          <button
             onClick={() => togglePanel('results')}
             className="p-1 hover:bg-muted rounded"
           >
@@ -41,7 +41,7 @@ export function ResultsPanel({
             Results {activeTab?.status === ExecutionStatus.EXECUTING && <span className="animate-pulse text-primary ml-2">Processing...</span>}
           </h3>
         </div>
-        
+
         {activeTab?.results && panels.results && (
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-[var(--ch-text-10)] text-muted-foreground">
@@ -50,7 +50,7 @@ export function ResultsPanel({
             </div>
             <div className="flex items-center gap-2 ml-4 border-l border-border pl-4 text-left">
               {editingCell && (
-                <button 
+                <button
                   onClick={handleSave}
                   className="text-[var(--ch-text-10)] font-bold text-primary hover:text-primary/80 flex items-center gap-1 mr-2 animate-pulse"
                 >
@@ -58,7 +58,7 @@ export function ResultsPanel({
                   Apply
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setShowResultModal(true)}
                 className="text-[var(--ch-text-10)] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1 mr-2"
               >
@@ -91,8 +91,8 @@ export function ResultsPanel({
               <thead className="sticky top-0 bg-background border-b border-border z-10 shadow-sm">
                 <tr>
                   {activeTab.results.columns.map((col: string) => (
-                    <th 
-                      key={col} 
+                    <th
+                      key={col}
                       onClick={() => requestSort(col)}
                       className="p-2 font-bold bg-muted/50 border-r border-border cursor-pointer hover:bg-muted transition-colors"
                     >
@@ -110,13 +110,13 @@ export function ResultsPanel({
                 {sortedRows.map((row, i) => (
                   <tr key={i} className="border-b border-border/50 hover:bg-muted/30 whitespace-nowrap">
                     {activeTab.results!.columns.map((col: string) => (
-                      <td 
-                        key={col} 
+                      <td
+                        key={col}
                         onDoubleClick={() => setEditingCell({ rowIndex: i, column: col, value: row[col] })}
                         className="p-2 border-r border-border last:border-0 truncate max-w-[250px] relative group"
                       >
                         {editingCell?.rowIndex === i && editingCell?.column === col ? (
-                          <input 
+                          <input
                             autoFocus
                             className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2 z-20"
                             value={typeof editingCell.value === 'boolean' ? String(editingCell.value) : (editingCell.value ?? '')}

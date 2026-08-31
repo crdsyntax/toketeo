@@ -468,7 +468,7 @@ impl DataWriter for SqliteDriver {
         } else {
             quote_sqlite(table)
         };
-        // SQLite es de tipado dinámico: la columna se agrega como TEXT genérico.
+
         let sql = format!(
             "ALTER TABLE {} ADD COLUMN {} TEXT",
             table_ref,
@@ -540,8 +540,6 @@ impl crate::db::ScriptTransaction for SqliteScriptTransaction {
     }
 }
 
-/// Sesión transaccional de script sobre SQLite.
-/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
 pub struct SqliteScriptTransaction {
     tx: sqlx::Transaction<'static, sqlx::Sqlite>,
 }

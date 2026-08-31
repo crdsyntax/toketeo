@@ -1,9 +1,0 @@
-{
-  "id": { "foo": "bar" },
-  "name": "test",
-  "environment": "dev",
-  "type": "mysql",
-  "host": "localhost",
-  "port": 3306,
-  "user": "root"
-}

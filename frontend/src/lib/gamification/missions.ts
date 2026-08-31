@@ -16,7 +16,7 @@ export interface Mission {
 }
 
 export const MISSIONS: Mission[] = [
-  // EXECUTE_QUERY Tier
+
   {
     id: 'first_blood',
     title: 'First Blood',
@@ -72,7 +72,7 @@ export const MISSIONS: Mission[] = [
     icon: 'Skull',
   },
 
-  // EDIT_ROW Tier
+
   {
     id: 'first_edit',
     title: 'First Edit',
@@ -119,7 +119,7 @@ export const MISSIONS: Mission[] = [
     icon: 'Sparkles',
   },
 
-  // CREATE_CONNECTION Tier
+
   {
     id: 'connection_first',
     title: 'Networker',
@@ -148,7 +148,7 @@ export const MISSIONS: Mission[] = [
     icon: 'Castle',
   },
 
-  // EXPORT_DATA Tier
+
   {
     id: 'exporter_first',
     title: 'Data Hoarder',
@@ -186,7 +186,7 @@ export const MISSIONS: Mission[] = [
     icon: 'Gem',
   },
 
-  // DAILY_LOGIN Tier
+
   {
     id: 'login_first',
     title: 'New Arrival',

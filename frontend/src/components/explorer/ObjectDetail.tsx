@@ -124,7 +124,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
     isMongoDB = false,
     isRedis = false,
   } = props;
-  
+
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addIndexOpen, setAddIndexOpen] = useState(false);
@@ -182,7 +182,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
 
   return (
     <>
-      {/* Tab Bar */}
+
       <div className="flex bg-muted/30 border-b border-border overflow-x-auto no-scrollbar">
         {tabs.map((tab) => (
           <div
@@ -237,7 +237,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
           </div>
         </div>
 
-        {/* === TABS NAV === */}
+
         <div className="flex bg-muted p-1 rounded-none items-center">
           {isRedis ? (
             <>
@@ -361,7 +361,7 @@ export function ObjectDetail(props: ObjectDetailProps) {
               )}
             </>
           )}
-          
+
           {selectedItem?.type === DatabaseObjectType.TABLE && (
             <button
               onClick={() => setModelModalOpen(true)}
@@ -476,10 +476,10 @@ export function ObjectDetail(props: ObjectDetailProps) {
       </div>
 
       {selectedItem?.type === DatabaseObjectType.TABLE && (
-        <ModelExportModal 
-          isOpen={modelModalOpen} 
-          onClose={() => setModelModalOpen(false)} 
-          tableName={selectedItem.name} 
+        <ModelExportModal
+          isOpen={modelModalOpen}
+          onClose={() => setModelModalOpen(false)}
+          tableName={selectedItem.name}
           schema={currentSchema}
           connection={activeConnection}
         />

@@ -107,8 +107,6 @@ export function JobCard({ job, connections, runningJob, onEdit, onDelete, onRunN
           </span>
         </div>
       </div>
-
-      {/* Schedule enabled toggle */}
       <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5">
         <button
           onClick={() => onToggleEnabled(job)}

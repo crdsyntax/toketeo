@@ -30,7 +30,7 @@ export function EditorTabs({
           : connections.find(c => c.id === tab.connectionId) || activeConnection;
         const dbSuffix = tabConnection?.database ? ` / ${tabConnection.database}` : '';
         return (
-        <div 
+        <div
           key={tab.id}
           onClick={() => setActiveTabId(tab.id)}
           onContextMenu={(e) => onContextMenu(e, tab.id)}
@@ -48,8 +48,8 @@ export function EditorTabs({
             )}
           </div>
           {tab.status === ExecutionStatus.EXECUTING && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
-          <button 
-            onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} 
+          <button
+            onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }}
             className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted-foreground/20 rounded transition-opacity"
           >
             <X className="w-3 h-3" />

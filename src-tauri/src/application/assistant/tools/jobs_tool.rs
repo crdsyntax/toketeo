@@ -10,9 +10,6 @@ use uuid::Uuid;
 
 use super::tool_engine::AssistantTool;
 
-/// Scheduled jobs: create/update/delete/list, run/stop now, and list
-/// databases/tables for the scheduler. create/update/delete/run are
-/// destructive (confirmation required).
 pub struct JobsTool;
 
 #[async_trait]
@@ -290,7 +287,6 @@ impl JobsTool {
             }
         };
 
-        // Backup jobs get connection details injected (same as the Tauri command).
         let mut config_value = config.to_value();
         if job_type == JobType::Backup {
             if let Ok(conn) = state.storage.get_connection(connection_id).await {
@@ -450,7 +446,6 @@ fn missing(msg: &str) -> AppResult<ToolResult> {
     })
 }
 
-/// Serialize a job for the model, removing credentials from its config.
 fn sanitize_job(job: &crate::models::ScheduledJob) -> serde_json::Value {
     let mut value = serde_json::to_value(job).unwrap_or(serde_json::Value::Null);
     if let Some(cfg) = value.get_mut("config").and_then(|c| c.as_object_mut()) {

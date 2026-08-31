@@ -18,9 +18,9 @@ export interface ModelInfo {
   name: string
   provider: string
   supportsTools: boolean
-  /** True when the model is served by a free/no-cost tier. */
+
   isFree?: boolean
-  /** Category provided by the backend to group models (e.g. "go", "zen", "free"). */
+
   tier?: string
 }
 
@@ -38,7 +38,7 @@ export interface AssistantTurn {
   source: string
   requiresConfirmation: boolean
   usage?: TokenUsage | null
-  /** UI side effect requested by the agent (export results, focus tab...). */
+
   action?: AgentAction | null
 }
 
@@ -79,9 +79,9 @@ export interface Preference {
 
 export interface SqlFixResult {
   sql?: string | null
-  /** Additional alternative queries suggested by the assistant. */
+
   alternatives?: string[]
   explanation: string
-  /** 'ok' | 'unconfigured' | 'failed' */
+
   status: string
 }

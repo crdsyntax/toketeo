@@ -14,12 +14,8 @@ function phaseOf(r: ScriptStatementResult): 'ok' | 'failed' | 'skipped' {
   return r.ok ? 'ok' : 'failed';
 }
 
-/**
- * Resumen al terminar un script multi-statement: cuántos statements
- * terminaron OK, cuántos fallaron y cuántos se omitieron (skipped),
- * con detalle por statement y aviso de rollback si se canceló.
- * Los contadores OK/Failed/Skipped son clickeables y filtran la lista.
- */
+
+
 export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps) {
   const [filter, setFilter] = useState<Filter>('all');
   if (!report) return null;

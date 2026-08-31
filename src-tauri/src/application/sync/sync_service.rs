@@ -26,9 +26,6 @@ impl SyncService {
         let source_db_type = source.db_type();
         let target_db_type = target.db_type();
 
-        // --- Auto-detect correct source schema (Postgres) ---
-        // Robusto: si la primera tabla falla, busca el esquema de la mayoría
-        // de las tablas del pipeline en vez de abortar por una sola tabla.
         let effective_source_schema = if source_db_type == DbType::Postgres {
             match Self::detect_source_schema(
                 source,
@@ -59,7 +56,6 @@ impl SyncService {
             pipeline.source_schema.clone()
         };
 
-        // Verify source connection before starting
         if let Some(first_table) = pipeline.tables.first() {
             match source
                 .fetch_ddl(
@@ -121,7 +117,6 @@ impl SyncService {
             effective_batch_size,
         );
 
-        // Pre-check controller before starting
         if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
             tracing::info!(
                 "[sync] Pipeline '{}' cancelled before starting",
@@ -137,7 +132,6 @@ impl SyncService {
         }
 
         for (idx, table_config) in pipeline_clone.tables.iter().enumerate() {
-            // Check for cancellation before each table
             if controller.get(&pipeline_id).await == Some(crate::state::SyncControl::Cancelled) {
                 tracing::info!(
                     "[sync] Pipeline cancelled before table {}",
@@ -162,7 +156,6 @@ impl SyncService {
                 table_config.target_table,
             );
 
-            // Ensure target table exists — auto-create if missing
             let target_tables = target
                 .fetch_tables(pipeline_clone.target_schema.clone(), None)
                 .await
@@ -177,7 +170,6 @@ impl SyncService {
                     table_config.target_table,
                 );
 
-                // Step 1: Try to get DDL from source (CREATE TABLE statement)
                 let source_ddl = source
                     .fetch_ddl(
                         &table_config.source_table,
@@ -186,7 +178,6 @@ impl SyncService {
                     )
                     .await;
 
-                // MongoDB fetch_ddl returns JSON metadata, not CREATE TABLE — skip DDL path
                 let create_sql = if source_db_type == DbType::Mongodb {
                     None
                 } else {
@@ -224,7 +215,6 @@ impl SyncService {
                     }
                 };
 
-                // Step 2: Build CREATE TABLE from column metadata when DDL is unavailable
                 let create_sql = match create_sql {
                     Some(sql) => Some(sql),
                     None => {
@@ -340,8 +330,6 @@ impl SyncService {
                 }
             }
 
-            // Reconciliar columnas faltantes en el target antes de sincronizar:
-            // el sync crea los campos que no existen (ADD COLUMN).
             if let Err(e) = Self::ensure_target_columns(
                 source,
                 target,
@@ -360,7 +348,6 @@ impl SyncService {
                 );
             }
 
-            // Execute sync strategy for this table
             match strategy
                 .execute(
                     &pipeline_clone,
@@ -428,11 +415,6 @@ impl SyncService {
         Ok(())
     }
 
-    /// Crea en el target las columnas que el sync necesita insertar y que no
-    /// existen (reconciliación de esquema). Usa la metadata del source y las
-    /// mappings configuradas para generar el tipo SQL del motor de destino.
-    /// No es destructivo: si una columna no puede crearse, lo reporta por log
-    /// y la estrategia aplica su fallback en caliente.
     async fn ensure_target_columns(
         source: &dyn DbDriver,
         target: &dyn DbDriver,
@@ -449,7 +431,6 @@ impl SyncService {
             return Ok(());
         }
 
-        // Columnas de destino que el sync intentará insertar.
         let needed: Vec<(String, serde_json::Value)> = if table_config.column_mappings.is_empty() {
             source_cols
                 .iter()
@@ -502,9 +483,6 @@ impl SyncService {
         for (dest_name, src_col) in &needed {
             let dest_lower = dest_name.to_lowercase();
 
-            // Columna presente en el target: si el source es nullable y el
-            // target NOT NULL, relajar la restricción para no perder filas
-            // con NULLs (p.ej. constraint agregado con NOT VALID).
             if let Some(target_col) = target_col_map.get(&dest_lower) {
                 let src_nullable = src_col
                     .get("isNullable")
@@ -528,7 +506,6 @@ impl SyncService {
                 continue;
             }
 
-            // Columna faltante: crearla (ADD COLUMN).
             let src_type = src_col
                 .get("type")
                 .and_then(|v| v.as_str())
@@ -573,9 +550,6 @@ impl SyncService {
         Ok(())
     }
 
-    /// Relaja la restricción NOT NULL de una columna del target cuando el
-    /// source la tiene nullable y el target no. No es destructivo: solo
-    /// flexibiliza el constraint para no perder filas con NULLs.
     async fn relax_not_null(
         target: &dyn DbDriver,
         target_db_type: &DbType,
@@ -627,11 +601,6 @@ impl SyncService {
         PipelineValidator::validate(pipeline, source, target).await
     }
 
-    /// Detecta el esquema correcto del source (PostgreSQL). No depende de una
-    /// sola tabla: si la primera no se encuentra en el esquema configurado
-    /// (o `public`), busca el esquema que contiene la mayoría de las tablas del
-    /// pipeline en una sola consulta. Devuelve `None` solo si ninguna tabla del
-    /// pipeline existe en ningún esquema no-sistema. Nunca lanza error.
     pub(crate) async fn detect_source_schema(
         source: &dyn DbDriver,
         tables: &[SyncTableConfig],
@@ -641,7 +610,6 @@ impl SyncService {
             return configured.filter(|s| !s.is_empty()).map(String::from);
         }
 
-        // 1) Esquema configurado (o public) si contiene la primera tabla.
         let configured_schema = configured.filter(|s| !s.is_empty()).unwrap_or("public");
         if check_pg_table_exists(source, &tables[0].source_table, configured_schema)
             .await
@@ -655,9 +623,6 @@ impl SyncService {
             return Some(configured_schema.to_string());
         }
 
-        // 2) Esquema con mayoría de tablas del pipeline (una sola consulta).
-        //    Robusto a tablas particionadas (relkind 'p'), vistas o a que la
-        //    primera tabla no exista.
         let quoted: Vec<String> = tables
             .iter()
             .map(|t| format!("'{}'", t.source_table.replace('\'', "''")))
@@ -686,7 +651,6 @@ impl SyncService {
             }
         }
 
-        // 3) Último recurso: la primera tabla en cualquier esquema.
         find_pg_schema_for_table(source, &tables[0].source_table).await
     }
 }
@@ -703,9 +667,6 @@ fn quote_for_target(db_type: &DbType, name: &str) -> String {
 
 type ColInfo = (String, String, bool, bool, Option<usize>);
 
-/// Map BSON / MongoDB element type names to equivalent SQL column types for
-/// the target RDBMS. `max_len` is the longest observed string value (in chars)
-/// for `String` fields; used to choose between VARCHAR(n) and TEXT.
 fn bson_type_to_sql(bson_type: &str, max_len: Option<usize>, target_db_type: &DbType) -> String {
     let t = bson_type.trim().trim_matches('"');
     let pg = matches!(target_db_type, DbType::Postgres);
@@ -714,13 +675,10 @@ fn bson_type_to_sql(bson_type: &str, max_len: Option<usize>, target_db_type: &Db
         "String" | "Utf8" => {
             let max = max_len.unwrap_or(0);
             if max > 0 && max <= 255 {
-                // numeric IDs, short text — VARCHAR sized to observed content
                 format!("VARCHAR({})", max.max(16))
             } else if max > 255 && max <= 16384 {
-                // still fits in VARCHAR on MySQL/PG
                 format!("VARCHAR({})", max)
             } else if pg {
-                // PostgreSQL allows VARCHAR without length
                 "VARCHAR".into()
             } else {
                 "TEXT".into()
@@ -732,7 +690,7 @@ fn bson_type_to_sql(bson_type: &str, max_len: Option<usize>, target_db_type: &Db
         "Boolean" | "Bool" => if pg { "BOOLEAN" } else { "TINYINT(1)" }.into(),
         "DateTime" | "Date" | "Timestamp" => if pg { "TIMESTAMP" } else { "DATETIME" }.into(),
         "Binary" | "BinData" => if pg { "BYTEA" } else { "LONGBLOB" }.into(),
-        // Objects/arrays → JSON on MySQL/PG (PG supports JSONB too; use JSON for compatibility)
+
         "Array" | "EmbeddedDocument" | "Document" | "Object" => {
             if pg { "JSONB" } else { "JSON" }.into()
         }
@@ -745,7 +703,6 @@ fn bson_type_to_sql(bson_type: &str, max_len: Option<usize>, target_db_type: &Db
     }
 }
 
-/// Convert a source column type name into a SQL type suitable for the target DB.
 fn map_column_type(
     source_db_type: &DbType,
     col_type: &str,
@@ -759,8 +716,6 @@ fn map_column_type(
     }
 }
 
-/// Build a CREATE TABLE statement from column metadata.
-/// `(name, type, is_nullable, is_pk, max_len_hint)`
 fn build_create_table_sql(
     target_db_type: &DbType,
     source_db_type: &DbType,
@@ -787,8 +742,6 @@ fn build_create_table_sql(
         }
     }
 
-    // MongoDB _id becomes VARCHAR/TEXT Extended JSON — skip PK to avoid MySQL ERROR 1170
-    // (BLOB/TEXT used in key without key length). Add PK only if _id maps to VARCHAR.
     let can_use_pk = *source_db_type != DbType::Mongodb && !pk_cols.is_empty();
     if can_use_pk {
         col_defs.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
@@ -826,15 +779,13 @@ fn build_create_table_sql(
     sql
 }
 
-/// Fetch column info using pg_catalog (bypasses information_schema permission issues).
-/// Returns Vec<(name, type, not_null, is_pk)>.
 async fn fetch_pg_columns(
     source: &dyn DbDriver,
     table: &str,
     schema: Option<&str>,
 ) -> AppResult<Vec<ColInfo>> {
     let schema = schema.unwrap_or("public");
-    // Safe escaping for identifiers (not ideal but avoids SQL injection via table/schema names)
+
     let schema_clean = schema.replace('\'', "''");
     let table_clean = table.replace('\'', "''");
 
@@ -879,7 +830,6 @@ async fn fetch_pg_columns(
     Ok(columns)
 }
 
-/// Fetch column info using generic fetch_columns (information_schema-based).
 async fn fetch_generic_columns(
     source: &dyn DbDriver,
     table: &str,
@@ -921,28 +871,17 @@ async fn fetch_generic_columns(
     Ok(columns)
 }
 
-/// Strip sequence-dependent DEFAULT clauses (nextval/currval/setval) and
-/// reserved-keyword DEFAULT expressions (USER, current_user, session_user, etc.)
-/// from DDL. These reference source-specific state that doesn't exist on the
-/// target database.
 fn sanitize_ddl_for_target(ddl: &str) -> String {
-    // 1) Sequence functions: nextval(...), currval(...), setval(...)
     let re_seq =
         Regex::new("(?i)\\s+DEFAULT\\s+(?:nextval|currval|setval)\\s*\\([^)]*\\)(?:::\\w+)?")
             .unwrap();
     let result = re_seq.replace_all(ddl, "").to_string();
 
-    // 2) Reserved-keyword expressions: USER, current_user, session_user, current_schema, etc.
-    //    May have an optional ::type cast suffix (e.g. USER::character varying).
     let re_kw = Regex::new(
         "(?i)\\s+DEFAULT\\s+(?:current_user|session_user|current_database|current_schema|user)\\b(?:::\\w+(?:\\([^)]*\\))?)?"
     ).unwrap();
     let result = re_kw.replace_all(&result, "").to_string();
 
-    // 3) DEFAULT with ::cast to a non-builtin type (enums, composite types, domains).
-    //    e.g. DEFAULT 'image'::media_files_context_enum
-    //    If the cast type is NOT a PostgreSQL built-in, strip the DEFAULT since
-    //    the type won't exist on the target database.
     let re_custom_default = Regex::new(
         "(?i)\\s+DEFAULT\\s+(?:'[^']*'|\"[^\"]*\"|\\w+(?:\\([^)]*\\))?|\\d+)\\s*::\\s*(\\w+)",
     )
@@ -965,7 +904,6 @@ fn sanitize_ddl_for_target(ddl: &str) -> String {
         .to_string()
 }
 
-/// PostgreSQL built-in type names that should never be quoted in DDL.
 const PG_BUILTIN_TYPES: &[&str] = &[
     "smallint",
     "integer",
@@ -1036,23 +974,16 @@ const PG_BUILTIN_TYPES: &[&str] = &[
     "jsonpath",
 ];
 
-/// Quote a PostgreSQL type name if it could be a reserved keyword or user-defined type.
-/// Built-in types are left unquoted; user-defined types (enums, etc.) are mapped to text
-/// since they won't exist on the target database.
 fn quote_pg_type(ty: &str) -> String {
     let lower = ty.to_lowercase();
     if PG_BUILTIN_TYPES.contains(&lower.as_str()) || lower.ends_with("[]") || lower.starts_with('_')
     {
         ty.to_string()
     } else {
-        // User-defined types (enums, composite types, etc.) — map to text
-        // since they likely don't exist on the target database
         "text".to_string()
     }
 }
 
-/// Check if a table exists in a specific PostgreSQL schema using pg_catalog.
-/// `relkind IN ('r','p')` cubre tablas normales y particionadas.
 async fn check_pg_table_exists(
     source: &dyn DbDriver,
     table: &str,
@@ -1079,7 +1010,6 @@ async fn check_pg_table_exists(
         .unwrap_or(false))
 }
 
-/// Find which PostgreSQL schema contains a given table (searches all schemas).
 async fn find_pg_schema_for_table(source: &dyn DbDriver, table: &str) -> Option<String> {
     let table_clean = table.replace('\'', "''");
 

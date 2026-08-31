@@ -1,7 +1,3 @@
-//! In-memory `DbDriver` implementation for unit tests. Configured with fixed
-//! tables/columns so assistant tools and orchestration can be tested without a
-//! real database.
-
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
@@ -10,14 +6,12 @@ use crate::error::AppResult;
 use crate::models::sync::DriverCapabilities;
 use crate::models::QueryResult;
 
-/// A table definition served by the mock.
 #[derive(Debug, Clone, Default)]
 pub struct MockTable {
     pub name: String,
-    /// Column metadata items, each with at least `name` and optionally
-    /// `isPrimaryKey`.
+
     pub columns: Vec<serde_json::Value>,
-    /// Rows returned for `SELECT * FROM <name>`.
+
     pub rows: Vec<serde_json::Value>,
 }
 
@@ -26,13 +20,11 @@ pub struct MockDriverSpec {
     pub db_type: DbType,
     pub databases: Vec<String>,
     pub tables: Vec<MockTable>,
-    /// Error injected for `execute` calls (e.g. to simulate a dead connection).
+
     pub execute_error: Option<String>,
     pub upsert_count: u64,
 }
 
-/// Simple mock driver. `Spec` is optional; a default instance exposes
-/// `users`/`orders` tables and a `mydb` database.
 pub struct MockDriver {
     spec: Arc<Mutex<MockDriverSpec>>,
 }

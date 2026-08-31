@@ -9,9 +9,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Backup and restore databases. SQL engines: 'dump' (schema to file) and
-/// 'restore' (from a dump file, requires confirmation). MongoDB: 'mongoBackup'
-/// and 'mongoRestore' (JSON file, restore requires confirmation).
 pub struct BackupTool;
 
 #[async_trait]
@@ -224,7 +221,6 @@ impl AssistantTool for BackupTool {
     }
 }
 
-/// Export every collection of a MongoDB database to a JSON file.
 async fn mongo_backup(
     state: &AppState,
     connection_id: &str,
@@ -272,7 +268,6 @@ async fn mongo_backup(
         .map_err(|e| crate::error::AppError::Internal(format!("Failed to write backup: {e}")))
 }
 
-/// Import a MongoDB JSON backup into a database.
 async fn mongo_restore(
     state: &AppState,
     connection_id: &str,

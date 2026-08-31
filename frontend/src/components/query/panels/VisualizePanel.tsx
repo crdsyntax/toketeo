@@ -71,7 +71,7 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Chart type selector + export */}
+
       <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border bg-background/80 backdrop-blur shrink-0">
         <ChartTypeSelector
           types={CHART_TYPES}
@@ -116,8 +116,6 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
       </div>
 
       <ChartTour open={tourOpen} onClose={() => setTourOpen(false)} />
-
-      {/* Column picker */}
       <div className="px-3 py-1.5 border-b border-border/60 bg-muted/10 shrink-0">
         <ColumnPicker
           profiles={profiles}
@@ -130,7 +128,7 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
         />
       </div>
 
-      {/* Chart controls */}
+
       <div className="flex items-center px-3 py-1 border-b border-border/40 bg-muted/5 shrink-0">
         <ChartControls
           config={config}
@@ -138,7 +136,7 @@ export function VisualizePanel({ sortedRows }: VisualizePanelProps) {
         />
       </div>
 
-      {/* Chart canvas */}
+
       <div id="visualize-chart-container" className="flex-1 min-h-0 p-3 bg-muted/5">
         <div className="w-full h-full rounded-lg border border-border/40 bg-card shadow-sm">
           <ChartRenderer

@@ -68,7 +68,7 @@ export function DiagramToolbar({
       await navigator.clipboard.writeText(mermaidCode)
       toast.success('Mermaid code copied to clipboard')
     } catch {
-      // Fallback for restricted webviews
+
       const ta = document.createElement('textarea')
       ta.value = mermaidCode
       document.body.appendChild(ta)

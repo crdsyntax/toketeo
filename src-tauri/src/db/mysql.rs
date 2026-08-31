@@ -16,9 +16,6 @@ pub(crate) fn quote_mysql(id: &str) -> String {
     format!("`{}`", id.replace('`', "``"))
 }
 
-/// Parsea los valores de una columna MySQL/MariaDB de tipo `enum('a','b','c')`
-/// devuelta por `information_schema.columns.column_type`. Respeta comillas
-/// simples y escapes `\'` dentro de los valores.
 fn parse_mysql_enum_values(col_type: &str) -> Vec<String> {
     let t = col_type.trim();
     if !t.to_ascii_lowercase().starts_with("enum(") || !t.ends_with(')') {
@@ -63,11 +60,6 @@ fn parse_mysql_enum_values(col_type: &str) -> Vec<String> {
     values
 }
 
-/// Convert a JSON cell value into a MySQL-bindable string.
-/// Handles MongoDB Extended JSON shapes produced by bson_to_json:
-///   {"$oid":"hex"} → hex string
-///   {"$date":{"$numberLong":"ms"}} → ISO-8601 datetime
-/// Arrays/objects → JSON text for JSON/TEXT columns.
 fn json_value_to_mysql_string(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
@@ -85,11 +77,10 @@ fn json_value_to_mysql_string(value: &Value) -> Option<String> {
         }
         Value::Bool(b) => Some(if *b { "1".into() } else { "0".into() }),
         Value::Array(_) | Value::Object(_) => {
-            // Extended JSON ObjectId
             if let Some(oid) = value.get("$oid").and_then(|v| v.as_str()) {
                 return Some(oid.to_string());
             }
-            // Extended JSON DateTime: {"$date":{"$numberLong":"..."}} or {"$date":"..."}
+
             if let Some(date_val) = value.get("$date") {
                 if let Some(ms_str) = date_val
                     .get("$numberLong")
@@ -113,15 +104,14 @@ fn json_value_to_mysql_string(value: &Value) -> Option<String> {
                     }
                 }
             }
-            // Generic object/array → JSON string
+
             Some(value.to_string())
         }
     }
 }
 
-/// Minimum warm connections kept alive for non-transactional pool.
 const POOL_MIN_CONNECTIONS: u32 = 1;
-/// Fail fast if a connection cannot be acquired within 5 seconds.
+
 const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct MySqlDriver {
@@ -135,8 +125,6 @@ impl MySqlDriver {
         pool_config: Option<PoolConfig>,
     ) -> AppResult<Self> {
         let pool = (if transactional {
-            // Transactional sessions use a single connection to guarantee
-            // that START TRANSACTION / COMMIT / ROLLBACK operate on the same connection.
             MySqlPoolOptions::new()
                 .max_connections(1)
                 .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
@@ -366,8 +354,6 @@ impl DbDriver for MySqlDriver {
         use sqlx::Executor;
         let conn: &mut sqlx::mysql::MySqlConnection = &mut pool_conn;
 
-        // Guardar la base actual para restaurarla antes de devolver la
-        // conexión al pool (evita contaminar el estado de otras consultas).
         let previous_db: Option<String> = sqlx::query("SELECT DATABASE() AS db")
             .fetch_one(&mut *conn)
             .await
@@ -584,14 +570,14 @@ impl DbDriver for MySqlDriver {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
+        let query = "SELECT
             column_name as name,
             column_type as type,
             is_nullable as isNullable,
             column_key as keyType,
             column_default as defaultValue,
             extra as extra
-            FROM information_schema.columns 
+            FROM information_schema.columns
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())
             ORDER BY ordinal_position";
 
@@ -644,12 +630,12 @@ impl DbDriver for MySqlDriver {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
-            index_name as name, 
-            column_name as column_name, 
-            non_unique = 0 as isUnique, 
+        let query = "SELECT
+            index_name as name,
+            column_name as column_name,
+            non_unique = 0 as isUnique,
             index_type as type
-            FROM information_schema.statistics 
+            FROM information_schema.statistics
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())";
 
         let rows = sqlx::query(query)
@@ -680,12 +666,12 @@ impl DbDriver for MySqlDriver {
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
         let query =
-            "SELECT 
-            constraint_name as constraintName, 
-            column_name as columnName, 
-            referenced_table_name as referencedTable, 
+            "SELECT
+            constraint_name as constraintName,
+            column_name as columnName,
+            referenced_table_name as referencedTable,
             referenced_column_name as referencedColumn
-            FROM information_schema.key_column_usage 
+            FROM information_schema.key_column_usage
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE()) AND referenced_table_name IS NOT NULL";
 
         let rows = sqlx::query(query)
@@ -775,10 +761,10 @@ impl DbDriver for MySqlDriver {
         table: &str,
         schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        let query = "SELECT 
-            constraint_name as name, 
+        let query = "SELECT
+            constraint_name as name,
             constraint_type as type
-            FROM information_schema.table_constraints 
+            FROM information_schema.table_constraints
             WHERE table_name = ? AND table_schema = IFNULL(?, DATABASE())";
 
         let rows = sqlx::query(query)
@@ -851,7 +837,6 @@ impl DbDriver for MySqlDriver {
                 })?
             }
             Err(e) => {
-                // Fallback for procedures/functions/views via information_schema
                 if obj_type_lower == "procedure" || obj_type_lower == "function" {
                     let routine_type = obj_type_lower.to_uppercase();
                     let fallback_query =
@@ -879,7 +864,6 @@ impl DbDriver for MySqlDriver {
             }
         };
 
-        // Prepend DROP IF EXISTS for routines and triggers
         match obj_type_lower.as_str() {
             "procedure" => Ok(format!(
                 "DROP PROCEDURE IF EXISTS {};\n\n{}",
@@ -909,11 +893,11 @@ impl DbDriver for MySqlDriver {
             _ => "",
         };
 
-        let query = "SELECT 
-            parameter_name as name, 
-            dtd_identifier as type, 
+        let query = "SELECT
+            parameter_name as name,
+            dtd_identifier as type,
             parameter_mode as mode
-            FROM information_schema.parameters 
+            FROM information_schema.parameters
             WHERE specific_name = ? AND specific_schema = IFNULL(?, DATABASE())
             AND (ROUTINE_TYPE = ? OR ? = '')
             ORDER BY ordinal_position";
@@ -1098,8 +1082,6 @@ impl DataWriter for MySqlDriver {
             table_ref, cols_str, values_str
         );
 
-        // Collect bind values once so we can reuse for fallback.
-        // Flatten Extended JSON from MongoDB (ObjectId/DateTime) into scalar strings.
         let bind_values: Vec<Option<String>> = rows
             .iter()
             .flat_map(|row| {
@@ -1109,7 +1091,6 @@ impl DataWriter for MySqlDriver {
             })
             .collect();
 
-        // Helper to bind all values onto a query builder
         fn bind_all<'a>(
             mut qb: sqlx::query::Query<'a, sqlx::MySql, sqlx::mysql::MySqlArguments>,
             bind_values: &'a [Option<String>],
@@ -1120,7 +1101,6 @@ impl DataWriter for MySqlDriver {
             qb
         }
 
-        // Try ON DUPLICATE KEY UPDATE first
         let qb = sqlx::query(&upsert_query);
         let qb = bind_all(qb, &bind_values);
 
@@ -1135,7 +1115,7 @@ impl DataWriter for MySqlDriver {
                     table_ref,
                     upsert_err,
                 );
-                // Fallback to INSERT IGNORE (skips rows that violate constraints)
+
                 let qb2 = sqlx::query(&ignore_query);
                 let qb2 = bind_all(qb2, &bind_values);
                 match qb2.execute(&self.pool).await {
@@ -1152,7 +1132,6 @@ impl DataWriter for MySqlDriver {
                         })
                     }
                     Err(ignore_err) => {
-                        // Both strategies failed — propagate the original error
                         tracing::error!(
                             "[mysql] Both upsert strategies failed for {}: upsert={}, ignore={}",
                             table_ref,
@@ -1207,8 +1186,6 @@ impl DataWriter for MySqlDriver {
             quote_mysql(table)
         };
 
-        // MySQL/MariaDB requieren MODIFY con el tipo completo: se lee de
-        // information_schema para preservar el tipo y solo relajar NOT NULL.
         let col_type = sqlx::query(
             "SELECT column_type \
              FROM information_schema.columns \
@@ -1250,8 +1227,6 @@ impl MySqlDriver {
             }
         }
 
-        // Typed decoders failed. As a last resort let sqlx decode the value into a generic
-        // JSON value: this covers ENUM/SET/JSON and other types, and yields `null` for SQL NULL.
         match row.try_get::<Option<serde_json::Value>, _>(index) {
             Ok(Some(v)) => return v,
             Ok(None) => return Value::Null,
@@ -1325,8 +1300,6 @@ impl crate::db::ScriptTransaction for MySqlScriptTransaction {
     }
 }
 
-/// Sesión transaccional de script sobre MySQL.
-/// Al dropear sin commit/rollback, sqlx revierte la transacción automáticamente.
 pub struct MySqlScriptTransaction {
     tx: sqlx::Transaction<'static, sqlx::MySql>,
 }

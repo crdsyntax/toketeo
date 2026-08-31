@@ -54,14 +54,14 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
         </div>
       )}
 
-      {/* Content */}
+
       <div className="p-5 pb-4 flex flex-col gap-3 flex-1 min-h-0">
-        {/* Icon */}
+
         <div className={cn('flex items-center justify-center w-10 h-10 rounded-[var(--radius-xl)] shrink-0', engineConfig.bgClass)}>
           <EngineIcon className={cn('w-5 h-5', engineConfig.textClass)} />
         </div>
 
-        {/* Title + subtitle */}
+
         <div className="min-w-0">
           <h3 className="font-bold text-sm tracking-tight truncate flex items-center gap-1.5">
             {connection.name}
@@ -77,7 +77,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
           )}
         </div>
 
-        {/* Tags */}
+
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={cn('text-[var(--ch-text-9)] font-bold tracking-widest uppercase px-2 py-0.5 rounded-[var(--radius-2xl)] border', engineConfig.bgClass, engineConfig.textClass, engineConfig.borderClass)}>
             {connection.type.toUpperCase()}
@@ -90,9 +90,9 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
         </div>
       </div>
 
-      {/* Bottom action bar */}
+
       <div className="flex items-center gap-2 px-4 py-3 border-t border-border/50 bg-muted/20">
-        {/* Connect / Disconnect */}
+
         {isActive && onDisconnect ? (
           <button
             onClick={() => onDisconnect(connection.id)}
@@ -115,7 +115,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
           </button>
         )}
 
-        {/* Test */}
+
         {onTest && !isActive && (
           <button
             onClick={() => onTest(connection)}
@@ -130,7 +130,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect, onTest
           </button>
         )}
 
-        {/* Spacer + more actions */}
+
         <div className="ml-auto relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}

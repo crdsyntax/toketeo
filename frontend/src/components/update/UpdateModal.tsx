@@ -36,7 +36,7 @@ export function UpdateModal() {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card w-[520px] max-w-[90vw] max-h-[85vh] rounded-xl border border-border shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
+
         <div className="relative p-6 bg-gradient-to-br from-accent/10 via-background to-background border-b border-border">
           <button
             onClick={dismiss}
@@ -60,9 +60,9 @@ export function UpdateModal() {
           </div>
         </div>
 
-        {/* Content */}
+
         <div className="flex-1 overflow-y-auto p-6 bg-muted/10 space-y-4">
-          {/* Version info */}
+
           <div className="flex items-center gap-3">
             <div className="flex-1 rounded-xl border border-border bg-card p-4 text-center">
               <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">
@@ -86,7 +86,7 @@ export function UpdateModal() {
             </p>
           )}
 
-          {/* Notes */}
+
           {update.body && (
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">
@@ -96,7 +96,7 @@ export function UpdateModal() {
             </div>
           )}
 
-          {/* Progress */}
+
           {downloading && (
             <div className="space-y-2">
               <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -114,7 +114,7 @@ export function UpdateModal() {
           )}
         </div>
 
-        {/* Footer */}
+
         <div className="border-t border-border bg-card p-6 flex items-center justify-end gap-3">
           <Button variant="secondary" onClick={dismiss} disabled={downloading}>
             Not now

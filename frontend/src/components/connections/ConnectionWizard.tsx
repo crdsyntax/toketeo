@@ -143,7 +143,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
         </div>
         <div className="p-4">
 
-          {/* Step indicator */}
+
           <div className="flex gap-1 mb-5">
             {[0, 1, 2].map((s) => (
               <div key={s} className={cn(
@@ -153,7 +153,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
             ))}
           </div>
 
-          {/* Step 1: Choose Engine */}
+
           {step === 0 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground mb-3">Select your database engine:</p>
@@ -185,7 +185,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
             </div>
           )}
 
-          {/* Step 2: Credentials */}
+
           {step === 1 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground mb-2">Enter your connection details:</p>
@@ -235,7 +235,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
             </div>
           )}
 
-          {/* Step 3: Test & Confirm */}
+
           {step === 2 && (
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground mb-2">Review and test your connection:</p>
@@ -283,7 +283,7 @@ export function ConnectionWizard({ onClose, onSave }: ConnectionWizardProps) {
             </div>
           )}
 
-          {/* Navigation */}
+
           <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
             <button
               onClick={() => step === 0 ? onClose() : setStep(step - 1)}

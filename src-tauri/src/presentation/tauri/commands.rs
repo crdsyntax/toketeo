@@ -254,17 +254,12 @@ pub async fn reveal_connection_secret(
     field: String,
     state: State<'_, AppState>,
 ) -> AppResult<Option<String>> {
-    // Revealing a credential is a sensitive operation: requires an unlocked
-    // session (or no master password configured on fresh installs) and the
-    // secrets must not be in the auto-protect blocked state.
     state.require_secret_auth().await?;
     ConnectionService::reveal_secret(&state, &id, &field).await
 }
 
 #[tauri::command]
 pub async fn lock_secrets(state: State<'_, AppState>) -> AppResult<()> {
-    // Soft lock: blocks only secret revelation (copy/reveal), not DB
-    // operations. Used by the auto-protect flow after copying a credential.
     state.lock_secrets().await;
     Ok(())
 }
@@ -304,9 +299,6 @@ pub async fn unlock_session(password: String, state: State<'_, AppState>) -> App
 
 #[tauri::command]
 pub async fn lock_session(state: State<'_, AppState>) -> AppResult<()> {
-    // Lock the UI: blocks sensitive commands (queries, reveals, export/import,
-    // save/delete) which re-require the master password. The derived master key
-    // stays in memory so `connect`/`reconnect` keep working while locked.
     *state.ui_locked.write().await = true;
     Ok(())
 }
@@ -363,8 +355,6 @@ pub async fn store_master_in_keyring(password: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn is_master_in_keyring() -> AppResult<bool> {
-    // Presence check only — the master password itself must never reach the
-    // frontend (hostile webview).
     keyring_service::has_password()
 }
 
@@ -447,11 +437,6 @@ pub async fn disable_totp(state: State<'_, AppState>) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn connect(config: DbConnectionConfig, state: State<'_, AppState>) -> AppResult<String> {
-    // Connecting must always work once the master key is in memory (unlocked at
-    // least once this run): the session lock and the secret-reveal block only
-    // gate queries/reveals/exports, never the ability to reach a database.
-    // `ConnectionService::connect` decrypts stored secrets via
-    // `get_decryption_key`, which is independent of the UI lock state.
     ConnectionService::connect(&state, config).await
 }
 
@@ -739,9 +724,6 @@ pub async fn cancel_script(run_id: String, state: State<'_, AppState>) -> AppRes
     state.script_store.cancel(&run_id).await
 }
 
-// ── Real-time Monitoring / Diagnostics ──────────────────────────────────────
-
-/// List active (non-sleeping) queries for a connection, ordered by TIME DESC.
 #[tauri::command]
 pub async fn monitor_process_list(
     id: String,
@@ -750,7 +732,6 @@ pub async fn monitor_process_list(
     crate::application::monitoring_service::MonitoringService::get_process_list(&state, &id).await
 }
 
-/// Queries with a running time above `min_time` seconds (Sleep excluded).
 #[tauri::command]
 pub async fn monitor_slow_queries(
     id: String,
@@ -763,7 +744,6 @@ pub async fn monitor_slow_queries(
     .await
 }
 
-/// InnoDB engine status with the TRANSACTIONS section extracted (MySQL/MariaDB).
 #[tauri::command]
 pub async fn monitor_innodb_status(
     id: String,
@@ -772,7 +752,6 @@ pub async fn monitor_innodb_status(
     crate::application::monitoring_service::MonitoringService::get_innodb_status(&state, &id).await
 }
 
-/// Kill a running process by numeric ID (validated; blocked on read-only).
 #[tauri::command]
 pub async fn monitor_kill_process(
     id: String,
@@ -982,19 +961,13 @@ pub async fn update_ddl(
                     .execute(&format!("USE {};\n{}", quote_identifier(&db_type, s), sql))
                     .await
             }
-            crate::db::DbType::Postgres => {
-                // execute_with_schema sets the search_path for this statement and
-                // restores it afterwards, so it does not leak into the pool and
-                // break later queries on a recycled connection.
-                driver.execute_with_schema(&sql, s).await
-            }
+            crate::db::DbType::Postgres => driver.execute_with_schema(&sql, s).await,
             _ => driver.execute(&sql).await,
         }
     } else {
         driver.execute(&sql).await
     };
 
-    // Log the DDL update in audit
     let status = if result.is_ok() { "success" } else { "error" };
     let error_msg = result.as_ref().err().map(|e| e.to_string());
 
@@ -1357,8 +1330,6 @@ pub async fn restore_database_selected(
     ExplorerService::restore_database_selected(&state, &id, &file_path, &tables, &schema).await
 }
 
-// ===================== Scheduled Jobs =====================
-
 fn normalize_cron(expr: &str) -> String {
     let trimmed = expr.trim();
     let parts: Vec<&str> = trimmed
@@ -1377,8 +1348,6 @@ pub async fn scheduler_get_databases(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
-    // Only reuse an active session — never open a new connection implicitly
-    // (a dead endpoint would hang for the driver timeout before failing).
     let driver = state.get_connection(&connection_id).await.map_err(|_| {
         AppError::Validation(
             "La conexión no está activa. Conéctala primero desde la barra lateral.".to_string(),
@@ -1398,7 +1367,7 @@ pub async fn scheduler_get_tables(
             "La conexión no está activa. Conéctala primero desde la barra lateral.".to_string(),
         )
     })?;
-    // For MongoDB, pass database as schema so get_db() uses it
+
     driver.fetch_tables(Some(database), None).await
 }
 
@@ -1449,9 +1418,6 @@ pub async fn create_scheduled_job(
     Ok(job)
 }
 
-/// Inject connection details (dbType/host/port/user/password, and database
-/// when missing) into a backup job config so the scheduler can execute the
-/// dump without the user re-entering credentials. Used by create and update.
 async fn inject_backup_connection_details(
     state: &AppState,
     connection_id: &str,
@@ -1474,7 +1440,7 @@ async fn inject_backup_connection_details(
             serde_json::Value::String(pw.expose_secret().to_string()),
         );
     }
-    // Only set database from connection if frontend didn't send one
+
     let has_db = cfg
         .get("database")
         .and_then(|v| v.as_str())
@@ -1492,7 +1458,7 @@ async fn inject_backup_connection_details(
 pub async fn update_scheduled_job(
     id: String,
     name: Option<String>,
-    // `Some(None)` clears the cron (manual-only); `None` leaves it unchanged.
+
     cron_expression: Option<Option<String>>,
     config: Option<JobConfigDto>,
     enabled: Option<bool>,
@@ -1506,7 +1472,6 @@ pub async fn update_scheduled_job(
 
     if let Some(cron_expression) = cron_expression {
         match cron_expression {
-            // Some(None) → clear the schedule (manual-only).
             None => {
                 job.cron_expression = None;
                 job.next_run = None;
@@ -1531,8 +1496,7 @@ pub async fn update_scheduled_job(
 
     if let Some(config) = config {
         let mut config_value = config.to_value();
-        // Backup jobs must keep their injected connection credentials — the
-        // frontend only sends database/tables/outputDir on edit.
+
         if job.job_type == JobType::Backup {
             inject_backup_connection_details(
                 &state,
@@ -1574,7 +1538,6 @@ pub async fn run_job_now(
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let token_clone = cancel_token.clone();
 
-    // Store token in job engine for cancellation
     {
         let engine_guard = state.job_engine.read().await;
         if let Some(ref engine) = *engine_guard {
@@ -1603,8 +1566,6 @@ pub async fn stop_job_now(id: String, state: State<'_, AppState>) -> AppResult<b
     }
 }
 
-// ── Sync Commands ──
-
 #[tauri::command]
 pub async fn save_sync_pipeline(
     pipeline: SyncPipeline,
@@ -1627,8 +1588,6 @@ pub async fn get_sync_pipeline(id: String, state: State<'_, AppState>) -> AppRes
 pub async fn delete_sync_pipeline(id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.storage.delete_sync_pipeline(&id).await
 }
-
-// ── Diagram CRUD ──
 
 #[tauri::command]
 pub async fn save_diagram(
@@ -1701,7 +1660,6 @@ pub async fn validate_sync_config(
     SyncService::validate(&pipeline, source.as_ref(), target.as_ref()).await
 }
 
-/// Get a driver from the runtime HashMap; if not found or the connection is dead, reconnect.
 async fn get_or_connect_driver(
     state: &AppState,
     conn_id: &str,
@@ -1803,7 +1761,6 @@ pub async fn cancel_sync(id: String, state: State<'_, AppState>) -> AppResult<()
     Ok(())
 }
 
-/// Preview table data (first N rows) for the sync wizard
 #[derive(Serialize)]
 pub struct TablePreview {
     pub columns: Vec<String>,
@@ -1842,8 +1799,6 @@ pub async fn get_table_preview(
 
     Ok(TablePreview { columns, rows })
 }
-
-// ── Database & Collection Management ──
 
 #[tauri::command]
 pub async fn create_database(
@@ -2082,8 +2037,6 @@ pub async fn create_collection(
     Ok(())
 }
 
-// ── MongoDB Backup & Restore ──
-
 #[tauri::command]
 pub async fn mongo_backup_database(
     id: String,
@@ -2199,7 +2152,6 @@ pub async fn mongo_restore_database(
             continue;
         }
 
-        // Insert all documents in bulk
         let insert_cmd = serde_json::json!({
             "insert": coll_name,
             "database": db_name,
@@ -2220,8 +2172,6 @@ pub async fn mongo_restore_database(
     )))
 }
 
-// ── Character Commands ──
-
 #[tauri::command]
 pub async fn get_character(state: State<'_, AppState>) -> AppResult<crate::models::Character> {
     state.storage.get_character().await
@@ -2234,8 +2184,6 @@ pub async fn save_character(
 ) -> AppResult<()> {
     state.storage.save_character(&character).await
 }
-
-// ── Schema Compare Commands ──
 
 #[tauri::command]
 pub async fn compare_schemas(
@@ -2357,8 +2305,6 @@ pub async fn cancel_compare(id: String, state: State<'_, AppState>) -> AppResult
     Ok(())
 }
 
-// ── Compare Session Persistence Commands ──
-
 #[tauri::command]
 pub async fn save_compare_session(
     session: crate::models::compare::CompareSession,
@@ -2386,8 +2332,6 @@ pub async fn load_compare_session(
 pub async fn delete_compare_session(id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.storage.delete_compare_session(&id).await
 }
-
-// ── Assistant Message Commands ──
 
 #[tauri::command]
 pub async fn save_assistant_messages(

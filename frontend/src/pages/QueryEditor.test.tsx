@@ -6,11 +6,11 @@ import { useAppStore } from '@/store/useAppStore'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 
-// Mock the hooks
+
 vi.mock('@/hooks/useQueryEditor')
 vi.mock('@/store/useAppStore')
 
-// Mock UI components that might be complex or use Monaco
+
 vi.mock('@/components/query/panels/SqlEditorPanel', () => ({
   SqlEditorPanel: () => <div data-testid="sql-editor">SQL Editor</div>
 }))

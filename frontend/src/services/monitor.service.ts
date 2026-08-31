@@ -39,22 +39,22 @@ export interface InnoDbStatus {
 }
 
 export const monitorService = {
-  /** Active (non-sleeping) queries, ordered by running time. */
+
   processList: async (id: string): Promise<ProcessEntry[]> => {
     return await tauriApi.invoke<ProcessEntry[]>('monitor_process_list', { id })
   },
 
-  /** Queries running longer than `minTime` seconds. */
+
   slowQueries: async (id: string, minTime: number): Promise<ProcessEntry[]> => {
     return await tauriApi.invoke<ProcessEntry[]>('monitor_slow_queries', { id, minTime })
   },
 
-  /** InnoDB engine status with the TRANSACTIONS section extracted. */
+
   innodbStatus: async (id: string): Promise<InnoDbStatus> => {
     return await tauriApi.invoke<InnoDbStatus>('monitor_innodb_status', { id })
   },
 
-  /** Kill a running process by numeric ID. */
+
   killProcess: async (id: string, processId: string): Promise<string> => {
     return await tauriApi.invoke<string>('monitor_kill_process', { id, processId })
   },

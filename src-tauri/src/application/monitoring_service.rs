@@ -3,17 +3,9 @@ use crate::db::DbType;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-/// Real-time query diagnostics for live database sessions.
-///
-/// Implements the operational workflow used when a server saturates CPU:
-/// 1. List active queries (`PROCESSLIST` / `pg_stat_activity`)
-/// 2. Detect slow queries (TIME > threshold, skipping Sleep)
-/// 3. Inspect InnoDB transaction state
-/// 4. Kill the offending process (validated, blocked in read-only mode)
 pub struct MonitoringService;
 
 impl MonitoringService {
-    /// List active (non-sleeping) queries ordered by running time, newest first.
     pub async fn get_process_list(state: &AppState, id: &str) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
         let query = match driver.db_type() {
@@ -43,14 +35,13 @@ impl MonitoringService {
         Ok(result.rows)
     }
 
-    /// Queries with a running time above `min_time` seconds (Sleep excluded).
     pub async fn get_slow_queries(
         state: &AppState,
         id: &str,
         min_time: u64,
     ) -> AppResult<Vec<serde_json::Value>> {
         let driver = state.get_connection(id).await?;
-        // min_time is a validated u64 — safe to inline (no user-controlled text).
+
         let query = match driver.db_type() {
             DbType::Mysql | DbType::Mariadb => {
                 format!(
@@ -85,8 +76,6 @@ impl MonitoringService {
         Ok(result.rows)
     }
 
-    /// InnoDB engine status with the TRANSACTIONS section extracted for quick
-    /// lock/transaction diagnosis (MySQL/MariaDB only).
     pub async fn get_innodb_status(state: &AppState, id: &str) -> AppResult<serde_json::Value> {
         let driver = state.get_connection(id).await?;
         match driver.db_type() {
@@ -114,8 +103,6 @@ impl MonitoringService {
         }
     }
 
-    /// Kill a running process. `process_id` must be a plain integer; the
-    /// operation is blocked on read-only connections. Result is audited.
     pub async fn kill_process(state: &AppState, id: &str, process_id: &str) -> AppResult<String> {
         let trimmed = process_id.trim();
         if trimmed.is_empty() || !trimmed.chars().all(|c| c.is_ascii_digit()) {
@@ -173,10 +160,6 @@ impl MonitoringService {
     }
 }
 
-/// True when `line` is an InnoDB section header: a non-empty line without
-/// lowercase letters whose following line is a dashed underline
-/// (e.g. "FILE I/O" / "--------"). Shared by both section extractors so the
-/// split stays consistent.
 fn is_innodb_header(lines: &[&str], index: usize) -> bool {
     let line = lines[index];
     let has_lowercase = line.chars().any(|c| c.is_ascii_lowercase());
@@ -190,13 +173,10 @@ fn is_innodb_header(lines: &[&str], index: usize) -> bool {
     !line.trim().is_empty() && !has_lowercase && next_is_dashes
 }
 
-/// Extract a named section from the SHOW ENGINE INNODB STATUS text. Sections
-/// are separated by an uppercase header line followed by a dashed underline.
 fn extract_innodb_section(status: &str, name: &str) -> Option<String> {
     let lines: Vec<&str> = status.lines().collect();
     let header = lines.iter().position(|l| l.trim() == name)?;
 
-    // Find the end of the section: the next header or the footer marker.
     let mut end = lines.len();
     let mut i = header + 2;
     while i < lines.len() {
@@ -210,14 +190,9 @@ fn extract_innodb_section(status: &str, name: &str) -> Option<String> {
     Some(lines[header..end].join("\n"))
 }
 
-/// Extract every named section from the SHOW ENGINE INNODB STATUS text, in the
-/// order they appear. Each entry is `{ "name": ..., "content": ... }`, where
-/// the content keeps the header line and its dashed underline (mirrors
-/// `extract_innodb_section`).
 fn extract_innodb_sections(status: &str) -> Vec<serde_json::Value> {
     let lines: Vec<&str> = status.lines().collect();
 
-    // Collect the index of every section header line.
     let mut headers: Vec<usize> = Vec::new();
     for (i, _) in lines.iter().enumerate() {
         if is_innodb_header(&lines, i) {
@@ -225,7 +200,6 @@ fn extract_innodb_sections(status: &str) -> Vec<serde_json::Value> {
         }
     }
 
-    // Stop each section at the next header, or at the footer marker.
     let end_marker = lines
         .iter()
         .position(|l| l.contains("END OF INNODB MONITOR OUTPUT"));
@@ -245,7 +219,6 @@ fn extract_innodb_sections(status: &str) -> Vec<serde_json::Value> {
     sections
 }
 
-/// A single human-readable indicator extracted from the InnoDB status output.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InnodbIndicator {
@@ -253,14 +226,11 @@ struct InnodbIndicator {
     label: &'static str,
     value: String,
     hint: &'static str,
-    /// "ok" | "warning" | "critical" — drives the color coding in the UI.
+
     level: &'static str,
 }
 
-/// Parse `SHOW ENGINE INNODB STATUS` output into easy-to-understand
-/// indicators for non-technical users, plus an overall health verdict.
 fn parse_innodb_summary(status: &str) -> serde_json::Value {
-    // --- Counts from the TRANSACTIONS section ---
     let active_transactions = status
         .lines()
         .filter(|l| l.trim_start().starts_with("---TRANSACTION"))
@@ -274,7 +244,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         .filter_map(|l| capture_u64(l, r"(\d+)\s+row lock\(s\)"))
         .sum::<u64>();
 
-    // --- Buffer pool memory ---
     let buffer_pool_size = capture_u64(status, r"Buffer pool size\s+(\d+)");
     let free_buffers = capture_u64(status, r"Free buffers\s+(\d+)");
     let dirty_pages = capture_u64(status, r"(?:Dirty pages|Modified db pages)\s+(\d+)");
@@ -283,7 +252,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         _ => None,
     };
 
-    // --- Pending I/O (disk backlog) ---
     let writes_re = regex::Regex::new(r"aio writes:\s*\[([^\]]*)\]").unwrap();
     let pending_writes = status
         .lines()
@@ -300,7 +268,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
 
     let mut indicators: Vec<InnodbIndicator> = Vec::new();
 
-    // Transactions / locks
     let (tx_value, tx_level, tx_hint) = if lock_waits > 0 {
         (
             format!("{}", lock_waits),
@@ -328,7 +295,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: tx_level,
     });
 
-    // Lock waits
     indicators.push(InnodbIndicator {
         id: "lock_waits",
         label: "Waiting on locks",
@@ -341,7 +307,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: if lock_waits > 0 { "critical" } else { "ok" },
     });
 
-    // Deadlock
     indicators.push(InnodbIndicator {
         id: "deadlock",
         label: "Deadlock",
@@ -354,7 +319,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: if deadlock_detected { "critical" } else { "ok" },
     });
 
-    // Undo / history backlog
     let history_value = history_list_length
         .map(|v| format!("{}", v))
         .unwrap_or_else(|| "—".to_string());
@@ -371,7 +335,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: if history_high { "warning" } else { "ok" },
     });
 
-    // Buffer pool memory
     let (memory_value, memory_level, memory_hint) = match free_pct {
         Some(pct) if pct < 10.0 => (
             format!("{:.0}%", pct),
@@ -393,7 +356,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: memory_level,
     });
 
-    // Pending writes
     let writes_value = pending_writes
         .map(|v| format!("{}", v))
         .unwrap_or_else(|| "0".to_string());
@@ -410,7 +372,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: if writes_backlog { "warning" } else { "ok" },
     });
 
-    // Dirty pages (memory not yet saved to disk)
     indicators.push(InnodbIndicator {
         id: "dirty_pages",
         label: "Unsaved changes",
@@ -425,7 +386,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: if dirty_pages.map(|v| v > 10000).unwrap_or(false) { "warning" } else { "ok" },
     });
 
-    // Locked rows (aggressiveness of locking)
     indicators.push(InnodbIndicator {
         id: "row_locks",
         label: "Locked rows",
@@ -438,7 +398,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
         level: if row_locks > 0 { "info" } else { "ok" },
     });
 
-    // --- Overall health verdict ---
     let (health, health_message) = if deadlock_detected {
         (
             "critical".to_string(),
@@ -472,7 +431,6 @@ fn parse_innodb_summary(status: &str) -> serde_json::Value {
     })
 }
 
-/// Capture the first u64 from a regex with one capture group.
 fn capture_u64(text: &str, pattern: &str) -> Option<u64> {
     regex::Regex::new(pattern)
         .ok()?

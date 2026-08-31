@@ -99,6 +99,34 @@
   --ch-text-13: var(--ch-ui-font-size);
 }
 
+.paper {
+  --ch-primary: #0a0a0a;
+  --ch-secondary: #eae5da;
+  --ch-accent: #d8d2c3;
+  --ch-background: #f4f2ec;
+
+  --text: #4f4b41;
+  --text-h: var(--ch-primary);
+  --bg: var(--ch-background);
+  --border: #0a0a0a;
+  --code-bg: var(--ch-secondary);
+  --surface: #fbf9f3;
+  --surface-hover: #e9e4d8;
+  --surface-elevated: #fffdf8;
+  --accent: #0a0a0a;
+  --accent-hover: #33302a;
+  --accent-muted: #e3ded1;
+  --accent-bg: color-mix(in srgb, var(--ch-accent) 55%, transparent);
+  --accent-border: color-mix(in srgb, var(--ch-primary) 25%, transparent);
+  --radius: var(--ch-radius, 6px);
+  --ch-ui-font-size: 14px;
+  --ch-text-8: calc(var(--ch-ui-font-size) * 8 / 14);
+  --ch-text-9: calc(var(--ch-ui-font-size) * 9 / 14);
+  --ch-text-10: calc(var(--ch-ui-font-size) * 10 / 14);
+  --ch-text-11: calc(var(--ch-ui-font-size) * 11 / 14);
+  --ch-text-13: var(--ch-ui-font-size);
+}
+
 @layer base {
   html {
     font-size: var(--ch-ui-font-size, 13px);

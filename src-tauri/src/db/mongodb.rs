@@ -14,7 +14,6 @@ use mongodb::{
 };
 use std::time::Instant;
 
-/// Stable type name for schema inference (used by cross-DB table creation).
 fn bson_element_type_name(value: &Bson) -> String {
     match value {
         Bson::Double(_) => "Double".into(),
@@ -40,22 +39,18 @@ fn bson_element_type_name(value: &Bson) -> String {
     }
 }
 
-/// Length (in chars) of the textual content a value would occupy when stored as
-/// a string in the target RDBMS. Used to size VARCHAR columns when creating
-/// tables from MongoDB schema inference.
 fn bson_string_content_len(value: &Bson) -> usize {
     match value {
         Bson::String(s) => s.chars().count(),
         Bson::ObjectId(oid) => oid.to_hex().len(),
         Bson::Boolean(_) => 1,
-        Bson::Int32(_) | Bson::Int64(_) => 20, // max i64 length
+        Bson::Int32(_) | Bson::Int64(_) => 20,
         Bson::Double(f) => format!("{}", f).len(),
-        Bson::DateTime(_) => 23, // ISO-8601 with millis
+        Bson::DateTime(_) => 23,
         Bson::Decimal128(d) => format!("{}", d).len(),
         Bson::RegularExpression(re) => re.pattern.len() + re.options.len() + 4,
         Bson::Binary(b) => b.bytes.len() * 2,
-        // For nested objects/arrays, approximate with serialized JSON length.
-        // Cap at a reasonable size to avoid pathological growth.
+
         other => {
             let len = bson_to_json(other).to_string().len();
             if len > 65535 {
@@ -127,14 +122,9 @@ impl MongoDbDriver {
             AppError::Connection(format!("Failed to parse MongoDB URL: {}", e))
         })?;
 
-        // If directConnection is explicitly set in the URL, let it be.
-        // Otherwise, apply our local/replicaSet logic.
         if client_options.direct_connection.is_none() {
             let is_local = url.contains("localhost") || url.contains("127.0.0.1");
 
-            // Special case: If it's a local address but also contains replicaSet,
-            // it might be an SSH tunnel to a replica set.
-            // In that case, we should allow discovery (direct_connection = false).
             if is_local && !url.contains("replicaSet=") {
                 tracing::debug!(
                     "Localhost detected and no replicaSet, forcing direct_connection = true"
@@ -154,7 +144,6 @@ impl MongoDbDriver {
             client_options.direct_connection
         );
 
-        // Apply pool config if provided
         if let Some(ref cfg) = pool_config {
             client_options.max_pool_size = Some(cfg.max_connections);
             if let Some(idle) = cfg.idle_timeout {
@@ -165,7 +154,6 @@ impl MongoDbDriver {
             }
         }
 
-        // Set longer timeouts for SSH tunnel latency
         client_options.server_selection_timeout = Some(std::time::Duration::from_secs(10));
         client_options.connect_timeout = Some(std::time::Duration::from_secs(10));
         client_options.retry_writes = Some(false);
@@ -186,7 +174,6 @@ impl MongoDbDriver {
             AppError::Connection(format!("Failed to create MongoDB client: {}", e))
         })?;
 
-        // Verify connection with a ping
         tracing::debug!(
             "Pinging MongoDB server at {} to verify connection...",
             sanitized_url
@@ -239,7 +226,6 @@ impl DbDriver for MongoDbDriver {
     async fn execute(&self, query: &str) -> AppResult<QueryResult> {
         let start = Instant::now();
 
-        // Try to parse query as JSON command
         let json_query: serde_json::Value = serde_json::from_str(query).map_err(|e| {
             AppError::Validation(format!("MongoDB query must be valid JSON: {}", e))
         })?;
@@ -248,10 +234,6 @@ impl DbDriver for MongoDbDriver {
             .as_object()
             .ok_or_else(|| AppError::Validation("MongoDB query must be a JSON object".into()))?;
 
-        // Cell update support:
-        // { "database": "db", "collection": "name", "update": { "filter": {...}, "set": { "col": value } } }
-        // Must run BEFORE the 'collection' find branch below, which also
-        // matches any query that carries a "collection" field.
         if let Some(update_spec) = obj
             .get("update")
             .and_then(|v| v.as_object())
@@ -329,7 +311,6 @@ impl DbDriver for MongoDbDriver {
             });
         }
 
-        // Simple 'find' support: { "collection": "name", "find": { ... }, "limit": 100 }
         if let Some(coll_name) = obj.get("collection").and_then(|v| v.as_str()) {
             let db_name = obj
                 .get("database")
@@ -433,7 +414,6 @@ impl DbDriver for MongoDbDriver {
             });
         }
 
-        // Generic command support: { "listCollections": 1 }
         let db_name = obj
             .get("database")
             .and_then(|v| v.as_str())
@@ -445,7 +425,6 @@ impl DbDriver for MongoDbDriver {
             json_query
         );
 
-        // Strip non-command fields before sending to run_command
         let mut cmd_obj = json_query.clone();
         if let Some(map) = cmd_obj.as_object_mut() {
             map.remove("database");
@@ -473,7 +452,6 @@ impl DbDriver for MongoDbDriver {
 
         tracing::info!("[MongoDB Execute] path=command, raw_result={}", json_result);
 
-        // Flatten cursor-based results (listCollections, listIndexes, etc.)
         if let Some(cursor) = json_result.get("cursor").and_then(|v| v.as_object()) {
             if let Some(batch) = cursor
                 .get("firstBatch")
@@ -511,7 +489,6 @@ impl DbDriver for MongoDbDriver {
             }
         }
 
-        // Flatten databases array (listDatabases command)
         if let Some(dbs) = json_result.get("databases").and_then(|v| v.as_array()) {
             if !dbs.is_empty() {
                 let rows: Vec<serde_json::Value> = dbs.to_vec();
@@ -557,7 +534,6 @@ impl DbDriver for MongoDbDriver {
     }
 
     async fn fetch_schemas(&self) -> AppResult<Vec<String>> {
-        // For MongoDB, we treat databases as schemas to allow UI switching.
         self.fetch_databases().await
     }
 
@@ -588,7 +564,7 @@ impl DbDriver for MongoDbDriver {
         _schema: Option<String>,
         _filter: Option<String>,
     ) -> AppResult<Vec<String>> {
-        Ok(vec![]) // MongoDB views are listed in collections usually, or needs special filtering
+        Ok(vec![])
     }
 
     async fn fetch_procedures(
@@ -625,7 +601,6 @@ impl DbDriver for MongoDbDriver {
         let db = self.client.database(&db_name);
         let coll = db.collection::<Document>(collection_name);
 
-        // Sample up to 200 documents to guess "schema" and infer sizes.
         const SAMPLE_SIZE: i64 = 200;
         let mut cursor = coll
             .find(doc! {})
@@ -633,7 +608,6 @@ impl DbDriver for MongoDbDriver {
             .await
             .map_err(|e| AppError::Database(format!("Failed to sample collection: {}", e)))?;
 
-        // Per-field info: BSON type name and longest observed string length.
         let mut field_info: std::collections::HashMap<String, (String, usize)> =
             std::collections::HashMap::new();
 
@@ -648,7 +622,7 @@ impl DbDriver for MongoDbDriver {
                         if str_len > *max {
                             *max = str_len;
                         }
-                        // Prefer a concrete type over a Null placeholder
+
                         if *t == "Null" || *t == "Undefined" {
                             *t = type_name.clone();
                         }
@@ -657,8 +631,6 @@ impl DbDriver for MongoDbDriver {
             }
         }
 
-        // Always include an `_id` field, as it is standard in MongoDB,
-        // even if the collection is empty.
         if !field_info.contains_key("_id") {
             field_info.insert("_id".to_string(), ("ObjectId".to_string(), 24));
         }
@@ -729,7 +701,7 @@ impl DbDriver for MongoDbDriver {
         _table: &str,
         _schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        Ok(vec![]) // MongoDB doesn't have enforced FKs
+        Ok(vec![])
     }
 
     async fn fetch_constraints(
@@ -747,7 +719,7 @@ impl DbDriver for MongoDbDriver {
         schema: Option<String>,
     ) -> AppResult<String> {
         let db = self.get_db(schema)?;
-        // For Mongo, "DDL" could be collection options or validation rules
+
         let mut cursor = db
             .list_collections()
             .filter(doc! { "name": name })
@@ -808,14 +780,10 @@ impl DbDriver for MongoDbDriver {
     }
 
     async fn close(&self) -> AppResult<()> {
-        Ok(()) // Client is dropped automatically
+        Ok(())
     }
 }
 
-/// Resuelve database + collection a partir de un nombre de tabla.
-/// Si se provee `schema`, se usa como database y `table` como collection.
-/// Si no hay `schema`, y `table` contiene un `.`, se interpreta como `database.collection`.
-/// Si no hay schema ni punto, se usa `default_db` como database.
 fn resolve_table_names<'a>(
     table: &'a str,
     schema: Option<&'a str>,
@@ -936,7 +904,6 @@ fn json_value_to_bson(value: &serde_json::Value) -> Bson {
         serde_json::Value::String(s) => Bson::String(s.clone()),
         serde_json::Value::Array(arr) => Bson::Array(arr.iter().map(json_value_to_bson).collect()),
         serde_json::Value::Object(map) => {
-            // Handle MongoDB Extended JSON v2 format
             if map.len() == 1 {
                 if let Some(serde_json::Value::String(hex)) = map.get("$oid") {
                     if let Ok(oid) = mongodb::bson::oid::ObjectId::parse_str(hex) {

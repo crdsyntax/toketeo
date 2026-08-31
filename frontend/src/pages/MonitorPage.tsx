@@ -150,8 +150,8 @@ function ProcessTable({ conn, entries, onKill }: {
   )
 }
 
-/** True when a line looks like an InnoDB section header: non-empty, no
- * lowercase letters, and the next line is a dashed underline. */
+
+
 function isSectionHeader(line: string, next: string | undefined): boolean {
   const t = line.trim()
   if (!t || /[a-z]/.test(t)) return false
@@ -159,7 +159,7 @@ function isSectionHeader(line: string, next: string | undefined): boolean {
   return nt !== '' && nt.split('').every((c) => c === '-')
 }
 
-/** Highlight lock/deadlock and running-transaction keywords in a body line. */
+
 function highlightLine(line: string) {
   return line.split(/(LOCK WAIT|DEADLOCK|ACTIVE)/g).map((part, i) => {
     if (part === 'LOCK WAIT' || part === 'DEADLOCK') {
@@ -172,7 +172,7 @@ function highlightLine(line: string) {
   })
 }
 
-/** Terminal-style viewer for the raw InnoDB status, one section at a time. */
+
 function InnodbRawViewer({ sections }: { sections: InnoDbSection[] }) {
   const [copied, setCopied] = useState(false)
   const [activeName, setActiveName] = useState<string | null>(null)
@@ -193,7 +193,7 @@ function InnodbRawViewer({ sections }: { sections: InnoDbSection[] }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      /* clipboard unavailable in some environments */
+
     }
   }, [active])
 
@@ -209,7 +209,7 @@ function InnodbRawViewer({ sections }: { sections: InnoDbSection[] }) {
 
   return (
     <div className="shrink-0 overflow-hidden border border-border rounded-md bg-surface shadow-sm flex flex-col">
-      {/* Traffic-light chrome header */}
+
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/40">
         <span className="flex gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
@@ -229,7 +229,7 @@ function InnodbRawViewer({ sections }: { sections: InnoDbSection[] }) {
         </button>
       </div>
 
-      {/* Section pills */}
+
       {sections.length > 1 && (
         <div className="flex items-center gap-1 flex-wrap px-2 py-1.5 border-b border-border bg-muted/20">
           {sections.map((s) => (
@@ -249,7 +249,7 @@ function InnodbRawViewer({ sections }: { sections: InnoDbSection[] }) {
         </div>
       )}
 
-      {/* Line-numbered body */}
+
       <div className="max-h-80 min-h-0 overflow-auto">
         <pre className="py-2 pr-3 text-[var(--ch-text-10)] font-mono text-xs leading-relaxed">
           {lines.map((line, i) => {
@@ -310,7 +310,7 @@ function InnodbView({ status }: { status: InnoDbStatus | undefined }) {
 
   return (
     <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-3 pr-1">
-      {/* Health verdict */}
+
       <div className={cn('flex items-start gap-3 px-4 py-3 rounded-lg border', healthConfig.color)}>
         <HealthIcon className="w-6 h-6 shrink-0 mt-0.5" />
         <div className="min-w-0">
@@ -319,7 +319,7 @@ function InnodbView({ status }: { status: InnoDbStatus | undefined }) {
         </div>
       </div>
 
-      {/* Indicators */}
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
         {summary.indicators.map((ind) => {
           const st = levelStyles[ind.level]
@@ -340,7 +340,7 @@ function InnodbView({ status }: { status: InnoDbStatus | undefined }) {
         })}
       </div>
 
-      {/* Raw output (collapsed for non-technical users) */}
+
       <div className="shrink-0">
         <button
           onClick={() => setShowRaw((v) => !v)}
@@ -372,7 +372,7 @@ export default function MonitorPage() {
     queryFn: () => connectionService.getAll(),
   })
 
-  // Default to the active connection, or the first connected one.
+
   const connId = selectedConnId || activeConnection?.id || connectedConnectionIds[0] || ''
   const conn = connections.find((c: Connection) => c.id === connId) || activeConnection || null
 

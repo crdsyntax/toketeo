@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import type React from 'react'
 import { X, Minus, Square, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { DialogProps, WindowState } from '@/types/ui'
 
-export interface DialogProps {
-  open: boolean
-  onClose: () => void
-  title?: string
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
-  children: React.ReactNode
-  className?: string
-  disableWindowControls?: boolean
-}
-
-type WindowState = 'normal' | 'minimized' | 'maximized'
+export type { DialogProps, DialogSize, WindowState } from '@/types/ui'
 
 const SIZE_MAP: Record<string, string> = {
   sm: 'w-[400px]',

@@ -80,7 +80,7 @@ interface DataTabProps {
   currentSchema?: string;
 }
 
-/** State for the visual diff confirmation panel. */
+
 interface PendingCellEdit {
   row: DbRow;
   column: string;
@@ -88,7 +88,7 @@ interface PendingCellEdit {
   nextValue: DbValue;
 }
 
-/** State for the inline SQL preview panel. */
+
 interface SqlPreviewState {
   isOpen: boolean;
   sql: string;
@@ -133,13 +133,13 @@ export function DataTab({
   const SQL_ACTIONS = ['SELECT', 'UPDATE', 'INSERT', 'DELETE', 'JSON'] as const;
   type SqlAction = (typeof SQL_ACTIONS)[number];
 
-  // Undo/Redo history
+
   const [history, setHistory] = useState<
     { row: DbRow; col: string; prev: DbValue; next: DbValue }[]
   >([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  // Context menu state
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -149,21 +149,20 @@ export function DataTab({
     dateTime?: boolean;
   } | null>(null);
 
-  // Phase 9 — Inline SQL preview panel (replaces SqlGeneratorModal)
+
   const [sqlPreview, setSqlPreview] = useState<SqlPreviewState>({
     isOpen: false,
     sql: '',
     title: '',
   });
 
-  // Phase 9 — Visual diff before committing a cell edit
+
   const [pendingEdit, setPendingEdit] = useState<PendingCellEdit | null>(null);
-  // Position (viewport-fixed) for the Review Change panel, computed from the
-  // edited cell so it appears near the column being edited.
+
   const [reviewPos, setReviewPos] = useState<{ top: number; left: number } | null>(null);
   const editingCellRef = useRef<HTMLTableCellElement | null>(null);
 
-  // Multi-row selection (indices into `sortedRows`)
+
   const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
   const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null);
   const [batchModal, setBatchModal] = useState<'update' | 'truncate' | null>(null);
@@ -283,10 +282,7 @@ export function DataTab({
 
   const primaryKeys = useMemo(() => queryData?.primary_keys ?? [], [queryData]);
 
-  // Metadata de columnas para edición inteligente:
-  //  - enum → <select> con las opciones registradas
-  //  - boolean/tinyint(1) → switch
-  //  - date/time → acción de menú contextual "Set NOW()"
+
   const columnMeta = useMemo(() => {
     const map: Record<string, ColumnResponse> = {};
     for (const c of columns ?? []) map[c.name] = c;
@@ -305,12 +301,12 @@ export function DataTab({
     return t.includes('date') || t.includes('time');
   };
 
-  /** Tipo completo de la columna (p.ej. numeric(10,4), vector(768)) si la
-   *  metadata está disponible; si no, el tipo corto del result set. */
+
+
   const columnTypeDisplay = (col: string, idx: number): string =>
     columnMeta[col]?.type || queryData?.columnTypes?.[idx] || '';
 
-  /** Representación on/off para columnas booleanas según el motor. */
+
   const booleanRepr = (col: string): { on: string; off: string } => {
     const t = (columnMeta[col]?.type ?? '').toLowerCase();
     return t === 'boolean' || t === 'bool'
@@ -323,7 +319,7 @@ export function DataTab({
     [selectedRowIndexes, sortedRows],
   );
 
-  // Reset the selection whenever a new result set is loaded.
+
   const [prevQueryData, setPrevQueryData] = useState<QueryResult | null>(queryData);
   if (queryData !== prevQueryData) {
     setPrevQueryData(queryData);
@@ -469,17 +465,13 @@ export function DataTab({
     setEditValue(formatEditValue(value));
   };
 
-  /**
-   * Phase 9 — Visual Diff: instead of immediately calling updateCell,
-   * we stage the edit in pendingEdit so the user can review the diff panel
-   * before confirming. This prevents accidental mutations in production.
-   */
+
+
   const handleSaveEdit = (row: DbRow) => {
     if (!editingCell) return;
     const prevValue = row[editingCell.column];
     const nextValue = coerceEditedDateValue(editValue, prevValue);
-    // When the Review Change panel is disabled (Settings → Query Editor →
-    // Inline edition), apply the edit immediately.
+
     if (!inlineEditReview) {
       updateCell(row, editingCell.column, nextValue);
       const newHistory = history.slice(0, historyIndex + 1);
@@ -494,8 +486,7 @@ export function DataTab({
       setEditingCell(null);
       return;
     }
-    // Place the review panel next to the edited cell: centered under it when
-    // the cell is in the upper half of the viewport, above it otherwise.
+
     const PANEL_W = 400;
     const PANEL_H = 210;
     const rect = editingCellRef.current?.getBoundingClientRect();
@@ -512,7 +503,7 @@ export function DataTab({
     } else {
       setReviewPos(null);
     }
-    // Stage for diff review
+
     setPendingEdit({
       row,
       column: editingCell.column,
@@ -522,12 +513,12 @@ export function DataTab({
     setEditingCell(null);
   };
 
-  /** Phase 9 — Confirm a staged pending cell edit after visual diff review. */
+
   const confirmPendingEdit = () => {
     if (!pendingEdit) return;
     const nextValue = pendingEdit.nextValue;
     updateCell(pendingEdit.row, pendingEdit.column, nextValue);
-    // Persist in undo/redo history
+
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push({
       row: pendingEdit.row,
@@ -606,7 +597,7 @@ export function DataTab({
     try {
       if (action === 'JSON') {
         const jsonStr = JSON.stringify(contextMenu.row, null, 2);
-        // Phase 9: show inline preview panel, not a blocking modal
+
         setSqlPreview({ isOpen: true, sql: jsonStr, title: 'Row — JSON Export' });
       } else {
         const sql = await invoke<string>('generate_sql', {
@@ -619,8 +610,7 @@ export function DataTab({
           },
         });
         setContextMenu(null);
-        // Enviar la consulta al SQL editor en un nuevo script, ligado a la
-        // conexión/esquema actuales.
+
         if (currentSchema && storeConnection?.id === activeConnection.id) {
           setActiveConnectionDatabase(currentSchema);
         }
@@ -818,7 +808,7 @@ export function DataTab({
             </div>
           )}
         </div>
-        
+
         {isMongo && showAdvancedMongo && (
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs w-full max-w-xl bg-background/50 p-2 rounded border border-border/50">
             <div className="flex flex-col gap-1">
@@ -1260,8 +1250,6 @@ export function DataTab({
             </div>
           </div>
         )}
-
-      {/* Phase 9: Visual Diff Panel for cell edits — positioned near the edited cell */}
       {pendingEdit && reviewPos && (
         <ReviewChangePanel
           column={pendingEdit.column}
@@ -1272,8 +1260,6 @@ export function DataTab({
           position={reviewPos}
         />
       )}
-
-      {/* Batch action modal: UPDATE / SET NULL for the selected rows */}
       {batchModal && queryData && (
         <div
           className="fixed inset-0 z-[400] flex items-center justify-center bg-black/40"
@@ -1378,8 +1364,6 @@ export function DataTab({
           </div>
         </div>
       )}
-
-      {/* Phase 9: Inline SQL Preview Panel */}
       <div
         ref={sqlPreviewRef}
         className={cn(
@@ -1395,8 +1379,7 @@ export function DataTab({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                navigator.clipboard.writeText(sqlPreview.sql);
-                // Optional: show small toast here
+                navigator.clipboard.writeText(sqlPreview.sql);
               }}
               className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
               title="Copy to clipboard"

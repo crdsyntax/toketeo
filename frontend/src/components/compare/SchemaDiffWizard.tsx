@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils'
 import { tauriApi } from '@/lib/api'
 import { compareService } from '@/services/compare.service'
 import { schemaService } from '@/services/schema.service'
-import { CompareResultsList, buildCompareItems } from '@/components/compare/CompareResultsList'
+import { CompareResultsList } from '@/components/compare/CompareResultsList'
+import { buildCompareItems } from '@/lib/compareHelpers'
 import { CompareSummary } from '@/components/compare/CompareSummary'
 import { ScriptReview } from '@/components/compare/ScriptReview'
 import type { Connection } from '@/types/database'
@@ -263,7 +264,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
         filterName: 'SQL Files',
         filterExt: 'sql',
       })
-    } catch { /* user cancelled */ }
+    } catch {  }
   }
 
   const toggleScriptStatement = (id: string) => {
@@ -288,7 +289,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
 
   return (
     <>
-      {/* Minimized bar */}
+
       {windowState === 'minimized' && (
         <div
           className="fixed bottom-0 right-4 z-[300] flex items-center gap-2 px-3 py-2 bg-surface border border-border border-b-0 rounded-t-lg shadow-lg cursor-pointer hover:bg-muted/50 transition-colors select-none"
@@ -305,7 +306,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
         </div>
       )}
 
-      {/* Main dialog */}
+
       {windowState !== 'minimized' && (
         <div
           ref={wizardRef}
@@ -324,7 +325,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
             }}
             onClick={bringToFront}
           >
-            {/* Header / drag handle */}
+
             <div
               className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0 cursor-grab active:cursor-grabbing select-none"
               onPointerDown={handleTitlePointerDown}
@@ -348,7 +349,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
               </div>
             </div>
 
-            {/* Step indicator */}
+
             <div className="flex items-center gap-0 px-5 py-2.5 border-b border-border/50 bg-muted/10 shrink-0">
               {(['configure', 'compare', 'script'] as Step[]).map((s, i) => {
                 const labels = { configure: '1. Configure', compare: '2. Review', script: '3. Script' }
@@ -375,7 +376,7 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
               )}
             </div>
 
-            {/* Body */}
+
             <div className="flex-1 overflow-y-auto p-5 min-h-0">
               {step === 'configure' && (
                 <div className="space-y-5">
@@ -556,8 +557,6 @@ export function SchemaDiffWizard({ open, onClose, connections }: SchemaDiffWizar
                 </div>
               )}
             </div>
-
-            {/* Footer */}
             <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10 shrink-0">
               <div className="text-[var(--ch-text-9)] text-muted-foreground">
                 {step === 'configure' && 'Configure source and target databases'}

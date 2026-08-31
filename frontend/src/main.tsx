@@ -19,12 +19,12 @@ const queryClient = new QueryClient({
   },
 })
 
-// Gracefully close all DB connections before window closes
+
 getCurrentWindow().onCloseRequested(async () => {
   try {
     await connectionService.disconnectAll()
   } catch {
-    // best-effort cleanup
+
   }
 })
 

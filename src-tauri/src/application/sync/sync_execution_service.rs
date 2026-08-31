@@ -8,27 +8,19 @@ use crate::error::AppResult;
 use crate::models::sync::{PipelineStatus, SyncPipeline};
 use crate::state::{AppState, SyncControl};
 
-/// Orchestrates async sync pipeline execution: schema filling, connection
-/// acquisition, keepalive, event streaming, primary-key auto-detection and
-/// background execution. Shared by the Tauri `start_sync` command and, for
-/// blocking runs, the assistant `sync` tool.
 pub struct SyncExecutionService;
 
 impl SyncExecutionService {
-    /// Load a pipeline by id and start it in the background.
     pub async fn start(state: &AppState, app_handle: AppHandle, id: &str) -> AppResult<()> {
         let pipeline = state.storage.get_sync_pipeline(id).await?;
         Self::start_pipeline(state, app_handle, pipeline).await
     }
 
-    /// Start an already-loaded pipeline in the background, emitting
-    /// `sync:event` progress events via the app handle.
     pub async fn start_pipeline(
         state: &AppState,
         app_handle: AppHandle,
         mut pipeline: SyncPipeline,
     ) -> AppResult<()> {
-        // Fill schemas from connection configs if pipeline doesn't have them.
         Self::fill_schemas(state, &mut pipeline).await;
 
         tracing::info!(
@@ -70,21 +62,18 @@ impl SyncExecutionService {
 
         let controller = state.sync_controller.clone();
 
-        // Prevent session cleanup from closing pools while sync is running.
         let source_conn_id = pipeline.source_connection_id.clone();
         let target_conn_id = pipeline.target_connection_id.clone();
         state.mark_session_in_use(&source_conn_id, true).await;
         state.mark_session_in_use(&target_conn_id, true).await;
 
-        // Keepalive: periodically touch source & target sessions so the cleanup
-        // task does not close their pools while the sync is running.
         let keepalive_source = source_conn_id.clone();
         let keepalive_target = target_conn_id.clone();
         let keepalive_handle = app_handle.clone();
         let (keepalive_tx, mut keepalive_rx) = tokio::sync::oneshot::channel::<()>();
         tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-            // skip the first immediate tick
+
             interval.tick().await;
             loop {
                 tokio::select! {
@@ -112,9 +101,6 @@ impl SyncExecutionService {
                 pipeline.tables.len(),
             );
 
-            // Detect the correct source schema before PK/FK metadata queries
-            // so they run against the right schema (the configured one may be
-            // the database name instead of the actual schema).
             if let Some(schema) = SyncService::detect_source_schema(
                 source_driver.as_ref(),
                 &pipeline.tables,
@@ -130,14 +116,10 @@ impl SyncExecutionService {
                 );
             }
 
-            // Auto-detect primary keys for tables that don't have them.
             Self::auto_detect_primary_keys(&mut pipeline, source_driver.as_ref()).await;
 
-            // Reorder tables by FK dependencies (parents before children) to
-            // avoid foreign key violations during data load.
             Self::order_tables_by_fk(&mut pipeline, source_driver.as_ref()).await;
 
-            // Warn when keyset pagination would run on a non-indexed PK.
             Self::validate_keyset_indexes(&pipeline, source_driver.as_ref()).await;
 
             let pipeline_result = SyncService::execute_pipeline(
@@ -165,10 +147,8 @@ impl SyncExecutionService {
                 let _ = app_handle.emit("sync:error", &e.to_string());
             }
 
-            // Stop the keepalive task — sessions can now idle normally.
             let _ = keepalive_tx.send(());
 
-            // Release in_use flags so cleanup can expire idle sessions again.
             let st = unmark_handle.state::<AppState>();
             st.mark_session_in_use(&unmark_source, false).await;
             st.mark_session_in_use(&unmark_target, false).await;
@@ -179,7 +159,6 @@ impl SyncExecutionService {
         Ok(())
     }
 
-    /// Fill missing source/target schemas from the connection configs.
     pub async fn fill_schemas(state: &AppState, pipeline: &mut SyncPipeline) {
         if pipeline.source_schema.is_none() {
             if let Ok(cfg) = state
@@ -201,8 +180,6 @@ impl SyncExecutionService {
         }
     }
 
-    /// Auto-detect primary keys for tables that don't have them, in chunks of 5.
-    /// Shared by the async runner and the assistant's blocking `sync` tool.
     pub async fn auto_detect_primary_keys(pipeline: &mut SyncPipeline, source: &dyn DbDriver) {
         let tables_needing_pk: Vec<usize> = pipeline
             .tables
@@ -270,9 +247,6 @@ impl SyncExecutionService {
         }
     }
 
-    /// Warn when the keyset pagination PK has no index on the source. Keyset
-    /// pagination (`WHERE pk > $1 ORDER BY pk LIMIT $2`) degrades to full scans
-    /// + sorts when the PK column is not indexed, making syncs O(n²). Read-only.
     pub async fn validate_keyset_indexes(pipeline: &SyncPipeline, source: &dyn DbDriver) {
         for table in &pipeline.tables {
             let Some(pk) = table
@@ -306,10 +280,6 @@ impl SyncExecutionService {
         }
     }
 
-    /// Reorder `pipeline.tables` according to the source FK dependency graph
-    /// (parents before children). Never fails: if FK metadata is unavailable it
-    /// keeps the original order. Shared by the async runner and the assistant's
-    /// blocking `sync` tool.
     pub async fn order_tables_by_fk(pipeline: &mut SyncPipeline, source: &dyn DbDriver) {
         match FkOrderer::order_tables(
             pipeline.tables.clone(),

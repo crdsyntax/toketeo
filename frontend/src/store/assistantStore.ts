@@ -29,7 +29,7 @@ interface AssistantState {
   schemaCache: SchemaCache
   isStreaming: boolean
   pendingConfirmation: { question: string } | null
-  /** In-progress streamed answer (deltas + tool status) shown while isStreaming. */
+
   liveMessage: { content: string; status: string | null } | null
 
   setActiveTab: (tab: AssistantTab) => void
@@ -81,7 +81,7 @@ export const useAssistantStore = create<AssistantState>()(
       partialize: (state) => ({
         onboardingCompleted: state.onboardingCompleted,
         dismissedTips: state.dismissedTips,
-        // Retain only the last 50 active messages in localStorage to prevent quota exhaustion
+
         messages: state.messages.slice(-50),
       }),
     },

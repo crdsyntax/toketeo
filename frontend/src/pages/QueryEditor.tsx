@@ -120,7 +120,7 @@ export default function QueryEditor() {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
         setShowShortcuts(true)
       }
-      // Ctrl/Cmd+I is handled globally by the AssistantDrawer.
+
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -264,7 +264,7 @@ export default function QueryEditor() {
         </div>
       )}
 
-      <EditorToolbar 
+      <EditorToolbar
         onNew={() => addTab()}
         onOpen={handleFileImport}
         onSave={handleSaveScript}
@@ -306,8 +306,6 @@ export default function QueryEditor() {
           onRollback={handleRollback}
         />
       )}
-
-      {/* History panel floating dropdown */}
       {showHistory && (
         <div className="relative">
           <QueryHistoryPanel
@@ -323,7 +321,7 @@ export default function QueryEditor() {
         </div>
       )}
 
-      <ResultsModal 
+      <ResultsModal
         isOpen={showResultModal}
         activeTab={activeTab}
         modalRect={modalRect}
@@ -351,7 +349,7 @@ export default function QueryEditor() {
         handleCopyCell={handleCopyCell}
       />
 
-      <QueryMenus 
+      <QueryMenus
         showContextMenu={showContextMenu}
         removeTab={removeTab}
         setShowContextMenu={setShowContextMenu}
@@ -391,7 +389,7 @@ export default function QueryEditor() {
               )}
               {(() => {
                 return (
-                  <SqlEditorPanel 
+                  <SqlEditorPanel
                     activeTab={activeTab}
                     onToggle={() => togglePanel('editor')}
                     updateTabQuery={updateTabQuery}
@@ -410,7 +408,7 @@ export default function QueryEditor() {
           )}
 
           {panels.editor && panels.results && (
-            <div 
+            <div
               className="h-1 w-full cursor-row-resize bg-border/60 hover:bg-primary/70 active:bg-primary transition-colors shrink-0 z-50 relative"
               onMouseDown={(e) => {
                 e.preventDefault()

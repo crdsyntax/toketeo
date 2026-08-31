@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { 
-  MISSIONS, 
-  type MissionType, 
-  calculateLevel, 
-  GAMIFICATION_CONFIG, 
-  APP_PERKS 
+import {
+  MISSIONS,
+  type MissionType,
+  calculateLevel,
+  GAMIFICATION_CONFIG,
+  APP_PERKS
 } from '../lib/gamification';
 import toast from 'react-hot-toast';
 
@@ -20,16 +20,16 @@ interface GamificationState {
   xp: number;
   streak: number;
   lastLoginDate: string | null;
-  
-  // Progress tracking
+
+
   progress: Record<MissionType, number>;
   completedMissions: string[];
   unlockedPerks: string[];
 
-  // Track already-executed queries (hash → first execution already rewarded)
+
   executedQueryHashes: string[];
 
-  // Actions
+
   addXP: (amount: number, reason?: string) => void;
   trackAction: (type: MissionType, amount?: number) => void;
   checkStreak: () => void;
@@ -60,10 +60,10 @@ export const useGamificationStore = create<GamificationState>()(
         const { xp, level, unlockedPerks, completedMissions } = get();
         const newXp = xp + amount;
         const newLevel = calculateLevel(newXp);
-        
+
         if (newLevel > level) {
-          toast.success(`🎉 Level Up! You reached Level ${newLevel}!`, { 
-            duration: 5000, 
+          toast.success(`🎉 Level Up! You reached Level ${newLevel}!`, {
+            duration: 5000,
             position: 'bottom-right',
             style: { background: '#10b981', color: '#fff' }
           });
@@ -93,8 +93,8 @@ export const useGamificationStore = create<GamificationState>()(
         const newProgress = currentProgress + amount;
 
         const newlyCompleted = MISSIONS.filter(
-          m => m.type === type && 
-               !completedMissions.includes(m.id) && 
+          m => m.type === type &&
+               !completedMissions.includes(m.id) &&
                newProgress >= m.targetCount
         );
 
@@ -122,7 +122,7 @@ export const useGamificationStore = create<GamificationState>()(
           addXP(totalXpGained);
         }
 
-        // Re-check perks now that quests may have been completed
+
         const newUnlockedPerks = calculateUnlockedPerks(level, newCompletedMissions);
         const freshlyUnlocked = newUnlockedPerks.filter(p => !unlockedPerks.includes(p));
 
@@ -145,8 +145,8 @@ export const useGamificationStore = create<GamificationState>()(
       checkStreak: () => {
         const { lastLoginDate, streak, addXP, trackAction } = get();
         const today = new Date().toISOString().split('T')[0];
-        
-        if (lastLoginDate === today) return; // Already logged in today
+
+        if (lastLoginDate === today) return;
 
         if (!lastLoginDate) {
           set({ lastLoginDate: today, streak: 1 });
@@ -162,12 +162,12 @@ export const useGamificationStore = create<GamificationState>()(
         if (diffDays === 1) {
           const newStreak = streak + 1;
           set({ lastLoginDate: today, streak: newStreak });
-          
+
           const rawStreakXp = GAMIFICATION_CONFIG.STREAK_BASE_XP + (newStreak * GAMIFICATION_CONFIG.STREAK_BONUS_PER_DAY);
           const streakXp = Math.min(rawStreakXp, GAMIFICATION_CONFIG.STREAK_MAX_BONUS);
           addXP(streakXp, `Daily Login Streak: ${newStreak}🔥`);
           trackAction('DAILY_LOGIN');
-          
+
           toast.success(`Streak: ${newStreak} days!\n+${streakXp} XP`, {
             duration: 5000,
             position: 'bottom-right',
@@ -178,7 +178,7 @@ export const useGamificationStore = create<GamificationState>()(
           set({ lastLoginDate: today, streak: 1 });
           addXP(GAMIFICATION_CONFIG.STREAK_BASE_XP, 'Daily Login');
           trackAction('DAILY_LOGIN');
-          toast('Streak broken. Back to day 1.', { 
+          toast('Streak broken. Back to day 1.', {
             icon: '🥺',
             position: 'bottom-right',
             style: { background: '#3f3f46', color: '#fff', padding: '12px' }
@@ -209,7 +209,7 @@ export const useGamificationStore = create<GamificationState>()(
           const calculated = calculateUnlockedPerks(state.level, state.completedMissions);
           if (JSON.stringify(state.unlockedPerks) !== JSON.stringify(calculated)) {
             state.unlockedPerks = calculated;
-            // Persist the corrected perks so future loads are in sync
+
             useGamificationStore.setState({ unlockedPerks: calculated });
           }
         };

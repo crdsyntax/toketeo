@@ -17,7 +17,7 @@ export function useSchemas() {
     mutationFn: (schema: string) => schemaService.switchSchema(activeConnection!.id, schema),
     onSuccess: (_, schema) => {
       setActiveConnectionDatabase(schema)
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         predicate: (query) => query.queryKey.includes(activeConnection?.id)
       })
     }

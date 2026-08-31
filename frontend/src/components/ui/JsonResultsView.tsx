@@ -2,20 +2,17 @@ import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import JsonView from '@uiw/react-json-view';
 import { darkTheme } from '@uiw/react-json-view/dark';
-import type { DbRow } from '@/types/database';
+import type { JsonResultsViewProps } from '@/types/ui';
 
-interface JsonResultsViewProps {
-  rows: DbRow[];
-}
+export type { JsonResultsViewProps } from '@/types/ui';
 
 export function JsonResultsView({ rows }: JsonResultsViewProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 100, // Dynamic height estimation
+    estimateSize: () => 100,
     overscan: 5,
   });
 

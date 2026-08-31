@@ -42,7 +42,7 @@ export function Step3Preview({
       } as CreateSyncPipelineDto
       await validatePipeline(dto)
     } catch {
-      // ignore
+
     } finally {
       setValidating(false)
     }
@@ -50,7 +50,7 @@ export function Step3Preview({
 
   return (
     <div className="space-y-6">
-      {/* Origin → Destination summary */}
+
       <div className="flex items-center justify-center gap-4 p-6 border border-border bg-muted/20">
         <div className="text-center">
           <p className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Source</p>
@@ -70,7 +70,7 @@ export function Step3Preview({
         </div>
       </div>
 
-      {/* Tables list */}
+
       <div className="space-y-2">
         <span className="text-[var(--ch-text-10)] font-bold uppercase tracking-widest text-muted-foreground">
           Tables ({tables.length})
@@ -87,7 +87,7 @@ export function Step3Preview({
         ))}
       </div>
 
-      {/* Validate button and results */}
+
       <div className="space-y-3">
         <button
           onClick={handleValidate}

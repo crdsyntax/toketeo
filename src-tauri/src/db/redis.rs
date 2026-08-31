@@ -83,7 +83,6 @@ impl RedisDriver {
             }
         })?;
 
-        // Verify with PING
         let ping_result: RedisValue = client
             .ping()
             .await
@@ -96,10 +95,8 @@ impl RedisDriver {
             ping_result
         );
 
-        // Extract database number from URL if present
         let db = Self::extract_db_from_url(url);
 
-        // SELECT database if not 0
         if db > 0 {
             client
                 .select(db)
@@ -115,19 +112,16 @@ impl RedisDriver {
     }
 
     fn extract_db_from_url(url: &str) -> u8 {
-        // Parse the path segment after the authority: scheme://[user:pass@]host:port/db?opts
         let rest = match url.find("://") {
             Some(idx) => &url[idx + 3..],
             None => url,
         };
 
-        // Skip userinfo if present
         let authority = match rest.find('@') {
             Some(at) => &rest[at + 1..],
             None => rest,
         };
 
-        // The database number is everything after the first '/' in the authority
         match authority.find('/') {
             Some(slash) => {
                 let db_segment = &authority[slash + 1..];
@@ -193,8 +187,6 @@ impl RedisDriver {
     }
 
     fn parse_scalar_str(s: &str) -> serde_json::Value {
-        // Try numeric parsing only for canonical numeric-looking strings,
-        // avoiding false positives such as "007", "1e", or hex identifiers.
         let t = s.trim();
         if !t.is_empty()
             && !t.starts_with('0')
@@ -210,7 +202,7 @@ impl RedisDriver {
                 return serde_json::json!(f);
             }
         }
-        // Try to parse as JSON (arrays/objects stored as JSON strings)
+
         let trimmed = s.trim();
         if trimmed.starts_with('{') || trimmed.starts_with('[') {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
@@ -232,11 +224,9 @@ impl RedisDriver {
             }
             RedisValue::Null | RedisValue::Queued => serde_json::Value::Null,
             RedisValue::Bytes(b) => {
-                // Detect binary vs utf-8 text
                 if b.is_ascii() {
                     Self::parse_scalar_str(&String::from_utf8_lossy(b))
                 } else {
-                    // Try UTF-8, fall back to base64 for truly binary payloads
                     match std::str::from_utf8(b) {
                         Ok(s) => Self::parse_scalar_str(s),
                         Err(_) => {
@@ -303,7 +293,6 @@ impl RedisDriver {
             self.db.load(Ordering::Relaxed)
         );
 
-        // First check how many keys exist
         let dbsize: i64 = self.client.dbsize().await.unwrap_or(-1);
         tracing::debug!("scan_keys: DBSIZE={}", dbsize);
 
@@ -312,7 +301,6 @@ impl RedisDriver {
             return Ok(Vec::new());
         }
 
-        // Use SCAN via scan_buffered
         let mut all_keys = Vec::new();
         let mut stream = self.client.scan_buffered(pattern, Some(batch_size), None);
 
@@ -337,8 +325,6 @@ impl RedisDriver {
         Ok(all_keys)
     }
 
-    /// Run a single SCAN page starting from `cursor`, returning the keys in this page
-    /// and the cursor to continue with (0 when iteration has finished).
     async fn scan_page(
         &self,
         pattern: &str,
@@ -350,8 +336,6 @@ impl RedisDriver {
 
         tracing::debug!("scan_page: {} db={}", cmd, self.db.load(Ordering::Relaxed));
 
-        // The raw SCAN response is a two-element array: [next_cursor, keys]
-        // because we need to expose the cursor back to the caller.
         let response: RedisValue = self
             .client
             .custom(
@@ -1603,7 +1587,7 @@ impl RedisDriver {
                 })
             }
             "SCAN" => {
-                // SCAN [cursor] [MATCH pattern] [COUNT n]
+
                 let mut cursor = "0";
                 let mut pattern = "*";
                 let mut count = 100;
@@ -1617,7 +1601,7 @@ impl RedisDriver {
                         count = tokens[i + 1].parse().unwrap_or(100);
                         i += 2;
                     } else {
-                        // First bare token is the cursor
+
                         if i == 1 {
                             cursor = &tokens[i];
                         }
@@ -1923,16 +1907,11 @@ impl DbDriver for RedisDriver {
         table: &str,
         _schema: Option<String>,
     ) -> AppResult<Vec<serde_json::Value>> {
-        // 'table' here is the namespace prefix. Sample a single bounded SCAN
-        // page (keys starting with "table:*") so structure inference stays fast
-        // even when the namespace holds a huge number of keys. Scanning every
-        // key with scan_keys would block the response for large namespaces.
         let pattern = format!("{}:*", table);
         let (keys, _next_cursor) = self.scan_page(&pattern, 100, "0").await?;
 
         let mut columns = Vec::new();
 
-        // Add the key column
         columns.push(serde_json::json!({
             "name": "key",
             "type": "string",
@@ -1942,7 +1921,6 @@ impl DbDriver for RedisDriver {
             "comment": null
         }));
 
-        // Sample a few keys to determine the structure
         let sample_size = std::cmp::min(keys.len(), 5);
         let mut type_counts: HashMap<String, usize> = HashMap::new();
 
@@ -1951,7 +1929,6 @@ impl DbDriver for RedisDriver {
             *type_counts.entry(key_type).or_insert(0) += 1;
         }
 
-        // Determine dominant type
         let dominant_type = type_counts
             .iter()
             .max_by_key(|(_, count)| *count)
@@ -2068,7 +2045,6 @@ impl DbDriver for RedisDriver {
         _object_type: &str,
         _schema: Option<String>,
     ) -> AppResult<String> {
-        // For Redis, 'name' is a key. Show TYPE, TTL, and value.
         let key_type = self.get_key_type(name).await?;
         let ttl: i64 = self.client.ttl(name).await.unwrap_or(-1);
         let val = self.read_key_value(name, &key_type).await?;
@@ -2162,13 +2138,12 @@ impl DataReader for RedisDriver {
         use futures::StreamExt;
 
         let pattern = format!("{}:*", table);
-        // Respect the requested batch size instead of scanning the whole namespace
+
         let keys = self
             .scan_page(&pattern, batch_size.max(1) as i64, "0")
             .await?
             .0;
 
-        // Read each key concurrently to avoid sequential N+1 round trips.
         let concurrency = batch_size.clamp(1, 50).max(1);
         let rows: Vec<serde_json::Value> = futures::stream::iter(keys)
             .map(|key| {
@@ -2287,7 +2262,6 @@ impl DataWriter for RedisDriver {
         let mut affected = 0u64;
 
         for row in rows {
-            // For Redis upsert, 'key' column is required, and 'value' is the value to set
             let key = row.get("key").and_then(|v| v.as_str()).unwrap_or("");
 
             if key.is_empty() {
@@ -2296,7 +2270,6 @@ impl DataWriter for RedisDriver {
 
             let full_key = format!("{}:{}", table, key);
 
-            // If 'value' field exists, SET it as a string
             if let Some(value) = row.get("value") {
                 let val_str = match value {
                     serde_json::Value::String(s) => s.clone(),
@@ -2308,9 +2281,7 @@ impl DataWriter for RedisDriver {
                     .await
                     .map_err(|e| AppError::Database(format!("SET {} failed: {}", full_key, e)))?;
                 affected += 1;
-            }
-            // If 'field' and 'value' exist, HSET
-            else if let (Some(field), Some(val)) = (row.get("field"), row.get("value")) {
+            } else if let (Some(field), Some(val)) = (row.get("field"), row.get("value")) {
                 let field_str = field.as_str().unwrap_or("");
                 let val_str = match val {
                     serde_json::Value::String(s) => s.clone(),

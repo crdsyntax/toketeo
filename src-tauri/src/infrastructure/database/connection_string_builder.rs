@@ -15,7 +15,7 @@ impl ConnectionStringBuilder {
             .unwrap_or_default();
 
         let host = if config.ssh_tunnel.is_some() {
-            "127.0.0.1" // Localhost for SSH tunnel
+            "127.0.0.1"
         } else {
             &config.host
         };
@@ -39,12 +39,6 @@ impl ConnectionStringBuilder {
                     url.push_str("?sslmode=prefer");
                 }
 
-                // Apply the connection's default schema as the PostgreSQL
-                // search_path at connect time. This guarantees every physical
-                // connection — including ones created after the pool recycles an
-                // idle connection — starts with the correct schema, so unqualified
-                // table references keep resolving after long idle periods (instead
-                // of failing with "relation does not exist").
                 if let Some(ref def) = config.default_database {
                     let def = def.trim();
                     if !def.is_empty() {
@@ -170,7 +164,6 @@ impl ConnectionStringBuilder {
     }
 
     fn url_encode(input: &str) -> String {
-        // Simple percent-encoding for common sensitive characters in URLs
         input
             .chars()
             .map(|c| match c {
@@ -267,7 +260,7 @@ mod tests {
             ssh_nonce: None,
         };
         let url = ConnectionStringBuilder::build(&config).unwrap();
-        // Should use 127.0.0.1 when SSH tunnel is active
+
         assert_eq!(
             url,
             "postgres://user:pass@127.0.0.1:5432/db?sslmode=disable"

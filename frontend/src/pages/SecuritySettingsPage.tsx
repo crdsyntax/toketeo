@@ -227,7 +227,7 @@ export function SecuritySettingsPage() {
           </div>
         ) : (
           <>
-            {/* Status indicator */}
+
             <section className="flex items-center gap-3 p-4 rounded-xl border border-border bg-muted/30">
               {isUnlocked ? (
                 <>
@@ -239,7 +239,7 @@ export function SecuritySettingsPage() {
                   {windowsHelloAvailable && useWindowsHello && (
                     <button
                       onClick={async () => {
-                        try { await connectionService.removeMasterFromKeyring() } catch { /* ignore */ }
+                        try { await connectionService.removeMasterFromKeyring() } catch {  }
                         setUseWindowsHello(false)
                         setSuccess('Windows Hello credential removed')
                       }}
@@ -267,7 +267,7 @@ export function SecuritySettingsPage() {
                   {windowsHelloAvailable && useWindowsHello && (
                     <button
                       onClick={async () => {
-                        try { await connectionService.removeMasterFromKeyring() } catch { /* ignore */ }
+                        try { await connectionService.removeMasterFromKeyring() } catch {  }
                         setUseWindowsHello(false)
                         setSuccess('Windows Hello credential removed')
                       }}
@@ -282,7 +282,7 @@ export function SecuritySettingsPage() {
               )}
             </section>
 
-            {/* Create master password */}
+
             {!hasPassword && (
               <section className="space-y-4 p-6 rounded-xl border border-border">
                 <div className="flex items-center gap-2">
@@ -339,7 +339,7 @@ export function SecuritySettingsPage() {
               </section>
             )}
 
-            {/* Unlock prompt */}
+
             {hasPassword && !isUnlocked && (
               <section className="space-y-4 p-6 rounded-xl border border-border">
                 <div className="flex items-center gap-2">
@@ -443,7 +443,7 @@ export function SecuritySettingsPage() {
               </section>
             )}
 
-            {/* Change password */}
+
             {hasPassword && isUnlocked && (
               <section className="space-y-4 p-6 rounded-xl border border-border">
                 <div className="flex items-center gap-2">
@@ -498,7 +498,7 @@ export function SecuritySettingsPage() {
                       if (windowsHelloAvailable && useWindowsHello) {
                         await connectionService.storeMasterInKeyring(newPassword)
                       } else if (windowsHelloAvailable) {
-                        try { await connectionService.removeMasterFromKeyring() } catch { /* ignore */ }
+                        try { await connectionService.removeMasterFromKeyring() } catch {  }
                       }
                       await handleChange()
                     }}
@@ -511,7 +511,7 @@ export function SecuritySettingsPage() {
               </section>
             )}
 
-            {/* Recovery Code */}
+
             {hasPassword && isUnlocked && (
               <section className="space-y-4 p-6 rounded-xl border border-border">
                 <div className="flex items-center gap-2">
@@ -554,7 +554,7 @@ export function SecuritySettingsPage() {
               </section>
             )}
 
-            {/* TOTP Authenticator */}
+
             {hasPassword && isUnlocked && (
               <section className="space-y-4 p-6 rounded-xl border border-border">
                 <div className="flex items-center gap-2">
@@ -670,7 +670,7 @@ export function SecuritySettingsPage() {
               </section>
             )}
 
-            {/* Messages */}
+
             {error && (
               <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />

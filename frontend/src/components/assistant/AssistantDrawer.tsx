@@ -5,17 +5,14 @@ import { useAppStore } from '@/store/useAppStore'
 import { assistantService } from '@/services/assistant.service'
 import { AgentChatView } from './AgentChatView'
 
-/**
- * Global assistant drawer. Mounted once in MainLayout so the agent is
- * reachable from every screen via the header icon or Ctrl/Cmd+I. Shares
- * conversation state with the /assistant page through assistantStore.
- */
+
+
 export function AssistantDrawer() {
   const showAssistant = useAssistantStore((s) => s.showAssistant)
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant)
   const hasMessages = useAssistantStore((s) => s.messages.length > 0)
 
-  // Global shortcut: Ctrl/Cmd+I toggles the drawer from any screen.
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
@@ -39,7 +36,7 @@ export function AssistantDrawer() {
           <span className="text-xs font-semibold text-foreground truncate">AI Assistant</span>
         </div>
         <div className="flex items-center gap-1">
-          {/* Start a fresh conversation: clear memory + persisted history. */}
+
           {hasMessages && (
             <button
               onClick={() => {

@@ -1,17 +1,6 @@
-/**
- * Splitter ligero de SQL que replica el comportamiento del backend
- * (application/script/splitter.rs). Se usa SOLO para decidir si un script
- * contiene varios statements y rutea la ejecución al comando `run_script`
- * (que soporta skip/skip_all/cancel por statement).
- *
- * Respeta:
- * - strings entre comillas simples (con '' escapado)
- * - identificadores entre comillas dobles o backticks
- * - comentarios de linea (--) y de bloque (slash-star ... star-slash)
- * - `;` como terminador por defecto
- * - directivas `DELIMITER <token>` (compatibilidad MySQL): la línea de la
- *   directiva no forma parte de ningún statement, solo cambia el terminador.
- */
+
+
+
 export function splitSqlStatements(sql: string): string[] {
   if (!sql.trim()) return []
 
@@ -24,7 +13,7 @@ export function splitSqlStatements(sql: string): string[] {
   while (i < sql.length) {
     const c = sql[i]
 
-    // Comentario de línea
+
     if (c === '-' && sql[i + 1] === '-') {
       while (i < sql.length && sql[i] !== '\n') {
         current += sql[i]
@@ -33,7 +22,7 @@ export function splitSqlStatements(sql: string): string[] {
       continue
     }
 
-    // Comentario de bloque
+
     if (c === '/' && sql[i + 1] === '*') {
       current += '/*'
       i += 2
@@ -51,7 +40,7 @@ export function splitSqlStatements(sql: string): string[] {
       continue
     }
 
-    // String entre comillas simples
+
     if (c === "'") {
       current += "'"
       i++
@@ -71,7 +60,7 @@ export function splitSqlStatements(sql: string): string[] {
       continue
     }
 
-    // Identificador entre comillas dobles o backticks
+
     if (c === '"' || c === '`') {
       current += c
       i++
@@ -91,7 +80,7 @@ export function splitSqlStatements(sql: string): string[] {
       continue
     }
 
-    // Directiva DELIMITER: solo al inicio de línea
+
     if (atLineStart) {
       const newDelimiter = parseDelimiter(sql.slice(i))
       if (newDelimiter !== null) {
@@ -107,11 +96,9 @@ export function splitSqlStatements(sql: string): string[] {
       }
     }
 
-    // Terminador de statement (token actual, por defecto ';')
+
     if (sql.startsWith(delimiter, i)) {
-      // Solo el ';' por defecto se conserva en el statement (el servidor lo
-      // entiende). Los tokens personalizados (p. ej. '$$' con 'DELIMITER $$')
-      // NO se envían al servidor: solo delimitan el bloque.
+
       if (delimiter === ';') current += delimiter
       i += delimiter.length
       if (containsSql(current)) {
@@ -131,7 +118,7 @@ export function splitSqlStatements(sql: string): string[] {
     i++
   }
 
-  // Statement final sin terminador
+
   if (containsSql(current)) {
     statements.push(current)
   }
@@ -139,10 +126,8 @@ export function splitSqlStatements(sql: string): string[] {
   return statements
 }
 
-/**
- * Parsea una directiva `DELIMITER <token>` al inicio de línea. Devuelve el
- * token ($$, //, ;;, ;, ...) o null si no es una directiva.
- */
+
+
 function parseDelimiter(sqlRest: string): string | null {
   const trimmed = sqlRest.trimStart()
   const head = trimmed.slice(0, 'DELIMITER'.length)
@@ -153,7 +138,7 @@ function parseDelimiter(sqlRest: string): string | null {
   return token && token.length > 0 ? token : null
 }
 
-/** True si el fragmento contiene SQL real (no solo comentarios/espacios). */
+
 function containsSql(fragment: string): boolean {
   let i = 0
   while (i < fragment.length) {

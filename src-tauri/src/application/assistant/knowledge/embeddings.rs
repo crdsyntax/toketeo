@@ -1,20 +1,6 @@
-//! Semantic embeddings for the assistant knowledge library.
-//!
-//! Responsibilities:
-//! - Build a semantic *document* per knowledge type (QA / error) whose
-//!   embedding represents the meaning of the knowledge, not just its question.
-//! - Generate embeddings through an OpenAI-compatible provider endpoint
-//!   (`POST {base_url}/embeddings`). When no embedding-capable provider is
-//!   configured (or the call fails), retrieval degrades gracefully to
-//!   lexical-only search.
-//! - Vector math helpers for the brute-force in-memory index.
-
 use crate::error::{AppError, AppResult};
 use crate::models::assistant::{KnowledgeCase, ProviderConfig};
 
-/// Embedding dimension used by this app. `text-embedding-3-small` returns
-/// 1536; if the configured provider returns a different size we keep it —
-/// the index stores `dim` per entry and skips mismatched comparisons.
 #[derive(Debug, Clone)]
 pub struct EmbeddingProvider {
     base_url: String,
@@ -23,31 +9,25 @@ pub struct EmbeddingProvider {
 }
 
 impl EmbeddingProvider {
-    /// Build from the first configured AI provider. Returns `None` when there
-    /// is nothing usable (no config / no base URL resolvable).
     pub fn from_config(config: &ProviderConfig) -> Option<Self> {
         let base_url = match &config.base_url {
             Some(url) if !url.trim().is_empty() => url.trim().trim_end_matches('/').to_string(),
-            _ => {
-                // Known defaults per provider id (mirrors the adapters).
-                match config.provider_id.as_str() {
-                    "openai" => "https://api.openai.com/v1".to_string(),
-                    "deepseek" => "https://api.deepseek.com/v1".to_string(),
-                    "opencode" => "https://opencode.ai/zen/v1".to_string(),
-                    _ => return None,
-                }
-            }
+            _ => match config.provider_id.as_str() {
+                "openai" => "https://api.openai.com/v1".to_string(),
+                "deepseek" => "https://api.deepseek.com/v1".to_string(),
+                "opencode" => "https://opencode.ai/zen/v1".to_string(),
+                _ => return None,
+            },
         };
         Some(Self {
             base_url,
             api_key: config.api_key.clone().filter(|k| !k.trim().is_empty()),
-            // Small, cheap and widely available across OpenAI-compatible APIs.
+
             model: std::env::var("TOKETEO_EMBEDDING_MODEL")
                 .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
         })
     }
 
-    /// Embed a batch of texts. Returns one vector per input, in order.
     pub async fn embed(&self, texts: Vec<String>) -> AppResult<Vec<Vec<f32>>> {
         if texts.is_empty() {
             return Ok(vec![]);
@@ -107,7 +87,6 @@ impl EmbeddingProvider {
     }
 }
 
-/// The kind of semantic document stored alongside each knowledge case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KnowledgeKind {
     Qa,
@@ -131,7 +110,6 @@ impl KnowledgeKind {
     }
 }
 
-/// Classify a knowledge case by its engine tag.
 pub fn kind_of(case: &KnowledgeCase) -> KnowledgeKind {
     if case.engine == "error" {
         KnowledgeKind::Error
@@ -140,9 +118,6 @@ pub fn kind_of(case: &KnowledgeCase) -> KnowledgeKind {
     }
 }
 
-/// Build the semantic document that gets embedded. Different knowledge types
-/// get different representations so the vector captures the meaning of the
-/// whole piece of knowledge (question + SQL + rating, or error + context).
 pub fn build_semantic_document(case: &KnowledgeCase) -> String {
     match kind_of(case) {
         KnowledgeKind::Qa => format!(
@@ -162,8 +137,6 @@ pub fn build_semantic_document(case: &KnowledgeCase) -> String {
     }
 }
 
-/// Cosine similarity between two vectors. Returns 0 when dimensions differ or
-/// either vector is zero-length.
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.is_empty() || a.len() != b.len() {
         return 0.0;
@@ -205,7 +178,7 @@ mod tests {
             id: "2".into(),
             question: "[error] Unknown column 'estado_reserva'".into(),
             sql_text: "SELECT * FROM tb_reserva WHERE estado_reserva = 1".into(),
-            // Errors are tagged engine="error" (see record_error_case).
+
             engine: "error".into(),
             rating: "unrated".into(),
             used_count: 0,
@@ -243,6 +216,6 @@ mod tests {
         let c = [0.0f32, 1.0, 0.0];
         assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);
         assert!(cosine_similarity(&a, &c).abs() < 1e-6);
-        assert_eq!(cosine_similarity(&a, &[1.0, 1.0]), 0.0); // dim mismatch
+        assert_eq!(cosine_similarity(&a, &[1.0, 1.0]), 0.0);
     }
 }

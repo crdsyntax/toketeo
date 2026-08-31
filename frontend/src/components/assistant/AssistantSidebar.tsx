@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
 import { ASSISTANT_TABS } from './assistantTabs'
 
-/** Vertical icon sidebar with assistant tab navigation. */
+
 export function AssistantSidebar() {
   const activeTab = useAssistantStore((s) => s.activeTab)
   const setActiveTab = useAssistantStore((s) => s.setActiveTab)
@@ -44,7 +44,7 @@ export function AssistantSidebar() {
   )
 }
 
-/** Header bar shared between layouts. */
+
 export function AssistantHeader() {
   const activeTab = useAssistantStore((s) => s.activeTab)
   const setShowAssistant = useAssistantStore((s) => s.setShowAssistant)

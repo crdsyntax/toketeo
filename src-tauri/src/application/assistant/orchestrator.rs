@@ -11,10 +11,6 @@ use crate::models::assistant::{
 use crate::models::assistant::{ProviderConfig, UiContext};
 use crate::state::AppState;
 
-/// Orchestrates a single assistant chat turn: builds context (schema, history,
-/// preferences), performs knowledge-first retrieval, then runs the tool-call
-/// loop against the configured model. Kept in the application layer so the
-/// Tauri command stays thin and the flow is unit-testable.
 pub struct ChatOrchestrator<'a> {
     state: &'a AppState,
     connection_id: &'a str,
@@ -27,7 +23,6 @@ pub struct ChatOrchestrator<'a> {
 
 const MAX_TOOL_ROUNDS: usize = 12;
 
-/// Retries for transient provider failures (5xx / 429 / network blips).
 const PROVIDER_MAX_RETRIES: u32 = 2;
 
 fn is_transient_provider_error(err: &crate::error::AppError) -> bool {
@@ -51,10 +46,6 @@ fn is_transient_provider_error(err: &crate::error::AppError) -> bool {
     MARKERS.iter().any(|m| msg.contains(m))
 }
 
-/// Call the provider with automatic retries on transient errors. Each attempt
-/// is capped at 180s: a stalled SSE stream (no bytes, no [DONE]) must never
-/// hang the turn. Before each retry the partially streamed content is wiped
-/// (`clear_content`) and a status line tells the user what is happening.
 async fn complete_with_retry(
     adapter: &dyn crate::application::assistant::adapters::AiAdapter,
     request: &AiRequest,
@@ -85,7 +76,7 @@ async fn complete_with_retry(
                 tokio::time::sleep(std::time::Duration::from_millis(800 * (1 << attempt))).await;
             }
             Ok(Err(e)) => return Err(e),
-            // Attempt timed out (stalled stream) → treat as transient.
+
             Err(_) if attempt < PROVIDER_MAX_RETRIES => {
                 attempt += 1;
                 if let Some(emit) = events {
@@ -135,7 +126,7 @@ mod dump_tests {
                 "should NOT be transient: {msg}"
             );
         }
-        // 500 contains "500" — but a 401 message must not match "40" patterns.
+
         assert!(super::is_transient_provider_error(&AppError::Internal(
             "provider returned 500: oops".into()
         )));
@@ -175,7 +166,6 @@ mod dump_tests {
 
     #[test]
     fn sql_keyword_in_prose_does_not_trigger() {
-        // The key must be a bare line; prose containing the word is untouched.
         let content = "El campo connection_id es obligatorio en la herramienta.";
         let (cleaned, sql) = strip_pseudo_tool_dump(content);
         assert_eq!(cleaned, content);
@@ -184,8 +174,6 @@ mod dump_tests {
 
     #[test]
     fn screenshot_dump_with_multiline_sql_is_cleaned() {
-        // Exact shape observed in production: narration + bare-key dump with a
-        // multi-line SQL statement.
         let content = "El listado de tablas se omitió por repetición. Voy a consultarlo directamente con SQL para encontrar orders y sus tablas derivadas (por claves foráneas) en db_picer.public.\n\
                        query\n\
                        connection_id\n\
@@ -210,10 +198,6 @@ mod dump_tests {
     }
 }
 
-/// Some models emit tool invocations as plain text instead of using the
-/// function-calling mechanism (e.g. a block starting with `Query`,
-/// `connection_id`, `sql`, …). Detect that dump in a final answer, remove it
-/// and rescue the SQL so the user still gets a "Load in editor" action.
 fn strip_pseudo_tool_dump(content: &str) -> (String, Option<String>) {
     let lines: Vec<&str> = content.lines().collect();
     let is_key = |l: &str| -> bool {
@@ -224,7 +208,6 @@ fn strip_pseudo_tool_dump(content: &str) -> (String, Option<String>) {
         )
     };
 
-    // Find the start of the dump: a bare `connection_id` key line.
     let Some(start_idx) = lines.iter().position(|l| {
         l.trim()
             .trim_end_matches(':')
@@ -232,14 +215,13 @@ fn strip_pseudo_tool_dump(content: &str) -> (String, Option<String>) {
     }) else {
         return (content.to_string(), None);
     };
-    // The dump usually begins one line earlier with the tool name ("query").
+
     let dump_start = if start_idx > 0 && is_key(lines[start_idx - 1]) {
         start_idx - 1
     } else {
         start_idx
     };
 
-    // Rescue the SQL: the value lines after a bare `sql` key line.
     let sql = lines
         .iter()
         .skip(dump_start)
@@ -261,9 +243,6 @@ fn strip_pseudo_tool_dump(content: &str) -> (String, Option<String>) {
     (cleaned, sql)
 }
 
-/// Callback used to stream progress events (answer deltas, tool status) to the
-/// frontend during a chat turn. The Tauri command layer adapts this to an
-/// ipc::Channel, keeping this module decoupled from Tauri.
 pub type ChatEventEmitter<'a> = &'a (dyn Fn(serde_json::Value) + Send + Sync);
 
 impl<'a> ChatOrchestrator<'a> {
@@ -296,10 +275,6 @@ impl<'a> ChatOrchestrator<'a> {
         };
 
         let ctx = if let Some(ref driver) = driver {
-            // Use the stored database/schema from the connection config so the
-            // schema context targets the correct database (MySQL/MariaDB "No
-            // database selected" guard). SQLite always exposes schemas via its
-            // main pseudo-database.
             let db_type = driver.db_type();
             let conn_cfg = self
                 .state
@@ -320,8 +295,6 @@ impl<'a> ChatOrchestrator<'a> {
             None
         };
 
-        // Without an active connection the schema context stays empty — the
-        // model can still answer general questions and generate SQL from scratch.
         let ctx = match ctx {
             Some(ctx) => RelevanceFilter::filter(&ctx, self.question),
             None => SchemaContext {
@@ -336,7 +309,6 @@ impl<'a> ChatOrchestrator<'a> {
             },
         };
 
-        // Load conversation history (global when no connection is selected).
         let stored = self
             .state
             .storage
@@ -348,7 +320,6 @@ impl<'a> ChatOrchestrator<'a> {
         let adapter = create_adapter(self.config)?;
         let tools = self.state.tool_engine.list_tools();
 
-        // Inject connections into the prompt so tools can reference them by name.
         let conn_list = self.state.storage.get_all_connections().await.ok();
         let conn_refs: Vec<(String, String)> = conn_list
             .as_ref()
@@ -368,20 +339,12 @@ impl<'a> ChatOrchestrator<'a> {
             .map(|(n, i)| (n.as_str(), i.as_str()))
             .collect();
         let system_prompt = PromptBuilder::build_system_prompt(&ctx, &prefs, &conn_slice);
-        // Surface the user's current workspace (module, open tabs, errors) so
-        // the model can act on what the user is looking at.
+
         let system_prompt = match self.ui_context {
             Some(ui) => format!("{system_prompt}\n\n{}", render_ui_context_prompt(ui)),
             None => system_prompt,
         };
 
-        // ── Knowledge-first retrieval (hybrid: lexical ∪ vector) ──
-        // Before calling the LLM, search the knowledge library for
-        // high-confidence prior answers. Lexical candidates come from a cheap
-        // LIKE query; semantic recall comes from the in-memory embedding index
-        // (skipped when no provider is configured). Scores are fused with max.
-        // Short-circuit on a very-high-confidence positive hit (≥ 0.9);
-        // error cases are injected into the prompt as known past errors.
         let embed_query = async {
             let provider = crate::application::assistant::knowledge::EmbeddingProvider::from_config(
                 self.config,
@@ -503,10 +466,6 @@ impl<'a> ChatOrchestrator<'a> {
         let mut messages = history;
         messages.push(user_message);
 
-        // When the user confirmed a pending operation, the question was already
-        // persisted by the first turn — do not duplicate it in storage. The
-        // model still receives the question here, plus an explicit internal
-        // confirmation note (never shown in the chat UI).
         if !self.confirm_destructive {
             let user_msg_id = uuid::Uuid::new_v4().to_string();
             self.save_message(&user_msg_id, "user", self.question.to_string(), None, None)
@@ -524,29 +483,17 @@ impl<'a> ChatOrchestrator<'a> {
         let turn_id = uuid::Uuid::new_v4().to_string();
         let source = format!("ai:{}", self.config.provider_id);
 
-        // ── Tool-call orchestration loop ──
-        // Call the model. If it returns tool_calls, execute each one and feed
-        // the results back to the model; repeat up to MAX_TOOL_ROUNDS times.
-        // The final non-tool response is returned to the caller. Providers that
-        // don't return tool calls simply exit on round 0.
         let mut last_response: Option<crate::models::assistant::AiResponse> = None;
         let mut tool_used: Option<String> = None;
         let mut total_prompt = 0u32;
         let mut total_completion = 0u32;
         let mut requires_confirmation = false;
 
-        // Detect repeated identical tool calls within a turn. The agent may
-        // legitimately call the same tool several times (e.g. a confirmation step
-        // followed by the confirmed execution, or several `query` calls with
-        // different arguments). Only after MAX_SAME_TOOL_CALLS identical requests do
-        // we skip the call — and even then we keep tools available so the agent can
-        // still call other tools and finish the task.
         let mut executed_counts: std::collections::HashMap<String, u32> =
             std::collections::HashMap::new();
         const MAX_SAME_TOOL_CALLS: u32 = 3;
         let mut confirmation_message: Option<String> = None;
-        // Side-effectful UI actions requested by the workspace tool are
-        // surfaced to the frontend on the returned turn.
+
         let mut ui_action: Option<serde_json::Value> = None;
 
         for _round in 0..MAX_TOOL_ROUNDS {
@@ -557,7 +504,7 @@ impl<'a> ChatOrchestrator<'a> {
                 temperature: 0.3,
                 max_tokens: Some(4096),
             };
-            // Stream answer deltas to the frontend as they arrive.
+
             let events = self.events;
             let on_delta = move |text: &str| {
                 if let Some(emit) = events {
@@ -570,10 +517,6 @@ impl<'a> ChatOrchestrator<'a> {
                     total_completion =
                         total_completion.saturating_add(response.usage.completion_tokens);
 
-                    // A round that produces tool calls means its streamed text was
-                    // only intermediate reasoning (or leaked tool-call arguments),
-                    // never part of the answer. Tell the frontend to drop it so
-                    // the visible reply only keeps meaningful content.
                     if !response.tool_calls.is_empty() {
                         if let Some(emit) = self.events {
                             emit(serde_json::json!({ "event": "clear_content" }));
@@ -617,8 +560,7 @@ impl<'a> ChatOrchestrator<'a> {
                             });
                             continue;
                         }
-                        // Give context-aware tools access to the user's
-                        // workspace snapshot for this turn.
+
                         let mut tool_args = tc.arguments.clone();
                         if let Some(ui) = self.ui_context {
                             if let Ok(ui_val) = serde_json::to_value(ui) {
@@ -631,9 +573,7 @@ impl<'a> ChatOrchestrator<'a> {
                                 "message": format!("Ejecutando herramienta '{}'…", tc.name),
                             }));
                         }
-                        // Hard timeout per tool: a hanging driver/network call
-                        // must never freeze the whole chat turn. On timeout the
-                        // model receives an error result and can narrate it.
+
                         let exec = match tokio::time::timeout(
                             std::time::Duration::from_secs(120),
                             self.state.tool_engine.execute_with_confirmation(
@@ -664,10 +604,7 @@ impl<'a> ChatOrchestrator<'a> {
                                     requires_confirmation = true;
                                     confirmation_message = r.message.clone();
                                 }
-                                // Stream the executed action so the frontend can
-                                // reflect side effects in real time (e.g. a
-                                // connection opened by the agent shows up
-                                // immediately in the sidebar).
+
                                 if let Some(emit) = self.events {
                                     emit(serde_json::json!({
                                         "event": "tool",
@@ -709,9 +646,7 @@ impl<'a> ChatOrchestrator<'a> {
                             let _tn = tc.name.clone();
                             tool_used = Some(_tn);
                         }
-                        // Tool results are only fed back to the model within
-                        // this turn — they are not persisted as chat messages,
-                        // so the conversation stays clean (no raw JSON shown).
+
                         messages.push(ChatMessage {
                             role: "tool".to_string(),
                             content: result_text,
@@ -720,10 +655,6 @@ impl<'a> ChatOrchestrator<'a> {
                         });
                     }
 
-                    // When a tool requires confirmation (e.g. switching database),
-                    // stop the tool loop immediately. Re-invoking the same tool here
-                    // caused confirmation loops; instead the user confirms in-chat and
-                    // a fresh turn executes it.
                     if requires_confirmation {
                         let answer = confirmation_message.clone().unwrap_or_else(|| {
                             "Esta acción requiere tu confirmación. Presiona «Confirmar y continuar» para ejecutarla.".to_string()
@@ -782,9 +713,6 @@ impl<'a> ChatOrchestrator<'a> {
             (cleaned, _) => (cleaned, sql_from_fenced),
         };
 
-        // Some models return an EMPTY final answer (e.g. after a tool was
-        // blocked pending confirmation). An empty bubble looks like a hang —
-        // synthesize a clear message instead.
         if answer_text.trim().is_empty() {
             answer_text = if requires_confirmation {
                 "⚠️ La operación quedó pendiente de tu confirmación. Presiona «Confirmar y continuar» para ejecutarla.".to_string()
@@ -848,8 +776,6 @@ impl<'a> ChatOrchestrator<'a> {
     }
 }
 
-/// Extract every ```sql fenced block from a markdown answer, returning the raw
-/// SQL of each (without the fences). Empty blocks are skipped.
 pub fn extract_sql_blocks(answer: &str) -> Vec<String> {
     let re = regex::Regex::new(r"(?i)```sql\s*([\s\S]*?)```").unwrap();
     re.captures_iter(answer)
@@ -864,8 +790,6 @@ pub fn extract_sql_blocks(answer: &str) -> Vec<String> {
         .collect()
 }
 
-/// Extract the first ```sql fenced block from a markdown answer, returning the
-/// raw SQL (without the fences). Returns `None` if no such block is found.
 pub fn extract_sql_block(answer: &str) -> Option<String> {
     extract_sql_blocks(answer).into_iter().next()
 }

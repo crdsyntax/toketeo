@@ -11,8 +11,7 @@ const EXAMPLES = [
   'Find duplicate email addresses',
 ]
 
-// Detect free models: trust the backend `tier`/`isFree` flags when present,
-// fall back to common patterns in model names for providers without tiers.
+
 function isFreeModel(model: ModelInfo): boolean {
   if (model.tier === 'free' || model.isFree === true) return true
   if (model.tier) return false
@@ -62,7 +61,7 @@ function markdownToHtml(content: string): string {
   const escapeHtml = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-  // Extract fenced code blocks first so their content is not processed.
+
   const codeBlocks: string[] = []
   let text = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, _lang, code) => {
     codeBlocks.push(
@@ -76,7 +75,7 @@ function markdownToHtml(content: string): string {
   let i = 0
   while (i < lines.length) {
     const line = lines[i]
-    // GFM table: header row + separator row (| --- | --- |)
+
     if (
       line.trim().startsWith('|') &&
       i + 1 < lines.length &&
@@ -123,22 +122,22 @@ function markdownToHtml(content: string): string {
   text = out.join('\n')
 
   const result = text
-    // Inline code
+
     .replace(/`([^`]+)`/g, '<code class="bg-[#1a1a1a] border border-[#333] rounded px-1.5 py-0.5 text-[13px] font-mono text-[#e6edf3]">$1</code>')
-    // Bold
+
     .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
-    // Italic
+
     .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
-    // Headers
+
     .replace(/^### (.+)$/gm, '<h3 class="text-sm font-semibold text-foreground mt-4 mb-2">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="text-base font-semibold text-foreground mt-4 mb-2">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="text-lg font-semibold text-foreground mt-4 mb-2">$1</h1>')
-    // Lists
+
     .replace(/^- (.+)$/gm, '<li class="ml-4 text-[13px] text-[#b4b4b4]">$1</li>')
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-[13px] text-[#b4b4b4]">$2</li>')
-    // Paragraphs
+
     .replace(/\n\n/g, '</p><p class="mb-3">')
-    // Line breaks
+
     .replace(/\n/g, '<br/>')
 
   return `<p class="mb-0">${result}</p>`.replace(
@@ -167,8 +166,8 @@ function StreamStatus({ status }: { status: string }) {
   )
 }
 
-/** Detect multiple-choice options ("(A) …", "**B)** …", "A) …") in the last
- * assistant message so they can be answered with one click. */
+
+
 function extractOptionLetters(content: string): string[] {
   const letters = new Set<string>()
   const re = /(?:^|\n|\s)\(?([A-D])[).:]\s|\((?:\*\*)?([A-D])(?:\*\*)?\)/g
@@ -181,7 +180,7 @@ function extractOptionLetters(content: string): string[] {
 }
 
 export interface AgentChatViewProps extends UseAgentChatOptions {
-  /** Visual variant: full panel or compact drawer. */
+
   variant?: 'panel' | 'drawer'
 }
 
@@ -227,7 +226,7 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
 
   return (
     <div className="h-full flex flex-col bg-[#0d0d0d]">
-      {/* Messages area */}
+
       <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden" ref={listRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-5">
@@ -238,8 +237,6 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
             <p className="text-[13px] text-[#666] text-center mb-5 max-w-[260px]">
               Describe the query you need in natural language. I'll generate SQL based on your database schema.
             </p>
-
-            {/* Example prompts */}
             <div className="flex flex-wrap gap-2 justify-center mb-5 max-w-[300px]">
               {EXAMPLES.map((ex) => (
                 <button
@@ -251,8 +248,6 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
                 </button>
               ))}
             </div>
-
-            {/* Tables section */}
             {schemaCache.tables.length > 0 && (
               <>
                 <div className="flex items-center gap-3 w-full max-w-[300px] mb-3">
@@ -293,7 +288,6 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
                       : 'bg-transparent'
                   )}
                 >
-                  {/* SQL message */}
                   {msg.sql ? (
                     <div>
                       {msg.isSafeDelete && (
@@ -320,7 +314,6 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
                           </pre>
                         </div>
                       </div>
-                      {/* Feedback */}
                       {msg.role === 'assistant' && (
                         <div className="flex items-center gap-1 mt-2">
                           <button
@@ -351,7 +344,6 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
                       )}
                     </div>
                   ) : msg.toolUsed ? (
-                    /* Tool result */
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
                         <span className="text-[11px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-lg px-2 py-0.5">
@@ -361,10 +353,8 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
                       <MarkdownContent content={msg.content} />
                     </div>
                   ) : (
-                    /* Text message */
                     <div>
                       <MarkdownContent content={msg.content} />
-                      {/* Multiple-choice options (A/B/C...) → clickable chips */}
                       {msg.role === 'assistant' && msg.id === messages[messages.length - 1]?.id && !isStreaming &&
                         extractOptionLetters(msg.content).length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -415,8 +405,6 @@ export function AgentChatView({ variant = 'panel', onBeforeSend }: AgentChatView
           </div>
         )}
       </div>
-
-      {/* Input bar */}
       <div className="border-t border-[#222] px-4 py-3 bg-[#0d0d0d] min-w-0">
         <div className="flex items-center gap-3 bg-[#1a1a1a] border border-[#333] rounded-2xl px-4 py-3 focus-within:border-[#555] transition-all min-w-0">
           <input

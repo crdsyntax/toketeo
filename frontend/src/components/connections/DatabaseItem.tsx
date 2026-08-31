@@ -45,7 +45,7 @@ export function DatabaseItem({ conn, dbName, activeConnection, activeDatabaseNam
 
   return (
     <div className="text-foreground">
-      <div 
+      <div
         className="flex items-center gap-1.5 p-1.5 cursor-pointer hover:bg-muted/80 hover:text-foreground transition-colors rounded-sm group"
         onClick={toggleExpand}
         onDoubleClick={(e) => { e.stopPropagation(); onSelectDatabase?.(conn, dbName); if (!isExpanded) toggleExpand(); }}

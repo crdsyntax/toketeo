@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
-import { CheckCircle2, AlertTriangle, PlusCircle, XCircle, FileCode, ListChecks } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { buildCompareItems } from '@/components/compare/CompareResultsList';
-import type { CompareStatus, SchemaReport } from '@/types/compare';
+import { useMemo } from 'react'
+import { CheckCircle2, AlertTriangle, PlusCircle, XCircle, FileCode, ListChecks } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { buildCompareItems } from '@/lib/compareHelpers'
+import type { CompareStatus, SchemaReport } from '@/types/compare'
 
 const CARDS: {
   status: CompareStatus;

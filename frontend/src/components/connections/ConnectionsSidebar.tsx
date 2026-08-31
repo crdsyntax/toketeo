@@ -282,7 +282,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         }
       } else if (location.pathname === '/diagram') {
         setActiveConnectionDatabase(schema)
-        // Update active diagram to use the newly selected connection/schema
+
         const { activeDiagramId, setDiagramConnection } = useDiagramStore.getState()
         if (activeDiagramId) {
           setDiagramConnection(activeDiagramId, conn.id, schema)
@@ -291,16 +291,12 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         queryClient.invalidateQueries({ queryKey: ['tables', conn.id] })
         queryClient.invalidateQueries({ queryKey: ['diagram', conn.id] })
       } else {
-        // Optimistic update: update frontend state immediately so the UI
-        // reflects the selected schema without waiting for the backend.
+
         setActiveConnectionDatabase(schema)
         const store = useAppStore.getState()
         const activeTabId = store.explorer.activeExplorerTabId
         const activeTab = activeTabId ? store.explorerTabs[activeTabId] : null
-        // Keep the open explorer tab but point it at the newly selected
-        // database: update its database and reset the object context so the
-        // sidebar loads the new DB's objects without closing the tab or
-        // losing its connection.
+
         const resetObjectContext = {
           selectedItem: { name: '', type: DatabaseObjectType.TRIGGER },
           activeTab: ExplorerTab.COLUMNS,
@@ -314,10 +310,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         if (activeTab && activeTab.connectionId === conn.id) {
           updateExplorerTab(activeTabId!, { database: schema, ...resetObjectContext })
         } else {
-          // The active tab belongs to another connection (or none). Reuse an
-          // empty slot tab for this connection if one exists, otherwise open
-          // a fresh database slot so the explorer shows the selected DB
-          // without closing existing tabs or the connection.
+
           const emptySlot = Object.values(store.explorerTabs).find(
             (t) => t.connectionId === conn.id && !t.selectedItem?.name,
           )
@@ -343,15 +336,13 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         queryClient.invalidateQueries({ queryKey: ['functions', conn.id] })
         navigate('/explorer')
       }
-      // Redis uses SELECT (switch_database), not switch_schema
+
       if (conn.type === 'redis') {
         schemaService.switchDatabase(conn.id, schema).catch((e) => {
           console.error('Backend database switch failed (non-critical):', e)
         })
       } else {
-        // Fire the backend call in the background so the pool is updated,
-        // but don't block the UI if it fails (explorer queries use explicit
-        // schema parameters and work regardless of the pool's default db).
+
         schemaService.switchSchema(conn.id, schema).catch((e) => {
           console.error('Backend schema switch failed (non-critical):', e)
         })
@@ -374,7 +365,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
       }
       await schemaService.switchDatabase(conn.id, dbName)
       if (conn.type === DatabaseType.REDIS) {
-        // Redis has no schemas: navigate straight to the db's tables (namespaces)
+
         await handleSchemaDoubleClick(conn, dbName)
         return
       }
@@ -419,9 +410,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     connectingRef.current.add(conn.id)
     setConnectingId(conn.id)
     try {
-      // Conectar NO abre el explorer: solo expande la conexión para mostrar
-      // sus esquemas/bases. El explorer se abre únicamente con doble-click
-      // sobre un esquema (Postgres) o una base de datos (SQL/Mongo/Redis).
+
       await onConnect(conn)
       setExpandedConnId(conn.id)
       setLoadingConnId(conn.id)

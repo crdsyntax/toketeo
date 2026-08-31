@@ -4,13 +4,9 @@ import { useAssistantStore } from '@/store/assistantStore'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
+import type { OnboardingStep, OnboardingTourProps } from '@/types/layout'
 
-interface OnboardingStep {
-  title: string
-  description: string
-  target: string // route or element selector
-  icon: string
-}
+export type { OnboardingStep, OnboardingTourProps } from '@/types/layout'
 
 const STEPS: OnboardingStep[] = [
   { title: 'Connect a Database', description: 'First, add a database connection. Click the + button in the sidebar or go to the Connections page.', target: '/', icon: '🔌' },
@@ -21,10 +17,6 @@ const STEPS: OnboardingStep[] = [
   { title: 'Level Up!', description: 'Every action earns XP. Complete missions and unlock perks like theming, AI assistant, and more.', target: '/query', icon: '⭐' },
   { title: 'Get Help Here', description: 'The Assistant hub is always available. Ask questions, check performance, and learn tips.', target: '/assistant', icon: '🤖' },
 ]
-
-interface OnboardingTourProps {
-  onClose: () => void
-}
 
 export function OnboardingTour({ onClose }: OnboardingTourProps) {
   const [currentStep, setCurrentStep] = useState(0)

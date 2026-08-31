@@ -130,7 +130,7 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
       mergeFilterBar(parsed, mongoFilter);
       return JSON.stringify(parsed);
     }
-  } catch { /* not JSON â€” fall through */ }
+  } catch {  }
 
   if (isMongoShellSyntax(cleaned)) {
     const parseResult = parseMongoShell(cleaned);
@@ -161,22 +161,22 @@ function buildMongoJsonQuery(rawSql: string, mongoFilter: MongoFilterState | und
 }
 
 export function useQueryEditor() {
-  const { 
-    activeConnection, 
-    tabs, 
-    activeTabId, 
-    addTab, 
+  const {
+    activeConnection,
+    tabs,
+    activeTabId,
+    addTab,
     openTab,
-    removeTab, 
-    updateTabQuery, 
+    removeTab,
+    updateTabQuery,
     updateTabConnection,
-    setActiveTabId, 
-    updateTabResults, 
+    setActiveTabId,
+    updateTabResults,
     clearTabResults,
     updateTabViewState,
     updateTabMongoFilter,
     updateTabEditorMode,
-    panels, 
+    panels,
     setEditorHeight,
     togglePanel,
     addQueryHistory,
@@ -202,19 +202,19 @@ export function useQueryEditor() {
       }
     }
   }, [queryClient, updateExplorerTab])
-  
+
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
-  
+
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
     queryFn: () => connectionService.getAll(),
   })
-  
+
   const [showContextMenu, setShowContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showResultModal, setShowResultModal] = useState(false)
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null)
-  const [modalRect, setModalRect] = useState({ x: 10, y: 10, w: 80, h: 80 }) 
+  const [modalRect, setModalRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [isMaximized, setIsMaximized] = useState(false)
   const [prevRect, setPrevRect] = useState({ x: 10, y: 10, w: 80, h: 80 })
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; column: string; value: DbValue } | null>(null)
@@ -297,14 +297,14 @@ export function useQueryEditor() {
       return false;
     }
 
-    // SQL danger check
+
     const upperSql = sql.toUpperCase()
     const hasUpdate = upperSql.includes('UPDATE')
     const hasDelete = upperSql.includes('DELETE')
     const hasWhere = upperSql.includes('WHERE')
     const isProduction = connection?.environment?.toLowerCase() === Environment.PRODUCTION;
 
-    // In production, ANY UPDATE/DELETE requires confirmation
+
     if (isProduction && (hasUpdate || hasDelete)) {
       return !window.confirm(
         'Warning: This query modifies data on a PRODUCTION database.\n' +
@@ -328,7 +328,7 @@ export function useQueryEditor() {
       const res = await assistantService.fixSql(connectionId, sql, errorMessage)
       setSqlFixSuggestion(res)
     } catch {
-      // silent — the suggestion is optional
+
     } finally {
       setSqlFixLoading(false)
     }
@@ -582,7 +582,7 @@ export function useQueryEditor() {
         const schema = isPostgres
           ? (activeConnection?.database || targetConnection.defaultDatabase || targetConnection.database)
           : (targetConnection.database || activeConnection?.database);
-        
+
         let result;
         try {
           result = await queryService.execute(targetConnection.id, sql, schema, undefined, page, effectiveLimit > 0 ? effectiveLimit : undefined);
@@ -684,7 +684,7 @@ export function useQueryEditor() {
               )
               setSafeDeleteSuggestion(safeSql)
             } catch {
-              // silent — suggestion is optional
+
             }
           }
         }
@@ -768,10 +768,10 @@ export function useQueryEditor() {
 
     updateTabResults(activeTab.id, { status: ExecutionStatus.EXECUTING, error: null, results: page === 1 ? null : activeTab.results })
     const startTime = Date.now();
-    
+
     try {
       const schema = targetConnection.database || activeConnection?.database;
-      
+
       let result;
       try {
         result = await queryService.execute(targetConnection.id, sqlSnippet, schema, undefined, page, queryLimit > 0 ? queryLimit : undefined);
@@ -842,7 +842,7 @@ export function useQueryEditor() {
             )
             setSafeDeleteSuggestion(safeSql)
           } catch {
-            // silent — suggestion is optional
+
           }
         }
       }
@@ -855,7 +855,7 @@ export function useQueryEditor() {
 
   const executeCurrentRef = useRef(handleExecuteCurrent)
   const executeAllRef = useRef(handleExecuteAll)
-  
+
   useEffect(() => {
     executeCurrentRef.current = handleExecuteCurrent
     executeAllRef.current = handleExecuteAll
@@ -871,10 +871,10 @@ export function useQueryEditor() {
       const tab = tabs.find(t => t.id === activeTabId);
       const connId = tab?.connectionId || activeConnection?.id;
       if (!connId) return;
-      updateTabResults(activeTabId, { 
-        status: ExecutionStatus.ERROR, 
+      updateTabResults(activeTabId, {
+        status: ExecutionStatus.ERROR,
         error: 'Query cancelled by user',
-        results: null 
+        results: null
       })
       queryService.cancel(connId)
     }
@@ -897,15 +897,15 @@ export function useQueryEditor() {
 
     const row = activeTab.results.rows[rowIndex]
     const prevValue = row[column]
-    
-    const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0 
-      ? activeTab.results.primary_keys 
+
+    const pkColumns = activeTab.results.primary_keys && activeTab.results.primary_keys.length > 0
+      ? activeTab.results.primary_keys
       : activeTab.results.columns.filter(c => c.toLowerCase() === 'id')
 
     if (pkColumns.length === 0) {
-      updateTabResults(activeTab.id, { 
-        status: ExecutionStatus.ERROR, 
-        error: 'Cannot update: Primary key (or ID column) not found in result set.' 
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot update: Primary key (or ID column) not found in result set.'
       })
       setEditingCell(null)
       return
@@ -915,9 +915,9 @@ export function useQueryEditor() {
     const tableName = tableNameMatch ? tableNameMatch[1] : null
 
     if (!tableName) {
-      updateTabResults(activeTab.id, { 
-        status: ExecutionStatus.ERROR, 
-        error: 'Cannot update: Table name not found in query.' 
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot update: Table name not found in query.'
       })
       setEditingCell(null)
       return
@@ -928,9 +928,9 @@ export function useQueryEditor() {
     const pkValues = pkColumns.map((pk: string) => row[pk])
 
     if (pkValues.some((v: DbValue) => v === null || v === undefined)) {
-       updateTabResults(activeTab.id, { 
-        status: ExecutionStatus.ERROR, 
-        error: 'Cannot update: Primary key value is null or undefined.' 
+       updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot update: Primary key value is null or undefined.'
       })
       setEditingCell(null)
       return
@@ -945,9 +945,9 @@ export function useQueryEditor() {
     )
 
     if (!finalSql) {
-      updateTabResults(activeTab.id, { 
-        status: ExecutionStatus.ERROR, 
-        error: 'Cannot update: Failed to generate UPDATE statement for this record.' 
+      updateTabResults(activeTab.id, {
+        status: ExecutionStatus.ERROR,
+        error: 'Cannot update: Failed to generate UPDATE statement for this record.'
       })
       setEditingCell(null)
       return
@@ -955,8 +955,8 @@ export function useQueryEditor() {
 
     const updatedRows = [...activeTab.results.rows]
     updatedRows[rowIndex] = { ...updatedRows[rowIndex], [column]: newValue }
-    
-    updateTabResults(activeTab.id, { 
+
+    updateTabResults(activeTab.id, {
       results: { ...activeTab.results, rows: updatedRows },
       status: ExecutionStatus.EXECUTING,
       error: null
@@ -987,11 +987,11 @@ export function useQueryEditor() {
                 throw err;
             }
         }
-        
+
         updateTabResults(activeTab.id, { status: ExecutionStatus.SUCCESS, error: null })
         addXP(10);
         trackAction('EDIT_ROW');
-        
+
         if (!isUndoRedo) {
           setTabHistory(prev => {
             const state = prev[activeTab.id] || { history: [], historyIndex: -1 }
@@ -1002,15 +1002,15 @@ export function useQueryEditor() {
         }
     } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update record'
-        updateTabResults(activeTab.id, { 
-            status: ExecutionStatus.ERROR, 
-            error: errorMessage 
+        updateTabResults(activeTab.id, {
+            status: ExecutionStatus.ERROR,
+            error: errorMessage
         })
-        updateTabResults(activeTab.id, { 
+        updateTabResults(activeTab.id, {
           results: { ...activeTab.results, rows: activeTab.results.rows },
         })
     }
-    
+
     setEditingCell(null)
   }, [activeTab, activeConnection, connections, updateTabResults, addXP, trackAction])
 
@@ -1073,7 +1073,7 @@ export function useQueryEditor() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      
+
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -1291,7 +1291,7 @@ export function useQueryEditor() {
   const handleSaveScript = useCallback(async () => {
     const state = useAppStore.getState();
     const currentTab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
-    
+
     const content = editorRef.current ? editorRef.current.state.doc.toString() : currentTab?.query;
     if (!content) return;
 

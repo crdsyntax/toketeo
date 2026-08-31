@@ -1,18 +1,6 @@
-//! Shared helpers for OpenAI-compatible chat completion adapters
-//! (OpenAI, OpenCode Zen, DeepSeek, Grok, Qwen, ...).
-//!
-//! Centralises the request body builder AND the response parser so fixes apply
-//! to every OpenAI-format provider at once. The format is the OpenAI Chat
-//! Completions API:
-//! - Assistant tool-call messages use `content:null` + `tool_calls:[...]`.
-//! - Tool results use `role:"tool"` + `tool_call_id:"..."` + content.
-
 use crate::error::{AppError, AppResult};
 use crate::models::assistant::{AiResponse, ChatMessage, TokenUsage, ToolCall, ToolDescriptor};
 
-/// Build the OpenAI-format messages array, including a synthetic system
-/// message when `system` is non-empty and honouring the assistant `tool_calls`
-/// + tool-result conventions.
 pub fn build_messages(system: &str, messages: &[ChatMessage]) -> Vec<serde_json::Value> {
     let mut result = Vec::with_capacity(messages.len() + 1);
     if !system.is_empty() {
@@ -67,7 +55,6 @@ pub fn build_messages(system: &str, messages: &[ChatMessage]) -> Vec<serde_json:
     result
 }
 
-/// Build the OpenAI-format `tools` array, or `None` if the slice is empty.
 pub fn build_tools(tools: &[ToolDescriptor]) -> Option<Vec<serde_json::Value>> {
     if tools.is_empty() {
         return None;
@@ -89,8 +76,6 @@ pub fn build_tools(tools: &[ToolDescriptor]) -> Option<Vec<serde_json::Value>> {
     )
 }
 
-/// Parse an OpenAI-compatible chat completion response. Used by the OpenAI,
-/// DeepSeek, and OpenCode (Zen) adapters.
 pub fn parse_response(data: &serde_json::Value, default_model: &str) -> AppResult<AiResponse> {
     let choice = data["choices"][0]["message"]
         .as_object()
@@ -111,10 +96,7 @@ pub fn parse_response(data: &serde_json::Value, default_model: &str) -> AppResul
                     Some(ToolCall {
                         id: tc["id"].as_str()?.to_string(),
                         name: tc["function"]["name"].as_str()?.to_string(),
-                        // OpenAI-compatible providers return `arguments` as a
-                        // string-encoded JSON object. Normalise it to a real
-                        // object here so tool executors can `args.get(...)`;
-                        // fall back to the raw value if it cannot be parsed.
+
                         arguments: normalize_arguments(&tc["function"]["arguments"]),
                     })
                 })
@@ -142,9 +124,6 @@ pub fn parse_response(data: &serde_json::Value, default_model: &str) -> AppResul
     })
 }
 
-/// Normalise a provider tool-call `arguments` payload into a JSON object.
-/// OpenAI-compatible providers send it as a string-encoded JSON object; if the
-/// payload is already an object (or cannot be parsed) it is kept as-is.
 fn normalize_arguments(value: &serde_json::Value) -> serde_json::Value {
     match value {
         serde_json::Value::String(s) => {
@@ -154,14 +133,8 @@ fn normalize_arguments(value: &serde_json::Value) -> serde_json::Value {
     }
 }
 
-/// Callback invoked with each content delta as it streams in.
 pub type OnDelta<'a> = &'a (dyn Fn(&str) + Send + Sync);
 
-/// Streaming chat completion against an OpenAI-compatible endpoint (SSE).
-/// Emits content deltas through `on_delta` as they arrive and returns the
-/// fully assembled response (content + tool calls). Tool-call argument
-/// fragments are accumulated per call index. Usage is not reported by most
-/// providers when streaming, so token usage is zeroed.
 pub async fn complete_streaming(
     client: &reqwest::Client,
     base_url: &str,
@@ -199,7 +172,7 @@ pub async fn complete_streaming(
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
     let mut content = String::new();
-    // tool_calls keyed by their streamed index: (id, name, arguments-so-far).
+
     let mut tool_calls: std::collections::BTreeMap<u64, (String, String, String)> =
         std::collections::BTreeMap::new();
     let mut finish_model = model.to_string();
@@ -209,7 +182,6 @@ pub async fn complete_streaming(
             .map_err(|e| AppError::Internal(format!("{provider_label} stream failed: {e}")))?;
         buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-        // SSE events are separated by newlines; process every complete line.
         while let Some(pos) = buffer.find('\n') {
             let line: String = buffer.drain(..=pos).collect();
             let line = line.trim_end_matches(['\n', '\r']);

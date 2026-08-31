@@ -42,9 +42,7 @@ const INITIAL_FORM: CreateConnectionDto = {
   metadataCacheTtl: 300,
 }
 
-// Sentinel used by the backend to mask stored secrets. A value equal to this
-// sentinel means "the real secret is stored server-side", so the eye button
-// must fetch it from the backend instead of revealing this placeholder.
+
 const REDACTED = '********'
 
 type SecretField = 'password' | 'ssh_password' | 'ssh_passphrase'
@@ -73,9 +71,7 @@ export function ConnectionModal({
     autoLockTimer.current = null
   }
 
-  // Returns the real secret value for a field: the typed value if it is not the
-  // REDACTED sentinel, otherwise it fetches the stored secret from the backend
-  // (requires an unlocked session).
+
   const resolveSecret = async (field: SecretField): Promise<string | null> => {
     if (field === 'password' && form.password !== REDACTED) return form.password ?? null
     if (field === 'ssh_password' && form.ssh?.password !== REDACTED) return form.ssh?.password ?? null
@@ -84,9 +80,7 @@ export function ConnectionModal({
     return connectionService.revealSecret(editingConnection.id, field)
   }
 
-  // Toggles an eye button: hides when visible, otherwise prompts for unlock
-  // (if needed) and fetches the real secret from the backend when the field
-  // still holds the REDACTED sentinel.
+
   const toggleReveal = async (field: SecretField) => {
     if (field === 'password' && showPassword) return setShowPassword(false)
     if (field === 'ssh_password' && showSshPassword) return setShowSshPassword(false)
@@ -123,7 +117,7 @@ export function ConnectionModal({
         setShowSshPassphrase(true)
       }
     } catch {
-      // tauriApi already surfaces the error; keep the field masked.
+
     }
   }
 
@@ -146,26 +140,23 @@ export function ConnectionModal({
 
       clearSecretTimers()
 
-      // Auto-clean the clipboard 40s after copying so the secret does not linger
-      // in a shared, OS-wide buffer. Only clears it if it still holds our value.
+
       clipboardClearTimer.current = setTimeout(async () => {
         try {
           const current = await navigator.clipboard.readText()
           if (current === value) await navigator.clipboard.writeText('')
         } catch {
-          // Clipboard unreadable: never clobber unknown content.
+
         }
       }, 40_000)
 
-      // Block only secret revelation 1min20s after copying so the credential
-      // cannot be revealed or re-copied once the window is over. DB operations
-      // (connect, queries) are NOT affected.
+
       autoLockTimer.current = setTimeout(async () => {
         try {
           await connectionService.lockSecrets()
           toast('Password reveal blocked for security')
         } catch {
-          // Session may already be locked; nothing else to do.
+
         }
       }, 80_000)
 
@@ -329,8 +320,8 @@ export function ConnectionModal({
   return (
     <div className="fixed z-50 w-[560px]" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
       <div className="bg-muted border border-border shadow-2xl rounded-xl overflow-hidden flex flex-col max-h-[80vh]">
-        
-        {/* Header */}
+
+
         <div className="p-4 border-b border-border flex items-center justify-between bg-background cursor-grab active:cursor-grabbing" data-drag-handle>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-primary/10 border border-primary/20 flex items-center justify-center">
@@ -360,7 +351,7 @@ export function ConnectionModal({
           </div>
         </div>
 
-        {/* Tab Switcher */}
+
         <div className="px-4 py-3 bg-background border-b border-border">
           <div className="flex gap-2">
             {[
@@ -370,13 +361,13 @@ export function ConnectionModal({
                 { id: 'ssh', label: 'SSH Tunnel', icon: Lock }
               ] : [])
             ].map((tab) => (
-              <button 
+              <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'general' | 'ssh' | 'pool')}
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 text-[var(--ch-text-10)] font-bold uppercase tracking-widest border transition-all",
-                  activeTab === tab.id 
-                    ? "bg-primary text-primary-foreground border-primary" 
+                  activeTab === tab.id
+                    ? "bg-primary text-primary-foreground border-primary"
                     : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
                 )}
               >
@@ -388,7 +379,7 @@ export function ConnectionModal({
           </div>
         </div>
 
-        {/* Form Content */}
+
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8 scrollbar-thin">
           {isLoadingConnection ? (
             <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.2em] text-muted-foreground">
@@ -399,7 +390,7 @@ export function ConnectionModal({
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Display Name</label>
-                  <input 
+                  <input
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all placeholder:text-muted-foreground/30"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -449,17 +440,17 @@ export function ConnectionModal({
                     <button
                       key={engine.id}
                       onClick={() => {
-                        const defaultPort = 
-                          engine.id === DatabaseType.POSTGRES ? 5432 : 
-                          engine.id === DatabaseType.MONGODB ? 27017 : 
+                        const defaultPort =
+                          engine.id === DatabaseType.POSTGRES ? 5432 :
+                          engine.id === DatabaseType.MONGODB ? 27017 :
                           engine.id === DatabaseType.SQLSERVER ? 1433 :
                           engine.id === DatabaseType.REDIS ? 6379 : 3306
                         setForm({ ...form, type: engine.id as DatabaseType, port: defaultPort })
                       }}
                       className={cn(
                         "py-2 border text-[var(--ch-text-9)] font-bold uppercase tracking-widest transition-all",
-                        form.type === engine.id 
-                          ? "bg-primary/10 border-primary text-primary" 
+                        form.type === engine.id
+                          ? "bg-primary/10 border-primary text-primary"
                           : "bg-background border-border text-muted-foreground hover:border-primary/50"
                       )}
                     >
@@ -474,7 +465,7 @@ export function ConnectionModal({
                   <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Host / URI</label>
                   <div className="relative">
                     <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
-                    <input 
+                    <input
                       className="w-full bg-background border border-border pl-10 pr-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                       value={form.host}
                       onChange={(e) => setForm({ ...form, host: e.target.value })}
@@ -484,7 +475,7 @@ export function ConnectionModal({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Port</label>
-                  <input 
+                  <input
                     type="number"
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                     value={form.port}
@@ -497,7 +488,7 @@ export function ConnectionModal({
                 {form.type !== DatabaseType.REDIS && (
                 <div className="space-y-2">
                   <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Username</label>
-                  <input 
+                  <input
                     className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                     value={form.user}
                     onChange={(e) => setForm({ ...form, user: e.target.value })}
@@ -509,7 +500,7 @@ export function ConnectionModal({
                   <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Password {form.type === DatabaseType.REDIS ? '(optional)' : ''}</label>
                   <div className="relative">
                     <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
-                    <input 
+                    <input
                       type={showPassword ? 'text' : 'password'}
                       className={cn(
                         "w-full bg-background border border-border pl-10 pr-10 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all",
@@ -559,7 +550,7 @@ export function ConnectionModal({
                 <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">{form.type === DatabaseType.REDIS ? 'Database (0-15)' : 'Default Schema'}</label>
                 <div className="relative">
                   <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
-                  <input 
+                  <input
                     className="w-full bg-background border border-border pl-10 pr-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none transition-all"
                     value={form.database}
                     onChange={(e) => setForm({ ...form, database: e.target.value })}
@@ -579,7 +570,7 @@ export function ConnectionModal({
                     <p className="text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tight">Encrypt database connection</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setForm({ ...form, ssl: form.ssl === 'true' ? 'false' : 'true' })}
                   className={cn(
                     "w-12 h-6 transition-all relative border p-1",
@@ -611,7 +602,7 @@ export function ConnectionModal({
                         <p className="text-[var(--ch-text-9)] text-muted-foreground uppercase tracking-tight">Requires username &amp; password</p>
                       </div>
                     </div>
-                    <button 
+                    <button
                       onClick={() => setForm({ ...form, authEnabled: !form.authEnabled, password: !form.authEnabled ? '' : form.password })}
                       className={cn(
                         "w-10 h-5 transition-all relative border p-0.5",
@@ -638,7 +629,7 @@ export function ConnectionModal({
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Auth Source</label>
-                        <input 
+                        <input
                           className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                           value={form.authSource}
                           onChange={(e) => setForm({ ...form, authSource: e.target.value })}
@@ -646,7 +637,7 @@ export function ConnectionModal({
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-widest text-muted-foreground/70">Replica Set</label>
-                        <input 
+                        <input
                           className="w-full bg-background border border-border px-3 py-2 text-[var(--ch-text-11)] font-mono focus:border-primary focus:outline-none"
                           value={form.replicaSet}
                           onChange={(e) => setForm({ ...form, replicaSet: e.target.value })}
@@ -663,7 +654,7 @@ export function ConnectionModal({
                           <p className="text-[var(--ch-text-9)] text-muted-foreground uppercase tracking-tight">Force single node connection</p>
                         </div>
                       </div>
-                      <button 
+                      <button
                         onClick={() => setForm({ ...form, directConnection: !form.directConnection })}
                         className={cn(
                           "w-10 h-5 transition-all relative border p-0.5",
@@ -774,7 +765,7 @@ export function ConnectionModal({
                     <p className="text-[var(--ch-text-10)] text-muted-foreground uppercase tracking-tight">Secure bastion host access</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => toggleSsh(!form.ssh)}
                   className={cn(
                     "w-12 h-6 transition-all relative border p-1",
@@ -793,7 +784,7 @@ export function ConnectionModal({
                   <div className="grid grid-cols-4 gap-4">
                     <div className="col-span-3 space-y-2">
                       <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Host</label>
-                      <input 
+                      <input
                         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                         value={form.ssh.host}
                         onChange={(e) => updateSsh({ host: e.target.value })}
@@ -802,7 +793,7 @@ export function ConnectionModal({
                     </div>
                     <div className="space-y-2">
                       <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Port</label>
-                      <input 
+                      <input
                         type="number"
                         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                         value={form.ssh.port}
@@ -823,8 +814,8 @@ export function ConnectionModal({
                           onClick={() => updateSsh({ authType: auth.id })}
                           className={cn(
                             "flex-1 flex items-center justify-center gap-2 py-2 border text-[var(--ch-text-9)] font-bold uppercase tracking-widest transition-all",
-                            form.ssh?.authType === auth.id 
-                              ? "bg-primary/10 border-primary text-primary" 
+                            form.ssh?.authType === auth.id
+                              ? "bg-primary/10 border-primary text-primary"
                               : "bg-background border-border text-muted-foreground hover:border-primary/50"
                           )}
                         >
@@ -838,7 +829,7 @@ export function ConnectionModal({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH User</label>
-                      <input 
+                      <input
                         className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                         value={form.ssh.user}
                         onChange={(e) => updateSsh({ user: e.target.value })}
@@ -848,7 +839,7 @@ export function ConnectionModal({
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">SSH Password</label>
                         <div className="relative">
-                          <input 
+                          <input
                             type={showSshPassword ? 'text' : 'password'}
                             className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                             value={form.ssh.password || ''}
@@ -876,7 +867,7 @@ export function ConnectionModal({
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Passphrase (required for encrypted keys)</label>
                         <div className="relative">
-                          <input 
+                          <input
                             type={showSshPassphrase ? 'text' : 'password'}
                             className="w-full bg-background border border-border px-4 py-2.5 text-xs font-mono focus:border-primary focus:outline-none"
                             value={form.ssh.passphrase || ''}
@@ -956,10 +947,8 @@ export function ConnectionModal({
             </div>
           )}
         </div>
-
-        {/* Footer */}
         <div className="p-4 bg-background border-t border-border flex items-center justify-between gap-4">
-          <button 
+          <button
             onClick={() => {
               const payload = { ...form };
               if (payload.ssh) {
@@ -979,18 +968,17 @@ export function ConnectionModal({
             )}
             Test
           </button>
-          
+
           <div className="flex items-center gap-4">
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="px-4 py-2 text-[var(--ch-text-10)] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-widest"
             >
               Cancel
             </button>
-            <button 
+            <button
               onClick={() => {
-                const payload = { ...form, password: form.authEnabled === false ? '' : (storePassword ? form.password : '') };
-                // Cleanup legacy fields to avoid Serde duplicate errors
+                const payload = { ...form, password: form.authEnabled === false ? '' : (storePassword ? form.password : '') };
                 if (payload.ssh) {
                   const cleanedSsh = { ...payload.ssh } as Record<string, unknown>;
                   delete cleanedSsh.authMethod;
@@ -1015,8 +1003,8 @@ export function ConnectionModal({
         {testMessage && (
           <div className={cn(
             "mx-6 mb-6 p-3 border flex items-center gap-3 animate-in slide-in-from-bottom-2 duration-300",
-            testMessage.type === 'success' 
-              ? "bg-green-500/5 border-green-500/20 text-green-500" 
+            testMessage.type === 'success'
+              ? "bg-green-500/5 border-green-500/20 text-green-500"
               : "bg-destructive/5 border-destructive/20 text-destructive"
           )}>
             {testMessage.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}

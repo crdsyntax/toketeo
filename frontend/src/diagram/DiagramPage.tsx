@@ -93,7 +93,7 @@ function EditorInner() {
   const [isSaving, setIsSaving] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
 
-  // Fetch available schemas for PostgreSQL connections
+
   const { data: availableSchemas = [] } = useQuery({
     queryKey: ['schemas', diagram?.sourceConnectionId],
     queryFn: () => schemaService.getSchemas(diagram!.sourceConnectionId!),
@@ -101,7 +101,7 @@ function EditorInner() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Auto-detect schema for PostgreSQL diagrams that don't have one yet
+
   useEffect(() => {
     if (!diagram || !isPostgres || !availableSchemas.length) return
     if (!diagram.sourceSchema && availableSchemas.length > 0) {
@@ -114,7 +114,7 @@ function EditorInner() {
 
   const currentSchema = diagram?.sourceSchema || activeConnection?.database
 
-  // Fetch all tables for the connection schema
+
   const { data: allTables = [], isLoading: isLoadingTables } = useQuery({
     queryKey: ['tables', diagram?.sourceConnectionId, currentSchema],
     queryFn: () => schemaService.getTables(diagram!.sourceConnectionId!, currentSchema),
@@ -127,7 +127,7 @@ function EditorInner() {
     [allTables],
   )
 
-  // Fetch diagram data for selected tables
+
   const { data: diagramData, isLoading: isLoadingDiagram } = useQuery({
     queryKey: ['diagram', diagram?.sourceConnectionId, currentSchema, [...selectedTables].sort()],
     queryFn: () =>
@@ -140,7 +140,7 @@ function EditorInner() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Initialize nodes/edges from diagram store or from schema data
+
   const initialNodes: Node[] = useMemo(() => {
     if (diagram && diagram.nodes.length > 0) return diagram.nodes
     if (diagramData && showTableSelector) return buildNodesFromSchema(diagramData)
@@ -156,14 +156,14 @@ function EditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  // Live Mermaid erDiagram export of the current diagram.
+
   const mermaidCode = useMemo(() => nodesToMermaid(nodes, edges), [nodes, edges])
 
-  // Sync React Flow state when initial nodes/edges change (table selection, data load)
+
   useEffect(() => { setNodes(initialNodes) }, [initialNodes, setNodes])
   useEffect(() => { setEdges(initialEdges) }, [initialEdges, setEdges])
 
-  // Save nodes to store when diagram changes
+
   const handleSave = useCallback(() => {
     if (!diagram) return
     setIsSaving(true)
@@ -180,7 +180,7 @@ function EditorInner() {
     setActiveDiagram(null)
   }, [handleSave, setActiveDiagram])
 
-  // Schema mode table selection
+
   const toggleTable = useCallback((name: string) => {
     setSelectedTables((prev) => {
       const next = new Set(prev)
@@ -198,7 +198,7 @@ function EditorInner() {
     setSelectedTables(new Set())
   }, [])
 
-  // Add or update a table node (edit mode renames and migrates edges)
+
   const handleAddTable = useCallback((tableName: string, columns: ColumnResponse[], foreignKeys: ForeignKeyResponse[]) => {
     const editing = editingNode
     const newId = `table:${tableName}`
@@ -212,14 +212,14 @@ function EditorInner() {
         data: { label: tableName, columns, foreignKeys },
       }
       if (editing) {
-        // Replace the edited node (its id may have changed on rename).
+
         return nds.map((n) => (n.id === editing.id ? newNode : n))
       }
       if (existingIndex >= 0) return nds
       return [...nds, newNode]
     })
 
-    // Migrate edges that referenced the old node id (rename).
+
     if (editing && editing.id !== newId) {
       setEdges((eds) =>
         eds.map((e) =>
@@ -249,7 +249,7 @@ function EditorInner() {
     setNodes((nds) => [...nds, newNode])
   }, [nodes, setNodes])
 
-  // Rename/update an existing view node (query included; edges migrate on rename).
+
   const handleSaveView = useCallback((name: string, query?: string) => {
     if (!editingViewName) return
     const newId = `view:${name}`
@@ -274,7 +274,7 @@ function EditorInner() {
     setEditingViewName(null)
   }, [editingViewName, setNodes, setEdges])
 
-  // Double-click on a node opens its editor.
+
   const handleNodeEdit = useCallback((node: Node) => {
     if (node.type === 'table') {
       setEditingNode(node)
@@ -284,7 +284,7 @@ function EditorInner() {
     }
   }, [])
 
-  // Edge mutations from canvas
+
   const handleEdgeCreate = useCallback((edge: Edge) => {
     setEdges((eds) => [...eds, edge])
   }, [setEdges])
@@ -297,10 +297,10 @@ function EditorInner() {
     setEdges((eds) => eds.filter((e) => e.id !== edgeId))
   }, [setEdges])
 
-  // Export
+
   const handleExport = useCallback(async () => {
     if (!diagram) return
-    // Save current state first
+
     saveDiagram(diagram.id, nodes, edges)
     const store = useDiagramStore.getState()
     const json = store.exportToJson(diagram.id)
@@ -314,7 +314,7 @@ function EditorInner() {
         filterExt: DIAGRAM_FILE_EXTENSION.replace('.', ''),
       })
     } catch {
-      // Fallback for web
+
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -325,7 +325,7 @@ function EditorInner() {
     }
   }, [diagram, nodes, edges, saveDiagram])
 
-  // Import
+
   const handleImport = useCallback(async () => {
     try {
       const content: string = await invoke('open_file_dialog', {
@@ -339,7 +339,7 @@ function EditorInner() {
         setEditorKey((k) => k + 1)
       }
     } catch {
-      // Fallback for web
+
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = DIAGRAM_FILE_EXTENSION
@@ -378,7 +378,6 @@ function EditorInner() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Table selector panel for schema mode */}
         {showTableSelector && hasConnection && (
           <div className="w-72 shrink-0 border-r border-border bg-card flex flex-col overflow-hidden">
             <div className="p-4 border-b border-border space-y-3">
@@ -475,7 +474,7 @@ function EditorInner() {
           </div>
         )}
 
-        {/* Canvas */}
+
         <div className="flex-1 relative">
           {showTableSelector && hasConnection ? (
             selectedTables.size === 0 ? (
@@ -531,8 +530,6 @@ function EditorInner() {
         initialColumns={(editingNode?.data as { columns?: ColumnResponse[] } | undefined)?.columns}
         initialForeignKeys={(editingNode?.data as { foreignKeys?: ForeignKeyResponse[] } | undefined)?.foreignKeys}
       />
-
-      {/* View form modal (name + SQL query) */}
       {editingViewName && (() => {
         const node = nodes.find((n) => n.id === editingViewName)
         const data = node?.data as { label?: string; query?: string } | undefined
@@ -567,7 +564,7 @@ function DiagramPageInner() {
 
   const [editorKey, setEditorKey] = useState(0)
 
-  // Load diagrams from backend on first mount
+
   useEffect(() => {
     if (!loaded) loadDiagrams()
   }, [loaded, loadDiagrams])
@@ -585,7 +582,7 @@ function DiagramPageInner() {
 
   const handleNewFromSchema = useCallback(async () => {
     if (!activeConnection) return
-    // For PostgreSQL, fetch available schemas and default to "public" or first available
+
     let schema: string | undefined
     if (activeConnection.type === 'postgres') {
       try {
@@ -632,7 +629,7 @@ function DiagramPageInner() {
     }
   }, [importFromJson, setActiveDiagram])
 
-  // Show dashboard when no diagram is active
+
   if (!activeDiagramId) {
     return (
       <DiagramDashboard
@@ -645,9 +642,7 @@ function DiagramPageInner() {
         connections={connections}
       />
     )
-  }
-
-  // Show editor when a diagram is active
+  }
   return (
     <ReactFlowProvider>
       <EditorInner key={editorKey} />

@@ -9,15 +9,6 @@ use tauri::Emitter;
 
 pub static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
-/// Persistent store of trusted SSH host key fingerprints (known_hosts).
-///
-/// Host keys are verified with a trust-on-first-use (TOFU) policy:
-///  - first connection to a host records its fingerprint;
-///  - subsequent connections must present the same fingerprint, otherwise the
-///    connection is rejected (possible MITM attack).
-///
-/// Fingerprints are persisted in the local storage (encrypted app secrets),
-/// keyed by `host:port`.
 pub struct KnownHostsStore {
     storage: Arc<Storage>,
     cache: std::sync::Mutex<HashMap<String, String>>,
@@ -49,8 +40,6 @@ impl KnownHostsStore {
         let _ = self.loaded.set(true);
     }
 
-    /// Returns `Ok(true)` if the host key is trusted, `Ok(false)` if the
-    /// fingerprint changed (reject), `Err` on storage failure.
     pub async fn verify_or_record(
         &self,
         host: &str,
@@ -87,8 +76,6 @@ impl KnownHostsStore {
     }
 }
 
-/// Loads and decodes an SSH private key, either from a file path or from
-/// inline PEM/OpenSSH contents, mapping russh errors into actionable messages.
 fn load_private_key(
     key_path: Option<&str>,
     private_key: Option<&str>,
@@ -123,10 +110,6 @@ fn load_private_key(
     })
 }
 
-/// Client handler used by the SSH tunnel.
-///
-/// Server host keys are verified against the persisted known_hosts store
-/// (TOFU). A fingerprint mismatch rejects the connection to prevent MITM.
 pub struct SshClientHandler {
     host: String,
     port: u16,
@@ -167,7 +150,7 @@ impl russh::client::Handler for SshClientHandler {
             }
             Err(e) => {
                 tracing::error!("SSH known_hosts storage error: {}", e);
-                // Fail closed: do not trust an unverifiable host key.
+
                 Ok(false)
             }
         }
@@ -311,7 +294,6 @@ impl SshTunnel {
         let remote_host = remote_host.to_string();
         let conn_id = connection_id;
 
-        // Spawn the forwarding loop on the tokio runtime.
         tokio::spawn(async move {
             let mut shutdown_rx = shutdown_rx;
             let listener = listener;
@@ -349,7 +331,6 @@ impl SshTunnel {
     }
 }
 
-/// Forwards a single local TCP connection through an SSH direct-tcpip channel.
 async fn tunnel_connection(
     session: Arc<russh::client::Handle<SshClientHandler>>,
     local_stream: tokio::net::TcpStream,

@@ -24,8 +24,6 @@ pub async fn get_sql_schema_flow_data(
         None
     };
 
-    // Disambiguate duplicate column names from `SELECT a.*, b.*` joins so each node
-    // keeps its own columns. Falls back to the original query when not rewritable.
     let effective_query = if let Some(driver) = &driver {
         SqlFlowService::qualify_query(&query, driver, dialect.as_deref(), schema.as_deref())
             .await
@@ -34,9 +32,6 @@ pub async fn get_sql_schema_flow_data(
         query.clone()
     };
 
-    // When a connection is available we MUST surface execution errors instead of
-    // swallowing them with `.ok()`. A failed execution previously returned a graph
-    // with nodes but `rows: None`, rendering empty nodes with no explanation.
     let query_result = if let Some(conn_id) = &connection_id {
         Some(
             ExplorerService::execute_query(&state, conn_id, &effective_query, schema.clone())

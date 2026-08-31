@@ -8,9 +8,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Schema changes (DDL) on a connection: edit object DDL, drop/rename
-/// columns, indexes, foreign keys and constraints, and create/drop
-/// databases, schemas and collections. All actions require confirmation.
 pub struct DdlTool;
 
 #[async_trait]

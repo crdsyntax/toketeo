@@ -8,7 +8,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Search, list and manage the assistant's validated knowledge library.
 pub struct KnowledgeTool;
 
 #[async_trait]

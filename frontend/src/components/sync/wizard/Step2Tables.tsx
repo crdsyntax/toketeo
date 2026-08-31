@@ -86,7 +86,7 @@ export function Step2Tables({
         onSourceColumnsChange({ ...sourceColumns, ...newColumns })
       }
     } catch {
-      // ignore
+
     } finally {
       setLoadingAllTables(false)
     }
@@ -144,7 +144,7 @@ export function Step2Tables({
       setPreviewData((prev) => ({ ...prev, [i]: result.rows }))
       setShowPreview((prev) => ({ ...prev, [i]: true }))
     } catch {
-      // ignore
+
     } finally {
       setLoadingPreview((prev) => ({ ...prev, [i]: false }))
     }
@@ -185,7 +185,7 @@ export function Step2Tables({
         </div>
       </div>
 
-      {/* Search filter */}
+
       {tables.length > 0 && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -206,7 +206,7 @@ export function Step2Tables({
         </div>
       )}
 
-      {/* Filtered tables list */}
+
       {tables
         .filter((table) =>
           !searchQuery ||
@@ -298,7 +298,7 @@ export function Step2Tables({
                 </div>
               ) : null}
 
-              {/* Advanced: column mappings, transforms */}
+
               <div className="border border-dashed border-border/50">
                 <button
                   onClick={() => setAdvancedOpen((prev) => ({ ...prev, [i]: !prev[i] }))}

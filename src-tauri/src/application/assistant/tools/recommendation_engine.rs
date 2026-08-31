@@ -4,7 +4,6 @@ use crate::models::{AssistantMessage, QueryHistoryEntry};
 pub struct RecommendationEngine;
 
 impl RecommendationEngine {
-    /// Analyze query history and generate improvement suggestions.
     pub fn analyze(
         messages: &[AssistantMessage],
         history: &[QueryHistoryEntry],
@@ -12,7 +11,6 @@ impl RecommendationEngine {
     ) -> Vec<String> {
         let mut suggestions: Vec<String> = Vec::new();
 
-        // Check for missing FK indexes
         let negative_rate = if messages.is_empty() {
             0.0
         } else {
@@ -29,7 +27,6 @@ impl RecommendationEngine {
             );
         }
 
-        // Repeated errors in query history
         let error_queries: Vec<&QueryHistoryEntry> =
             history.iter().filter(|q| q.status == "error").collect();
         if error_queries.len() > 5 {
@@ -39,7 +36,6 @@ impl RecommendationEngine {
             ));
         }
 
-        // Slow queries
         let slow_queries: Vec<&QueryHistoryEntry> = history
             .iter()
             .filter(|q| q.duration_ms.is_some_and(|d| d > 5000))
@@ -51,7 +47,6 @@ impl RecommendationEngine {
             ));
         }
 
-        // Low knowledge library usage
         if cases.is_empty() && messages.len() > 20 {
             suggestions.push(
                 "You've had several conversations but no saved knowledge cases. Rate responses with thumbs up/down to build your library."
@@ -62,7 +57,6 @@ impl RecommendationEngine {
         suggestions
     }
 
-    /// Suggest tables that might need indexes based on FK columns.
     pub fn suggest_missing_fk_indexes(unused_cases: &[KnowledgeCase]) -> Option<String> {
         let unused: Vec<&KnowledgeCase> =
             unused_cases.iter().filter(|c| c.used_count == 0).collect();

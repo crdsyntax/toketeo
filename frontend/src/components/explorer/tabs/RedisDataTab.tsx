@@ -116,12 +116,12 @@ export function RedisDataTab({
     queueMicrotask(() => handleExecute());
   };
 
-  // Rebuild the SCAN command with a specific cursor so Prev/Next page through keys.
+
   const buildScanCommand = (cursor: string) => {
     const tokens = command.trim().split(/\s+/);
     const upper = tokens[0]?.toUpperCase() ?? 'SCAN';
     if (upper !== 'SCAN') return command;
-    // Preserve MATCH / COUNT args, only replace the cursor token.
+
     const rest = tokens.slice(2);
     return `SCAN ${cursor}${rest.length ? ' ' + rest.join(' ') : ''}`;
   };
@@ -157,7 +157,7 @@ export function RedisDataTab({
     }, 1500));
   };
 
-  // Handle view/procedure initial state
+
   if (
     (selectedItem.type === 'view' || selectedItem.type === 'procedure') &&
     executionStatus === ExecutionStatus.IDLE
@@ -187,7 +187,7 @@ export function RedisDataTab({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 min-w-0 relative">
-      {/* Command input */}
+
       <div className="px-4 py-2 border-b border-border bg-muted/5 flex flex-col shrink-0">
         <div className="flex items-center gap-2 w-full">
           <div className="flex items-center gap-1.5 shrink-0">
@@ -215,24 +215,18 @@ export function RedisDataTab({
           </button>
         </div>
       </div>
-
-      {/* Production warning */}
       {activeConnection?.environment === Environment.PRODUCTION && (
         <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-red-500 flex items-center gap-2 shrink-0">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           <p className="text-[var(--ch-text-11)] font-bold uppercase tracking-wider flex-1">Production — commands execute on live server</p>
         </div>
       )}
-
-      {/* Error */}
       {executionStatus === ExecutionStatus.ERROR && (
         <div className="p-4 bg-destructive/10 border-b border-destructive/20 text-destructive flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
           <p className="text-xs font-mono">{executionError}</p>
         </div>
       )}
-
-      {/* Results */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center p-4 space-y-4">
@@ -341,8 +335,6 @@ export function RedisDataTab({
           )
         )}
       </div>
-
-      {/* Footer */}
       {queryData && (
         <div className="p-3 border-t border-border flex items-center justify-between bg-muted/10">
           <div className="flex items-center gap-4 text-xs text-muted-foreground">

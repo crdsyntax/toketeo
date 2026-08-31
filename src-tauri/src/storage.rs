@@ -32,7 +32,6 @@ impl Storage {
             .connect(&url)
             .await?;
 
-        // WAL mode for concurrent reads + busy timeout to retry on contention
         sqlx::query("PRAGMA journal_mode=WAL")
             .execute(&pool)
             .await?;
@@ -40,7 +39,6 @@ impl Storage {
             .execute(&pool)
             .await?;
 
-        // Create tables if not exists
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS connections (
                 id TEXT PRIMARY KEY,
@@ -71,13 +69,11 @@ impl Storage {
         .execute(&pool)
         .await?;
 
-        // Migration: attribute each entry to who ran it ('user' | 'assistant' | 'monitor').
         let _ =
             sqlx::query("ALTER TABLE audit_logs ADD COLUMN origin TEXT NOT NULL DEFAULT 'user'")
                 .execute(&pool)
                 .await;
 
-        // Migration: Add environment column if it doesn't exist
         let _ = sqlx::query(
             "ALTER TABLE connections ADD COLUMN environment TEXT NOT NULL DEFAULT 'local'",
         )
@@ -328,9 +324,6 @@ impl Storage {
         .execute(&pool)
         .await?;
 
-        // Semantic embeddings for knowledge cases, kept conceptually separate
-        // from the relational table. `kind` distinguishes document shapes
-        // ('qa' | 'error'); `embedding` is little-endian float32.
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS assistant_knowledge_embeddings (
                 knowledge_id TEXT PRIMARY KEY,
@@ -381,7 +374,6 @@ impl Storage {
         .execute(&pool)
         .await?;
 
-        // Migrations
         let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN feedback TEXT")
             .execute(&pool)
             .await;
@@ -404,7 +396,6 @@ impl Storage {
         .execute(&pool)
         .await;
 
-        // Assistant migrations
         let _ = sqlx::query("ALTER TABLE assistant_messages ADD COLUMN accepted_sql TEXT")
             .execute(&pool)
             .await;
@@ -420,10 +411,6 @@ impl Storage {
         .execute(&pool)
         .await;
 
-        // Phase 7: encrypt API keys at rest in `assistant_providers`.
-        // `api_key` keeps its nullable-TEXT for back-compat (legacy plaintext
-        // values are migrated on first save); new writes populate the two
-        // ciphertext columns and NULL-out `api_key`.
         let _ = sqlx::query("ALTER TABLE assistant_providers ADD COLUMN api_key_enc TEXT")
             .execute(&pool)
             .await;
@@ -431,7 +418,6 @@ impl Storage {
             .execute(&pool)
             .await;
 
-        // Per-database credentials (MongoDB: each db may have its own auth)
         let _ = sqlx::query(
             "CREATE TABLE IF NOT EXISTS connection_database_credentials (
                 connection_id TEXT NOT NULL,
@@ -1111,8 +1097,6 @@ impl Storage {
         Ok(logs)
     }
 
-    // ── Diagrams ──
-
     pub async fn save_diagram(
         &self,
         diagram: &crate::models::diagram::Diagram,
@@ -1193,8 +1177,6 @@ impl Storage {
             .await?;
         Ok(())
     }
-
-    // ── Sync Pipelines ──
 
     pub async fn save_sync_pipeline(&self, pipeline: &SyncPipeline) -> AppResult<SyncPipeline> {
         let config = serde_json::to_string(&serde_json::json!({
@@ -1311,8 +1293,6 @@ impl Storage {
         Ok(())
     }
 
-    // ── Sync Runs ──
-
     pub async fn save_sync_run(&self, run: &SyncRun) -> AppResult<()> {
         sqlx::query(
             "INSERT INTO sync_runs (id, pipeline_id, status, started_at, completed_at, total_rows, processed_rows, error_count, batch_count)
@@ -1365,8 +1345,6 @@ impl Storage {
         }
         Ok(runs)
     }
-
-    // ── Sync Checkpoints ──
 
     pub async fn save_sync_checkpoint(&self, cp: &SyncCheckpoint) -> AppResult<()> {
         sqlx::query(
@@ -1431,8 +1409,6 @@ impl Storage {
         }
     }
 
-    // ── Sync Batches ──
-
     pub async fn save_sync_batch(&self, batch: &SyncBatch) -> AppResult<()> {
         sqlx::query(
             "INSERT INTO sync_batches (id, run_id, batch_number, table_name, rows_extracted, rows_loaded, skipped_rows, duration_ms, status, error_message)
@@ -1476,8 +1452,6 @@ impl Storage {
         }
         Ok(batches)
     }
-
-    // ── Sync Row Errors ──
 
     pub async fn save_sync_row_error(&self, err: &SyncRowError) -> AppResult<()> {
         sqlx::query(
@@ -1653,8 +1627,6 @@ impl Storage {
         Ok(())
     }
 
-    // ── Assistant Messages ──
-
     pub async fn save_assistant_messages(
         &self,
         messages: &[crate::models::AssistantMessage],
@@ -1745,8 +1717,6 @@ impl Storage {
             .await?;
         Ok(())
     }
-
-    // ── Query History ──
 
     pub async fn save_query_history(
         &self,
@@ -1867,9 +1837,6 @@ impl Storage {
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        // Encrypt the API key at rest if the session is unlocked (master key
-        // available). If the session is locked, fall back to plaintext storage
-        // rather than dropping the key. Ollama (key-less) writes NULL here.
         let (api_key_plain, api_key_enc, api_key_nonce) =
             match (&config.api_key, self.get_master_key()) {
                 (Some(key), Some(k)) if !key.is_empty() => {
@@ -1963,8 +1930,6 @@ impl Storage {
         }))
     }
 
-    /// Decrypt a provider's API key from a SQL row, consulting the encrypted
-    /// columns first and falling back to legacy plaintext.
     fn decrypt_provider_key(
         &self,
         row: &sqlx::sqlite::SqliteRow,
@@ -1993,16 +1958,12 @@ impl Storage {
                 {
                     return Some(plain);
                 }
-                // Decryption failed (e.g. wrong master password); fall through
-                // to plaintext fallback below.
             }
-            // Session locked → no API key in memory.
+
             return None;
         }
         row.get::<Option<String>, _>(plain_col)
     }
-
-    // ── Assistant Knowledge ──
 
     pub async fn search_knowledge(
         &self,
@@ -2045,9 +2006,6 @@ impl Storage {
             .collect())
     }
 
-    /// Candidate fetch for hybrid retrieval: LIKE-matches the significant
-    /// words of the user's question against question/SQL text. Optionally
-    /// restricted to one engine tag (e.g. "error").
     pub async fn search_knowledge_by_words(
         &self,
         words: &[String],
@@ -2222,7 +2180,6 @@ impl Storage {
         Ok(())
     }
 
-    /// Fetch a single knowledge case by id.
     pub async fn get_knowledge_case(
         &self,
         id: &str,
@@ -2248,7 +2205,6 @@ impl Storage {
         }))
     }
 
-    /// (total_cases, indexed_cases) for the knowledge library UI.
     pub async fn knowledge_index_stats(&self) -> AppResult<(i64, i64)> {
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assistant_knowledge")
             .fetch_one(&self.pool)
@@ -2265,14 +2221,11 @@ impl Storage {
             .bind(id)
             .execute(&self.pool)
             .await?;
-        // Keep the vector side in sync with the relational side.
+
         self.delete_knowledge_embedding(id).await?;
         Ok(())
     }
 
-    // ── Assistant Knowledge Embeddings ──
-
-    /// Store (or replace) the semantic embedding of a knowledge case.
     pub async fn upsert_knowledge_embedding(
         &self,
         knowledge_id: &str,
@@ -2301,7 +2254,6 @@ impl Storage {
         Ok(())
     }
 
-    /// Load every stored embedding as `(knowledge_id, kind, vector)`.
     pub async fn list_knowledge_embeddings(&self) -> AppResult<Vec<(String, String, Vec<f32>)>> {
         let rows = sqlx::query(
             "SELECT knowledge_id, kind, dim, embedding FROM assistant_knowledge_embeddings",
@@ -2321,7 +2273,6 @@ impl Storage {
             .collect())
     }
 
-    /// Knowledge cases that do not have an embedding yet (for backfill).
     pub async fn list_knowledge_without_embedding(
         &self,
         limit: i64,
@@ -2354,7 +2305,6 @@ impl Storage {
             .collect())
     }
 
-    /// Fetch knowledge cases by id (batch) for vector-hit hydration.
     pub async fn get_knowledge_cases_by_ids(
         &self,
         ids: &[String],
@@ -2394,8 +2344,6 @@ impl Storage {
             })
             .collect())
     }
-
-    // ── Assistant Preferences ──
 
     pub async fn get_preferences(&self) -> AppResult<Vec<crate::models::assistant::Preference>> {
         let rows = sqlx::query("SELECT key, value FROM assistant_preferences ORDER BY key")
@@ -2466,7 +2414,6 @@ fn row_to_sync_pipeline(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncPipeline>
     let status: PipelineStatus = serde_json::from_value(serde_json::Value::String(status_str))
         .unwrap_or(PipelineStatus::Draft);
 
-    // Support both old format (just a tables array) and new format (object with schemas + tables)
     let (tables, source_schema, target_schema) =
         if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&config_str) {
             match obj {
@@ -2606,13 +2553,10 @@ fn row_to_sync_checkpoint(row: sqlx::sqlite::SqliteRow) -> AppResult<SyncCheckpo
     })
 }
 
-/// Encode f32s as little-endian bytes for the embeddings BLOB column.
 fn f32_slice_to_le_bytes(values: &[f32]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
 
-/// Decode little-endian float32 bytes into a vector. Returns `None` when the
-/// blob length does not match the declared dimension (corrupted row).
 fn le_bytes_to_f32_vec(bytes: &[u8], dim: usize) -> Option<Vec<f32>> {
     if bytes.len() != dim * 4 {
         return None;
@@ -2754,7 +2698,6 @@ mod tests {
         };
         storage.save_knowledge_case(&case).await.unwrap();
 
-        // No embedding yet → appears in backfill list.
         let pending = storage.list_knowledge_without_embedding(10).await.unwrap();
         assert_eq!(pending.len(), 1);
 
@@ -2763,7 +2706,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Now indexed.
         let pending = storage.list_knowledge_without_embedding(10).await.unwrap();
         assert!(pending.is_empty());
 
@@ -2773,7 +2715,6 @@ mod tests {
         assert_eq!(rows[0].1, "qa");
         assert_eq!(rows[0].2, vec![0.1, 0.2, -0.3]);
 
-        // Batch hydration by ids.
         let cases = storage
             .get_knowledge_cases_by_ids(&["k1".to_string(), "missing".to_string()])
             .await
@@ -2781,7 +2722,6 @@ mod tests {
         assert_eq!(cases.len(), 1);
         assert_eq!(cases[0].id, "k1");
 
-        // Deleting the case also removes its embedding (vector side stays in sync).
         storage.delete_knowledge_case("k1").await.unwrap();
         assert!(storage
             .list_knowledge_embeddings()

@@ -3,7 +3,7 @@ import { Database, Table2, ExternalLink, Hash, AlertTriangle } from 'lucide-reac
 
 export function StructuresPanel() {
   const navigate = useNavigate()
-  // We don't have a connection store imported, but we can show guidance
+
   return (
     <div className="h-full overflow-auto p-4 space-y-5">
       <div>

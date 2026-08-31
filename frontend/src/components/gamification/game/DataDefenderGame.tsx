@@ -71,13 +71,18 @@ export function DataDefenderGame({ onClose }: { onClose: () => void }) {
   const allDone = LEVEL1_NODES.every((n) => completed.includes(n.id))
 
   const handleSolved = (xp: number, solvedCount: number) => {
-    addXP(xp, 'Data Defender')
-    setEarned((e) => e + xp)
     const node = LEVEL1_NODES[activeNode]
+    const alreadyDone = completed.includes(node.id)
+    if (!alreadyDone) {
+      addXP(xp, 'Data Defender')
+      setEarned((e) => e + xp)
+    }
     if (solvedCount >= node.puzzles.length) {
-      const bonus = node.isBoss ? BOSS_CLEAR_BONUS : NODE_CLEAR_BONUS
-      addXP(bonus, 'Data Defender')
-      setEarned((e) => e + bonus)
+      if (!alreadyDone) {
+        const bonus = node.isBoss ? BOSS_CLEAR_BONUS : NODE_CLEAR_BONUS
+        addXP(bonus, 'Data Defender')
+        setEarned((e) => e + bonus)
+      }
       completeNode(node.id)
       setNodePuzzleIndex(node.id, 0)
       if (node.isBoss) setView('victory')

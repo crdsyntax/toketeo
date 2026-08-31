@@ -12,7 +12,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-/// Control state for a running sync pipeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncControl {
     Running,
@@ -20,7 +19,6 @@ pub enum SyncControl {
     Cancelled,
 }
 
-/// Thread-safe sync controller that can be shared across tasks.
 #[derive(Clone)]
 pub struct SyncController {
     inner: Arc<RwLock<HashMap<String, SyncControl>>>,
@@ -96,9 +94,6 @@ impl AppState {
         }
     }
 
-    /// Spawn a background task that indexes a freshly recorded knowledge case
-    /// (embed its semantic document, persist it and update the in-memory
-    /// index). Fails softly when no embedding provider is configured.
     pub fn spawn_index_knowledge(
         storage: &Arc<Storage>,
         vectors: &Arc<crate::application::assistant::knowledge::VectorIndex>,
@@ -223,9 +218,6 @@ impl AppState {
         }
     }
 
-    /// Returns the master key for decryption purposes (connect, reconnect, etc.)
-    /// regardless of UI lock state. The key must have been derived at least once
-    /// since app start.
     pub async fn get_decryption_key(&self) -> crate::error::AppResult<[u8; 32]> {
         let key = self.master_key.read().await;
         match *key {
@@ -236,12 +228,6 @@ impl AppState {
         }
     }
 
-    /// Gate for sensitive IPC commands.
-    ///
-    /// If no master password has been configured yet (fresh install), no secrets
-    /// exist to protect and the operation is allowed. Otherwise the session must
-    /// be unlocked and not expired — a hostile webview cannot run sensitive
-    /// commands (queries, connect, export/import, delete, ...) while locked.
     pub async fn require_session_auth(&self) -> crate::error::AppResult<()> {
         if crate::application::auth_service::check_master_password_exists(&self.storage)
             .await
@@ -252,12 +238,6 @@ impl AppState {
         Ok(())
     }
 
-    /// Gate for secret-reveal IPC commands.
-    ///
-    /// Same requirements as `require_session_auth`, plus the secrets may not be
-    /// in a blocked state (set by the auto-protect flow after copying a
-    /// credential). DB operations are intentionally NOT blocked by
-    /// `secrets_blocked` — only the ability to reveal stored secrets.
     pub async fn require_secret_auth(&self) -> crate::error::AppResult<()> {
         self.require_session_auth().await?;
         if *self.secrets_blocked.read().await {
@@ -282,7 +262,7 @@ impl AppState {
         *self.session_expires_at.write().await =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs));
         *self.ui_locked.write().await = false;
-        // A fresh unlock (re)enables secret revelation.
+
         *self.secrets_blocked.write().await = false;
     }
 
@@ -313,9 +293,6 @@ impl AppState {
         max_ttl: Option<Duration>,
         metadata_cache_ttl: Duration,
     ) {
-        // Remove the old session first so the old driver's pool is NOT dropped
-        // inside HashMap::insert (which would trigger Pool::drop → close_inner
-        // and leave concurrent Arc holders with a closed pool).
         let old_driver = {
             let mut conns = self.connections.write().await;
             let old = conns.remove(&id);
@@ -332,13 +309,12 @@ impl AppState {
             );
             old.map(|s| s.driver)
         };
-        // Drop old driver outside the write lock so the pool is closed gracefully.
+
         if let Some(d) = old_driver {
             let _ = d.close().await;
         }
     }
 
-    /// Mark a session as in-use so cleanup_sessions will not close it mid-operation.
     pub async fn mark_session_in_use(&self, id: &str, in_use: bool) {
         let mut conns = self.connections.write().await;
         if let Some(session) = conns.get_mut(id) {
@@ -349,40 +325,33 @@ impl AppState {
         }
     }
 
-    /// Returns a live driver for a connection, reconnecting if the cached
-    /// session is stale or missing. Shared by Tauri commands and assistant
-    /// tools so any connection can be targeted by ID.
     pub async fn get_or_connect_driver(&self, conn_id: &str) -> AppResult<Arc<dyn DbDriver>> {
         if let Ok(driver) = self.get_connection(conn_id).await {
-            // Quick health check — lightweight query to verify the connection is alive
             let healthy = match driver.db_type() {
-                // SQL databases all support SELECT 1
                 DbType::Postgres
                 | DbType::Mysql
                 | DbType::Mariadb
                 | DbType::Sqlite
                 | DbType::Sqlserver => driver.execute("SELECT 1").await.is_ok(),
-                // MongoDB doesn't support SQL — use fetch_databases instead
+
                 DbType::Mongodb => driver.fetch_databases().await.is_ok(),
                 DbType::Redis => driver.execute("PING").await.is_ok(),
             };
             if healthy {
                 return Ok(driver);
             }
-            // Connection is stale — fall through to reconnect
+
             tracing::warn!("Connection {conn_id} is stale, reconnecting...");
         }
 
         let config = self.storage.get_connection(conn_id).await?;
-        // Drop the stale entry before reconnecting
+
         let _ = self.remove_connection(conn_id).await;
         crate::application::connection_service::ConnectionService::connect(self, config).await?;
         self.get_connection(conn_id).await
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<Arc<dyn DbDriver>> {
-        // Phase 8: Use read lock to retrieve the driver — avoids blocking concurrent
-        // metadata fetches and queries that only need to read the driver Arc.
         let driver = {
             let conns = self.connections.read().await;
             match conns.get(id) {
@@ -396,7 +365,6 @@ impl AppState {
             }
         };
 
-        // Minimal write lock just to update last_access timestamp.
         {
             let mut conns = self.connections.write().await;
             if let Some(session) = conns.get_mut(id) {

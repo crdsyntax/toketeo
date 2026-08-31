@@ -1,19 +1,9 @@
 import { forwardRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { SelectProps } from '@/types/ui'
 
-export interface SelectOption {
-  value: string
-  label: string
-  disabled?: boolean
-}
-
-export interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'children'> {
-  options: SelectOption[]
-  placeholder?: string
-  label?: string
-  error?: string
-}
+export type { SelectProps, SelectOption } from '@/types/ui'
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ options, placeholder, label, error, className, value, ...props }, ref) => {

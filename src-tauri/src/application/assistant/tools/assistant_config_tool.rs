@@ -8,8 +8,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Read-only view of the assistant's own configuration: configured providers
-/// (without API keys — only hasKey), preferences and recommendations.
 pub struct AssistantConfigTool;
 
 #[async_trait]
@@ -58,7 +56,7 @@ impl AssistantTool for AssistantConfigTool {
         match action {
             "configs" => {
                 let configs = state.storage.load_provider_configs().await?;
-                // Never leak API keys to the model — only expose whether one is set.
+
                 let safe: Vec<serde_json::Value> = configs
                     .iter()
                     .map(|c| {

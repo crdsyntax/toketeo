@@ -3,11 +3,9 @@ use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::models::sync::{SyncPipeline, SyncTableConfig, ValidationReport};
 
-/// Valida un pipeline antes de ejecutarlo.
 pub struct PipelineValidator;
 
 impl PipelineValidator {
-    /// Valida conexiones, tablas y esquemas.
     pub async fn validate(
         pipeline: &SyncPipeline,
         source: &dyn DbDriver,
@@ -19,7 +17,6 @@ impl PipelineValidator {
         let mut source_connection_ok = true;
         let mut target_connection_ok = true;
 
-        // Verificar conexión source (ejecutando un query simple)
         match source.db_type() {
             crate::db::DbType::Mongodb => match source.fetch_mongo_structure().await {
                 Ok(_) => {}
@@ -37,7 +34,6 @@ impl PipelineValidator {
             },
         }
 
-        // Verificar conexión target
         match target.db_type() {
             crate::db::DbType::Mongodb => match target.fetch_mongo_structure().await {
                 Ok(_) => {}
@@ -55,7 +51,6 @@ impl PipelineValidator {
             },
         }
 
-        // Si alguna conexión falla, no podemos validar tablas
         if !source_connection_ok || !target_connection_ok {
             return Ok(ValidationReport {
                 is_valid: false,
@@ -67,13 +62,11 @@ impl PipelineValidator {
             });
         }
 
-        // Validar cada tabla configurada
         for table_config in &pipeline.tables {
             let check = Self::validate_table(source, target, table_config, pipeline).await?;
             table_checks.push(check);
         }
 
-        // Revisar si hay errores en los table_checks
         for check in &table_checks {
             if !check.exists_on_source {
                 errors.push(format!("Source table '{}' not found", check.table_name));
@@ -107,8 +100,6 @@ impl PipelineValidator {
         table_config: &SyncTableConfig,
         _pipeline: &SyncPipeline,
     ) -> AppResult<crate::models::sync::TableValidation> {
-        // Para MongoDB, si el nombre de tabla contiene '.', separamos
-        // database.collection → (database, collection) y usamos database como schema.
         let (source_name, source_schema) = if source.db_type() == crate::db::DbType::Mongodb {
             split_mongo_table(&table_config.source_table)
         } else {
@@ -120,13 +111,11 @@ impl PipelineValidator {
             (table_config.target_table.as_str(), None)
         };
 
-        // Verificar que la tabla existe en source
         let source_tables = source
             .fetch_tables(source_schema.map(String::from), None)
             .await?;
         let exists_on_source = source_tables.iter().any(|t| t == source_name);
 
-        // Verificar que la tabla existe en target
         let target_tables = target
             .fetch_tables(target_schema.map(String::from), None)
             .await?;
@@ -144,7 +133,6 @@ impl PipelineValidator {
             });
         }
 
-        // Comparar esquemas
         SchemaDiff::compare_tables(
             source,
             target,
@@ -157,8 +145,6 @@ impl PipelineValidator {
     }
 }
 
-/// Divide una referencia `database.collection` en sus partes.
-/// Si no hay punto, retorna (nombre_completo, None).
 fn split_mongo_table(full: &str) -> (&str, Option<&str>) {
     if let Some(dot) = full.find('.') {
         let db = &full[..dot];
@@ -176,8 +162,6 @@ mod tests {
     use crate::models::sync::{SyncMode, SyncPipeline, SyncTableConfig};
     use async_trait::async_trait;
     use serde_json::json;
-
-    // ── Helpers ──
 
     fn make_column(name: &str, ty: &str, nullable: bool, pk: bool) -> serde_json::Value {
         json!({
@@ -214,8 +198,6 @@ mod tests {
             primary_key: None,
         }
     }
-
-    // ── Mock drivers ──
 
     use crate::db::{DataReader, DataWriter};
 
@@ -264,7 +246,6 @@ mod tests {
     mock_data_reader_writer!(MockFailingDriver);
     mock_data_reader_writer!(MockMongoSourceDriver);
 
-    /// Simulates a healthy Postgres source database.
     struct MockSourceDriver;
 
     #[async_trait]
@@ -399,7 +380,6 @@ mod tests {
         }
     }
 
-    /// Simulates a healthy MySQL target database with the same schema as source.
     struct MockMatchingTargetDriver;
 
     #[async_trait]
@@ -534,7 +514,6 @@ mod tests {
         }
     }
 
-    /// Simulates a target with a DIFFERENT schema (type mismatches, missing columns).
     struct MockMismatchedTargetDriver;
 
     #[async_trait]
@@ -560,7 +539,7 @@ mod tests {
             _: Option<String>,
             _: Option<String>,
         ) -> crate::error::AppResult<Vec<String>> {
-            Ok(vec!["users".into(), "orders".into()]) // products is MISSING on target
+            Ok(vec!["users".into(), "orders".into()])
         }
 
         async fn fetch_views(
@@ -602,13 +581,9 @@ mod tests {
         ) -> crate::error::AppResult<Vec<serde_json::Value>> {
             match table {
                 "users" => Ok(vec![
-                    // id type differs: char(36) vs uuid → TypeMismatch
                     make_column("id", "char(36)", false, true),
-                    // email is same
                     make_column("email", "varchar(255)", false, false),
-                    // target has full_name instead of name → MissingInTarget for name, MissingInSource for full_name
                     make_column("full_name", "varchar(100)", true, false),
-                    // phone column exists only on target → MissingInSource
                     make_column("phone", "varchar(20)", true, false),
                     make_column("created_at", "timestamp", false, false),
                 ]),
@@ -669,7 +644,6 @@ mod tests {
         }
     }
 
-    /// Simulates a connection that FAILS on fetch_databases.
     struct MockFailingDriver;
 
     #[async_trait]
@@ -811,7 +785,6 @@ mod tests {
         }
     }
 
-    /// Simulates a MongoDB source driver.
     struct MockMongoSourceDriver;
 
     #[async_trait]
@@ -945,8 +918,6 @@ mod tests {
         }
     }
 
-    // ── Tests ──
-
     #[tokio::test]
     async fn test_valid_full_match() {
         let pipeline = make_pipeline(vec![
@@ -968,7 +939,6 @@ mod tests {
         assert!(report.target_connection_ok);
         assert_eq!(report.table_checks.len(), 2);
         assert!(report.errors.is_empty());
-        // Warnings may exist for type differences (e.g. uuid vs char(36), timestamptz vs timestamp)
     }
 
     #[tokio::test]
@@ -1015,7 +985,7 @@ mod tests {
     async fn test_table_missing_on_target() {
         let pipeline = make_pipeline(vec![
             make_table("users", "users"),
-            make_table("products", "products"), // products is missing on MockMismatchedTargetDriver
+            make_table("products", "products"),
         ]);
         let source = MockSourceDriver;
         let target = MockMismatchedTargetDriver;
@@ -1036,7 +1006,7 @@ mod tests {
             .iter()
             .find(|c| c.table_name == "products");
         assert!(products_check.is_some());
-        // products exists on source but not on mismatched target
+
         assert!(!products_check.unwrap().exists_on_target);
     }
 
@@ -1050,26 +1020,25 @@ mod tests {
             .await
             .unwrap();
 
-        // Schema mismatches produce warnings, not errors (pipeline is still valid)
         assert!(report.is_valid);
         assert!(report.errors.is_empty());
         assert!(report
             .warnings
             .iter()
             .any(|w| w.contains("Schema mismatch")));
-        // id type differs: uuid vs char(36)
+
         assert!(report.table_checks[0]
             .column_diffs
             .iter()
             .any(|d| d.column_name == "id"
                 && d.diff_type == crate::models::sync::DiffType::TypeMismatch));
-        // name → full_name → MissingInTarget for name
+
         assert!(report.table_checks[0]
             .column_diffs
             .iter()
             .any(|d| d.column_name == "name"
                 && d.diff_type == crate::models::sync::DiffType::MissingInTarget));
-        // phone is extra on target → MissingInSource
+
         assert!(report.table_checks[0]
             .column_diffs
             .iter()
@@ -1098,7 +1067,7 @@ mod tests {
     #[tokio::test]
     async fn test_mongodb_source() {
         let pipeline = make_pipeline(vec![make_table("users", "users")]);
-        // MongoDB source + Postgres target (cross-DB sync)
+
         let source = MockMongoSourceDriver;
         let target = MockMatchingTargetDriver;
 

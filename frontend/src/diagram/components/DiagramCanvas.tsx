@@ -227,7 +227,7 @@ export function DiagramCanvas({
         </>
       )}
 
-      {/* Edge context menu */}
+
       {selectedEdge &&
         (() => {
           const edge = edges.find((e) => e.id === selectedEdge)
@@ -279,7 +279,7 @@ export function DiagramCanvas({
           )
         })()}
 
-      {/* Cardinality picker popover for new connections */}
+
       {cardinalityPicker && (
         <div
           className="absolute z-50 bg-card border border-border rounded-lg shadow-xl p-3 min-w-[160px]"

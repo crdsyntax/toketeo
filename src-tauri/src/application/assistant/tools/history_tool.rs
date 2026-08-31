@@ -7,8 +7,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Read-only access to the assistant's own history: executed queries and chat
-/// messages, scoped to a connection (or global when connection_id is omitted).
 pub struct HistoryTool;
 
 #[async_trait]

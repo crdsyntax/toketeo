@@ -17,9 +17,9 @@ export function DiagramDashboard({ onOpen, onNewBlank, onNewFromSchema, onImport
   const deleteDiagram = useDiagramStore((s) => s.deleteDiagram)
   const exportToJson = useDiagramStore((s) => s.exportToJson)
 
-  // Filter diagrams by active connection, plus always show blank diagrams (no sourceConnectionId)
+
   const filteredDiagrams = diagrams.filter((d) => {
-    if (!d.sourceConnectionId) return true // blank/offline diagrams always visible
+    if (!d.sourceConnectionId) return true
     if (activeConnection) return d.sourceConnectionId === activeConnection.id
     return false
   })
@@ -101,7 +101,7 @@ export function DiagramDashboard({ onOpen, onNewBlank, onNewFromSchema, onImport
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Group by connection */}
+
           {Array.from(
             new Set(filteredDiagrams.map((d) => d.sourceConnectionId ?? '__blank__'))
           ).map((connId) => {

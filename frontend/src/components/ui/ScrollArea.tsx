@@ -1,9 +1,9 @@
 import { forwardRef } from 'react'
+import type React from 'react'
 import { cn } from '@/lib/utils'
+import type { ScrollAreaProps } from '@/types/ui'
 
-export interface ScrollAreaProps extends React.HTMLAttributes<HTMLDivElement> {
-  orientation?: 'both' | 'vertical' | 'horizontal'
-}
+export type { ScrollAreaProps, ScrollAreaOrientation } from '@/types/ui'
 
 export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
   ({ orientation = 'both', className, children, ...props }, ref) => {

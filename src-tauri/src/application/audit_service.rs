@@ -12,7 +12,7 @@ pub struct AuditEntry {
     pub execution_time_ms: u64,
     pub status: String,
     pub error: Option<String>,
-    /// Who executed the query: 'user' | 'assistant' | 'monitor'.
+
     #[serde(default = "default_origin")]
     pub origin: String,
 }
@@ -47,8 +47,6 @@ impl AuditService {
         .await
     }
 
-    /// Same as [log_query] but attributes the entry to a specific origin so
-    /// the audit log can show whether a statement was run by the assistant.
     pub async fn log_query_with_origin(
         state: &AppState,
         connection_id: String,

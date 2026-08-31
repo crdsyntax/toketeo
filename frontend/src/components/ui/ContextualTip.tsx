@@ -2,14 +2,9 @@ import { useState, useEffect } from 'react'
 import { Lightbulb, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAssistantStore } from '@/store/assistantStore'
+import type { ContextualTipProps } from '@/types/ui'
 
-interface ContextualTipProps {
-  id: string
-  message: string
-  className?: string
-  onAction?: () => void
-  actionLabel?: string
-}
+export type { ContextualTipProps } from '@/types/ui'
 
 export function ContextualTip({ id, message, className, onAction, actionLabel }: ContextualTipProps) {
   const [visible, setVisible] = useState(false)

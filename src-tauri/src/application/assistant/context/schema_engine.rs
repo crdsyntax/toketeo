@@ -50,7 +50,7 @@ impl SchemaEngine {
         let fingerprint = ContextBuilder::compute_fingerprint(&ctx);
 
         let mut cache = self.cache.write().await;
-        // Capacity safeguard: if cache exceeds 20 entries, drop oldest entry
+
         if cache.len() >= 20 {
             if let Some(oldest_key) = cache
                 .iter()

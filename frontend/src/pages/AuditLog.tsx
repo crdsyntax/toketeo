@@ -15,7 +15,7 @@ export default function AuditLog() {
     queryFn: () => auditService.getLogs(PAGE_SIZE, page * PAGE_SIZE),
   })
 
-  const filteredLogs = logs?.filter(log => 
+  const filteredLogs = logs?.filter(log =>
     log.query.toLowerCase().includes(searchTerm.toLowerCase()) ||
     log.connection_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     log.status.toLowerCase().includes(searchTerm.toLowerCase())
@@ -25,13 +25,13 @@ export default function AuditLog() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden p-4 gap-3">
-      {/* Header */}
+
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Audit Log</h1>
           <p className="text-sm text-muted-foreground">Track all database queries and executions.</p>
         </div>
-        <button 
+        <button
           onClick={() => refetch()}
           disabled={isFetching}
           className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors text-sm font-medium disabled:opacity-50"
@@ -41,10 +41,10 @@ export default function AuditLog() {
         </button>
       </div>
 
-      {/* Search */}
+
       <div className="relative shrink-0">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input 
+        <input
           type="text"
           placeholder="Search by query, connection or status..."
           value={searchTerm}
@@ -53,7 +53,7 @@ export default function AuditLog() {
         />
       </div>
 
-      {/* Table container */}
+
       <div className="flex-1 min-h-0 flex flex-col border border-border rounded-md bg-surface shadow-sm overflow-hidden">
         <div className="flex-1 overflow-auto">
           <table className="w-full text-sm text-left border-collapse">
@@ -139,7 +139,7 @@ export default function AuditLog() {
           </table>
         </div>
 
-        {/* Pagination */}
+
         <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/20 shrink-0">
           <span className="text-[var(--ch-text-9)] text-muted-foreground text-xs">
             Page {page + 1}

@@ -2,11 +2,9 @@ use crate::db::DbDriver;
 use crate::error::AppResult;
 use crate::models::sync::{ColumnDiff, DiffType, TableValidation};
 
-/// Compara esquemas entre origen y destino.
 pub struct SchemaDiff;
 
 impl SchemaDiff {
-    /// Compara las columnas de una tabla entre source y target.
     pub async fn compare_tables(
         source: &dyn DbDriver,
         target: &dyn DbDriver,
@@ -35,7 +33,6 @@ impl SchemaDiff {
             .filter_map(|col| col.get("name").and_then(|n| n.as_str()).map(|n| (n, col)))
             .collect();
 
-        // Columnas en source que no están en target
         for (name, src_col) in &source_map {
             if !target_map.contains_key(name) {
                 let src_type = src_col
@@ -53,7 +50,6 @@ impl SchemaDiff {
             }
         }
 
-        // Columnas en target que no están en source
         for (name, tgt_col) in &target_map {
             if !source_map.contains_key(name) {
                 let tgt_type = tgt_col
@@ -71,7 +67,6 @@ impl SchemaDiff {
             }
         }
 
-        // Columnas presentes en ambos — comparar tipos y nullable
         for (name, src_col) in &source_map {
             if let Some(tgt_col) = target_map.get(name) {
                 let src_type = src_col.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -109,7 +104,6 @@ impl SchemaDiff {
             }
         }
 
-        // Detectar diferencias de PK (basado en isPrimaryKey de cada columna)
         let source_pks: Vec<&str> = source_cols
             .iter()
             .filter(|col| {

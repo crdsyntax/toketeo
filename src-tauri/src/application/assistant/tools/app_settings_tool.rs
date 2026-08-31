@@ -8,8 +8,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Accent palettes available in the app's Settings (mirrors the frontend's
-/// themePalettes). The frontend validates the id before applying.
 const ACCENTS: &[(&str, &str)] = &[
     ("emerald", "Emerald"),
     ("cyan", "Cyan"),
@@ -18,10 +16,6 @@ const ACCENTS: &[(&str, &str)] = &[
     ("rose", "Rose"),
 ];
 
-/// Change the app's visual settings (theme, accent palette, custom colors)
-/// through the same paths as the Settings page. Emits an event the frontend
-/// applies live; the applied values are also persisted as preferences so the
-/// assistant can report what is configured.
 pub struct AppSettingsTool;
 
 #[async_trait]
@@ -195,8 +189,6 @@ impl AssistantTool for AppSettingsTool {
     }
 }
 
-/// Broadcast a settings change to the frontend, which applies it live (same
-/// path as the Settings page).
 fn emit(payload: &serde_json::Value) {
     if let Some(handle) = crate::ssh::APP_HANDLE.get() {
         let _ = handle.emit("app:settings-change", payload);

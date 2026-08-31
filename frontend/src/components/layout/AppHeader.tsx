@@ -11,13 +11,9 @@ import { useGamificationStore } from '@/store/gamificationStore'
 import { APP_PERKS } from '@/lib/gamification'
 import { getEngineConfig } from '@/lib/engine-icons'
 import { NotificationBell } from './NotificationBell'
+import type { NavItem, AppHeaderProps } from '@/types/layout'
 
-interface NavItem {
-  name: string
-  icon: typeof LayoutGrid
-  path: string
-  perkId: string | null
-}
+export type { NavItem, AppHeaderProps } from '@/types/layout'
 
 const navGroups: NavItem[][] = [
   [
@@ -41,10 +37,6 @@ const navGroups: NavItem[][] = [
   ],
 ]
 
-interface AppHeaderProps {
-  onOpenGamification: () => void
-}
-
 export function AppHeader({ onOpenGamification }: AppHeaderProps) {
   const location = useLocation()
   const { activeConnection, isSidebarOpen, toggleSidebar } = useAppStore()
@@ -64,8 +56,8 @@ export function AppHeader({ onOpenGamification }: AppHeaderProps) {
   ]
 
   return (
-    <header className="h-12 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0 relative z-40">
-      {/* Left: Sidebar toggle + Logo + Name */}
+    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-3 shrink-0 relative z-40">
+
       <div className="flex items-center gap-2">
         <button
           onClick={toggleSidebar}
@@ -83,13 +75,13 @@ export function AppHeader({ onOpenGamification }: AppHeaderProps) {
           <img
             src="./principal.png"
             alt="Toketeo"
-            className="h-[52px] w-auto max-w-[160px] object-contain"
+            className="h-12 w-auto max-w-[160px] object-contain"
           />
 
         </Link>
       </div>
 
-      {/* Center: Grouped nav with dividers */}
+
       <nav className="flex items-center gap-0">
         {navGroups.map((group, gi) => (
           <div key={gi} className="flex items-center">
@@ -129,8 +121,6 @@ export function AppHeader({ onOpenGamification }: AppHeaderProps) {
                     {active && (
                       <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-accent" />
                     )}
-
-                    {/* Tooltip */}
                     <span className={cn(
                       "absolute top-full mt-1.5 px-2 py-1 rounded-md bg-surface-elevated border border-border text-foreground text-[length:var(--ch-text-11)] font-medium whitespace-nowrap",
                       "opacity-0 pointer-events-none transition-opacity duration-150 group-hover/nav:opacity-100",
@@ -145,8 +135,6 @@ export function AppHeader({ onOpenGamification }: AppHeaderProps) {
           </div>
         ))}
       </nav>
-
-      {/* Right: Engine pills + Gamification */}
       <div className="flex items-center gap-2">
         <div className="hidden lg:flex items-center gap-0.5 p-0.5 bg-surface border border-border rounded-lg">
           {enginePills.map((type) => {

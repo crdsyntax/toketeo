@@ -119,8 +119,6 @@ impl AssistantTool for ExportTool {
     }
 }
 
-/// Build `INSERT INTO ... VALUES ...;` statements from rows. Strings are
-/// escaped by doubling single quotes; nulls become NULL.
 fn format_insert(table: &str, columns: &[String], rows: &[serde_json::Value]) -> String {
     rows.iter()
         .map(|row| {

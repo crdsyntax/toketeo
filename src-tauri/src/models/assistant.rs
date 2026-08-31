@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-// ── Schema Context Types ──
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaContext {
@@ -64,8 +62,6 @@ pub struct SchemaFingerprint {
     pub table_hashes: Vec<(String, u64)>,
 }
 
-// ── AI API Types ──
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AiRequest {
@@ -81,11 +77,10 @@ pub struct AiRequest {
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
-    /// Tool calls issued by the assistant in this message (only set when
-    /// `role == "assistant"` after a model round returning `tool_calls`).
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
-    /// Tool-call id this message is a result of (only set when `role == "tool"`).
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
 }
@@ -124,9 +119,6 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    /// Serialise `arguments` to a JSON string for providers (e.g. OpenAI's
-    /// Chat Completions API) that expect `function.arguments` as a string
-    /// rather than an embedded JSON object.
     pub fn arguments_to_string(&self) -> String {
         match self.arguments {
             serde_json::Value::Null => String::from("null"),
@@ -143,13 +135,10 @@ pub struct ModelInfo {
     pub name: String,
     pub provider: String,
     pub supports_tools: bool,
-    /// True when the model is served by a free/no-cost tier (e.g. Zen free
-    /// endpoint). Used by the UI to surface a "FREE" badge.
+
     #[serde(default)]
     pub is_free: bool,
-    /// Category used by the UI to group models, e.g. "go" (Zen Go plan),
-    /// "zen" (general Zen catalog) or "free". Empty for providers without
-    /// tiers.
+
     #[serde(default)]
     pub tier: String,
 }
@@ -191,14 +180,11 @@ pub struct AssistantTurn {
     pub source: String,
     pub requires_confirmation: bool,
     pub usage: Option<TokenUsage>,
-    /// Optional UI action the frontend must perform after this turn
-    /// (e.g. export the active tab results, focus a tab). Produced by the
-    /// workspace tool and surfaced here by the orchestrator.
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<serde_json::Value>,
 }
 
-/// One SQL editor tab as reported by the frontend UI context.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UiOpenTab {
@@ -215,8 +201,6 @@ pub struct UiOpenTab {
     pub is_active: bool,
 }
 
-/// Snapshot of the user's current UI state, sent with every chat turn so the
-/// agent can reason about what the user is looking at.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UiContext {
@@ -267,13 +251,11 @@ pub struct Preference {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlFixResult {
-    /// The corrected SQL query (None when the model could not produce a fix).
     pub sql: Option<String>,
-    /// Additional alternative queries suggested by the assistant.
+
     pub alternatives: Vec<String>,
-    /// Short explanation of what was wrong and what changed.
+
     pub explanation: String,
-    /// "ok" when a fixed query was produced, "unconfigured" when no AI
-    /// provider is set up, "failed" when the model returned no usable SQL.
+
     pub status: String,
 }

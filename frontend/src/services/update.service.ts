@@ -39,7 +39,7 @@ export function saveDismissed(record: DismissedRecord): void {
   try {
     localStorage.setItem(DISMISS_KEY, JSON.stringify(record))
   } catch {
-    // ignore storage failures (private mode, etc.)
+
   }
 }
 

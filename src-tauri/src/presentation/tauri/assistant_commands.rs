@@ -81,8 +81,6 @@ pub async fn assistant_test_provider(config: ProviderConfig) -> AppResult<TestRe
     }
 }
 
-// ── Provider config persistence ──
-
 #[tauri::command]
 pub async fn assistant_save_provider_config(
     config: ProviderConfig,
@@ -114,8 +112,6 @@ pub async fn assistant_delete_provider_config(
     state.storage.delete_provider_config(&id).await
 }
 
-// ── Chat ──
-
 #[tauri::command]
 pub async fn assistant_chat(
     connection_id: String,
@@ -142,8 +138,7 @@ pub async fn assistant_chat(
             })
         }
     };
-    // Adapt the Tauri channel into the orchestrator's emitter callback so the
-    // application layer stays decoupled from Tauri types.
+
     let emitter = move |value: serde_json::Value| {
         let _ = on_event.send(value);
     };
@@ -161,7 +156,6 @@ pub async fn assistant_chat(
     .await
 }
 
-/// Ask the assistant to fix a failing SQL query using the DB error message.
 #[tauri::command]
 pub async fn assistant_fix_sql(
     connection_id: String,
@@ -188,8 +182,6 @@ pub async fn assistant_fix_sql(
         .run()
         .await
 }
-
-// ── Knowledge ──
 
 #[tauri::command]
 pub async fn assistant_search_knowledge(
@@ -237,16 +229,13 @@ pub async fn assistant_record_case(
 ) -> AppResult<String> {
     let id = KnowledgeEngine::record_case(&state.storage, &question, &sql_text, &engine, &rating)
         .await?;
-    // Index the new case in the background (embed + vector side).
+
     if let Some(case) = state.storage.get_knowledge_case(&id).await.ok().flatten() {
         AppState::spawn_index_knowledge(&state.storage, &state.knowledge_vectors, case);
     }
     Ok(id)
 }
 
-/// Record an application error into the agent's knowledge library so it can
-/// learn from it (deduplicated by exact error message). Fire-and-forget from
-/// the frontend; returns (id, created).
 #[tauri::command]
 pub async fn assistant_record_error(
     error: String,
@@ -267,13 +256,10 @@ pub async fn assistant_record_error(
     Ok((id, created))
 }
 
-/// (total, indexed) knowledge cases — powers the LibraryPanel index indicator.
 #[tauri::command]
 pub async fn assistant_knowledge_index_stats(state: State<'_, AppState>) -> AppResult<(i64, i64)> {
     state.storage.knowledge_index_stats().await
 }
-
-// ── Feedback ──
 
 #[tauri::command]
 pub async fn assistant_record_feedback(
@@ -312,8 +298,6 @@ pub async fn assistant_record_feedback(
     }
 }
 
-// ── Preferences ──
-
 #[tauri::command]
 pub async fn assistant_get_preferences(state: State<'_, AppState>) -> AppResult<Vec<Preference>> {
     state.storage.get_preferences().await
@@ -327,8 +311,6 @@ pub async fn assistant_set_preference(
 ) -> AppResult<()> {
     state.storage.set_preference(&key, &value).await
 }
-
-// ── Tools ──
 
 #[tauri::command]
 pub async fn assistant_list_tools(state: State<'_, AppState>) -> AppResult<Vec<ToolDescriptor>> {

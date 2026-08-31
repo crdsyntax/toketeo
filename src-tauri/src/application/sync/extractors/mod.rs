@@ -1,7 +1,6 @@
 use crate::error::AppResult;
 use async_trait::async_trait;
 
-/// Resultado de un batch de extracción.
 pub struct ExtractOutput {
     pub rows: Vec<serde_json::Value>,
     pub next_key: Option<serde_json::Value>,
@@ -9,7 +8,6 @@ pub struct ExtractOutput {
     pub batch_number: u64,
 }
 
-/// Estrategia de extracción con paginación.
 #[async_trait]
 pub trait DataExtractor: Send + Sync {
     async fn extract(

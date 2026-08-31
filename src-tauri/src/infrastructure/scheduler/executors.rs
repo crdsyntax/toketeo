@@ -301,7 +301,6 @@ impl JobExecutor {
             .await
             .map_err(|e| err(format!("Failed to get connection: {}", e)))?;
 
-        // Use database from job config (user selection) if present, fallback to connection default
         if let Some(db) = job
             .config
             .get("database")
@@ -312,7 +311,6 @@ impl JobExecutor {
         }
         let db_name = conn_config.database.clone().unwrap_or_default();
 
-        // Decrypt SSH credentials if SSH is configured
         if conn_config.ssh_tunnel.is_some() {
             if let Some(key) = storage.get_master_key() {
                 let _ =
@@ -323,7 +321,6 @@ impl JobExecutor {
             }
         }
 
-        // Open SSH tunnel if configured
         let tunnel = if let Some(ref ssh_config) = conn_config.ssh_tunnel {
             tracing::info!(
                 "[scheduler] Opening SSH tunnel to {}:{}",
@@ -370,10 +367,6 @@ impl JobExecutor {
         })
     }
 
-    /// Runs `operation` against the current driver. On a connection-related
-    /// failure it alerts the user, waits with exponential backoff (5s, 10s,
-    /// 20s, ... capped at 120s), rebuilds the driver and SSH tunnel, and
-    /// retries the same operation until it succeeds or the job is cancelled.
     async fn retry_connect<T, F, Fut>(
         job: &ScheduledJob,
         storage: &Storage,

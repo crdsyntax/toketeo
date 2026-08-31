@@ -38,14 +38,8 @@ export function parseInputValue(raw: string): DbValue {
   return trimmed
 }
 
-/**
- * PostgreSQL / SQL Server / SQLite tratan `"..."` como identificador, no como
- * string literal. Para el input de filtro del DataTab (p.ej. el usuario escribe
- * `order_number = "OU12-PX7RLT"`), se convierte cada `"token"` a `'token'` salvo
- * cuando el token coincide con una columna de la tabla (ahí se conserva como
- * identificador). MySQL/MariaDB (comillas dobles = string) y MongoDB (JSON) se
- * devuelven intactos.
- */
+
+
 export function normalizeFilterQuotes(
   filter: string,
   columnNames: string[],
@@ -73,7 +67,7 @@ export interface TableSqlTemplates {
   delete: string
 }
 
-/** Template SQL for a table: safe, executable defaults the user can refine. */
+
 export function generateTableTemplates(
   table: string,
   dbType: DatabaseType | undefined,
@@ -99,12 +93,8 @@ export function generateTableTemplates(
   }
 }
 
-/**
- * Resolve a single identity key usable for an `IN (...)` clause:
- * - a single primary key, or
- * - (when no PKs are reported) a column literally named `id`, `_id`, `uuid` or `key`
- *   present in every row with a non-null value.
- */
+
+
 function resolveSingleKey(rows: DbRow[], primaryKeys: string[]): string | null {
   if (primaryKeys.length === 1) return primaryKeys[0]
   if (primaryKeys.length > 0) return null
@@ -116,12 +106,8 @@ function resolveSingleKey(rows: DbRow[], primaryKeys: string[]): string | null {
   return null
 }
 
-/**
- * Build a WHERE clause matching any of the given rows. Prefers a compact
- * `id IN (v1, v2, ...)` form when a single identity key is available;
- * otherwise falls back to `(pk = v AND ...) OR (pk = v AND ...)` tuples using
- * all non-null columns of each row.
- */
+
+
 export function generateRowsWhereClause(
   rows: DbRow[],
   primaryKeys: string[],
@@ -129,7 +115,7 @@ export function generateRowsWhereClause(
 ): string {
   const singleKey = resolveSingleKey(rows, primaryKeys)
   if (singleKey) {
-    // Una sola fila → igualdad simple (`id = :id`); varias → `IN (...)`
+
     if (rows.length === 1) {
       return `${quoteIdent(singleKey, dbType)} = ${formatSqlValue(rows[0][singleKey])}`
     }
@@ -193,10 +179,8 @@ export function generateUpdateByIds(
   return `UPDATE ${quoteTableName(table, dbType)} SET ${set} WHERE ${where};`
 }
 
-/**
- * Generate a multi-row `INSERT INTO ... VALUES (...), (...)` using the union
- * of columns present in the given rows. Missing cells become NULL.
- */
+
+
 export function generateInsertRows(
   table: string,
   rows: DbRow[],

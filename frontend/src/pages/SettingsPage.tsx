@@ -1,4 +1,4 @@
-import { Palette, Sun, Moon, Type, Minus, Plus, Monitor, Table2, ToggleLeft, ToggleRight, Ruler, Sparkles, Check } from 'lucide-react'
+import { Palette, Sun, Moon, Type, Minus, Plus, Monitor, Table2, ToggleLeft, ToggleRight, Ruler, Sparkles, Check, Notebook } from 'lucide-react'
 import { useAppStore, DEFAULT_EDITOR_FONT } from '@/store/useAppStore'
 import { FeatureGate } from '@/components/gamification/FeatureGate'
 import { ProviderSettings } from '@/components/assistant/ProviderSettings'
@@ -53,7 +53,7 @@ function getDefaultColors(theme: 'light' | 'dark', palette: AccentPalette): { pr
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance')
   const [copied, setCopied] = useState(false)
-  // ── Store state ──
+
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const lightColors = useAppStore((s) => s.lightColors)
@@ -86,7 +86,7 @@ export function SettingsPage() {
   const modeColors = theme === 'dark' ? darkColors : lightColors
   const setModeColors = theme === 'dark' ? setDarkColors : setLightColors
 
-  const resolvedColors = modeColors ?? getDefaultColors(theme, accentPalette)
+  const resolvedColors = modeColors ?? getDefaultColors(theme === 'dark' ? 'dark' : 'light', accentPalette)
 
   const isDefault = modeColors === null
 
@@ -106,7 +106,7 @@ export function SettingsPage() {
       if (parsed.primary && parsed.secondary && parsed.accent && parsed.background) {
         setModeColors(parsed)
       }
-    } catch { /* ignore */ }
+    } catch {  }
   }
 
   const updateColor = useCallback((key: string, value: string) => {
@@ -117,7 +117,7 @@ export function SettingsPage() {
 
   return (
     <div className="h-full flex bg-card overflow-hidden">
-      {/* ── Tab sidebar ── */}
+
       <div className="w-10 shrink-0 flex flex-col items-center gap-0.5 pt-2 border-r border-border bg-card">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id
@@ -150,7 +150,7 @@ export function SettingsPage() {
         })}
       </div>
 
-      {/* ── Content ── */}
+
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <div className="h-11 flex items-center gap-2 px-4 shrink-0 border-b border-border bg-card">
           {currentDef && (
@@ -163,7 +163,7 @@ export function SettingsPage() {
 
         <div className="flex-1 overflow-auto">
           <div className="max-w-2xl mx-auto p-6 space-y-8">
-            {/* ── Appearance tab ── */}
+
             {activeTab === 'appearance' && (
               <>
                 <section className="space-y-4">
@@ -193,7 +193,25 @@ export function SettingsPage() {
                       <Sun className="w-4 h-4" />
                       Light
                     </button>
+                    <button
+                      onClick={() => setTheme('paper')}
+                      className={cn(
+                        'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
+                        theme === 'paper'
+                          ? 'border-accent bg-accent-muted text-accent'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted',
+                      )}
+                    >
+                      <Notebook className="w-4 h-4" />
+                      Paper
+                    </button>
                   </div>
+                  {theme === 'paper' && (
+                    <p className="text-xs text-muted-foreground">
+                      Brutalist paper look from the landing page: warm background, black hairlines,
+                      ink accents. Custom colors below apply to Dark / Light only.
+                    </p>
+                  )}
                 </section>
 
                 <section className="space-y-4">
@@ -314,7 +332,8 @@ export function SettingsPage() {
                   </div>
                 </section>
 
-                  <section className="space-y-4">
+                  {theme !== 'paper' && (
+                    <section className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
                         {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -341,10 +360,11 @@ export function SettingsPage() {
                       ))}
                     </div>
                   </section>
+                  )}
               </>
             )}
 
-            {/* ── Editor tab ── */}
+
             {activeTab === 'editor' && (
               <section className="space-y-4">
                 <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -428,7 +448,7 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                {/* ── Query Editor sub-section ── */}
+
                 <h2 className="text-sm font-semibold text-foreground flex items-center gap-2 pt-4 border-t border-border">
                   <Table2 className="w-4 h-4" />
                   Query Editor
@@ -460,7 +480,7 @@ export function SettingsPage() {
 
 
 
-            {/* ── AI Providers tab ── */}
+
             {activeTab === 'ai' && (
               <FeatureGate perkId="ai_assistant">
                 <section className="space-y-4">

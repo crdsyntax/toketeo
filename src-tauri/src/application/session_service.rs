@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-/// Cache key for metadata (columns, indexes, FK, constraints) per table.
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
 pub struct MetadataCacheKey {
     pub object: String,
@@ -111,7 +110,7 @@ pub struct ConnectionSession {
     pub max_ttl: Option<Duration>,
     pub metadata_cache: MetadataCache,
     pub accumulated_rows_affected: u64,
-    /// When true, cleanup_sessions will not close this session (e.g. during long sync).
+
     pub in_use: bool,
 }
 
@@ -195,16 +194,16 @@ impl SessionService {
                 if let Err(e) = Self::cleanup_sessions(&state, idle_timeout).await {
                     eprintln!("Session cleanup error: {:?}", e);
                 }
-                // Evict expired metadata cache entries
+
                 {
                     let mut conns = state.connections.write().await;
                     for session in conns.values_mut() {
                         session.metadata_cache.evict_expired();
                     }
                 }
-                // Evict expired schema engine entries
+
                 state.schema_engine.evict_expired().await;
-                // Prune audit logs every ~30 minutes (30 ticks at 60s interval)
+
                 audit_prune_counter += 1;
                 if audit_prune_counter >= 30 {
                     audit_prune_counter = 0;
@@ -360,14 +359,11 @@ mod tests {
         let mut session =
             ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
 
-        // Initial state
         assert!(!session.is_expired(Duration::from_secs(3600)));
 
-        // Fake old access
         session.last_access = Instant::now() - Duration::from_secs(4000);
         assert!(session.is_expired(Duration::from_secs(3600)));
 
-        // Touch should revive
         session.touch();
         assert!(!session.is_expired(Duration::from_secs(3600)));
     }
@@ -379,7 +375,6 @@ mod tests {
             ConnectionSession::new(driver, None, false, false, None, Duration::from_secs(300));
         session.max_ttl = Some(Duration::from_secs(10));
 
-        // Fake old creation
         session.created_at = Instant::now() - Duration::from_secs(20);
         assert!(session.is_expired(Duration::from_secs(3600)));
     }

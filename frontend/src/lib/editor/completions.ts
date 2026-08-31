@@ -103,7 +103,7 @@ async function loadSchemaIfNeeded(): Promise<{ tables: string[]; columns: Record
             isPrimaryKey: c.isPrimaryKey,
           }));
         } catch {
-          // skip
+
         }
       }),
     );

@@ -7,9 +7,7 @@ dayjs.extend(utc);
 const DATE_DISPLAY_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 const DATE_ONLY_FORMAT = 'YYYY-MM-DD';
 
-// Números que caen en el rango de epoch-millis plausibles (≈1973 a ≈2100).
-// Se interpretan como marcas de tiempo UTC para MongoDB, donde una fecha
-// puede llegar como Int64 plano en lugar de Extended JSON `{ $date }`.
+
 const EPOCH_MS_MIN = 100_000_000_000;
 const EPOCH_MS_MAX = 4_100_000_000_000;
 
@@ -43,7 +41,7 @@ function parseDatePayload(d: unknown): dayjs.Dayjs | null {
   return null;
 }
 
-/** true si el valor parece una fecha (epoch-millis, `{ $date }` o ISO). */
+
 export function isDateLikeValue(value: DbValue): boolean {
   if (typeof value === 'number') return formatEpochMillis(value) !== null;
   if (typeof value === 'object' && value !== null) {
@@ -62,8 +60,8 @@ export function isDateLikeValue(value: DbValue): boolean {
   return false;
 }
 
-/** Convierte el valor de un datepicker (`YYYY-MM-DDTHH:mm`) a la forma
- *  original del dato (number epoch, string o `{ $date }`) antes de guardar. */
+
+
 export function coerceEditedDateValue(edited: string, original: DbValue): DbValue {
   const trimmed = edited.trim();
   if (trimmed === '') return null;
@@ -95,7 +93,7 @@ export function coerceEditedDateValue(edited: string, original: DbValue): DbValu
   return edited;
 }
 
-/** Valor `YYYY-MM-DDTHH:mm` (UTC) para alimentar un `<input type="datetime-local">`. */
+
 export function toDateTimeLocalInput(value: string): string {
   const trimmed = value.trim();
   if (trimmed === '') return '';
@@ -157,10 +155,8 @@ export function formatCellValue(value: DbValue): string {
   return strVal;
 }
 
-/** String representation used as the editable value of an inline cell editor.
- *  ObjectId (`{ $oid }`) and Mongo date (`{ $date }`) values are flattened to
- *  a readable scalar so the user edits the date instead of the raw epoch millis.
- *  Any other object is JSON stringified. */
+
+
 export function formatEditValue(value: DbValue): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'object') {

@@ -1,4 +1,7 @@
 import { X, Keyboard } from 'lucide-react'
+import type { KeyboardShortcutsModalProps } from '@/types/ui'
+
+export type { KeyboardShortcutsModalProps } from '@/types/ui'
 
 const SHORTCUTS = [
   { keys: ['Ctrl', 'Enter'], desc: 'Execute query' },
@@ -17,10 +20,6 @@ const SHORTCUTS = [
   { keys: ['Ctrl', 'I'], desc: 'Toggle AI Assistant' },
   { keys: ['Ctrl', 'M'], desc: 'Toggle Maximize results' },
 ]
-
-interface KeyboardShortcutsModalProps {
-  onClose: () => void
-}
 
 export function KeyboardShortcutsModal({ onClose }: KeyboardShortcutsModalProps) {
   return (

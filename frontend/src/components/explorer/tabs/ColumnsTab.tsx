@@ -95,7 +95,7 @@ export function ColumnsTab({
                 : 'Edit mode generates ALTER TABLE SQL statements'}
           </span>
         </div>
-        <button 
+        <button
           onClick={onAdd}
           className="flex items-center gap-1.5 text-[var(--ch-text-10)] font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:opacity-90 px-3 py-1 rounded-md transition-all active:scale-95"
         >
@@ -103,7 +103,7 @@ export function ColumnsTab({
           Add Column
         </button>
       </div>
-      
+
       <div className="flex-1 overflow-auto p-4">
         <table className="w-full text-left text-xs border-collapse min-w-[1000px]">
           <thead>
@@ -121,8 +121,8 @@ export function ColumnsTab({
             {columns?.map((col) => {
               const isEditing = editingColumn === col.name;
               return (
-                <tr 
-                  key={col.name} 
+                <tr
+                  key={col.name}
                   className={cn("group hover:bg-muted transition-colors", isEditing && "bg-primary")}
                   onContextMenu={(e) => {
                     if (isMongoDB) return;
@@ -175,7 +175,7 @@ export function ColumnsTab({
                     )}
                   </td>
                   <td className="py-2 px-2 text-center">
-                    <input 
+                    <input
                       type="checkbox"
                       disabled={!isEditing}
                       checked={isEditing ? !!editedColData?.isPrimaryKey : !!col.isPrimaryKey}
@@ -184,7 +184,7 @@ export function ColumnsTab({
                     />
                   </td>
                   <td className="py-2 px-2 text-center">
-                     <input 
+                     <input
                       type="checkbox"
                       disabled={!isEditing}
                       checked={isEditing ? !!editedColData?.isNullable : !!col.isNullable}

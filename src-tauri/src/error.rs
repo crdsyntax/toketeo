@@ -26,7 +26,7 @@ impl From<sqlx::Error> for AppError {
         match err {
             sqlx::Error::Database(db_err) => {
                 let msg = db_err.message();
-                // Common error codes/messages for Auth
+
                 if msg.contains("Access denied") || msg.contains("password authentication failed") {
                     AppError::Auth(msg.to_string())
                 } else {
@@ -70,8 +70,7 @@ mod tests {
     fn test_error_serialization() {
         let err = AppError::Database("Connection failed".into());
         let json = serde_json::to_value(&err).unwrap();
-        // Since we are using #[derive(Serialize)] on the enum,
-        // by default it serializes as { "Variant": "Content" }
+
         assert_eq!(json, json!({"Database": "Connection failed"}));
     }
 

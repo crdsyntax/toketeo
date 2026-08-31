@@ -153,7 +153,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
         setSourceColumns({ ...sourceColumns, ...newColumns })
       }
     } catch {
-      // ignore
+
     }
   }
 
@@ -175,7 +175,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
           )
           setTables(updatedTables)
         })
-        .catch(() => { /* ignore */ })
+        .catch(() => {  })
         .finally(() => {
           setLoadingColumns((prev) => ({ ...prev, [i]: false }))
         })
@@ -237,7 +237,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             </div>
           )}
 
-          {/* Name */}
+
           <div className="space-y-2">
             <Tooltip content="A descriptive name to identify this pipeline">
               <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Pipeline Name</label>
@@ -250,7 +250,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             />
           </div>
 
-          {/* Source / Target selector */}
+
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-3">
               <ConnectionSelector
@@ -324,7 +324,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             </div>
           </div>
 
-          {/* Sync Mode */}
+
           <div className="space-y-2">
             <Tooltip content="Full: copies all data each run. Incremental: only copies new/changed data since the last sync">
               <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-[0.2em] text-muted-foreground">Sync Mode</label>
@@ -339,7 +339,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
             </select>
           </div>
 
-          {/* Tables */}
+
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Tooltip content="Define the tables to synchronize and their column mappings">
@@ -397,7 +397,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                   </div>
                 </div>
 
-                {/* Auto-detected columns - read only summary */}
+
                 {loadingColumns[i] ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3 h-3 animate-spin" /> Detecting columns...
@@ -409,7 +409,7 @@ export function PipelineEditor({ pipeline, onClose }: PipelineEditorProps) {
                   </div>
                 ) : null}
 
-                {/* Advanced: column mappings, filters, primary key */}
+
                 <div className="border border-dashed border-border/50">
                   <button
                     onClick={() => setAdvancedOpen((prev) => ({ ...prev, [i]: !prev[i] }))}

@@ -15,7 +15,7 @@ const CARDINALITY_SYMBOLS: Record<string, string> = {
 
 const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-/** Uppercase, non-alphanumeric → `_`, ensure uniqueness. */
+
 function sanitizeEntity(raw: string, used: Set<string>): string {
   let safe = raw.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/^(\d)/, '_$1')
   if (!safe) safe = 'ENTITY'
@@ -28,7 +28,7 @@ function sanitizeEntity(raw: string, used: Set<string>): string {
   return candidate
 }
 
-/** Mermaid v10+ quoted entity form for names with special characters. */
+
 function quotedEntity(raw: string, used: Set<string>): string {
   let candidate = `["${raw.replace(/"/g, '\\"')}"]`
   let i = 2
@@ -39,18 +39,14 @@ function quotedEntity(raw: string, used: Set<string>): string {
   return candidate
 }
 
-/** Column names are kept as-is when safe, otherwise quoted. */
+
 function sanitizeColumn(raw: string): string {
   if (SAFE_IDENTIFIER.test(raw)) return raw
   return `"${raw.replace(/"/g, '\\"')}"`
 }
 
-/**
- * Convert React Flow diagram nodes/edges into Mermaid `erDiagram` syntax.
- * Tables become entities with typed attributes (PK/FK markers); views become
- * empty entities preceded by a `%% VIEW` comment; edges map cardinality to
- * ER symbols (1:1 → ||--||, 1:N → ||--o{, N:M → }o--o{).
- */
+
+
 export function nodesToMermaid(nodes: Node[], edges: Edge[]): string {
   const entityIds = new Map<string, string>()
   const used = new Set<string>()

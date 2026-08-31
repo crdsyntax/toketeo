@@ -88,7 +88,7 @@ export default function Explorer() {
       </div>
     )
   }
-  
+
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
       <div className="flex items-center gap-1 overflow-x-auto no-scrollbar border border-border rounded-xl bg-card px-2 py-1.5 shrink-0">
@@ -139,7 +139,7 @@ export default function Explorer() {
                     <label className="text-[var(--ch-text-10)] font-bold uppercase tracking-wider text-muted-foreground flex justify-between">
                       {p.name} <span className="text-primary/70">{p.type} ({p.mode})</span>
                     </label>
-                    <input 
+                    <input
                       type="text"
                       value={paramValues[p.name] || ''}
                       onChange={(e) => setParamsValues(prev => ({ ...prev, [p.name]: e.target.value }))}
@@ -149,13 +149,13 @@ export default function Explorer() {
                   </div>
                 ))}
                 <div className="pt-4 flex gap-3">
-                  <button 
+                  <button
                     onClick={() => setShowParamModal(false)}
                     className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-bold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleExecute(true)}
                     className="flex-1 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                   >
@@ -168,7 +168,7 @@ export default function Explorer() {
           </div>
         )}
 
-        <Sidebar 
+        <Sidebar
           sidebarTab={sidebarTab}
           setSidebarTab={setSidebarTab}
           currentSchema={currentSchema}
@@ -192,7 +192,7 @@ export default function Explorer() {
         />
 
         <div className="flex-1 border border-border rounded-xl bg-card flex flex-col overflow-hidden">
-          <ObjectDetail 
+          <ObjectDetail
             explorerTabs={explorerTabs}
             activeExplorerTabId={activeExplorerTabId}
             removeExplorerTab={removeExplorerTab}

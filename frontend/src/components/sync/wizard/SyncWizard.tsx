@@ -179,7 +179,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
           transition: isInteracting ? 'none' : undefined,
         }}
       >
-        {/* Title bar — draggable */}
+
         <div
           className="h-11 border-b border-border flex items-center justify-between bg-muted cursor-move select-none shrink-0 px-4"
           onMouseDown={(e) => {
@@ -230,7 +230,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
           </div>
         </div>
 
-        {/* Progress bar */}
+
         <div className="flex border-b border-border shrink-0">
           {STEPS.map((s, i) => (
             <div
@@ -246,7 +246,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
           ))}
         </div>
 
-        {/* Content */}
+
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 scrollbar-thin bg-background">
           {error && (
             <div className="p-3 border border-destructive/20 bg-destructive/5">
@@ -303,7 +303,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
           )}
         </div>
 
-        {/* Footer */}
+
         <div className="p-4 bg-muted border-t border-border flex items-center justify-between gap-4 shrink-0">
           <div>
             {!isFirst && (
@@ -339,7 +339,7 @@ export function SyncWizard({ pipeline, onClose, minimized, onMinimize }: SyncWiz
           </div>
         </div>
 
-        {/* Resize handle */}
+
         {!isMaximized && (
           <div
             className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize flex items-end justify-end p-0.5 hover:text-primary transition-colors z-50"

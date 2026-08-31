@@ -41,8 +41,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       notifications: [notification, ...state.notifications].slice(0, MAX_NOTIFICATIONS),
       unreadCount: state.unreadCount + 1,
     }))
-    // Feed application errors to the agent's knowledge library so it learns
-    // from recurring failures. Fire-and-forget: never blocks or throws.
+
     if (type === 'error') {
       tauriApi
         .invoke<[string, boolean]>('assistant_record_error', {
@@ -51,7 +50,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         })
         .catch(() => undefined)
     }
-    // Keep the count bounded even if a markAllRead raced with an add.
+
     if (get().unreadCount > get().notifications.length) {
       set({ unreadCount: get().notifications.filter((n) => !n.read).length })
     }

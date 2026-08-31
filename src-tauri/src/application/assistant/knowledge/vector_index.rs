@@ -1,9 +1,3 @@
-//! In-memory brute-force vector index over the knowledge embeddings.
-//!
-//! Kept as an abstraction so the storage backend can later swap to sqlite-vec
-//! (vec0 virtual table) without touching the retrieval code: callers only see
-//! `search(query, k) -> Vec<(id, kind, similarity)>`.
-
 use std::sync::RwLock;
 
 use super::embeddings::{cosine_similarity, KnowledgeKind};
@@ -23,12 +17,11 @@ pub struct VectorIndex {
 pub struct VectorHit {
     pub knowledge_id: String,
     pub kind: KnowledgeKind,
-    /// Cosine similarity in [-1, 1]; higher is more similar.
+
     pub similarity: f32,
 }
 
 impl VectorIndex {
-    /// Atomically replace the whole index contents (used at startup/backfill).
     pub fn replace_all(&self, entries: Vec<(String, KnowledgeKind, Vec<f32>)>) {
         let mut guard = self.entries.write().unwrap();
         guard.clear();
@@ -63,8 +56,6 @@ impl VectorIndex {
             .retain(|e| e.knowledge_id != knowledge_id);
     }
 
-    /// Brute-force KNN. Entries whose dimension differs from the query are
-    /// skipped (mixed-dimension corpora are handled gracefully).
     pub fn search(&self, query: &[f32], k: usize) -> Vec<VectorHit> {
         if query.is_empty() || k == 0 {
             return vec![];
@@ -106,7 +97,7 @@ mod tests {
         idx.replace_all(vec![
             ("a".into(), KnowledgeKind::Qa, vec![1.0, 0.0]),
             ("b".into(), KnowledgeKind::Qa, vec![0.0, 1.0]),
-            ("c".into(), KnowledgeKind::Error, vec![1.0]), // dim mismatch
+            ("c".into(), KnowledgeKind::Error, vec![1.0]),
         ]);
 
         let hits = idx.search(&[1.0, 0.0], 2);
@@ -115,14 +106,12 @@ mod tests {
         assert!((hits[0].similarity - 1.0).abs() < 1e-6);
         assert_eq!(hits[1].knowledge_id, "b");
 
-        // Kind is preserved for filtering.
         assert_eq!(hits[0].kind, KnowledgeKind::Qa);
 
-        // insert replaces existing entry; remove drops it.
         idx.insert("a".into(), KnowledgeKind::Qa, vec![0.9, 0.1]);
         idx.remove("a");
         let hits = idx.search(&[1.0, 0.0], 5);
         assert!(hits.iter().all(|h| h.knowledge_id != "a"));
-        assert_eq!(idx.len(), 2); // b + c remain
+        assert_eq!(idx.len(), 2);
     }
 }

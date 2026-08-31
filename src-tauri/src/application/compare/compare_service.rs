@@ -265,7 +265,6 @@ impl CompareService {
         })
     }
 
-    /// Genera un resumen en lenguaje natural de la comparación.
     fn build_summary(
         tables: &[ObjectDiff],
         views: &[ObjectDiff],
@@ -635,7 +634,6 @@ impl CompareService {
         let mut source_only_rows = Vec::new();
         let mut target_only_rows = Vec::new();
 
-        // Clasificar PKs: divergentes (ambos lados), solo source, solo target.
         let mut divergent_pks: Vec<String> = Vec::new();
         let mut src_only_pks: Vec<String> = Vec::new();
         let mut tgt_only_pks: Vec<String> = Vec::new();
@@ -805,9 +803,6 @@ impl CompareService {
         }
     }
 
-    /// Emite el conteo de una sección del report apenas se completa, para que
-    /// el frontend muestre avance por sección sin esperar el invoke completo
-    /// (solo envía el conteo, no los diffs: no duplica el payload final).
     fn emit_section(
         app_handle: Option<&AppHandle>,
         compare_id: Option<&str>,
@@ -859,9 +854,6 @@ impl CompareService {
         }
     }
 
-    /// Ejecuta la comparación de un tipo de objeto por tabla en paralelo
-    /// (`buffered(INTROSPECTION_CONCURRENCY)`), con progreso por tabla
-    /// completada y control de cancelación por tarea.
     async fn compare_per_table<T, Fut>(
         source: Arc<dyn DbDriver>,
         target: Arc<dyn DbDriver>,

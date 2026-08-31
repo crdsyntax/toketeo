@@ -1,5 +1,3 @@
-/// Determina si un fragmento contiene SQL real (no solo comentarios o
-/// espacios). Los strings contados como SQL (`SELECT ';'` es real).
 fn contains_sql(fragment: &str) -> bool {
     let bytes = fragment.as_bytes();
     let mut i = 0usize;
@@ -33,9 +31,6 @@ fn contains_sql(fragment: &str) -> bool {
     false
 }
 
-/// Parsea una directiva `DELIMITER <token>` al inicio de una línea (el resto
-/// del slice). Devuelve el token, p. ej. `$$`, `//`, `;;` o `;`. La directiva
-/// en sí no se envía al servidor: solo cambia el terminador del splitter.
 fn parse_delimiter(sql_rest: &str) -> Option<String> {
     let trimmed = sql_rest.trim_start_matches(|c: char| c.is_whitespace());
     let head = trimmed.get(.."DELIMITER".len())?;
@@ -54,13 +49,6 @@ fn parse_delimiter(sql_rest: &str) -> Option<String> {
     Some(token.to_string())
 }
 
-/// Divide un script SQL en statements individuales, respetando:
-/// - strings entre comillas simples (con `''` escapado)
-/// - strings entre comillas dobles / backticks (identificadores por DB)
-/// - comentarios `-- ...` y `/* ... */`
-/// - `;` como terminador por defecto
-/// - directivas `DELIMITER <token>` (compatibilidad MySQL): la línea de la
-///   directiva no forma parte de ningún statement.
 pub fn split_statements(sql: &str) -> Vec<String> {
     if sql.trim().is_empty() {
         return Vec::new();
@@ -75,8 +63,6 @@ pub fn split_statements(sql: &str) -> Vec<String> {
     while i < bytes.len() {
         let c = bytes[i] as char;
 
-        // Comentario de línea `--`: se conserva en el statement al que
-        // pertenece.
         if c == '-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
             while i < bytes.len() && bytes[i] != b'\n' {
                 current.push(bytes[i] as char);
@@ -85,7 +71,6 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             continue;
         }
 
-        // Comentario de bloque `/* ... */` (conserva hints tipo `/*+ */`).
         if c == '/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
@@ -105,7 +90,6 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             continue;
         }
 
-        // String entre comillas simples.
         if c == '\'' {
             current.push(c);
             i += 1;
@@ -125,7 +109,6 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             continue;
         }
 
-        // Identificadores entre comillas dobles o backticks.
         if c == '"' || c == '`' {
             current.push(c);
             i += 1;
@@ -145,17 +128,14 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             continue;
         }
 
-        // Directiva DELIMITER: solo se reconoce al inicio de línea.
         if at_line_start {
             if let Some(rest) = sql.get(i..) {
                 if let Some(new_delimiter) = parse_delimiter(rest) {
-                    // La directiva se descarta: no forma parte del statement
-                    // previo (que se cierra solo) ni del siguiente.
                     if contains_sql(&current) {
                         statements.push(current.clone());
                         current.clear();
                     }
-                    // Descartar la directiva completa (hasta fin de línea).
+
                     while i < bytes.len() && bytes[i] != b'\n' {
                         i += 1;
                     }
@@ -169,12 +149,8 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             }
         }
 
-        // Terminador de statement (token actual, por defecto `;`).
         let delim = delimiter.as_bytes();
         if i + delim.len() <= bytes.len() && &bytes[i..i + delim.len()] == delim {
-            // Solo el `;` por defecto se conserva en el statement (es el que
-            // entiende el servidor). Los tokens personalizados (p. ej. `$$`
-            // con `DELIMITER $$`) NO se envían al servidor: solo delimitan.
             if delimiter == ";" {
                 current.push_str(&delimiter);
             }
@@ -196,7 +172,6 @@ pub fn split_statements(sql: &str) -> Vec<String> {
         i += 1;
     }
 
-    // Statement final sin terminador.
     if contains_sql(&current) {
         statements.push(current);
     }
@@ -327,9 +302,6 @@ mod tests {
 
     #[test]
     fn delimiter_only_recognized_at_line_start() {
-        // `DELIMITER` en mitad de una línea (p. ej. tras un `;` en la misma
-        // línea) no se reconoce como directiva: queda pegada al statement.
-        // La directiva final en línea propia se descarta (no es SQL).
         let sql = "SELECT 1; DELIMITER $$\nSELECT 2$$\nDELIMITER ;";
         let parts = split_statements(sql);
         assert_eq!(parts.len(), 2);

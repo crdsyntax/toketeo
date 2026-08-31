@@ -3,15 +3,12 @@ use crate::error::AppResult;
 
 use super::metadata_cache::SchemaMetadataCache;
 
-/// Detecta la clave primaria de una tabla.
-/// Retorna las columnas PK o una UNIQUE keys si no hay PK.
 pub async fn resolve_pk(
     cache: &mut SchemaMetadataCache,
     driver: &dyn DbDriver,
     table: &str,
     schema: Option<&str>,
 ) -> AppResult<Option<Vec<String>>> {
-    // 1. fetch_columns() → buscar isPrimaryKey = true
     let cols = cache.columns(driver, table, schema).await?;
     let pks: Vec<String> = cols
         .iter()
@@ -26,7 +23,6 @@ pub async fn resolve_pk(
         return Ok(Some(pks));
     }
 
-    // 2. fetch_indexes() → buscar PRIMARY index
     let idxs = cache.indexes(driver, table, schema).await?;
     let primary_cols: Vec<String> = idxs
         .iter()
@@ -48,7 +44,6 @@ pub async fn resolve_pk(
         return Ok(Some(primary_cols));
     }
 
-    // 3. fetch_constraints() → buscar PRIMARY KEY constraint
     let constraints = cache.constraints(driver, table, schema).await?;
     let has_pk = constraints.iter().any(|c| {
         c.get("type")
@@ -67,7 +62,6 @@ pub async fn resolve_pk(
         );
     }
 
-    // 4. Buscar UNIQUE index como fallback
     let unique_cols: Vec<String> = idxs
         .iter()
         .filter(|i| {
@@ -86,7 +80,6 @@ pub async fn resolve_pk(
         return Ok(Some(unique_cols));
     }
 
-    // 5. Sin PK ni UNIQUE → no se puede hacer data compare
     Ok(None)
 }
 

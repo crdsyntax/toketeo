@@ -147,7 +147,7 @@ impl SqlServerDriver {
 
     async fn fetch_table_ddl(&self, name: &str, schema: &str) -> AppResult<String> {
         let col_query = format!(
-            "SELECT 
+            "SELECT
                 c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH,
                 c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.IS_NULLABLE,
                 c.COLUMN_DEFAULT
@@ -166,11 +166,11 @@ impl SqlServerDriver {
         let pk_query = format!(
             "SELECT ccu.COLUMN_NAME
             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu 
-                ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME 
+            JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
+                ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
                 AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-            WHERE tc.TABLE_NAME = '{}' 
-              AND tc.TABLE_SCHEMA = '{}' 
+            WHERE tc.TABLE_NAME = '{}'
+              AND tc.TABLE_SCHEMA = '{}'
               AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
             ORDER BY ccu.COLUMN_NAME",
             Self::escape_sql(name),
@@ -562,8 +562,6 @@ impl DbDriver for SqlServerDriver {
             return self.fetch_table_ddl(name, &schema_name).await;
         }
 
-        // OBJECT_DEFINITION can be NULL if the user doesn't have permissions or for certain object types.
-        // sys.sql_modules is generally more reliable for code-based objects.
         let query = format!(
             "SELECT m.definition FROM sys.sql_modules m JOIN sys.objects o ON m.object_id = o.object_id WHERE o.name = '{}' AND SCHEMA_NAME(o.schema_id) = '{}'",
             Self::escape_sql(name),
@@ -824,9 +822,6 @@ impl CapabilityProvider for SqlServerDriver {
     }
 }
 
-/// Sesión transaccional de script sobre SQL Server.
-/// Usa BEGIN TRANSACTION / COMMIT / ROLLBACK manuales sobre la conexión
-/// compartida del driver (tiberius no expone transacciones de primera clase).
 pub struct SqlServerScriptTransaction {
     client: Arc<Mutex<Option<Client<Compat<TcpStream>>>>>,
 }

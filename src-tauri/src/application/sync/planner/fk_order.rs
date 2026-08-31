@@ -3,21 +3,9 @@ use crate::error::AppResult;
 use crate::models::sync::SyncTableConfig;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
-/// Reordena las tablas de un pipeline respetando las dependencias de Foreign
-/// Keys del source: toda tabla referenciada (padre) se procesa antes que las
-/// que la referencian (hijas).
-///
-/// - Orden **estable**: las tablas sin dependencias conservan su orden
-///   relativo original (por defecto alfabético).
-/// - Las auto-referencias (`A.parent_id -> A.id`) se ignoran: el upsert por
-///   `ON CONFLICT`/`ON DUPLICATE KEY` ya cubre el caso intra-tabla.
-/// - Los ciclos multi-tabla se conservan en su orden relativo original y se
-///   reportan por log, ya que no existe un orden seguro posible.
 pub struct FkOrderer;
 
 impl FkOrderer {
-    /// Devuelve `tables` reordenadas (padres primero). Si la metadata de FK no
-    /// está disponible o falla la lectura, conserva el orden original.
     pub async fn order_tables(
         tables: Vec<SyncTableConfig>,
         source: &dyn DbDriver,
@@ -33,7 +21,6 @@ impl FkOrderer {
             .map(|(i, t)| (t.source_table.clone(), i))
             .collect();
 
-        // dependencies[tabla] = tablas del pipeline a las que referencia vía FK.
         let mut dependencies: HashMap<String, HashSet<String>> = HashMap::new();
         let mut fk_fetch_errors: usize = 0;
 
@@ -88,9 +75,6 @@ impl FkOrderer {
         Ok(ordered)
     }
 
-    /// Orden topológico estable (Kahn) con desempate por índice original.
-    /// Devuelve todas las tablas; los nodos en ciclos quedan al final en su
-    /// orden relativo original.
     fn topological_sort(
         tables: &[SyncTableConfig],
         dependencies: &HashMap<String, HashSet<String>>,
@@ -109,7 +93,6 @@ impl FkOrderer {
             }
         }
 
-        // Min-heap por índice original → produce un orden estable.
         let mut ready: BinaryHeap<(std::cmp::Reverse<usize>, String)> = BinaryHeap::new();
         for (i, t) in tables.iter().enumerate() {
             let deg = indegree.get(&t.source_table).copied().unwrap_or(0);
@@ -142,7 +125,6 @@ impl FkOrderer {
             }
         }
 
-        // Ciclos restantes: conservar orden relativo original y advertir.
         let mut remaining: Vec<&SyncTableConfig> = tables
             .iter()
             .filter(|t| !placed.contains(&t.source_table))
@@ -218,7 +200,6 @@ mod tests {
         }
     }
 
-    /// Driver mock que solo provee metadata de FK.
     struct MockFkDriver {
         fks: HashMap<String, Vec<serde_json::Value>>,
     }
@@ -350,7 +331,6 @@ mod tests {
 
     #[tokio::test]
     async fn orders_parents_before_children() {
-        // Orden alfabético: brands antes de categories → violaría FK.
         let tables = vec![make_table("brands"), make_table("categories")];
         let driver = MockFkDriver::with(vec![("brands", vec!["categories"])]);
 
@@ -377,7 +357,6 @@ mod tests {
 
     #[tokio::test]
     async fn resolves_transitive_dependencies() {
-        // products → categories → media (categories referencia a media)
         let tables = vec![
             make_table("products"),
             make_table("categories"),
@@ -391,13 +370,12 @@ mod tests {
         let ordered = FkOrderer::order_tables(tables, &driver, None)
             .await
             .unwrap();
-        // media antes de categories antes de products
+
         assert_eq!(names(&ordered), vec!["media", "categories", "products"]);
     }
 
     #[tokio::test]
     async fn ignores_self_references() {
-        // categories.parent_id -> categories.id (auto-referencia)
         let tables = vec![
             make_table("categories"),
             make_table("products"),
@@ -412,14 +390,12 @@ mod tests {
         let ordered = FkOrderer::order_tables(tables, &driver, None)
             .await
             .unwrap();
-        // categories (raíz, índice 0) primero; products/brands conservan su
-        // orden relativo original tras resolverse su dependencia.
+
         assert_eq!(names(&ordered), vec!["categories", "products", "brands"]);
     }
 
     #[tokio::test]
     async fn keeps_cycle_members_in_original_relative_order() {
-        // a -> b -> a (ciclo), c independiente
         let tables = vec![make_table("a"), make_table("b"), make_table("c")];
         let driver = MockFkDriver::with(vec![("a", vec!["b"]), ("b", vec!["a"])]);
 
@@ -430,7 +406,7 @@ mod tests {
         assert!(names.contains(&"a"));
         assert!(names.contains(&"b"));
         assert!(names.contains(&"c"));
-        // c (independiente) debe salir antes que el ciclo
+
         assert_eq!(names[0], "c");
     }
 

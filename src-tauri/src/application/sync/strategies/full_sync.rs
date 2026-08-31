@@ -12,21 +12,16 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
-/// Configuración de batch adaptivo.
 const ADAPTIVE_BATCH_INITIAL: usize = 1_000;
 const ADAPTIVE_BATCH_MEDIUM: usize = 5_000;
 const ADAPTIVE_BATCH_MAX: usize = 50_000;
 
-/// Tiempos objetivo en milisegundos para decidir escalado.
-const SCALE_UP_THRESHOLD_MS: u64 = 1_000; // Si batch < 1s, escalar
-const SCALE_UP_AGGRESSIVE_MS: u64 = 500; // Si batch < 0.5s, escalar más
-const SCALE_DOWN_THRESHOLD_MS: u64 = 5_000; // Si batch > 5s, reducir
+const SCALE_UP_THRESHOLD_MS: u64 = 1_000;
+const SCALE_UP_AGGRESSIVE_MS: u64 = 500;
+const SCALE_DOWN_THRESHOLD_MS: u64 = 5_000;
 
-/// MySQL prepared statement placeholder limit (65,535).
-/// Each row uses num_columns placeholders, so max batch = 65535 / num_columns.
 const MYSQL_PLACEHOLDER_LIMIT: usize = 65_535;
 
-/// Estrategia de sincronización completa.
 pub struct FullSync;
 
 #[async_trait::async_trait]
@@ -57,13 +52,10 @@ impl SyncStrategy for FullSync {
             pipeline.batch_size,
         );
 
-        // Adaptive batch sizing: start with configured size, scale up/down based on performance
         let mut current_batch_size = pipeline.batch_size;
         let mut consecutive_fast_batches: u32 = 0;
         let mut consecutive_slow_batches: u32 = 0;
 
-        // Calculate max safe batch size based on column count
-        // Use 50% of MySQL placeholder limit to avoid connection drops from large packets
         let num_columns = table_config.column_mappings.len().max(1);
         let max_safe_batch = (MYSQL_PLACEHOLDER_LIMIT / num_columns) / 2;
         let adaptive_max = ADAPTIVE_BATCH_MAX.min(max_safe_batch);
@@ -188,8 +180,6 @@ impl SyncStrategy for FullSync {
             let batch_size = output.rows.len();
             let raw_rows = output.rows.clone();
 
-            // Transform + última barrera de null bytes: cualquier \0 que llegue
-            // aquí se elimina y se reporta (fila/columna) para diagnóstico.
             let transformed =
                 transform_and_strip(output.rows, &mappings, &pk, &table_config.source_table)?;
 
@@ -209,9 +199,6 @@ impl SyncStrategy for FullSync {
                     let err_str = e.to_string();
                     let column_name = extract_unknown_column(&err_str);
 
-                    // La columna falta en el target: primero se crea
-                    // (reconciliación de esquema en caliente); si no puede
-                    // crearse, se cae al fallback de excluirla del sync.
                     if let Some(ref col) = column_name {
                         let col_type = infer_agnostic_type(&raw_rows, col);
                         match writer
@@ -303,7 +290,6 @@ impl SyncStrategy for FullSync {
                                     .await
                                 {
                                     Ok(r) => {
-                                        // Update mappings for subsequent batches
                                         mappings.clone_from(&new_mappings);
                                         columns.clone_from(&new_columns);
                                         dest_columns.clone_from(&new_dest);
@@ -333,9 +319,6 @@ impl SyncStrategy for FullSync {
                             }
                         }
                     } else if let Some(not_null_col) = extract_not_null_column(&err_str) {
-                        // Violación NOT NULL: el target tiene la columna NOT NULL
-                        // pero el source trae NULLs. Se relaja la restricción
-                        // (DROP NOT NULL) y se reintenta el batch.
                         match writer
                             .drop_not_null(&table_config.target_table, target_schema, &not_null_col)
                             .await
@@ -420,7 +403,6 @@ impl SyncStrategy for FullSync {
                             });
                         }
 
-                        // Detect connection errors and scale down batch size
                         let err_str_lower = err_str.to_lowercase();
                         if (err_str_lower.contains("connection")
                             || err_str_lower.contains("aborted")
@@ -441,7 +423,6 @@ impl SyncStrategy for FullSync {
                             consecutive_slow_batches = 0;
                         }
 
-                        // Abort remaining batches when the target table is missing
                         if err_str.contains("doesn't exist")
                             || err_str.contains("does not exist")
                             || err_str.contains("no such table")
@@ -470,12 +451,11 @@ impl SyncStrategy for FullSync {
             error_count += batch_errors;
             let duration = batch_start.elapsed().as_millis() as u64;
 
-            // Adaptive batch sizing logic
             if batch_errors == 0 {
                 if duration < SCALE_UP_AGGRESSIVE_MS && current_batch_size < adaptive_max {
                     consecutive_fast_batches += 1;
                     consecutive_slow_batches = 0;
-                    // Ramp up aggressively: 1 fast batch → 4x, 2+ → 2x
+
                     let multiplier = if consecutive_fast_batches == 1
                         && current_batch_size < ADAPTIVE_BATCH_INITIAL
                     {
@@ -656,9 +636,6 @@ impl SyncStrategy for FullSync {
     }
 }
 
-/// Transforma las filas con `transformers::transform_rows` y aplica la última
-/// barrera de null bytes: elimina cualquier `\0` de valores y claves, y reporta
-/// qué (fila, columna) los contenía. Garantiza que el writer nunca reciba \0.
 fn transform_and_strip(
     rows: Vec<serde_json::Value>,
     mappings: &[ColumnMapping],
@@ -678,8 +655,6 @@ fn transform_and_strip(
     Ok(out)
 }
 
-/// Elimina null bytes (0x00) de todos los strings de las filas (valores y
-/// claves JSON, recursivo) y devuelve los hits (row_key, columna) afectados.
 fn strip_null_bytes(rows: &mut [serde_json::Value], pk: &str) -> Vec<(String, String)> {
     let mut hits = Vec::new();
     for row in rows {
@@ -742,11 +717,7 @@ fn strip_null_bytes_in_value(
     }
 }
 
-/// Extrae el nombre de la columna de un error de violación NOT NULL.
-/// PostgreSQL: `null value in column "segment" of relation "attributes"
-/// violates not-null constraint`. También MySQL / SQLite / SQL Server.
 fn extract_not_null_column(err: &str) -> Option<String> {
-    // PostgreSQL
     if err.contains("violates not-null constraint") {
         if let Some(start) = err.find("column \"") {
             let rest = &err[start + 8..];
@@ -755,7 +726,7 @@ fn extract_not_null_column(err: &str) -> Option<String> {
             }
         }
     }
-    // MySQL / MariaDB: Column 'segment' cannot be null
+
     if err.contains("cannot be null") {
         if let Some(start) = err.find("Column '") {
             let rest = &err[start + 8..];
@@ -764,7 +735,7 @@ fn extract_not_null_column(err: &str) -> Option<String> {
             }
         }
     }
-    // SQLite: NOT NULL constraint failed: attributes.segment
+
     if err.contains("NOT NULL constraint failed") {
         if let Some(start) = err.find("failed: ") {
             let rest = &err[start + 8..];
@@ -774,7 +745,7 @@ fn extract_not_null_column(err: &str) -> Option<String> {
             return Some(rest.to_string());
         }
     }
-    // SQL Server: Cannot insert the value NULL into column 'segment'
+
     if err.contains("NULL into column") {
         if let Some(start) = err.find("column '") {
             let rest = &err[start + 8..];
@@ -786,10 +757,6 @@ fn extract_not_null_column(err: &str) -> Option<String> {
     None
 }
 
-/// Infiere un tipo de columna agnóstico al dialecto ("text", "bigint",
-/// "double", "boolean", "json") a partir del primer valor no-nulo de la
-/// columna en el batch. Se usa para `DataWriter::add_column` en la
-/// reconciliación en caliente.
 fn infer_agnostic_type(rows: &[serde_json::Value], column: &str) -> &'static str {
     for row in rows {
         match row.get(column) {
@@ -810,19 +777,14 @@ fn infer_agnostic_type(rows: &[serde_json::Value], column: &str) -> &'static str
     "text"
 }
 
-/// Extract the unknown column name from MySQL/MariaDB error messages.
-/// Handles format: `Unknown column 'agencia_id' in 'INSERT INTO'`
 fn extract_unknown_column(err: &str) -> Option<String> {
-    // MySQL / MariaDB: Unknown column 'xxx' in '...'
     if let Some(start) = err.find("Unknown column '") {
         let rest = &err[start + 16..];
         if let Some(end) = rest.find('\'') {
             return Some(rest[..end].to_string());
         }
     }
-    // PostgreSQL: column "xxx" of relation "yyy" does not exist.
-    // Requiere "does not exist" para NO confundir errores de tipo enum como
-    // `column "status" is of type X but expression is of type text`.
+
     if err.contains("does not exist") {
         if let Some(start) = err.find("column \"") {
             let rest = &err[start + 8..];
@@ -831,7 +793,7 @@ fn extract_unknown_column(err: &str) -> Option<String> {
             }
         }
     }
-    // SQL Server: Invalid column name 'xxx'
+
     if let Some(start) = err.find("Invalid column name '") {
         let rest = &err[start + 21..];
         if let Some(end) = rest.find('\'') {
@@ -859,12 +821,10 @@ mod tests {
     const ROWS_PER_TABLE: usize = 200;
     const BATCH_SIZE: usize = 50;
 
-    /// Generates table names: table_00 .. table_69
     fn table_name(idx: usize) -> String {
         format!("table_{:02}", idx)
     }
 
-    /// Generates a row for a given table and row index.
     fn make_row(table_idx: usize, row_idx: usize) -> serde_json::Value {
         serde_json::json!({
             "id": (table_idx * ROWS_PER_TABLE + row_idx) as i64,
@@ -873,8 +833,6 @@ mod tests {
             "created_at": format!("2024-01-01T00:{:02}:00Z", row_idx % 60),
         })
     }
-
-    // ── Mock Source Reader ──
 
     struct MockSourceReader {
         data: HashMap<String, Vec<serde_json::Value>>,
@@ -935,8 +893,6 @@ mod tests {
         }
     }
 
-    // ── Mock Target Writer ──
-
     struct MockTargetWriter {
         written: Arc<Mutex<HashMap<String, Vec<serde_json::Value>>>>,
     }
@@ -978,8 +934,6 @@ mod tests {
             })
         }
     }
-
-    // ── Helpers ──
 
     fn make_pipeline(tables: Vec<SyncTableConfig>, batch_size: usize) -> SyncPipeline {
         SyncPipeline {
@@ -1042,12 +996,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("toketeo_test_{}", Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let db_path = dir.join("test.db");
-        // Create the file explicitly so SQLite can open it
+
         std::fs::File::create(&db_path).unwrap();
         Arc::new(Storage::new(db_path).await.unwrap())
     }
-
-    // ── Tests ──
 
     #[test]
     fn extract_unknown_column_ignores_unrelated_errors() {
@@ -1095,21 +1047,20 @@ mod tests {
         assert!(rows[0]["meta"].as_object().unwrap().contains_key("xy"));
         assert_eq!(rows[0]["meta"]["xy"], serde_json::json!("v"));
         assert_eq!(rows[0]["meta"]["arr"][0], serde_json::json!("z"));
-        // Debe reportar al menos name y las claves anidadas.
+
         assert!(hits.iter().any(|(_, col)| col == "name"));
         assert!(hits.iter().any(|(_, col)| col == "meta.xy"));
     }
 
     #[test]
     fn extract_unknown_column_ignores_enum_type_mismatch() {
-        // El error de enum NO es una columna faltante: no debe devolver "status".
         assert_eq!(
             extract_unknown_column(
                 r#"column "status" is of type merchant_verification_status_enum but expression is of type text"#
             ),
             None
         );
-        // Otro error con "column X is of type ..." tampoco debe casar.
+
         assert_eq!(
             extract_unknown_column(
                 r#"column "amount" is of type numeric but expression is of type text"#
@@ -1146,7 +1097,6 @@ mod tests {
 
         let pipeline = make_pipeline(make_all_table_configs(), BATCH_SIZE);
 
-        // Execute sync for each table (simulating SyncService loop)
         for table_config in &pipeline.tables {
             let extractor = SqlExtractor::new(&source);
             let output = FullSync
@@ -1174,7 +1124,6 @@ mod tests {
             );
         }
 
-        // Verify total rows written
         let total = writer.total_rows_written().await;
         assert_eq!(
             total,
@@ -1183,7 +1132,6 @@ mod tests {
             NUM_TABLES * ROWS_PER_TABLE
         );
 
-        // Verify each table has correct row count
         for t in 0..NUM_TABLES {
             let name = table_name(t);
             let count = writer.rows_for_table(&name).await;
@@ -1209,7 +1157,6 @@ mod tests {
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
 
-        // Execute sync for the single table
         let extractor = SqlExtractor::new(&source);
         let output = FullSync
             .execute(
@@ -1226,13 +1173,11 @@ mod tests {
 
         assert_eq!(output.total_rows, ROWS_PER_TABLE as u64);
 
-        // Collect all events
         let mut events = Vec::new();
         while let Ok(event) = rx.try_recv() {
             events.push(event);
         }
 
-        // Verify we got initial Progress(0), BatchCompleted events, Progress updates, and PhaseCompleted
         let progress_events: Vec<&SyncEvent> = events
             .iter()
             .filter(|e| matches!(e, SyncEvent::Progress { .. }))
@@ -1246,7 +1191,6 @@ mod tests {
             .filter(|e| matches!(e, SyncEvent::PhaseCompleted { .. }))
             .collect();
 
-        // First progress event should show 0 processed rows
         if let SyncEvent::Progress {
             processed_rows,
             total_rows,
@@ -1259,20 +1203,17 @@ mod tests {
             panic!("First event should be Progress with 0 processed rows");
         }
 
-        // With adaptive batching, batch count may vary — just verify at least 1 batch completed
         assert!(
             !batch_events.is_empty(),
             "Should have at least 1 batch completed event"
         );
 
-        // Each batch should report rows_loaded > 0
         for batch_event in &batch_events {
             if let SyncEvent::BatchCompleted { rows_loaded, .. } = batch_event {
                 assert!(*rows_loaded > 0, "Each batch should load at least 1 row");
             }
         }
 
-        // Last progress event should show 200 processed rows
         let last_progress = progress_events.last().unwrap();
         if let SyncEvent::Progress {
             processed_rows,
@@ -1284,7 +1225,6 @@ mod tests {
             assert_eq!(*error_count, 0);
         }
 
-        // Should have exactly 1 PhaseCompleted event
         assert_eq!(phase_events.len(), 1, "Should have 1 PhaseCompleted event");
         if let SyncEvent::PhaseCompleted { total_rows, .. } = phase_events.first().unwrap() {
             assert_eq!(*total_rows, ROWS_PER_TABLE as u64);
@@ -1304,7 +1244,6 @@ mod tests {
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
 
-        // Cancel before execution starts
         controller.set(pipeline_id, SyncControl::Cancelled).await;
 
         let extractor = SqlExtractor::new(&source);
@@ -1321,18 +1260,15 @@ mod tests {
             .await
             .unwrap();
 
-        // Should have 0 processed rows since we cancelled immediately
         assert_eq!(output.total_rows, 0, "Cancelled sync should process 0 rows");
         assert_eq!(
             output.batch_count, 0,
             "Cancelled sync should have 0 batches"
         );
 
-        // Verify no rows were written
         let total = writer.total_rows_written().await;
         assert_eq!(total, 0, "Cancelled sync should write 0 rows");
 
-        // Verify we got an Error event about cancellation
         let events: Vec<SyncEvent> = {
             let mut v = Vec::new();
             while let Ok(e) = rx.try_recv() {
@@ -1359,7 +1295,6 @@ mod tests {
             .set("test-pipeline-001", SyncControl::Running)
             .await;
 
-        // Use a single table with small batch to ensure multiple batches
         let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
 
         let extractor = SqlExtractor::new(&source);
@@ -1376,7 +1311,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify batches were persisted
         let batches = storage.list_sync_batches(&output.run.id).await.unwrap();
         assert_eq!(
             batches.len() as u64,
@@ -1384,7 +1318,6 @@ mod tests {
             "Number of persisted batches should match batch_count"
         );
 
-        // Verify each batch record has correct metadata
         for batch in &batches {
             assert_eq!(batch.table_name, "table_00");
             assert!(
@@ -1399,7 +1332,6 @@ mod tests {
             );
         }
 
-        // Verify total rows across all batches
         let total_extracted: u64 = batches.iter().map(|b| b.rows_extracted).sum();
         let total_loaded: u64 = batches.iter().map(|b| b.rows_loaded).sum();
         assert_eq!(total_extracted, ROWS_PER_TABLE as u64);
@@ -1420,7 +1352,6 @@ mod tests {
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SyncEvent>();
 
-        // Track per-table progress
         let mut table_processed: HashMap<String, u64> = HashMap::new();
         let mut table_totals: HashMap<String, u64> = HashMap::new();
         let mut tables_completed: Vec<String> = Vec::new();
@@ -1451,7 +1382,6 @@ mod tests {
             tables_completed.push(table_config.source_table.clone());
         }
 
-        // Drain remaining events
         while let Ok(event) = rx.try_recv() {
             match event {
                 SyncEvent::Progress {
@@ -1470,14 +1400,12 @@ mod tests {
             }
         }
 
-        // Verify all 70 tables were synced
         assert_eq!(
             tables_completed.len(),
             NUM_TABLES,
             "All 70 tables should be synced"
         );
 
-        // Verify final progress for each table shows 200 rows
         for t in 0..NUM_TABLES {
             let name = table_name(t);
             let processed = table_processed.get(&name).copied().unwrap_or(0);
@@ -1488,7 +1416,6 @@ mod tests {
             );
         }
 
-        // Verify total rows across all tables
         let total = writer.total_rows_written().await;
         assert_eq!(total, (NUM_TABLES * ROWS_PER_TABLE) as u64);
     }

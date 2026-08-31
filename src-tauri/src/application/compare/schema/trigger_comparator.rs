@@ -198,7 +198,6 @@ pub async fn compare_triggers(
 
     let mut results = compare_trigger_names(&src_triggers, &tgt_triggers, &src_infos, &tgt_infos);
 
-    // Attach DDL to results
     for r in &mut results {
         if (r.status == CompareStatus::Missing || r.status == CompareStatus::Modified)
             && r.details.is_none()

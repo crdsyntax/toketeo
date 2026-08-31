@@ -46,11 +46,8 @@ function moduleFromRoute(pathname: string): string {
   return MODULE_LABELS[base] ?? base
 }
 
-/**
- * Snapshot of the current application UI state that is sent to the agent with
- * every chat turn so it can reason about what the user is looking at (active
- * SQL editor tabs, their results/errors, explorer tabs, current module).
- */
+
+
 export function buildAgentContext(route: string): AgentUiContext {
   const app = useAppStore.getState()
   const activeConnection = app.activeConnection

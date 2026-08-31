@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGamificationStore } from '@/store/gamificationStore';
 import { getXPForNextLevel, getThematicLevelName, MISSIONS, APP_PERKS } from '@/lib/gamification';
-import { 
-  X, Trophy, Flame, CheckCircle2, CircleDashed, Lock, Unlock, 
+import {
+  X, Trophy, Flame, CheckCircle2, CircleDashed, Lock, Unlock,
   Swords, Crosshair, Wand2, Zap, Skull, Hammer, Wrench, Anvil,
   Pickaxe, Sparkles, Map, Compass, Castle, ScrollText, BookOpen,
   Backpack, Gem, Sunrise, Hourglass, CalendarClock, Crown,
@@ -49,7 +49,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
     isDragging,
     setItems: setSoulItems,
   } = useDraggableList(SOUL_ITEMS);
-  
+
   useEffect(() => {
     characterService.get().then((char) => {
       setCharacterName(char.name);
@@ -64,7 +64,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
             setSoulItems(reordered);
           }
         } catch {
-          // ignore load errors
+
         }
       }
     }).finally(() => setCharacterLoading(false));
@@ -95,16 +95,16 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card w-[600px] max-w-[90vw] max-h-[85vh] rounded-xl border border-border shadow-2xl flex flex-col overflow-hidden">
-        
-        {/* Header */}
+
+
         <div className="relative p-6 bg-gradient-to-br from-accent/10 via-background to-background border-b border-border">
-          <button 
+          <button
             onClick={onClose}
             className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
-          
+
           <div className="flex items-center gap-6">
             <button
               onClick={() => setShowCharacterEditor(true)}
@@ -117,7 +117,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
               </div>
             </button>
 
-            {/* Level Avatar */}
+
             <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
               <svg className="absolute inset-0 w-full h-full -rotate-90">
                 <defs>
@@ -146,23 +146,23 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
               </div>
             </div>
 
-            {/* Stats */}
+
             <div className="flex-1 min-w-0">
               <h2 className="text-2xl font-black mb-1">{getThematicLevelName(level)}</h2>
-              
+
               {characterName && characterName !== 'Unnamed Hero' && (
                 <p className="text-sm font-semibold text-foreground/90 truncate">{characterName}</p>
               )}
               {characterLore && (
                 <p className="text-[var(--ch-text-11)] text-muted-foreground/70 line-clamp-2">{characterLore}</p>
               )}
-              
+
               <div className="flex items-center gap-2 text-[var(--ch-text-11)] text-muted-foreground/60 mt-2">
                 <span>{progressPercentage.toFixed(0)}% to Level {level + 1}</span>
                 <span className="text-muted-foreground/30">·</span>
                 <span>{xpInLevel} / {xpNeeded} XP</span>
               </div>
-              
+
               <div className="flex items-center gap-4 mt-3">
                 <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-lg border border-border">
                   <Trophy className="w-4 h-4 text-yellow-500" />
@@ -177,7 +177,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
           </div>
         </div>
 
-        {/* Tabs */}
+
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/10 px-6 py-3">
           <div className="flex items-center">
             <button
@@ -222,7 +222,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
           </div>
         </div>
 
-        {/* Content Area */}
+
         <div className="flex-1 overflow-y-auto p-6 bg-muted/10">
           {showSoulSlots && (
             <div className="mb-4 rounded-2xl border border-amber-500/20 bg-[radial-gradient(circle_at_top,_rgba(255,193,7,0.16),_transparent_65%)] p-4 shadow-[0_0_24px_rgba(0,0,0,0.35)]">
@@ -279,7 +279,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
               </div>
             </div>
           )}
-          
+
           {activeTab === 'quests' && (
             <div className="space-y-3 animate-in fade-in slide-in-from-right-4 duration-200">
               {MISSIONS.map((mission) => {
@@ -288,12 +288,12 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
               const Icon = ICONS[mission.icon] || Trophy;
 
               return (
-                <div 
+                <div
                   key={mission.id}
                   className={cn(
                     "flex items-center gap-4 p-4 rounded-xl border transition-all",
-                    isCompleted 
-                      ? "bg-accent-muted/50 border-accent/20 opacity-70" 
+                    isCompleted
+                      ? "bg-accent-muted/50 border-accent/20 opacity-70"
                       : "bg-card border-border hover:border-accent/50 shadow-sm"
                   )}
                 >
@@ -303,7 +303,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                   )}>
                     <Icon className="w-5 h-5" />
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className={cn("font-bold truncate", isCompleted && "text-accent")}>
@@ -316,11 +316,11 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                     <p className="text-xs text-muted-foreground mb-2 truncate">
                       {mission.description}
                     </p>
-                    
-                    {/* Progress Bar inside Mission */}
+
+
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className={cn("h-full transition-all duration-500", isCompleted ? "bg-accent" : "bg-accent")}
                           style={{ width: `${(currentProgress / mission.targetCount) * 100}%` }}
                         />
@@ -350,12 +350,12 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                 const isUnlocked = unlockedPerks?.includes(perk.id);
                 const Icon = ICONS[perk.icon] || Trophy;
                 return (
-                  <div 
+                  <div
                     key={perk.id}
                     className={cn(
                       "p-4 rounded-xl border transition-all",
-                      isUnlocked 
-                        ? "bg-card border-accent/30 shadow-sm" 
+                      isUnlocked
+                        ? "bg-card border-accent/30 shadow-sm"
                         : "bg-muted/50 border-border/50 opacity-60"
                     )}
                   >
@@ -366,7 +366,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                       )}>
                         <Icon className="w-6 h-6" />
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <h4 className={cn("font-bold truncate", isUnlocked ? "text-foreground" : "text-muted-foreground")}>
@@ -391,7 +391,7 @@ export function GamificationModal({ isOpen, onClose }: GamificationModalProps) {
                       </div>
                     </div>
 
-                    {/* Required quests */}
+
                     {!isUnlocked && perk.requiredQuests.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
                         <p className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground/40">

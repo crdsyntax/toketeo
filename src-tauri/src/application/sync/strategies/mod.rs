@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use serde::Serialize;
 use std::sync::Arc;
 
-/// Resultado de ejecución de una estrategia.
 pub struct StrategyOutput {
     pub run: SyncRun,
     pub total_rows: u64,
@@ -15,7 +14,6 @@ pub struct StrategyOutput {
     pub error_count: u64,
 }
 
-/// Estrategia de sincronización.
 #[async_trait]
 pub trait SyncStrategy: Send + Sync {
     async fn execute(
@@ -30,7 +28,6 @@ pub trait SyncStrategy: Send + Sync {
     ) -> AppResult<StrategyOutput>;
 }
 
-/// Eventos emitidos durante la sincronización.
 #[derive(Debug, Clone, Serialize)]
 pub enum SyncEvent {
     TableStarted {

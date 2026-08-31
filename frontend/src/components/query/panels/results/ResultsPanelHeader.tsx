@@ -63,7 +63,7 @@ export function ResultsPanelHeader({
         filterName: 'JSON Files',
         filterExt: 'json',
       });
-      addXP(25); // XP for export
+      addXP(25);
       trackAction('EXPORT_DATA');
     } catch (e) {
       console.error('Failed to export JSON:', e);
@@ -74,7 +74,7 @@ export function ResultsPanelHeader({
     if (!activeTab?.results) return;
     setShowExportMenu(false);
     await downloadCSV(sortedRows, activeTab.results.columns, `${activeTab.name}-results.csv`);
-    addXP(25); // XP for export
+    addXP(25);
     trackAction('EXPORT_DATA');
   };
 

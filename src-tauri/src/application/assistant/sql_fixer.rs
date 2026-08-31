@@ -7,12 +7,6 @@ use crate::models::assistant::{
 };
 use crate::state::AppState;
 
-/// Analyzes a failing SQL query together with the database error message and
-/// asks the configured AI provider for a corrected query. The assistant is fed
-/// the schema context of the current connection (tables + columns + foreign
-/// keys) so it can infer the join relationships and produce the corrected
-/// query plus safer alternatives. Kept in the application layer so the Tauri
-/// command stays thin and the flow is testable.
 pub struct SqlFixer<'a> {
     state: &'a AppState,
     connection_id: &'a str,
@@ -154,7 +148,6 @@ impl<'a> SqlFixer<'a> {
     }
 }
 
-/// Compact, model-friendly representation of the filtered schema context.
 fn format_schema(ctx: &SchemaContext) -> String {
     if ctx.tables.is_empty() {
         return String::new();
@@ -196,7 +189,6 @@ fn format_schema(ctx: &SchemaContext) -> String {
     lines.join("\n")
 }
 
-/// Return the answer with every ```sql fenced block removed (the explanation).
 fn explanation_from_answer(answer: &str) -> String {
     let re = regex::Regex::new(r"(?is)```sql\s*[\s\S]*?```").unwrap();
     let stripped = re.replace_all(answer, "\n").to_string();

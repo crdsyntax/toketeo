@@ -242,12 +242,12 @@ function paintScene(ctx: Ctx, t: number): void {
     }
   }
 
-  // Left Arm leaning on pig head with muscle curves
+
   armSeg(92, 90, 74, 64, 13)
   armSeg(74, 64, 60, 46, 12)
   px(ctx, 52, 38, 18, 14, C.skin)
   ditherRect(ctx, 52, 46, 18, 6, C.skinShade)
-  // Left arm veins and muscle lines
+
   px(ctx, 76, 68, 8, 2, C.skinDark)
   px(ctx, 70, 58, 6, 2, C.skinDark)
 
@@ -279,17 +279,17 @@ function paintScene(ctx: Ctx, t: number): void {
   px(ctx, 40, 56, 1, 8, C.blood)
   px(ctx, 50, 56, 1, 6, C.bloodBright)
 
-  // Massive Right Arm gripping cleaver (muscular deltoid, bicep, forearm)
+
   armSeg(146, 94, 164, 120, 15)
   armSeg(164, 120, 168, 154, 14)
-  // Bicep / Tricep muscle shadow separation
+
   px(ctx, 152, 104, 8, 3, C.skinDark)
   px(ctx, 158, 114, 6, 2, C.skinDark)
-  // Forearm striations & veins (Image 3)
+
   px(ctx, 164, 128, 7, 2, '#4d6575')
   px(ctx, 166, 136, 6, 2, '#4d6575')
   px(ctx, 162, 144, 8, 2, C.skinDark)
-  // Blood drips on arm
+
   px(ctx, 160, 118, 2, 8, C.blood)
   px(ctx, 166, 142, 2, 6, C.bloodBright)
 

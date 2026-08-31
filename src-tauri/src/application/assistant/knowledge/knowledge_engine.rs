@@ -6,19 +6,15 @@ use std::sync::Arc;
 use super::embeddings::{build_semantic_document, kind_of, EmbeddingProvider};
 use super::vector_index::VectorIndex;
 
-/// Result of a hybrid (lexical + vector) knowledge retrieval.
 pub struct HybridSearch {
-    /// QA-style cases ranked by combined score, descending. Errors excluded.
     pub qa: Vec<(KnowledgeCase, f64)>,
-    /// Error cases relevant to the query, ranked descending.
+
     pub errors: Vec<KnowledgeCase>,
 }
 
 pub struct KnowledgeEngine;
 
 impl KnowledgeEngine {
-    /// Search knowledge cases by text similarity (LIKE-based).
-    /// `engine` filters by tag when provided (`None` = all engines).
     pub async fn search(
         storage: &Storage,
         query: &str,
@@ -28,7 +24,6 @@ impl KnowledgeEngine {
         storage.search_knowledge(query, engine, limit).await
     }
 
-    /// Record a new knowledge case from a successful QA pair.
     pub async fn record_case(
         storage: &Arc<Storage>,
         question: &str,
@@ -50,17 +45,13 @@ impl KnowledgeEngine {
         Ok(id)
     }
 
-    /// Record an application error into the knowledge library so the agent can
-    /// learn from it and recognize recurrences. Deduplicates by exact error
-    /// message within the "error" engine. Returns the case id and whether the
-    /// case was newly created.
     pub async fn record_error_case(
         storage: &Arc<Storage>,
         error: &str,
         context: &str,
     ) -> AppResult<(String, bool)> {
         let question = format!("[error] {error}");
-        // Dedupe: skip if an identical error is already stored.
+
         let existing = storage
             .search_knowledge(&question, Some("error"), 20)
             .await?;
@@ -81,10 +72,6 @@ impl KnowledgeEngine {
         Ok((id, true))
     }
 
-    /// Remove knowledge cases that were previously auto-recorded from tool
-    /// results (question prefixed with `[tool:`). Those polluted the library
-    /// with raw JSON payloads that are never useful as validated SQL answers.
-    /// Returns how many cases were removed.
     pub async fn purge_tool_cases(storage: &Arc<Storage>) -> AppResult<usize> {
         let cases = storage.list_knowledge_global(1000).await?;
         let mut removed = 0;
@@ -97,14 +84,6 @@ impl KnowledgeEngine {
         Ok(removed)
     }
 
-    /// Hybrid retrieval: lexical (LIKE candidates + word overlap) ∪ vector
-    /// (brute-force cosine over the in-memory embedding index), fused with a
-    /// max-score. Replaces the old "load 500 cases every turn" strategy: the
-    /// lexical side only fetches LIKE-matched candidates and the vector side
-    /// is served entirely from memory.
-    ///
-    /// `query_embedding` is `None` when no embedding provider is available —
-    /// the search then degrades gracefully to lexical-only.
     pub async fn hybrid_search<F>(
         storage: &Arc<Storage>,
         vectors: &VectorIndex,
@@ -115,7 +94,6 @@ impl KnowledgeEngine {
     where
         F: std::future::Future<Output = Option<Vec<f32>>>,
     {
-        // Significant words drive the lexical candidate fetch.
         let words: Vec<String> = question
             .to_lowercase()
             .split(|c: char| !c.is_alphanumeric())
@@ -124,8 +102,6 @@ impl KnowledgeEngine {
             .map(String::from)
             .collect();
 
-        // Lexical candidates (QA + errors) and the query embedding are fetched
-        // concurrently — the embedding round-trip must not add serial latency.
         let (qa_candidates, error_candidates, query_embedding) = tokio::join!(
             storage.search_knowledge_by_words(&words, None, 200),
             storage.search_knowledge_by_words(&words, Some("error"), 50),
@@ -133,7 +109,7 @@ impl KnowledgeEngine {
         );
         let qa_candidates = qa_candidates.unwrap_or_default();
         let error_candidates = error_candidates.unwrap_or_default();
-        // ── Lexical scoring ──
+
         let mut scores: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
         for (case, score) in Self::find_similar_scored(question, &qa_candidates, threshold) {
             scores.insert(case.id.clone(), score);
@@ -142,7 +118,6 @@ impl KnowledgeEngine {
             scores.insert(case.id.clone(), score);
         }
 
-        // ── Vector scoring (fused via max) ──
         if let Some(embedding) = query_embedding {
             if !embedding.is_empty() {
                 for hit in vectors.search(&embedding, 15) {
@@ -155,7 +130,6 @@ impl KnowledgeEngine {
             }
         }
 
-        // ── Hydrate and partition ──
         let ids: Vec<String> = scores.keys().cloned().collect();
         let cases = storage.get_knowledge_cases_by_ids(&ids).await?;
         let mut qa: Vec<(KnowledgeCase, f64)> = vec![];
@@ -179,8 +153,6 @@ impl KnowledgeEngine {
         Ok(HybridSearch { qa, errors })
     }
 
-    /// Index a knowledge case into the embeddings store + in-memory index.
-    /// Fails softly: indexing problems never break the recording flow.
     pub async fn index_case(
         storage: &Arc<Storage>,
         vectors: &VectorIndex,
@@ -189,7 +161,7 @@ impl KnowledgeEngine {
     ) {
         let doc = build_semantic_document(case);
         let Ok(vector) = provider.embed_one(doc).await else {
-            return; // graceful degradation: case stays lexical-only
+            return;
         };
         let kind = kind_of(case);
         if storage
@@ -201,8 +173,6 @@ impl KnowledgeEngine {
         }
     }
 
-    /// Find similar existing cases based on keyword overlap.
-    /// Returns references ranked by descending score (filtered to ≥ threshold).
     pub fn find_similar<'a>(
         query: &str,
         cases: &'a [KnowledgeCase],
@@ -214,9 +184,6 @@ impl KnowledgeEngine {
             .collect()
     }
 
-    /// Same as [find_similar] but keeps the similarity score for each match.
-    /// Used by `assistant_chat` for short-circuiting high-confidence hits and
-    /// for ranking candidates injected into the system prompt.
     pub fn find_similar_scored<'a>(
         query: &str,
         cases: &'a [KnowledgeCase],

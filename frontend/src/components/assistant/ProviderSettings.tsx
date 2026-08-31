@@ -53,7 +53,7 @@ export function ProviderSettings() {
     try {
       const list = await assistantService.getProviderConfigs()
       setConfigs(list)
-    } catch { /* silent */ }
+    } catch {  }
   }
 
   const fetchModels = useCallback(async (apiKey: string, baseUrl: string) => {
@@ -99,7 +99,7 @@ export function ProviderSettings() {
       setEditingId(null)
       resetForm()
       await loadConfigs()
-    } catch { /* silent */ }
+    } catch {  }
     setSaving(false)
   }
 
@@ -107,7 +107,7 @@ export function ProviderSettings() {
     try {
       await assistantService.deleteProviderConfig(id)
       await loadConfigs()
-    } catch { /* silent */ }
+    } catch {  }
   }
 
   const handleTest = async (config: ProviderConfig) => {
@@ -150,7 +150,7 @@ export function ProviderSettings() {
         AI Providers
       </h2>
 
-      {/* Configured providers */}
+
       <div className="space-y-2">
         {configs.length === 0 && !editingId && (
           <p className="text-xs text-muted-foreground/60 italic px-1">
@@ -201,7 +201,7 @@ export function ProviderSettings() {
         ))}
       </div>
 
-      {/* Test result */}
+
       {testResult && (
         <div className={cn(
           'flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border',
@@ -212,7 +212,7 @@ export function ProviderSettings() {
         </div>
       )}
 
-      {/* Add / Edit form */}
+
       {editingId !== null && (
         <div className="p-3 rounded-lg border border-border bg-muted/10 space-y-2.5">
           <div className="flex items-center gap-2 text-xs font-medium text-foreground">
@@ -220,9 +220,9 @@ export function ProviderSettings() {
             {OPENCODE.name}
           </div>
 
-          {/* Generic form fields */}
+
           <div className="space-y-2.5">
-            {/* API Key */}
+
             <div>
               <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground uppercase tracking-wider">API Key</label>
               <div className="flex gap-2 mt-1">
@@ -248,7 +248,7 @@ export function ProviderSettings() {
               )}
             </div>
 
-            {/* Base URL */}
+
             <div>
               <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground uppercase tracking-wider">Base URL</label>
               <input
@@ -260,7 +260,7 @@ export function ProviderSettings() {
               />
             </div>
 
-            {/* Model dropdown */}
+
             <div>
               <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground uppercase tracking-wider">Model</label>
               <div className="relative mt-1" ref={modelDropdownRef}>
@@ -300,7 +300,7 @@ export function ProviderSettings() {
               </div>
             </div>
 
-            {/* Manual model input (for custom models not in dropdown) */}
+
             <div>
               <label className="text-[var(--ch-text-10)] font-medium text-muted-foreground uppercase tracking-wider">Or type model ID manually</label>
               <input
@@ -313,7 +313,7 @@ export function ProviderSettings() {
             </div>
           </div>
 
-          {/* Action buttons */}
+
           <div className="flex justify-end gap-2 pt-1">
             <button
               onClick={() => { setEditingId(null); resetForm() }}

@@ -107,7 +107,7 @@ export function ResultsPanelTable({
     handleCopyCell?.(row, col);
   };
 
-  // eslint-disable-next-line react-hooks/incompatible-library
+
   const rowVirtualizer = useVirtualizer({
     count: sortedRows.length,
     getScrollElement: () => parentRef.current,

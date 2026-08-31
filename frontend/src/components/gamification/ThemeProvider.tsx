@@ -5,6 +5,8 @@ import { themePalettes, type AccentPalette } from '@/lib/themes'
 
 const THEME_VARS = ['--ch-primary', '--ch-secondary', '--ch-accent', '--ch-background'] as const
 
+const PAPER_ACCENT = { accent: '#0a0a0a', accentHover: '#33302a', accentMuted: '#e3ded1' }
+
 interface SettingsChangePayload {
   kind: 'theme' | 'accent' | 'colors'
   mode?: 'light' | 'dark'
@@ -25,14 +27,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const uiFontSize = useAppStore((s) => s.uiFontSize)
   const borderRadius = useAppStore((s) => s.borderRadius)
 
-  // Apply appearance changes requested through the assistant (same path as
-  // the Settings page). The store persists them to localStorage.
+
   useEffect(() => {
     let unlisten: (() => void) | undefined
     listen<SettingsChangePayload>('app:settings-change', (event) => {
       const p = event.payload
       const store = useAppStore.getState()
-      if (p.kind === 'theme' && (p.value === 'light' || p.value === 'dark')) {
+      if (p.kind === 'theme' && (p.value === 'light' || p.value === 'dark' || p.value === 'paper')) {
         store.setTheme(p.value)
       } else if (p.kind === 'accent' && typeof p.value === 'string' && p.value in themePalettes) {
         store.setAccentPalette(p.value as AccentPalette)
@@ -50,11 +51,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const modeColors = theme === 'dark' ? darkColors : lightColors
 
   useEffect(() => {
-    document.documentElement.className = theme === 'dark' ? 'dark' : ''
+    document.documentElement.className = theme === 'dark' ? 'dark' : theme === 'paper' ? 'paper' : ''
   }, [theme])
 
   useEffect(() => {
     const root = document.documentElement
+    if (theme === 'paper') {
+      THEME_VARS.forEach(v => root.style.removeProperty(v))
+      return
+    }
     if (modeColors) {
       root.style.setProperty('--ch-primary', modeColors.primary)
       root.style.setProperty('--ch-secondary', modeColors.secondary)
@@ -63,12 +68,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       THEME_VARS.forEach(v => root.style.removeProperty(v))
     }
-  }, [modeColors])
+  }, [theme, modeColors])
 
   useEffect(() => {
     const root = document.documentElement
     const isDark = theme === 'dark'
-    const accent = getAccentColors(accentPalette, isDark)
+    const accent = theme === 'paper' ? PAPER_ACCENT : getAccentColors(accentPalette, isDark)
     root.style.setProperty('--accent', accent.accent)
     root.style.setProperty('--accent-hover', accent.accentHover)
     root.style.setProperty('--accent-muted', accent.accentMuted)

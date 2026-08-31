@@ -86,15 +86,6 @@ impl SqlGeneratorService {
         )
     }
 
-    /// Generate a safe delete SQL script that first deletes from tables with
-    /// foreign keys referencing the target table, then deletes from the target table.
-    /// Wraps everything in a transaction.
-    ///
-    /// When `where_clause` is provided (the WHERE of the original DELETE, e.g.
-    /// `id IN (252, 236)`), the dependent-table deletes are filtered to only
-    /// remove the rows referencing the target rows matched by that clause:
-    /// `DELETE FROM ref WHERE fk IN (SELECT pk FROM target WHERE <clause>);`.
-    /// Without it (deleting the whole table), dependent tables are cleared.
     pub fn generate_safe_delete(
         db_type: DbType,
         table: &str,
@@ -121,7 +112,6 @@ impl SqlGeneratorService {
         parts.push("BEGIN;".to_string());
         parts.push(String::new());
 
-        // Group referencing columns per table (composite FKs yield several rows).
         let mut refs: std::collections::BTreeMap<String, Vec<(String, String)>> =
             std::collections::BTreeMap::new();
         for fk in referenced_by {
@@ -149,8 +139,6 @@ impl SqlGeneratorService {
             for (ref_table, cols) in &refs {
                 let ref_qualified = qualified(ref_table);
                 if let Some(wcl) = wcl {
-                    // Only delete the dependent rows referencing the rows
-                    // matched by the original WHERE clause.
                     if cols.len() == 1 {
                         let (fk_col, pk_col) = &cols[0];
                         parts.push(format!(
@@ -283,9 +271,6 @@ impl SqlGeneratorService {
             serde_json::Value::Number(n) => n.to_string(),
             serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
             serde_json::Value::Object(map) => {
-                // Expresión SQL segura vía { "__expr": "NOW()" } (menú
-                // contextual de celdas de fecha/hora). Solo se permite una
-                // allowlist estricta para evitar inyección.
                 if let Some(expr) = map.get("__expr").and_then(|v| v.as_str()) {
                     let e = expr.trim();
                     if Self::is_safe_sql_expr(e) {
@@ -298,7 +283,6 @@ impl SqlGeneratorService {
         }
     }
 
-    /// Allowlist de expresiones SQL inofensivas permitidas vía `{ "__expr" }`.
     fn is_safe_sql_expr(expr: &str) -> bool {
         matches!(
             expr.to_ascii_lowercase().as_str(),
@@ -316,7 +300,7 @@ impl SqlGeneratorService {
     fn escape_identifier(identifier: &str, q_close: &str) -> String {
         identifier.replace(q_close, &format!("{}{}", q_close, q_close))
     }
-    // ... (código existente)
+
     fn get_quotes(db_type: DbType) -> (&'static str, &'static str) {
         match db_type {
             DbType::Postgres => ("\"", "\""),
@@ -362,7 +346,7 @@ mod tests {
     fn test_generate_select_where_uses_closed_quotes() {
         let ctx = mock_context();
         let sql = SqlGeneratorService::generate_select(DbType::Postgres, &ctx);
-        // El WHERE debe ser `"id" = 1`, nunca `"id = 1` (comilla sin cerrar).
+
         assert!(sql.contains(r#""id" = 1"#), "malformed WHERE: {sql}");
         assert!(!sql.contains(r#""id ="#), "unclosed quote in WHERE: {sql}");
     }
@@ -392,12 +376,11 @@ mod tests {
 
     #[test]
     fn format_value_quotes_unsafe_expressions() {
-        // Una expresión fuera de la allowlist NO se emite cruda.
         assert_eq!(
             SqlGeneratorService::format_value(&serde_json::json!({ "__expr": "DROP TABLE users" })),
             "'{\"__expr\":\"DROP TABLE users\"}'"
         );
-        // Objetos sin __expr se serializan como literal.
+
         assert_eq!(
             SqlGeneratorService::format_value(&serde_json::json!({ "a": 1 })),
             "'{\"a\":1}'"

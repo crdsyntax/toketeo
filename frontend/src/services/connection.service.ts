@@ -2,9 +2,8 @@ import { tauriApi } from '@/lib/api'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 
 export const connectionService = {
-  /**
-   * Fetches all saved connections from the local Rust storage.
-   */
+
+
   getAll: async (): Promise<Connection[]> => {
     return await tauriApi.invoke<Connection[]>('get_connections')
   },
@@ -13,39 +12,32 @@ export const connectionService = {
     return await tauriApi.invoke<Connection>('get_connection', { id })
   },
 
-  /**
-   * Returns a single stored secret (`password` | `ssh_password` |
-   * `ssh_private_key` | `ssh_passphrase`) for a connection. Only available
-   * while the session is unlocked.
-   */
+
+
   revealSecret: async (id: string, field: string): Promise<string | null> => {
     return await tauriApi.invoke<string | null>('reveal_connection_secret', { id, field })
   },
 
-  /**
-   * Persists a connection configuration to the local Rust database.
-   */
+
+
   create: async (config: CreateConnectionDto): Promise<void> => {
     await tauriApi.invoke<string>('save_connection', { config })
   },
 
-  /**
-   * Updates an existing connection configuration.
-   */
+
+
   update: async (id: string, config: Partial<CreateConnectionDto>): Promise<void> => {
     await tauriApi.invoke<void>('save_connection', { config: { id, ...config } })
   },
 
-  /**
-   * Deletes a connection configuration from the local Rust database.
-   */
+
+
   delete: async (id: string): Promise<void> => {
     await tauriApi.invoke<void>('delete_connection', { id })
   },
 
-  /**
-   * Establishes an active session in the Rust backend.
-   */
+
+
   connect: async (config: CreateConnectionDto): Promise<string> => {
     return await tauriApi.invoke<string>('connect', { config })
   },
@@ -86,7 +78,7 @@ export const connectionService = {
     return await tauriApi.invoke<string>('connect', { config })
   },
 
-  // Auth commands
+
   checkMasterPasswordExists: async (): Promise<boolean> => {
     return await tauriApi.invoke<boolean>('check_master_password_exists')
   },
@@ -137,7 +129,7 @@ export const connectionService = {
     await tauriApi.invoke<void>('recover_master_password', { recoveryCode, newPassword })
   },
 
-  // Windows Hello / Keyring
+
   isWindowsHelloAvailable: async (): Promise<boolean> => {
     return await tauriApi.invoke<boolean>('is_windows_hello_available')
   },
@@ -158,7 +150,7 @@ export const connectionService = {
     return await tauriApi.invoke<boolean>('unlock_with_windows_hello')
   },
 
-  // TOTP Authenticator
+
   isTotpAvailable: async (): Promise<boolean> => {
     return await tauriApi.invoke<boolean>('is_totp_available')
   },

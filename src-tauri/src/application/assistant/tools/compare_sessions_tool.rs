@@ -8,9 +8,6 @@ use crate::state::{AppState, SyncControl};
 
 use super::tool_engine::AssistantTool;
 
-/// Manage compare sessions: save/load/list/delete persisted sessions and
-/// pause/resume/cancel running comparisons. Note: 'delete' and 'cancel'
-/// require confirmation; the rest are read-only.
 pub struct CompareSessionsTool;
 
 #[async_trait]

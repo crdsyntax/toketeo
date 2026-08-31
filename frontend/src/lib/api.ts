@@ -4,7 +4,7 @@ function extractError(error: unknown): string {
   if (typeof error === 'string') return error;
 
   if (error && typeof error === 'object') {
-    // Tauri serialises Rust enums as { Variant: "message" }
+
     const keys = Object.keys(error);
     if (keys.length === 1) {
       const variant = keys[0];
@@ -13,13 +13,13 @@ function extractError(error: unknown): string {
       return JSON.stringify(content);
     }
 
-    // Tauri v2 sometimes wraps in an Error-like object
+
     if ('message' in error) {
       const msg = (error as { message: unknown }).message;
       if (typeof msg === 'string') return msg;
     }
 
-    // Everything else – try toString or JSON
+
     const str = String(error);
     if (str !== '[object Object]') return str;
     try {

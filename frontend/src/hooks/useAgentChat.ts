@@ -13,8 +13,7 @@ import type { AgentAction } from '@/types/assistant'
 import type { ColumnResponse } from '@/types/database'
 import type { ModelInfo } from '@/types/assistant'
 
-// Detect a SQL query inside a user message: a fenced ```sql block, or a
-// message that starts with a SQL statement keyword.
+
 function extractSqlFromText(text: string): string | null {
   const fence = text.match(/```(?:sql)?\s*([\s\S]*?)```/i)
   if (fence) {
@@ -38,7 +37,7 @@ function resultsToCsv(columns: string[], rows: Record<string, unknown>[]): strin
   return [header, ...body].join('\n')
 }
 
-/** Execute a UI side effect requested by the agent via the workspace tool. */
+
 async function runAgentAction(action: AgentAction): Promise<string> {
   const app = useAppStore.getState()
   if (action.type === 'focus_tab') {
@@ -70,11 +69,8 @@ async function runAgentAction(action: AgentAction): Promise<string> {
   return ''
 }
 
-/**
- * Reflect agent-executed actions in the app UI in real time: when a tool
- * mutates shared state (e.g. connects/disconnects/saves a connection) the
- * sidebar, connections panel and related queries are refreshed immediately.
- */
+
+
 function applyToolSideEffects(
   evt: { name?: string; ok?: boolean; data?: unknown },
   queryClient: ReturnType<typeof useQueryClient>,
@@ -88,7 +84,7 @@ function applyToolSideEffects(
 
   if (data?.connected === true && data.connectionId) {
     app.setConnectedConnection(data.connectionId)
-    // Mirror the manual-connect flow so the sidebar shows it active.
+
     const cached = queryClient.getQueryData<Connection[]>(['connections'])
     const conn = cached?.find((c) => c.id === data.connectionId)
     if (conn) {
@@ -104,7 +100,7 @@ function applyToolSideEffects(
 }
 
 export interface UseAgentChatOptions {
-  /** Called before the agent request is sent (e.g. gamification tracking). */
+
   onBeforeSend?: (text: string) => void
 }
 
@@ -133,12 +129,12 @@ export function useAgentChat(options?: UseAgentChatOptions) {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
 
-  // Keep user messages ref in sync (for arrow-key recall).
+
   useEffect(() => {
     userMessagesRef.current = messages.filter((m) => m.role === 'user').map((m) => m.content)
   }, [messages])
 
-  // Build the table/column cache for the empty-state suggestions.
+
   useEffect(() => {
     if (!activeConnection) { clearSchemaCache(); return }
     let cancelled = false
@@ -148,16 +144,16 @@ export function useAgentChat(options?: UseAgentChatOptions) {
         const tables = await schemaService.getTables(activeConnection.id, schema)
         const columns: Record<string, ColumnResponse[]> = {}
         await Promise.all(tables.map(async (t) => {
-          try { columns[t.name] = await schemaService.getColumns(activeConnection.id, t.name, schema) } catch { /* silent */ }
+          try { columns[t.name] = await schemaService.getColumns(activeConnection.id, t.name, schema) } catch {  }
         }))
         if (!cancelled) setSchemaCache({ tables, columns })
-      } catch { /* silent */ }
+      } catch {  }
     })()
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConnection?.id, clearSchemaCache, setSchemaCache])
 
-  // Load available models from the first configured provider.
+  }, [activeConnection, clearSchemaCache, setSchemaCache])
+
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -171,7 +167,7 @@ export function useAgentChat(options?: UseAgentChatOptions) {
         const currentModel = modelsList.find(m => m.id === config.model) || modelsList[0]
         setSelectedModel(currentModel || null)
       } catch {
-        // Silent fail - models are optional
+
       }
     })()
     return () => { cancelled = true }
@@ -185,15 +181,14 @@ export function useAgentChat(options?: UseAgentChatOptions) {
       const updatedConfig: typeof configs[0] = { ...configs[0], model: model.id }
       await assistantService.saveProviderConfig(updatedConfig)
     } catch {
-      // Silent fail
+
     }
   }, [])
 
   const handleSend = useCallback(async (text: string, confirmDestructive = false) => {
     if (!text.trim() || isStreaming) return
     const ts = (nowRef.current = nowRef.current + 1)
-    // Confirmation retries are implicit: the original user message is already
-    // in the chat, so no duplicate echo is added.
+
     if (!confirmDestructive) {
       addMessage({ id: crypto.randomUUID(), role: 'user' as const, content: text, timestamp: ts })
     }
@@ -215,8 +210,7 @@ export function useAgentChat(options?: UseAgentChatOptions) {
       return
     }
 
-    // User-provided SQL: run it directly in the editor and save it to the
-    // knowledge library instead of sending it to the model.
+
     const userSql = extractSqlFromText(text)
     if (userSql) {
       const engine = activeConn?.type ?? 'mysql'
@@ -237,13 +231,12 @@ export function useAgentChat(options?: UseAgentChatOptions) {
         if (evt.event === 'delta' && evt.text) {
           store.setLiveMessage({ content: (store.liveMessage?.content ?? '') + evt.text, status: null })
         } else if (evt.event === 'clear_content') {
-          // The round produced tool calls: its streamed text was intermediate
-          // reasoning, not part of the answer. Drop it from the live bubble.
+
           store.setLiveMessage({ content: '', status: null })
         } else if (evt.event === 'status') {
           store.setLiveMessage({ content: store.liveMessage?.content ?? '', status: evt.message ?? null })
         } else if (evt.event === 'tool') {
-          // Show the executed action in the live activity line.
+
           const mark = evt.ok ? '✓' : '✗'
           store.setLiveMessage({ content: store.liveMessage?.content ?? '', status: `${mark} ${evt.name}` })
           applyToolSideEffects(evt, queryClient)
@@ -252,9 +245,9 @@ export function useAgentChat(options?: UseAgentChatOptions) {
       const response = await assistantService.chat(activeConn?.id ?? '', text, confirmDestructive, uiContext, onEvent)
       useAssistantStore.getState().setLiveMessage(null)
       addMessage({ id: response.turnId, role: 'assistant', content: response.answer, sql: response.sql ?? undefined, toolUsed: response.toolUsed ?? null, timestamp: (nowRef.current = nowRef.current + 1) })
-      // A destructive tool was blocked — ask the user to confirm before retrying.
+
       setPendingConfirmation(response.requiresConfirmation ? { question: text } : null)
-      // Execute any UI side effect requested by the agent (export, focus...).
+
       if (response.action) {
         try {
           const result = await runAgentAction(response.action as AgentAction)
@@ -279,9 +272,7 @@ export function useAgentChat(options?: UseAgentChatOptions) {
     schemaService.updateAssistantFeedback(messageId, feedback).catch(() => undefined)
     const activeConn = useAppStore.getState().activeConnection
     if (!activeConn) return
-    // The chat persistence is debounced; flush the messages NOW so the
-    // backend `record_feedback` can find the QA pair and store it in the
-    // knowledge library. Chained to guarantee ordering.
+
     const msgs = useAssistantStore.getState().messages.map((m) => ({
       id: m.id,
       role: m.role,
@@ -299,15 +290,14 @@ export function useAgentChat(options?: UseAgentChatOptions) {
           messageId,
           activeConn.id,
           feedback,
-          // Tag the knowledge case with the DATABASE engine of the connection
-          // (not the LLM provider) so the Library filters match.
+
           activeConn.type,
         ),
       )
       .catch(() => undefined)
   }, [updateMessageFeedback])
 
-  // Restore persisted conversation for this connection once.
+
   useEffect(() => {
     if (!activeConnection) return
     let cancelled = false
@@ -320,13 +310,13 @@ export function useAgentChat(options?: UseAgentChatOptions) {
             for (const m of stored) store.addMessage(m as AssistantMessage)
           }
         }
-      } catch { /* silent */ }
+      } catch {  }
     })()
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConnection?.id])
 
-  // Debounced persistence of the conversation.
+  }, [activeConnection])
+
+
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const conn = activeConnection
@@ -346,19 +336,19 @@ export function useAgentChat(options?: UseAgentChatOptions) {
       schemaService.saveAssistantMessages(msgs).catch(() => undefined)
     }, 2000)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, activeConnection?.id])
+
+  }, [messages, activeConnection])
 
   const loadInEditor = useCallback((sql: string) => {
     const app = useAppStore.getState()
     if (app.activeTabId) {
-      // Replace the query of the currently active editor tab.
+
       app.updateTabQuery(app.activeTabId, sql)
     } else {
-      // No tabs open: create one so the SQL is never silently dropped.
+
       app.openTab('Assistant SQL', sql, app.activeConnection?.id)
     }
-    // Make sure the user lands on the editor, even from another screen.
+
     navigate('/query')
   }, [navigate])
 
@@ -394,7 +384,7 @@ export function useAgentChat(options?: UseAgentChatOptions) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(input) }
   }, [handleSend, input, setInput])
 
-  /** Clear the conversation in memory AND its persisted history. */
+
   const clearConversation = useCallback(() => {
     const store = useAssistantStore.getState()
     store.clearMessages()

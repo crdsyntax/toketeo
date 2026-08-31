@@ -1,9 +1,6 @@
 use crate::db::{DbDriver, DbType};
 use crate::error::AppResult;
 
-/// Genera hashes MD5 de filas en la BD para comparación eficiente.
-/// Usa keyset pagination (`WHERE pk > last ORDER BY pk LIMIT n`) en vez de
-/// OFFSET, que degrada en tablas grandes.
 pub async fn compute_table_hashes(
     driver: &dyn DbDriver,
     table: &str,
@@ -94,8 +91,6 @@ fn quote_column(col: &str, db_type: &DbType) -> String {
     }
 }
 
-/// Formatea el último valor de PK para el keyset: numérico sin comillas,
-/// string escapado con comillas simples.
 fn quote_pk_literal(pk: &str, db_type: &DbType) -> String {
     let numeric = !pk.is_empty()
         && pk

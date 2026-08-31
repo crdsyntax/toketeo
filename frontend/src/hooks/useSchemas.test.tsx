@@ -6,7 +6,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 
-// Mock the store
+
 vi.mock('@/store/useAppStore', () => ({
   useAppStore: vi.fn(),
 }))

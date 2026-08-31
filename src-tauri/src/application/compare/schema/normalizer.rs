@@ -32,10 +32,6 @@ fn re_spaces() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"\s+").unwrap())
 }
 
-/// Normalize a SQL statement for cosmetic-insensitive comparison.
-///
-/// Strips DEFINER, ALGORITHM, SQL SECURITY, comments, and collapses whitespace
-/// so two logically identical objects hash the same across dumps.
 pub fn normalize_sql(sql: &str) -> String {
     let mut s = sql.trim().to_string();
 
@@ -50,7 +46,6 @@ pub fn normalize_sql(sql: &str) -> String {
     s.trim().to_string()
 }
 
-/// SHA-256 hex digest of normalized SQL.
 pub fn hash_sql(sql: &str) -> String {
     let normalized = normalize_sql(sql);
     let mut hasher = Sha256::new();

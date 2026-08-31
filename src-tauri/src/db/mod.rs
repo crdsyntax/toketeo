@@ -32,7 +32,6 @@ impl std::fmt::Display for DbType {
     }
 }
 
-/// Lectura de datos con paginación por keyset.
 #[async_trait]
 pub trait DataReader: Send + Sync {
     async fn fetch_rows(
@@ -48,7 +47,6 @@ pub trait DataReader: Send + Sync {
     async fn count_rows(&self, table: &str, schema: Option<&str>) -> AppResult<u64>;
 }
 
-/// Escritura de datos con upsert.
 #[async_trait]
 pub trait DataWriter: Send + Sync {
     async fn upsert_rows(
@@ -60,10 +58,6 @@ pub trait DataWriter: Send + Sync {
         rows: &[serde_json::Value],
     ) -> AppResult<UpsertResult>;
 
-    /// Crea una columna en una tabla del target si no existe (reconciliación de
-    /// esquema en caliente durante el sync). `column_type` es un tipo agnóstico
-    /// al dialecto ("text", "bigint", "double", "boolean", "json") que cada
-    /// driver traduce a su dialecto. Default: no soportado.
     async fn add_column(
         &self,
         _table: &str,
@@ -76,9 +70,6 @@ pub trait DataWriter: Send + Sync {
         ))
     }
 
-    /// Relaja la restricción NOT NULL de una columna del target (reconciliación
-    /// de esquema en caliente cuando el source trae NULLs en una columna que el
-    /// target tiene NOT NULL). Default: no soportado.
     async fn drop_not_null(
         &self,
         _table: &str,
@@ -91,26 +82,18 @@ pub trait DataWriter: Send + Sync {
     }
 }
 
-/// Resultado de un upsert batch: filas afectadas + filas omitidas (duplicados en MongoDB).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UpsertResult {
     pub affected: u64,
     pub skipped: u64,
 }
 
-/// Resultado de un statement dentro de una sesión de script: filas afectadas
-/// (DML) o número de filas devueltas (SELECT). Los datos de SELECT no viajan
-/// por IPC: solo el conteo.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StatementOutcome {
     pub rows_affected: Option<u64>,
     pub row_count: Option<usize>,
 }
 
-/// Sesión transaccional para ejecutar un script statement a statement sobre
-/// UNA conexión: BEGIN al crearla, COMMIT/ROLLBACK al finalizar.
-/// Las implementaciones con sqlx usan `Transaction` (rollback automático en
-/// drop si nunca se llama commit/rollback).
 #[async_trait]
 pub trait ScriptTransaction: Send + Sync {
     async fn execute_statement(&mut self, sql: &str) -> AppResult<StatementOutcome>;
@@ -124,8 +107,7 @@ pub type BoxScriptTransaction = Box<dyn ScriptTransaction>;
 pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     fn db_type(&self) -> DbType;
     async fn execute(&self, query: &str) -> AppResult<QueryResult>;
-    /// Ejecuta una query con parámetros bindeados (identificadores/valores
-    /// sanitizados por el driver). Fallback por defecto: no soportado.
+
     async fn execute_with_params(
         &self,
         _query: &str,
@@ -209,8 +191,7 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
             "Not supported for this database type".to_string(),
         ))
     }
-    /// Abre una sesión transaccional para ejecutar un script statement a
-    /// statement (BEGIN + conexión única). Soporte por defecto: no soportado.
+
     async fn begin_script(&self, _schema: Option<&str>) -> AppResult<Box<dyn ScriptTransaction>> {
         Err(AppError::Validation(
             "Script execution is not supported for this database type".into(),
@@ -219,7 +200,6 @@ pub trait DbDriver: DataReader + DataWriter + Send + Sync {
     async fn close(&self) -> AppResult<()>;
 }
 
-/// Capacidades del driver para sync.
 pub trait CapabilityProvider: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
 }
@@ -235,8 +215,6 @@ pub mod sqlserver;
 #[cfg(test)]
 pub mod mock;
 
-/// Quote an identifier (table/column/index/constraint) according to the engine
-/// dialect. Shared by Tauri commands and assistant tools.
 pub(crate) fn quote_identifier(db_type: &DbType, name: &str) -> String {
     match db_type {
         DbType::Postgres => postgres::quote_pg(name),

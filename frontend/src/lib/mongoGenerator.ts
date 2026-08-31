@@ -27,7 +27,7 @@ function formatMongoValue(value: unknown): string {
   return String(value)
 }
 
-/** Filter matching a single row by its `_id` (falls back to all non-null fields). */
+
 function buildRowFilter(row: DbRow): string {
   const id = row['_id']
   if (id !== undefined && id !== null) {
@@ -40,7 +40,7 @@ function buildRowFilter(row: DbRow): string {
   return `{ ${conds.join(', ')} }`
 }
 
-/** `_id: { $in: [...] }` matching all the given rows by their `_id`. */
+
 function buildIdInFilter(rows: DbRow[]): string {
   const ids = rows
     .map((r) => r['_id'])
@@ -63,13 +63,8 @@ function docLiteral(row: DbRow): string {
   return `{ ${fields.join(', ')} }`
 }
 
-/**
- * Generate a MongoDB shell command for one or more rows.
- *
- * - Single row → `find` / `deleteOne` / `updateOne` / `insertOne`
- * - Multiple rows → `find`/`deleteMany`/`updateMany` using `_id: { $in }`,
- *   and `insertMany` for inserts.
- */
+
+
 export function generateMongoCommand(
   collection: string,
   action: MongoAction,
@@ -105,7 +100,7 @@ export function generateMongoCommand(
   }
 }
 
-/** Extract the collection name from a Mongo query (shell or JSON protocol). */
+
 export function extractMongoCollection(query: string): string | null {
   const cleaned = query.trim().replace(/;\s*$/, '')
   const shell = cleaned.match(
@@ -118,7 +113,7 @@ export function extractMongoCollection(query: string): string | null {
       return parsed.collection
     }
   } catch {
-    /* not JSON */
+
   }
   return null
 }

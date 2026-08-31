@@ -430,7 +430,6 @@ impl SyncTool {
         })
     }
 
-    /// Auto-detect the tables of the source connection when none were given.
     async fn auto_detect_tables(
         &self,
         state: &AppState,
@@ -456,7 +455,6 @@ impl SyncTool {
         Ok(())
     }
 
-    /// Fill missing schemas from the connection configs.
     async fn fill_schemas(&self, state: &AppState, pipeline: &mut SyncPipeline) {
         SyncExecutionService::fill_schemas(state, pipeline).await;
     }
@@ -530,7 +528,6 @@ impl SyncTool {
     }
 
     async fn run(&self, args: serde_json::Value, state: &AppState) -> AppResult<ToolResult> {
-        // Load a saved pipeline by id, or build one from the arguments.
         let mut pipeline = match args
             .get("pipeline_id")
             .and_then(|v| v.as_str())

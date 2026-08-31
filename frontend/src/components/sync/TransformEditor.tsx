@@ -58,7 +58,7 @@ export function TransformEditor({ transform, onChange }: TransformEditorProps) {
         ))}
       </select>
 
-      {/* Param inputs per type */}
+
       {(type === 'default_value') && (
         <div className="space-y-1">
           <label className="text-[var(--ch-text-9)] font-bold uppercase tracking-wider text-muted-foreground">Value</label>

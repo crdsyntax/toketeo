@@ -2,11 +2,6 @@ use crate::db::DbDriver;
 use crate::error::AppResult;
 use std::collections::HashMap;
 
-/// Cache de metadatos de esquema por ejecución de comparación.
-///
-/// Evita re-consultar `fetch_columns` / `fetch_indexes` / `fetch_constraints`
-/// cuando la misma tabla se procesa en varias fases (PK resolution, comparación
-/// de columnas, etc.). No es persistente: se invalida al finalizar la ejecución.
 #[derive(Default)]
 pub struct SchemaMetadataCache {
     columns: HashMap<(String, String), Vec<serde_json::Value>>,

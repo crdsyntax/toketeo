@@ -9,8 +9,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Write operations on connections: connect, disconnect, save (create/update)
-/// and delete. All require confirmation.
 pub struct ConnectionManageTool;
 
 #[async_trait]

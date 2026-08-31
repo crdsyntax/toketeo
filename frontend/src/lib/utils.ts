@@ -10,10 +10,10 @@ export async function downloadCSV(data: Record<string, unknown>[], columns: stri
   if (!data.length) return;
 
   const csvRows: string[] = [];
-  // Header
+
   csvRows.push(columns.join(','));
 
-  // Body
+
   for (const row of data) {
     const values = columns.map(col => {
       const val = row[col];

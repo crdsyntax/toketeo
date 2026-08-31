@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use super::INTROSPECTION_CONCURRENCY;
 
-/// Column snapshot used for pure comparison (driver-agnostic).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnInfo {
     pub name: String,
@@ -16,7 +15,6 @@ pub struct ColumnInfo {
     pub default_value: Option<String>,
 }
 
-/// Parse a `fetch_columns` JSON row into `ColumnInfo`.
 pub fn parse_column(value: &serde_json::Value) -> Option<ColumnInfo> {
     let name = value.get("name")?.as_str()?.to_string();
     let col_type = value
@@ -41,19 +39,17 @@ pub fn parse_column(value: &serde_json::Value) -> Option<ColumnInfo> {
     })
 }
 
-/// Normalize type strings so `INT(11)` and `int(11)` compare equal.
 fn normalize_type(t: &str) -> String {
     t.trim().to_lowercase()
 }
 
-/// Normalize default literals for comparison.
 fn normalize_default(d: &str) -> String {
     let s = d.trim();
-    // Strip surrounding quotes commonly added by drivers
+
     if (s.starts_with('\'') && s.ends_with('\'')) || (s.starts_with('"') && s.ends_with('"')) {
         return s[1..s.len() - 1].to_string();
     }
-    // MySQL / PG null default variants
+
     if s.eq_ignore_ascii_case("null") {
         return String::new();
     }
@@ -70,7 +66,6 @@ fn columns_to_map(cols: &[serde_json::Value]) -> BTreeMap<String, ColumnInfo> {
     map
 }
 
-/// Pure comparison of two column sets for one table.
 pub fn compare_columns(
     source_cols: &[serde_json::Value],
     target_cols: &[serde_json::Value],
@@ -156,7 +151,6 @@ pub fn compare_columns(
     }
 }
 
-/// Compare table presence + column structure between two drivers.
 pub async fn compare_table(
     source: &dyn DbDriver,
     target: &dyn DbDriver,
@@ -199,9 +193,6 @@ pub async fn compare_table(
     }
 }
 
-/// Compare the full table name sets and return per-table ObjectDiffs.
-/// La introspección por tabla se ejecuta en paralelo (buffered) para
-/// aprovechar el pool de conexiones.
 pub async fn compare_tables(
     source: Arc<dyn DbDriver>,
     target: Arc<dyn DbDriver>,
@@ -225,7 +216,6 @@ pub async fn compare_tables(
     let src_set: BTreeSet<String> = src_tables.iter().map(|t| t.to_lowercase()).collect();
     let tgt_set: BTreeSet<String> = tgt_tables.iter().map(|t| t.to_lowercase()).collect();
 
-    // Preserve original casing from source when available, else target
     let mut name_map: BTreeMap<String, String> = BTreeMap::new();
     for t in &src_tables {
         name_map.insert(t.to_lowercase(), t.clone());

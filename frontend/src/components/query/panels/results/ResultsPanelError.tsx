@@ -30,8 +30,7 @@ export function ResultsPanelError({
     const { updateTabQuery, tabs, activeTabId } = useAppStore.getState()
     const tabId = activeTabId || (tabs.length > 0 ? tabs[0].id : null)
     if (tabId) {
-      // Append the safe delete script below the current query instead of
-      // replacing it, so the original statement is kept for reference.
+
       const current = tabs.find((t) => t.id === tabId)?.query ?? ''
       updateTabQuery(
         tabId,

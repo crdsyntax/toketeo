@@ -8,11 +8,6 @@ use crate::state::AppState;
 
 use super::tool_engine::AssistantTool;
 
-/// Gives the model access to the user's current UI workspace: open SQL editor
-/// tabs, their results/errors and navigation. The actual tab data lives in the
-/// frontend, so this tool reads the per-turn `ui_context` (injected into the
-/// tool args by the orchestrator) and, for side-effectful operations (export,
-/// focus), returns an `action` payload that the frontend executes.
 pub struct WorkspaceTool;
 
 const UI_CONTEXT_KEY: &str = "ui_context";
@@ -37,7 +32,6 @@ fn tabs_summary(ui: &UiContext) -> Vec<Value> {
 }
 
 impl WorkspaceTool {
-    /// List the user's currently open SQL editor tabs.
     fn list_tabs(ui: &UiContext) -> ToolResult {
         ToolResult {
             ok: true,
@@ -52,8 +46,6 @@ impl WorkspaceTool {
         }
     }
 
-    /// Request an export of a tab's results. Resolves the target tab:
-    /// explicit `tab_id` → active tab with results → disambiguation list.
     fn export_tab_results(ui: &UiContext, args: &Value) -> ToolResult {
         let format = args
             .get("format")
@@ -73,7 +65,6 @@ impl WorkspaceTool {
             };
         }
 
-        // No explicit tab: prefer the active tab when it has results.
         if let Some(active) = ui.open_tabs.iter().find(|t| t.is_active) {
             if active.has_results {
                 return Self::export_action(active, &format);
@@ -91,7 +82,6 @@ impl WorkspaceTool {
             };
         }
 
-        // Ambiguous: hand the tab list back so the agent asks the user.
         ToolResult {
             ok: true,
             data: Some(json!({
@@ -123,7 +113,6 @@ impl WorkspaceTool {
         }
     }
 
-    /// Bring a tab into focus in the SQL editor.
     fn focus_tab(ui: &UiContext, args: &Value) -> ToolResult {
         let Some(tab_id) = args.get("tab_id").and_then(|v| v.as_str()) else {
             return ToolResult {
@@ -204,7 +193,6 @@ impl AssistantTool for WorkspaceTool {
 }
 
 impl WorkspaceTool {
-    /// Pure dispatcher so the tool logic is unit-testable without AppState.
     fn dispatch(args: &Value) -> ToolResult {
         let Some(ui) = extract_ui_context(args) else {
             return ToolResult {
@@ -237,8 +225,6 @@ impl WorkspaceTool {
     }
 }
 
-/// Render the UI context as a system-prompt section so the model knows what
-/// the user is looking at before choosing tools.
 pub fn render_ui_context_prompt(ui: &UiContext) -> String {
     let mut s = String::from(
         "## Current user workspace\n\

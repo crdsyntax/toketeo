@@ -27,7 +27,7 @@ export const getEngineCapabilities = (dbType: DatabaseType | undefined): EngineC
     supportsForeignKeys: !isMongoDB && !isRedis,
     supportsConstraints: !isMongoDB && !isRedis,
     supportsDdlExecution: !isMongoDB && !isRedis,
-    supportsIndexes: !isRedis, // Redis indexes are key namespaces
+    supportsIndexes: !isRedis,
     schemaLabel: isRedis ? 'Namespace' : isMongoDB ? 'Database' : 'Schema',
     tableLabel: isRedis ? 'Key Pattern' : isMongoDB ? 'Collection' : 'Table',
     columnLabel: isRedis ? 'Field' : isMongoDB ? 'Field' : 'Column',

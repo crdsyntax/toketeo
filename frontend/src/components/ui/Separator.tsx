@@ -1,9 +1,7 @@
 import { cn } from '@/lib/utils'
+import type { SeparatorProps } from '@/types/ui'
 
-export interface SeparatorProps {
-  orientation?: 'horizontal' | 'vertical'
-  className?: string
-}
+export type { SeparatorProps, SeparatorOrientation } from '@/types/ui'
 
 export function Separator({ orientation = 'horizontal', className }: SeparatorProps) {
   return (

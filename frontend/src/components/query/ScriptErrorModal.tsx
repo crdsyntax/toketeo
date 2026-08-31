@@ -15,11 +15,8 @@ interface ScriptErrorModalProps {
   onCancel: () => void;
 }
 
-/**
- * Modal mostrado cuando un statement de un script multi-statement falla.
- * "Skip" continúa con el siguiente statement; "Skip all" corre el resto sin
- * volver a preguntar; "Cancel" revierte toda la transacción (rollback).
- */
+
+
 export function ScriptErrorModal({ prompt, responding, onSkip, onSkipAll, onCancel }: ScriptErrorModalProps) {
   if (!prompt) return null;
 

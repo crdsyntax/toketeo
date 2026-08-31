@@ -106,8 +106,6 @@ impl SqlFlowService {
                 let final_cols = if !matched_cols.is_empty() {
                     matched_cols
                 } else {
-                    // Fallback: match result columns by alias/table prefix pattern
-                    // (e.g. "cuof__id" matches node with alias "cuof")
                     let prefix = node.alias.clone().unwrap_or_else(|| node.id.clone());
                     let prefix_dunder = format!("{prefix}__").to_lowercase();
                     let prefix_single = format!("{prefix}_").to_lowercase();
@@ -130,8 +128,6 @@ impl SqlFlowService {
                     }
 
                     if !prefix_matched.is_empty() {
-                        // Merge prefix_col_to_key into col_to_key so row extraction
-                        // can map the short column name back to the result key.
                         col_to_key.extend(prefix_col_to_key);
                         prefix_matched
                     } else {
@@ -226,13 +222,6 @@ impl SqlFlowService {
         Ok(SqlFlowGraph { nodes, edges })
     }
 
-    /// Rewrites a `SELECT` that uses `alias.*` / `*` projections into an explicit,
-    /// disambiguated projection (`alias.col AS alias__col`). This keeps every joined
-    /// table's columns uniquely named so downstream consumers can attribute them per
-    /// node instead of having duplicate names collapse into a single JSON key.
-    ///
-    /// Returns `None` when the query cannot be safely rewritten (subqueries, mixed
-    /// projections, parse errors, etc.) so the caller can fall back to the original SQL.
     pub async fn qualify_query(
         query_str: &str,
         driver: &Arc<dyn DbDriver>,
@@ -278,9 +267,6 @@ impl SqlFlowService {
         Some(map)
     }
 
-    /// Returns `Some(true)` when the factor is a plain table (registered into `map`),
-    /// `Some(false)` when it is a subquery/derived/function (abort rewriting), or
-    /// `None` on a hard error.
     fn register_table_alias(tf: &TableFactor, map: &mut HashMap<String, String>) -> Option<bool> {
         match tf {
             TableFactor::Table { name, alias, .. } => {
@@ -309,8 +295,7 @@ impl SqlFlowService {
             SetExpr::Select(s) => s,
             _ => return false,
         };
-        // Only rewrite when the projection is entirely wildcards; otherwise the
-        // per-column attribution would be ambiguous.
+
         if select.projection.iter().any(|i| {
             !matches!(
                 i,
@@ -403,7 +388,6 @@ impl SqlFlowService {
         let mut alias_to_table: HashMap<String, String> = HashMap::new();
         let mut current_root: Option<String> = None;
 
-        // Process FROM base relation (Root table)
         if let Some(root_table) = Self::extract_table_factor(&twj.relation, true) {
             let table_id = root_table.name.clone();
             current_root = Some(table_id.clone());
@@ -425,7 +409,6 @@ impl SqlFlowService {
                 });
         }
 
-        // Process JOIN clauses
         for join in twj.joins {
             Self::process_join(
                 join,
@@ -505,7 +488,6 @@ impl SqlFlowService {
             _ => ("JOIN", String::new(), None),
         };
 
-        // Determine source table by inspecting the ON condition identifiers
         let mut source_candidate: Option<String> = None;
         if let Some(expr) = on_expr {
             let referenced_qualifiers = Self::extract_qualifiers_from_expr(&expr);
@@ -641,7 +623,6 @@ mod tests {
         assert!(root_node.is_root);
         assert_eq!(root_node.alias.as_deref(), Some("r"));
 
-        // Check edge relations
         let e1 = graph
             .edges
             .iter()
@@ -676,7 +657,6 @@ mod tests {
 
     #[test]
     fn test_flow_populates_rows_from_executed_result() {
-        // Replicates the real MariaDB output for the joined, qualified query.
         let columns = vec![
             "r__id".to_string(),
             "r__clienteId".to_string(),

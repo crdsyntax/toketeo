@@ -123,8 +123,6 @@ pub fn get_password() -> AppResult<Option<String>> {
     }
 }
 
-/// Returns whether a master password is stored in the OS keyring, WITHOUT
-/// retrieving the secret. Never expose the actual password to the frontend.
 pub fn has_password() -> AppResult<bool> {
     get_password().map(|p| p.is_some())
 }

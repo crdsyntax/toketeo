@@ -145,7 +145,6 @@ fn generate_create_table(
 
     stmt.push_str(&col_defs.join(",\n"));
 
-    // Add FK constraints
     for fk in fks {
         let fk_name = fk
             .get("constraintName")
@@ -270,7 +269,7 @@ fn map_type(sql_type: &str, target: &str) -> String {
             t if t.contains("DECIMAL") || t.contains("NUMERIC") => sql_type.to_string(),
             _ => sql_type.to_string(),
         },
-        // mysql / mariadb — keep original
+
         _ => sql_type.to_string(),
     }
 }

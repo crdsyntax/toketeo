@@ -1,8 +1,8 @@
+import type React from 'react'
 import { cn } from '@/lib/utils'
+import type { CardProps } from '@/types/ui'
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  elevation?: 'flat' | 'raised' | 'overlay'
-}
+export type { CardProps, CardElevation } from '@/types/ui'
 
 export function Card({ elevation = 'flat', className, children, ...props }: CardProps) {
   const elevations = {

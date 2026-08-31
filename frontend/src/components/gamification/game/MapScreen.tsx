@@ -84,7 +84,7 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
 
   return (
     <div className="flex flex-col gap-2 font-mono">
-      {/* Top Retro Game Header Banner (Image 1) */}
+
       <div className="flex items-center justify-between border-4 border-black bg-[#101014] px-4 py-2 text-[#e7e0d0] select-none shadow-[4px_4px_0_#000]">
         <div className="flex items-center gap-3">
           <span className="text-xs font-black uppercase tracking-[0.2em] text-[#e7e0d0]">
@@ -109,8 +109,6 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
           className="absolute inset-0 h-full w-full"
           style={{ imageRendering: 'pixelated' }}
         />
-
-        {/* Level Checkpoint Nodes (Image 1) */}
         {nodes.map((node, i) => {
           const [x, y] = NODE_XY[i]
           const done = isDone(i)
@@ -126,7 +124,7 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
               } ${current ? 'z-20' : 'z-10'}`}
               style={{ left: `${x}%`, top: `${y}%` }}
             >
-              {/* Checkpoint Box */}
+
               <div
                 className={`flex items-center justify-center rounded-sm border-2 border-[#121218] font-black shadow-[3px_3px_0_#000000] ${
                   node.isBoss ? 'h-13 w-13' : 'h-11 w-11'
@@ -149,7 +147,7 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
                 )}
               </div>
 
-              {/* Node District Ribbon Label */}
+
               <div
                 className={`mx-auto mt-1.5 w-max max-w-[130px] rounded-xs border-2 border-black bg-[#121218]/95 px-2 py-0.5 text-center text-[9px] font-black uppercase tracking-wider leading-tight shadow-[2px_2px_0_#000000] ${
                   unlocked ? 'text-[#f0ece1]' : 'text-[#7a7888]'
@@ -161,12 +159,12 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
           )
         })}
 
-        {/* Hero Character & Floating Yellow Pointer Arrow (Image 1) */}
+
         <div
           className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-full transition-all"
           style={{ left: `${hero[0]}%`, top: `${hero[1]}%` }}
         >
-          {/* Yellow Pointer Arrow above Hero */}
+
           <div className="flex justify-center -mb-1 animate-bounce">
             <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[9px] border-t-[#f5b820] drop-shadow-[0_2px_0_#000000]" />
           </div>
@@ -177,8 +175,6 @@ export function MapScreen({ nodes, completed, nodePos, lang, onArrive }: MapScre
             {heroTier.label}
           </div>
         </div>
-
-        {/* Bottom Level Indicator Badge */}
         <div className="absolute left-3 top-3 border-2 border-black bg-[#101014]/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-[#e7e0d0] shadow-[2px_2px_0_#8f1d1d]">
           ZONA 1 · nullville
         </div>

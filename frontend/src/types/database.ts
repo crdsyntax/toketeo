@@ -104,15 +104,13 @@ export interface ColumnResponse {
   udtSchema?: string;
 }
 
-/**
- * Valor de celda que representa una expresión SQL segura (p.ej. NOW()) en vez
- * de un literal. El backend lo emite crudo solo para una allowlist estricta.
- */
+
+
 export interface SqlExpressionValue {
   __expr: string;
 }
 
-/** Valor aceptado por `updateCell`: un literal o una expresión SQL segura. */
+
 export type CellValue = DbValue | SqlExpressionValue;
 
 export interface TableResponse {
@@ -133,7 +131,7 @@ export interface IndexResponse {
   isUnique: boolean;
   type?: string;
   targetColumn?: string;
-  // Metadata fallbacks
+
   INDEX_NAME?: string;
   index_name?: string;
   COLUMN_NAME?: string;
@@ -149,7 +147,7 @@ export interface ForeignKeyResponse {
   columnName: string;
   referencedTable: string;
   referencedColumn: string;
-  // Metadata fallbacks
+
   CONSTRAINT_NAME?: string;
   constraint_name?: string;
   COLUMN_NAME?: string;
@@ -184,7 +182,7 @@ export interface TruncateTablesResult {
 export interface ConstraintResponse {
   name: string;
   type: string;
-  // Metadata fallbacks
+
   CONSTRAINT_NAME?: string;
   constraint_name?: string;
   CONSTRAINT_TYPE?: string;
