@@ -60,7 +60,7 @@ function PostgresContent({ conn, activeConnection, activeDatabaseName, onSelect,
   const { data: databases = [], isFetched } = useQuery({
     queryKey: ['databases', conn.id],
     queryFn: () => schemaService.getDatabases(conn.id),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
   })
   useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
   return (
@@ -76,7 +76,7 @@ function SchemaContent({ conn, activeConnection, onSelect, onToggleDefault, onSc
   const { data: schemas = [], isFetched } = useQuery({
     queryKey: ['schemas', conn.id],
     queryFn: () => schemaService.getSchemas(conn.id),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
   })
   useEffect(() => { if (isFetched) onLoaded?.() }, [isFetched, onLoaded])
   return (
@@ -314,6 +314,7 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         }
         if (activeTab && activeTab.connectionId === conn.id) {
           updateExplorerTab(activeTabId!, { database: schema, ...resetObjectContext })
+          setExplorerState({ activeExplorerTabId: activeTabId! })
         } else {
 
           const emptySlot = Object.values(store.explorerTabs).find(
@@ -375,7 +376,15 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
         return
       }
       const schemas = await schemaService.getSchemas(conn.id)
-      const schema = schemas.find((s) => s === 'public') ?? schemas[0] ?? 'public'
+      const schema =
+        conn.type === DatabaseType.SQLSERVER
+          ? (schemas.find((s) => s.toLowerCase() === 'dbo') ??
+            schemas.find((s) => !/^db_/.test(s)) ??
+            schemas[0] ??
+            'dbo')
+          : conn.type === DatabaseType.POSTGRES
+            ? (schemas.find((s) => s === 'public') ?? schemas[0] ?? 'public')
+            : schemas[0] ?? ''
       await handleSchemaDoubleClick(conn, schema)
     } catch (e) {
       toast.error(`Failed to switch database: ${e instanceof Error ? e.message : 'Unknown error'}`)
@@ -656,8 +665,8 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
                         {expandedConnId === conn.id && (
                           <div className="pb-2 px-2 overflow-hidden animate-in slide-in-from-top-0.5 duration-150">
                             <div className="pl-3 ml-1.5 border-l border-border/40 space-y-0.5">
-                              {conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.REDIS ? (
-                                  <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSelectDatabase={conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.REDIS ? handleDatabaseDoubleClick : undefined} onSelectRedisNamespace={conn.type === DatabaseType.REDIS ? handleRedisNamespaceDoubleClick : undefined} onSchemaContextMenu={handleSchemaContextMenu} onToggleDefault={handleToggleDefault} onLoaded={() => handleContentLoaded(conn.id)} />
+                              {conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.SQLSERVER || conn.type === DatabaseType.REDIS ? (
+                                  <PostgresContent conn={conn} activeConnection={activeConnection} activeDatabaseName={activeDatabaseName} onSelect={handleSchemaDoubleClick} onSelectSchema={handleSchemaDatabaseDoubleClick} onSelectDatabase={conn.type === DatabaseType.POSTGRES || conn.type === DatabaseType.SQLSERVER || conn.type === DatabaseType.REDIS ? handleDatabaseDoubleClick : undefined} onSelectRedisNamespace={conn.type === DatabaseType.REDIS ? handleRedisNamespaceDoubleClick : undefined} onSchemaContextMenu={handleSchemaContextMenu} onToggleDefault={handleToggleDefault} onLoaded={() => handleContentLoaded(conn.id)} />
                               ) : (
                                 <SchemaContent conn={conn} activeConnection={activeConnection} onSelect={handleSchemaDoubleClick} onToggleDefault={handleToggleDefault} onSchemaContextMenu={handleSchemaContextMenu} onLoaded={() => handleContentLoaded(conn.id)} />
                               )}

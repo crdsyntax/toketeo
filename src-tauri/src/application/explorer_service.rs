@@ -979,15 +979,24 @@ impl ExplorerService {
                 }
 
                 let order_by = if col_names.is_empty() {
-                    "ORDER BY (SELECT NULL)".to_string()
+                    if matches!(db_type, crate::db::DbType::Sqlserver) {
+                        "ORDER BY 1".to_string()
+                    } else {
+                        "ORDER BY (SELECT NULL)".to_string()
+                    }
                 } else {
                     format!("ORDER BY {}", col_names[0])
                 };
 
-                query.push_str(&format!(
-                    " {} LIMIT {} OFFSET {}",
-                    order_by, effective_page_size, offset
-                ));
+                let pagination = match db_type {
+                    crate::db::DbType::Sqlserver => format!(
+                        " OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+                        offset, effective_page_size
+                    ),
+                    _ => format!(" LIMIT {} OFFSET {}", effective_page_size, offset),
+                };
+
+                query.push_str(&format!(" {} {}", order_by, pagination));
 
                 driver.execute(&query).await
             }

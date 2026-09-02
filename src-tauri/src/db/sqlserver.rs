@@ -4,6 +4,7 @@ use crate::models::sync::{DriverCapabilities, UpsertStrategy};
 use crate::models::QueryResult;
 use async_trait::async_trait;
 use futures::TryStreamExt;
+use percent_encoding::percent_decode_str;
 use std::sync::Arc;
 use std::time::Instant;
 use tiberius::{AuthMethod, Client, Config, EncryptionLevel};
@@ -21,6 +22,10 @@ pub struct SqlServerDriver {
 }
 
 impl SqlServerDriver {
+    fn percent_decode(raw: &str) -> String {
+        percent_decode_str(raw).decode_utf8_lossy().to_string()
+    }
+
     pub async fn new(url: &str) -> AppResult<Self> {
         let config = Self::parse_url(url)?;
         let tcp = TcpStream::connect(config.get_addr()).await.map_err(|e| {
@@ -61,13 +66,13 @@ impl SqlServerDriver {
             .host_str()
             .ok_or_else(|| AppError::Connection("SQL Server URL missing host".into()))?;
         let port = parsed.port().unwrap_or(1433);
-        let user = parsed.username();
+        let user = Self::percent_decode(parsed.username());
 
         if user.is_empty() {
             return Err(AppError::Connection("SQL Server URL missing user".into()));
         }
 
-        let password = parsed.password().unwrap_or("");
+        let password = Self::percent_decode(parsed.password().unwrap_or(""));
         let database = parsed.path().trim_start_matches('/').to_string();
 
         let mut config = Config::new();
@@ -102,18 +107,49 @@ impl SqlServerDriver {
     }
 
     fn decode_column(row: &tiberius::Row, idx: usize) -> serde_json::Value {
-        if let Some(value) = row.get::<&str, _>(idx) {
+        if let Ok(Some(value)) = row.try_get::<&str, _>(idx) {
             return serde_json::Value::String(value.to_string());
         }
-        if let Some(value) = row.get::<i64, _>(idx) {
+        if let Ok(Some(value)) = row.try_get::<i64, _>(idx) {
             return serde_json::Value::Number(value.into());
         }
-        if let Some(value) = row.get::<f64, _>(idx) {
+        if let Ok(Some(value)) = row.try_get::<i32, _>(idx) {
+            return serde_json::Value::Number(value.into());
+        }
+        if let Ok(Some(value)) = row.try_get::<i16, _>(idx) {
+            return serde_json::Value::Number(value.into());
+        }
+        if let Ok(Some(value)) = row.try_get::<u8, _>(idx) {
+            return serde_json::Value::Number(value.into());
+        }
+        if let Ok(Some(value)) = row.try_get::<f64, _>(idx) {
             return serde_json::Number::from_f64(value)
                 .map_or(serde_json::Value::Null, serde_json::Value::Number);
         }
-        if let Some(value) = row.get::<bool, _>(idx) {
+        if let Ok(Some(value)) = row.try_get::<f32, _>(idx) {
+            return serde_json::Number::from_f64(value as f64)
+                .map_or(serde_json::Value::Null, serde_json::Value::Number);
+        }
+        if let Ok(Some(value)) = row.try_get::<bool, _>(idx) {
             return serde_json::Value::Bool(value);
+        }
+        if let Ok(Some(value)) = row.try_get::<chrono::NaiveDateTime, _>(idx) {
+            return serde_json::Value::String(value.to_string());
+        }
+        if let Ok(Some(value)) = row.try_get::<chrono::NaiveDate, _>(idx) {
+            return serde_json::Value::String(value.to_string());
+        }
+        if let Ok(Some(value)) = row.try_get::<chrono::NaiveTime, _>(idx) {
+            return serde_json::Value::String(value.to_string());
+        }
+        if let Ok(Some(value)) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+            return serde_json::Value::String(value.to_string());
+        }
+        if let Ok(Some(value)) = row.try_get::<tiberius::Uuid, _>(idx) {
+            return serde_json::Value::String(value.to_string());
+        }
+        if let Ok(Some(value)) = row.try_get::<tiberius::numeric::Numeric, _>(idx) {
+            return serde_json::Value::String(value.to_string());
         }
         serde_json::Value::Null
     }
@@ -562,15 +598,30 @@ impl DbDriver for SqlServerDriver {
             return self.fetch_table_ddl(name, &schema_name).await;
         }
 
-        let query = format!(
-            "SELECT m.definition FROM sys.sql_modules m JOIN sys.objects o ON m.object_id = o.object_id WHERE o.name = '{}' AND SCHEMA_NAME(o.schema_id) = '{}'",
-            Self::escape_sql(name),
-            Self::escape_sql(&schema_name)
+        let obj_id_qualified = format!(
+            "OBJECT_ID(N'[{}].[{}]')",
+            Self::escape_sql(&schema_name),
+            Self::escape_sql(name)
         );
+        let obj_id_unqualified = format!("OBJECT_ID(N'[{}]')", Self::escape_sql(name));
 
-        let rows = self.run_query(&query).await?;
-        if let Some(row) = rows.first() {
-            if let Some(def) = row.get("definition").and_then(|v| v.as_str()) {
+        let candidates = [
+            format!("SELECT OBJECT_DEFINITION({}) AS definition", obj_id_qualified),
+            format!("SELECT OBJECT_DEFINITION({}) AS definition", obj_id_unqualified),
+            format!(
+                "SELECT m.definition FROM sys.sql_modules m JOIN sys.objects o ON m.object_id = o.object_id WHERE o.name = '{}'",
+                Self::escape_sql(name)
+            ),
+        ];
+
+        for query in candidates {
+            let rows = self.run_query(&query).await?;
+            if let Some(def) = rows
+                .first()
+                .and_then(|row| row.get("definition").and_then(|v| v.as_str()))
+                .map(str::trim)
+                .filter(|d| !d.is_empty())
+            {
                 return Ok(def.to_string());
             }
         }
@@ -894,5 +945,39 @@ impl SqlServerScriptTransaction {
             .await
             .map_err(|e| AppError::Database(format!("SQL Server {} failed: {}", control_sql, e)))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_decode_decodes_encoded_credentials() {
+        assert_eq!(
+            SqlServerDriver::percent_decode("Toketeo_2026%21"),
+            "Toketeo_2026!"
+        );
+        assert_eq!(SqlServerDriver::percent_decode("toketeo"), "toketeo");
+        assert_eq!(
+            SqlServerDriver::percent_decode("p%40ss%3Aw%23rd"),
+            "p@ss:w#rd"
+        );
+        assert_eq!(SqlServerDriver::percent_decode(""), "");
+    }
+
+    #[test]
+    fn parse_url_accepts_percent_encoded_password() {
+        assert!(SqlServerDriver::parse_url(
+            "sqlserver://toketeo:Toketeo_2026%21@localhost:1433/master?encrypt=false",
+        )
+        .is_ok());
+
+        assert!(SqlServerDriver::parse_url(
+            "sqlserver://toketeo:Toketeo2026@localhost:1433/master",
+        )
+        .is_ok());
+
+        assert!(SqlServerDriver::parse_url("sqlserver://@localhost:1433/master",).is_err());
     }
 }

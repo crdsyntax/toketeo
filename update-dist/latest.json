@@ -1,11 +1,11 @@
 {
-    "version":  "0.5.7",
-    "notes":  "Cross-DB Sync: checkpoint por tabla con reanudacion exacta tras cortes de red. Un lote que falla por completo ya no avanza el checkpoint (las filas se reintentan en la siguiente ejecucion) y el pipeline se marca como Failed conservando los checkpoints. Incluye mejoras y fixes adicionales.",
-    "pub_date":  "2026-09-02T01:35:57Z",
+    "version":  "0.5.8",
+    "notes":  "SQL Server: conexion con contrasenas con caracteres especiales (percent-decode), paginacion correcta en editor y explorador (OFFSET/FETCH en vez de LIMIT), carga de datos de tablas sin panics (todos los tipos: int, bit, fechas, numeric, uuid), lista de bases en el sidebar, explorador muestra tablas por schema, DDL de triggers (incluidos DDL triggers). Cross-DB Sync: checkpoint por tabla que no avanza si un batch falla completo y pipeline marcado como Failed conservando checkpoints para reanudar tras cortes de red.",
+    "pub_date":  "2026-09-02T05:15:39Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.7_x64_en-US.msi",
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU55ZmtwWkhJU3Vwalppb0JycHZ6L1N5QUJhY0MyYW1hZGU5bGNEMWZJQTYwUDI4eWoyTUtxRlJxZDFyNkRjbmtNajg3QVE4WC84UkpLRkpmNGJHelFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzEyOTU3CWZpbGU6VG9rZXRlb18wLjUuN194NjRfZW4tVVMubXNpCmJzaHRFS0F2Z3B5N0NRL2ExblcvYnVvYmx0OWVtbWdaU2U0MDRsb0tTOFg3MnZmN2VBR0FmOC9tOHluMmJHa0J6VDk5eVRpVTIvRW1qeDU1SkFTRENnPT0K"
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.8_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaUNuV2JRWXB5aEZIZWlvTERHbjhTcFhORHViTVNvbkhFdDM3cUVPejRDVzhxQ1h3VHdIZEhweVRwOHptV3pWMUJTeFBXVXZWZFEwS3lOS2ZCc2p3TWd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzI2MTM5CWZpbGU6VG9rZXRlb18wLjUuOF94NjRfZW4tVVMubXNpCjdZNGlxTHIwSVYxY1k4Y2dwSGJpb3pGTzlObjBhbCtNYmZmS0pxK3BtNHRmYWRmb0kzNmY2UjJpcTVFSVVmU2pTcUs2WGdvQms1Uk0rVkpVK3dEYkRBPT0K"
                                          }
                   }
 }

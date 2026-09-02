@@ -1,6 +1,6 @@
 [package]
 name = "toketeo"
-version = "0.5.7"
+version = "0.5.8"
 description = "Toketeo Database Client and Administration Panel"
 authors = ["crdsyntax"]
 edition = "2021"
@@ -29,9 +29,10 @@ tokio = { version = "1.43.0", features = ["full"] }
 sqlx = { version = "0.8.3", features = [ "runtime-tokio-rustls", "mysql", "postgres", "sqlite", "chrono", "rust_decimal", "uuid" ] }
 mongodb = "3.2.1"
 fred = "9"
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono"] }
 tokio-util = "0.7"
 url = "2"
+percent-encoding = "2"
 russh = { version = "0.62", default-features = false, features = ["ring", "flate2", "rsa"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

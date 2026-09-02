@@ -545,6 +545,7 @@ export function useQueryEditor() {
     setSqlFixSuggestion(null)
     const isMongo = targetConnection.type === DatabaseType.MONGODB;
     const isPostgres = targetConnection.type === DatabaseType.POSTGRES;
+    const isSqlServer = targetConnection.type === DatabaseType.SQLSERVER;
     if (checkDangerousQuery(raw, isMongo, targetConnection)) return
 
       const effectiveLimit = limit ?? queryLimit;
@@ -566,7 +567,7 @@ export function useQueryEditor() {
           });
           return;
         }
-        if (isSelect && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
+        if (isSelect && !isSqlServer && !/LIMIT\s+(?:\d+|ALL)/i.test(sql) && effectiveLimit > 0) {
           const offset = (page - 1) * effectiveLimit;
           const limitStr = offset > 0 ? ` LIMIT ${effectiveLimit} OFFSET ${offset}` : ` LIMIT ${effectiveLimit}`;
           if (sql.endsWith(';')) {
@@ -743,6 +744,7 @@ export function useQueryEditor() {
     }
 
     const isMongo = targetConnection.type === 'mongodb';
+    const isSqlServer = targetConnection.type === DatabaseType.SQLSERVER;
     if (checkDangerousQuery(sqlSnippet, isMongo, targetConnection)) return
 
     sqlSnippet = sqlSnippet.trim();
@@ -757,7 +759,7 @@ export function useQueryEditor() {
         });
         return;
       }
-      if (isSelect && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
+      if (isSelect && !isSqlServer && !/LIMIT\s+(?:\d+|ALL)/i.test(sqlSnippet) && queryLimit > 0) {
         const offset = (page - 1) * queryLimit;
         const limitStr = offset > 0 ? ` LIMIT ${queryLimit} OFFSET ${offset}` : ` LIMIT ${queryLimit}`;
         if (sqlSnippet.endsWith(';')) {
