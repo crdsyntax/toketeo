@@ -293,7 +293,7 @@ export function DataTab({
 
   const isBooleanColumn = (col: string): boolean => {
     const t = (columnMeta[col]?.type ?? '').toLowerCase();
-    return t === 'boolean' || t === 'bool' || t === 'tinyint(1)';
+    return t === 'boolean' || t === 'bool' || t.startsWith('tinyint(1)') || t === 'bit' || t === 'bit(1)';
   };
 
   const isDateTimeColumn = (col: string): boolean => {
@@ -462,7 +462,18 @@ export function DataTab({
   ) => {
     if (selectedItem.type !== 'table') return;
     setEditingCell({ rowIndex, column });
-    setEditValue(formatEditValue(value));
+    const colType = columnMeta[column]?.type;
+    if (isBooleanColumn(column)) {
+      const repr = booleanRepr(column);
+      const isTrue =
+        value === true ||
+        value === 1 ||
+        String(value) === '1' ||
+        String(value).toLowerCase() === 'true';
+      setEditValue(isTrue ? repr.on : repr.off);
+    } else {
+      setEditValue(formatEditValue(value, colType));
+    }
   };
 
 
@@ -470,7 +481,18 @@ export function DataTab({
   const handleSaveEdit = (row: DbRow) => {
     if (!editingCell) return;
     const prevValue = row[editingCell.column];
-    const nextValue = coerceEditedDateValue(editValue, prevValue);
+    const colType = columnMeta[editingCell.column]?.type;
+    let nextValue: DbValue;
+    if (isBooleanColumn(editingCell.column)) {
+      const repr = booleanRepr(editingCell.column);
+      if (repr.on === 'true') {
+        nextValue = editValue === 'true' || editValue === '1';
+      } else {
+        nextValue = editValue === '1' || editValue === 'true' ? 1 : 0;
+      }
+    } else {
+      nextValue = coerceEditedDateValue(editValue, prevValue, colType);
+    }
 
     if (!inlineEditReview) {
       updateCell(row, editingCell.column, nextValue);
@@ -627,20 +649,52 @@ export function DataTab({
     menu: NonNullable<typeof contextMenu>,
   ): ContextMenuGroup[] => {
     const groups: ContextMenuGroup[] = [];
-    if (menu.column && menu.dateTime) {
+    if (menu.column) {
+      const col = menu.column;
+      const val = menu.row[col];
+      const cellItems = [
+        {
+          label: 'Copy Value',
+          icon: <Copy className="w-3.5 h-3.5" />,
+          onClick: () => {
+            const text =
+              val === null || val === undefined
+                ? ''
+                : typeof val === 'object'
+                  ? JSON.stringify(val)
+                  : String(val);
+            navigator.clipboard.writeText(text);
+            toast.success('Cell value copied');
+          },
+        },
+      ];
+
+      if (selectedItem.type === 'table') {
+        cellItems.push({
+          label: 'Set NULL',
+          icon: <Eraser className="w-3.5 h-3.5" />,
+          onClick: () => updateCell(menu.row, col, null),
+        });
+      }
+
+      if (menu.dateTime && selectedItem.type === 'table') {
+        cellItems.push({
+          label: 'Set NOW()',
+          icon: <Clock className="w-3.5 h-3.5" />,
+          onClick: () => updateCell(menu.row, col, { __expr: 'NOW()' }),
+        });
+      }
+
       groups.push({
         title: 'Cell Actions',
-        items: [
-          {
-            label: 'Set NOW()',
-            icon: <Clock className="w-3.5 h-3.5" />,
-            onClick: () => updateCell(menu.row, menu.column!, { __expr: 'NOW()' }),
-          },
-        ],
+        initiallyOpen: true,
+        items: cellItems,
       });
     }
+
     groups.push({
       title: isMongo ? 'Schema Query Actions' : 'SQL Actions',
+      initiallyOpen: true,
       items: SQL_ACTIONS.map((action) => ({
         label: `Generate ${action}`,
         shortcut: `⌘${action[0]}`,
@@ -648,9 +702,19 @@ export function DataTab({
         onClick: () => handleGenerateSql(action),
       })),
     });
+
     groups.push({
       title: 'Row Actions',
+      initiallyOpen: true,
       items: [
+        {
+          label: 'Copy Row as JSON',
+          icon: <Copy className="w-3.5 h-3.5" />,
+          onClick: () => {
+            navigator.clipboard.writeText(JSON.stringify(menu.row, null, 2));
+            toast.success('Row copied as JSON');
+          },
+        },
         {
           label: 'Export Model...',
           icon: <Code className="w-3.5 h-3.5" />,
@@ -1253,6 +1317,7 @@ export function DataTab({
       {pendingEdit && reviewPos && (
         <ReviewChangePanel
           column={pendingEdit.column}
+          columnType={columnMeta[pendingEdit.column]?.type}
           prevValue={pendingEdit.prevValue}
           nextValue={pendingEdit.nextValue}
           onConfirm={confirmPendingEdit}

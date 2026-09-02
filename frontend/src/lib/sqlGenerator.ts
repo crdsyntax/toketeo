@@ -33,8 +33,19 @@ export function parseInputValue(raw: string): DbValue {
   if (trimmed.toLowerCase() === 'null') return null
   if (trimmed.toLowerCase() === 'true') return true
   if (trimmed.toLowerCase() === 'false') return false
-  if (/^-?\d+$/.test(trimmed)) return Number(trimmed)
-  if (/^-?\d+\.\d+$/.test(trimmed)) return Number(trimmed)
+  if (/^-?\d+$/.test(trimmed)) {
+    const n = Number(trimmed)
+    return Number.isSafeInteger(n) ? n : trimmed
+  }
+  if (/^-?\d+\.\d+$/.test(trimmed)) {
+    const n = Number(trimmed)
+    return !Number.isNaN(n) ? n : trimmed
+  }
+  if (/^-?\d+,\d+$/.test(trimmed)) {
+    const normalized = trimmed.replace(',', '.')
+    const n = Number(normalized)
+    return !Number.isNaN(n) ? n : normalized
+  }
   return trimmed
 }
 

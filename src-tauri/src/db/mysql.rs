@@ -118,17 +118,25 @@ pub struct MySqlDriver {
     pool: MySqlPool,
 }
 
+use sqlx::ConnectOptions;
+use std::str::FromStr;
+
 impl MySqlDriver {
     pub async fn new(
         url: &str,
         transactional: bool,
         pool_config: Option<PoolConfig>,
     ) -> AppResult<Self> {
+        let connect_opts = sqlx::mysql::MySqlConnectOptions::from_str(url)
+            .map_err(|e| AppError::Connection(format!("Invalid MySQL URL: {}", e)))?
+            .log_statements(tracing::log::LevelFilter::Off);
+
         let pool = (if transactional {
             MySqlPoolOptions::new()
                 .max_connections(1)
                 .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
-                .connect(url)
+                .test_before_acquire(true)
+                .connect_with(connect_opts)
                 .await
         } else {
             let config = pool_config.unwrap_or_default();
@@ -136,14 +144,15 @@ impl MySqlDriver {
             let mut opts = MySqlPoolOptions::new()
                 .min_connections(POOL_MIN_CONNECTIONS)
                 .max_connections(config.max_connections)
-                .acquire_timeout(acquire_timeout);
+                .acquire_timeout(acquire_timeout)
+                .test_before_acquire(true);
             if let Some(idle) = config.idle_timeout {
                 opts = opts.idle_timeout(idle);
             }
             if let Some(lifetime) = config.max_lifetime {
                 opts = opts.max_lifetime(lifetime);
             }
-            opts.connect(url).await
+            opts.connect_with(connect_opts).await
         })
         .map_err(|e| {
             let app_err: AppError = e.into();
@@ -1221,6 +1230,145 @@ impl MySqlDriver {
     }
 
     fn decode_column(&self, row: &MySqlRow, index: usize) -> Value {
+        let col = &row.columns()[index];
+        let type_name = col.type_info().name();
+
+        match type_name {
+            "TINYINT" | "BOOLEAN" | "BOOL" => {
+                if let Ok(Some(b)) = row.try_get::<Option<bool>, _>(index) {
+                    return Value::Bool(b);
+                }
+                if let Ok(Some(v)) = row.try_get::<Option<i8>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(Some(v)) = row.try_get::<Option<u8>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(None) = row.try_get::<Option<i8>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "SMALLINT" => {
+                if let Ok(Some(v)) = row.try_get::<Option<i16>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(Some(v)) = row.try_get::<Option<u16>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(None) = row.try_get::<Option<i16>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "MEDIUMINT" | "INT" | "INTEGER" => {
+                if let Ok(Some(v)) = row.try_get::<Option<i32>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(Some(v)) = row.try_get::<Option<u32>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(None) = row.try_get::<Option<i32>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "BIGINT" => {
+                if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(Some(v)) = row.try_get::<Option<u64>, _>(index) {
+                    return if v <= i64::MAX as u64 {
+                        Value::Number((v as i64).into())
+                    } else {
+                        Value::String(v.to_string())
+                    };
+                }
+                if let Ok(None) = row.try_get::<Option<i64>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "FLOAT" | "DOUBLE" => {
+                if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(index) {
+                    if let Some(n) = serde_json::Number::from_f64(v) {
+                        return Value::Number(n);
+                    }
+                }
+                if let Ok(None) = row.try_get::<Option<f64>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "DECIMAL" | "NEWDECIMAL" => {
+                if let Ok(Some(v)) = row.try_get::<Option<rust_decimal::Decimal>, _>(index) {
+                    let s = v.to_string();
+                    if let Ok(f) = s.parse::<f64>() {
+                        return serde_json::Number::from_f64(f)
+                            .map(Value::Number)
+                            .unwrap_or(Value::String(s));
+                    }
+                    return Value::String(s);
+                }
+                if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(index) {
+                    if let Some(num) = serde_json::Number::from_f64(v) {
+                        return Value::Number(num);
+                    }
+                }
+                if let Ok(Some(s)) = row.try_get::<Option<String>, _>(index) {
+                    if let Ok(f) = s.parse::<f64>() {
+                        if let Some(num) = serde_json::Number::from_f64(f) {
+                            return Value::Number(num);
+                        }
+                    }
+                    return Value::String(s);
+                }
+                if let Ok(None) = row.try_get::<Option<String>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "DATE" | "NEWDATE" => {
+                if let Ok(Some(d)) = row.try_get::<Option<chrono::NaiveDate>, _>(index) {
+                    return Value::String(d.format("%Y-%m-%d").to_string());
+                }
+                if let Ok(None) = row.try_get::<Option<chrono::NaiveDate>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "DATETIME" | "DATETIME2" | "TIMESTAMP" | "TIMESTAMP2" => {
+                if let Ok(Some(d)) = row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(index)
+                {
+                    return Value::String(d.format("%Y-%m-%d %H:%M:%S%.3f").to_string());
+                }
+                if let Ok(Some(d)) = row.try_get::<Option<chrono::NaiveDateTime>, _>(index) {
+                    return Value::String(d.format("%Y-%m-%d %H:%M:%S").to_string());
+                }
+                if let Ok(None) = row.try_get::<Option<chrono::NaiveDateTime>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "TIME" => {
+                if let Ok(Some(t)) = row.try_get::<Option<chrono::NaiveTime>, _>(index) {
+                    return Value::String(t.format("%H:%M:%S").to_string());
+                }
+                if let Ok(None) = row.try_get::<Option<chrono::NaiveTime>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "YEAR" => {
+                if let Ok(Some(v)) = row.try_get::<Option<i16>, _>(index) {
+                    return Value::Number(v.into());
+                }
+                if let Ok(None) = row.try_get::<Option<i16>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            "JSON" => {
+                if let Ok(Some(v)) = row.try_get::<Option<serde_json::Value>, _>(index) {
+                    return v;
+                }
+                if let Ok(None) = row.try_get::<Option<serde_json::Value>, _>(index) {
+                    return Value::Null;
+                }
+            }
+            _ => {}
+        }
+
         for decoder in crate::db::common::DECODERS {
             if let Some(value) = decoder(row, index) {
                 return value;
@@ -1233,9 +1381,7 @@ impl MySqlDriver {
             Err(_) => {}
         }
 
-        let column = &row.columns()[index];
-
-        Value::from(format!("Un-decodable: {}", column.type_info().name()))
+        Value::from(format!("Un-decodable: {}", col.type_info().name()))
     }
 }
 

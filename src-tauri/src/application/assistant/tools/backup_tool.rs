@@ -147,11 +147,14 @@ impl AssistantTool for BackupTool {
                 )
                 .await
                 {
-                    Ok(()) => Ok(ToolResult {
-                        ok: true,
-                        data: Some(serde_json::json!({ "filePath": file_path })),
+                    Ok(report) => Ok(ToolResult {
+                        ok: report.failed == 0,
+                        data: Some(serde_json::to_value(&report).unwrap_or_default()),
                         requires_confirmation: false,
-                        message: Some("Database restored.".to_string()),
+                        message: Some(format!(
+                            "Restore finished: {} total, {} succeeded, {} skipped, {} failed.",
+                            report.total, report.succeeded, report.skipped, report.failed
+                        )),
                     }),
                     Err(e) => Ok(ToolResult {
                         ok: false,

@@ -68,18 +68,38 @@ function RunTableSummary({ runId }: { runId: string }) {
 
   if (!batches || batches.length === 0) return null
 
-  const tableNames = [...new Set(batches.map((b) => b.table_name))]
+  const tableStats = batches.reduce((acc, b) => {
+    if (!acc[b.table_name]) {
+      acc[b.table_name] = { rows: 0, batches: 0 }
+    }
+    acc[b.table_name].rows += b.rows_loaded || b.rows_extracted || 0
+    acc[b.table_name].batches += 1
+    return acc
+  }, {} as Record<string, { rows: number; batches: number }>)
+
+  const tableNames = Object.keys(tableStats)
 
   return (
-    <div className="flex items-center gap-1.5 text-[var(--ch-text-9)] text-muted-foreground/70 mt-1 flex-wrap">
-      <Database className="w-2.5 h-2.5 shrink-0" />
-      <span className="font-bold uppercase tracking-wider">Tables:</span>
-      {tableNames.length <= 5 ? (
-        tableNames.map((t) => (
-          <span key={t} className="font-mono">{t}{t !== tableNames[tableNames.length - 1] ? ',' : ''}</span>
-        ))
-      ) : (
-        <span className="font-mono">{tableNames.slice(0, 4).join(', ')}, +{tableNames.length - 4} more</span>
+    <div className="flex items-center gap-1.5 text-[var(--ch-text-9)] text-muted-foreground mt-2 flex-wrap">
+      <div className="flex items-center gap-1 text-muted-foreground/70 font-bold uppercase tracking-wider text-[var(--ch-text-9)]">
+        <Database className="w-2.5 h-2.5 shrink-0" />
+        <span>Tables:</span>
+      </div>
+      {tableNames.slice(0, 4).map((t) => (
+        <span
+          key={t}
+          className="inline-flex items-center gap-1 bg-secondary/80 border border-border/70 px-1.5 py-0.5 rounded text-[10px] font-mono text-foreground"
+        >
+          <span className="font-semibold text-primary">{t}</span>
+          <span className="text-[9px] text-muted-foreground font-sans">
+            ({tableStats[t].rows.toLocaleString()}r)
+          </span>
+        </span>
+      ))}
+      {tableNames.length > 4 && (
+        <span className="bg-muted/60 border border-border/50 px-1.5 py-0.5 rounded text-[10px] font-mono text-muted-foreground">
+          +{tableNames.length - 4} more
+        </span>
       )}
     </div>
   )

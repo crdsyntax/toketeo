@@ -351,15 +351,19 @@ export function useQueryEditor() {
     }
     setScriptPrompt(null)
     setScriptSummary(null)
-    setLastScriptSql(statements)
-    setScriptLive(statements.map((sql, index) => ({
-      index,
-      sql,
-      phase: 'pending',
-      error: null,
-      rowsAffected: null,
-      rowCount: null,
-    })))
+    setLastScriptSql(statements.length > 500 ? statements.slice(0, 500) : statements)
+    if (statements.length <= 200) {
+      setScriptLive(statements.map((sql, index) => ({
+        index,
+        sql,
+        phase: 'pending',
+        error: null,
+        rowsAffected: null,
+        rowCount: null,
+      })))
+    } else {
+      setScriptLive(null)
+    }
     const schema = targetConnection.database || activeConnection?.database;
     updateTabResults(activeTab.id, {
       status: ExecutionStatus.EXECUTING,
@@ -1018,7 +1022,9 @@ export function useQueryEditor() {
     if (!editingCell) return
     const row = activeTab?.results?.rows[editingCell.rowIndex]
     const prevValue = row ? row[editingCell.column] : null
-    const nextValue = coerceEditedDateValue(String(editingCell.value ?? ''), prevValue)
+    const colIdx = activeTab?.results?.columns.indexOf(editingCell.column) ?? -1
+    const colType = colIdx >= 0 ? (activeTab?.results?.columnTypes?.[colIdx] || activeTab?.results?.column_types?.[colIdx]) : undefined
+    const nextValue = coerceEditedDateValue(String(editingCell.value ?? ''), prevValue, colType)
     if (!useAppStore.getState().inlineEditReview) {
       await updateCell(editingCell.rowIndex, editingCell.column, nextValue)
       return

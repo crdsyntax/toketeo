@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useDraggablePanel } from '@/hooks/useDraggablePanel'
 import {
   X, Loader2, Upload, Download, CheckSquare, Square,
   Table2, Eye, Bell, Workflow, FunctionSquare,
-  FolderOpen, CheckCircle2, AlertCircle, Minimize2, Maximize2,
+  FolderOpen, CheckCircle2, AlertCircle, AlertTriangle, Minimize2, Maximize2,
+  Copy, Search, Check,
 } from 'lucide-react'
-import type { DumpObjects, DumpSelection, IntegrityResult } from '@/types/database'
+import type { DumpObjects, DumpSelection, IntegrityResult, RestoreReport } from '@/types/database'
 import { cn } from '@/lib/utils'
 import { schemaService } from '@/services/schema.service'
 import toast from 'react-hot-toast'
@@ -15,11 +16,12 @@ interface DumpRestoreModalProps {
   schema: string
   connId: string
   objects: DumpObjects
-  onStart: (selection: DumpSelection) => Promise<{ filePath?: string; integrity?: IntegrityResult } | void>
+  onStart: (selection: DumpSelection) => Promise<{ filePath?: string; integrity?: IntegrityResult; restoreReport?: RestoreReport } | void>
   onClose: () => void
 }
 
 type ObjectType = keyof DumpObjects
+type FilterStatus = 'all' | 'error' | 'skipped' | 'success'
 
 const TABS: { key: ObjectType; label: string; icon: React.ReactNode }[] = [
   { key: 'tables', label: 'Tables', icon: <Table2 className="w-3.5 h-3.5" /> },
@@ -56,8 +58,11 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
   const [isLoading, setIsLoading] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [completed, setCompleted] = useState(false)
-  const [result, setResult] = useState<{ filePath?: string; integrity?: IntegrityResult } | null>(null)
+  const [result, setResult] = useState<{ filePath?: string; integrity?: IntegrityResult; restoreReport?: RestoreReport } | null>(null)
   const [tableSizes, setTableSizes] = useState<Record<string, number>>({})
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [copiedLog, setCopiedLog] = useState(false)
   const { pos, handleMouseDown } = useDraggablePanel(320, 80)
 
   useEffect(() => {
@@ -120,8 +125,48 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
     }
   }
 
+  const handleCopyLog = () => {
+    if (!result?.restoreReport) return
+    const text = JSON.stringify(result.restoreReport, null, 2)
+    navigator.clipboard.writeText(text)
+    setCopiedLog(true)
+    setTimeout(() => setCopiedLog(false), 2000)
+    toast.success('Restore report copied to clipboard')
+  }
+
   const handleMinimize = () => setIsMinimized(true)
   const handleExpand = () => setIsMinimized(false)
+
+  const restoreReport = result?.restoreReport
+  const filteredStatements = useMemo(() => {
+    const stmts = restoreReport?.statements ?? []
+    return stmts.filter(stmt => {
+      if (filterStatus !== 'all' && stmt.status !== filterStatus) return false
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        return stmt.sql.toLowerCase().includes(q) || stmt.error?.toLowerCase().includes(q) || stmt.message?.toLowerCase().includes(q)
+      }
+      return true
+    })
+  }, [restoreReport, filterStatus, searchQuery])
+
+  const [page, setPage] = useState(1)
+  const pageSize = 50
+  const totalPages = Math.max(1, Math.ceil(filteredStatements.length / pageSize))
+  const paginatedStatements = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredStatements.slice(start, start + pageSize)
+  }, [filteredStatements, page, pageSize])
+
+  const handleFilterChange = (status: FilterStatus) => {
+    setFilterStatus(status)
+    setPage(1)
+  }
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val)
+    setPage(1)
+  }
 
   if (isMinimized && (isLoading || completed)) {
     return (
@@ -154,6 +199,198 @@ export function DumpRestoreModal({ mode, schema, connId, objects, onStart, onClo
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (result?.restoreReport) {
+    const report = result.restoreReport
+    const isSuccess = report.failed === 0
+    return (
+      <div className="fixed z-[210] w-[640px] max-h-[85vh] flex flex-col" style={{ left: pos.x, top: pos.y }} onMouseDown={handleMouseDown}>
+        <div className="bg-background border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+          <div className="p-3 border-b border-border flex justify-between items-center bg-muted cursor-grab active:cursor-grabbing" data-drag-handle>
+            <h3 className="font-bold flex items-center gap-2 text-xs">
+              {isSuccess ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-500" />
+              )}
+              Restore Results: {schema}
+            </h3>
+            <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="bg-muted/60 p-2.5 rounded border border-border">
+                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider block">Total</span>
+                <span className="text-base font-mono font-bold text-foreground">{report.total}</span>
+              </div>
+              <div className="bg-emerald-500/10 p-2.5 rounded border border-emerald-500/20">
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold tracking-wider block">Succeeded</span>
+                <span className="text-base font-mono font-bold text-emerald-600 dark:text-emerald-400">{report.succeeded}</span>
+              </div>
+              <div className="bg-amber-500/10 p-2.5 rounded border border-amber-500/20">
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold tracking-wider block">Skipped</span>
+                <span className="text-base font-mono font-bold text-amber-600 dark:text-amber-400">{report.skipped}</span>
+              </div>
+              <div className={cn('p-2.5 rounded border', report.failed > 0 ? 'bg-rose-500/10 border-rose-500/20' : 'bg-muted/40 border-border')}>
+                <span className={cn('text-[10px] uppercase font-bold tracking-wider block', report.failed > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>Failed</span>
+                <span className={cn('text-base font-mono font-bold', report.failed > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>{report.failed}</span>
+              </div>
+            </div>
+
+            {/* Filter Tabs & Search */}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <div className="flex items-center gap-1 bg-muted/70 p-1 rounded-md text-xs">
+                <button
+                  onClick={() => handleFilterChange('all')}
+                  className={cn('px-2.5 py-1 rounded text-xs font-medium transition-colors', filterStatus === 'all' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground')}
+                >
+                  All ({report.statements.length})
+                </button>
+                {report.failed > 0 && (
+                  <button
+                    onClick={() => handleFilterChange('error')}
+                    className={cn('px-2.5 py-1 rounded text-xs font-medium transition-colors', filterStatus === 'error' ? 'bg-rose-500 text-white font-semibold' : 'text-rose-600 dark:text-rose-400 hover:text-rose-500')}
+                  >
+                    Failed ({report.failed})
+                  </button>
+                )}
+                {report.skipped > 0 && (
+                  <button
+                    onClick={() => handleFilterChange('skipped')}
+                    className={cn('px-2.5 py-1 rounded text-xs font-medium transition-colors', filterStatus === 'skipped' ? 'bg-amber-500 text-white font-semibold' : 'text-amber-600 dark:text-amber-400 hover:text-amber-500')}
+                  >
+                    Skipped ({report.skipped})
+                  </button>
+                )}
+                <button
+                  onClick={() => handleFilterChange('success')}
+                  className={cn('px-2.5 py-1 rounded text-xs font-medium transition-colors', filterStatus === 'success' ? 'bg-emerald-600 text-white font-semibold' : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-500')}
+                >
+                  Succeeded ({report.succeeded})
+                </button>
+              </div>
+
+              <div className="relative flex-1 max-w-[200px]">
+                <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Filter queries..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full pl-7 pr-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            {/* Statements List */}
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+              {paginatedStatements.length === 0 ? (
+                <div className="py-8 text-center text-xs text-muted-foreground">
+                  No statements match the current filter.
+                </div>
+              ) : (
+                paginatedStatements.map((stmt) => (
+                  <div
+                    key={stmt.index}
+                    className={cn(
+                      'p-2.5 rounded border text-xs font-mono space-y-1 transition-colors',
+                      stmt.status === 'success' && 'border-border bg-background/50',
+                      stmt.status === 'skipped' && 'border-amber-500/30 bg-amber-500/5',
+                      stmt.status === 'error' && 'border-rose-500/40 bg-rose-500/5'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] text-muted-foreground font-sans">#{stmt.index}</span>
+                        <span
+                          className={cn(
+                            'px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider',
+                            stmt.status === 'success' && 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400',
+                            stmt.status === 'skipped' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
+                            stmt.status === 'error' && 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                          )}
+                        >
+                          {stmt.status}
+                        </span>
+                        {stmt.rowsAffected !== undefined && stmt.rowsAffected !== null && (
+                          <span className="text-[10px] text-muted-foreground">
+                            ({stmt.rowsAffected} row{stmt.rowsAffected === 1 ? '' : 's'})
+                          </span>
+                        )}
+                      </div>
+                      {stmt.status === 'skipped' && stmt.message && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-sans truncate max-w-[280px]" title={stmt.message}>
+                          {stmt.message}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-foreground/90 break-all bg-muted/40 p-1.5 rounded line-clamp-3 select-all">
+                      {stmt.sql}
+                    </div>
+
+                    {stmt.error && (
+                      <div className="text-[11px] text-rose-600 dark:text-rose-400 font-sans bg-rose-500/10 p-1.5 rounded border border-rose-500/20 flex items-start gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span className="break-all">{stmt.error}</span>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Pagination footer if more than 1 page */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground border-t border-border">
+                <span>
+                  Showing {Math.min((page - 1) * pageSize + 1, filteredStatements.length)}–
+                  {Math.min(page * pageSize, filteredStatements.length)} of {filteredStatements.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-2 py-0.5 rounded border border-border bg-background disabled:opacity-40 hover:bg-muted"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-2 font-mono">{page} / {totalPages}</span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-2 py-0.5 rounded border border-border bg-background disabled:opacity-40 hover:bg-muted"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-3 border-t border-border flex justify-between items-center bg-muted/40">
+            <button
+              onClick={handleCopyLog}
+              className="px-3 py-1.5 text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded transition-colors flex items-center gap-1.5"
+            >
+              {copiedLog ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedLog ? 'Copied Log' : 'Copy Log JSON'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     )

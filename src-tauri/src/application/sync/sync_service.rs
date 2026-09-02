@@ -400,6 +400,14 @@ impl SyncService {
 
         controller.remove(&pipeline_id).await;
 
+        if pipeline_errors == 0 {
+            if let Err(e) = storage.delete_sync_checkpoints(&pipeline_id).await {
+                tracing::warn!(
+                    "[sync] Failed to clean up sync checkpoints for pipeline '{pipeline_id}': {e}"
+                );
+            }
+        }
+
         tracing::info!(
             "[sync] Pipeline '{}' finished: {}/{} tables completed, {} table errors",
             pipeline_clone.name,
@@ -407,6 +415,22 @@ impl SyncService {
             total_tables,
             pipeline_errors,
         );
+
+        if pipeline_errors > 0 {
+            let message = format!(
+                "Pipeline '{}' finished with {}/{} tables in error — checkpoints preserved, re-run the pipeline to resume from where it stopped",
+                pipeline_clone.name,
+                pipeline_errors,
+                total_tables,
+            );
+            tracing::error!("[sync] {message}");
+            if let Some(ref sender) = event_sender {
+                let _ = sender.send(SyncEvent::Error {
+                    message: message.clone(),
+                });
+            }
+            return Err(crate::error::AppError::Internal(message));
+        }
 
         if let Some(ref sender) = event_sender {
             let _ = sender.send(SyncEvent::Completed {});

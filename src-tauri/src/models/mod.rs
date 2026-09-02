@@ -208,7 +208,12 @@ impl fmt::Debug for SshConfig {
 pub struct QueryResult {
     pub columns: Vec<String>,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "columnTypes",
+        alias = "column_types"
+    )]
     pub column_types: Option<Vec<String>>,
     pub rows: Vec<serde_json::Value>,
     #[serde(rename = "executionTime")]
@@ -241,6 +246,28 @@ pub struct CellUpdateInput {
     pub column: String,
     pub new_value: serde_json::Value,
     pub primary_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreStatementResult {
+    pub index: usize,
+    pub sql: String,
+    pub status: String,
+    pub rows_affected: Option<u64>,
+    pub error: Option<String>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreReport {
+    pub total: usize,
+    pub executed: usize,
+    pub succeeded: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub statements: Vec<RestoreStatementResult>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

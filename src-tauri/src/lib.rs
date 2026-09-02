@@ -21,7 +21,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sqlx=warn")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sqlx=off")),
         )
         .init();
 
@@ -272,6 +272,7 @@ pub fn run() {
             commands::list_sync_batches,
             commands::list_sync_row_errors,
             commands::get_checkpoint,
+            commands::clear_sync_checkpoints,
             commands::pause_sync,
             commands::resume_sync,
             commands::cancel_sync,

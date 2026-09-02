@@ -1347,14 +1347,21 @@ impl Storage {
     }
 
     pub async fn save_sync_checkpoint(&self, cp: &SyncCheckpoint) -> AppResult<()> {
+        let checkpoint_id = if cp.id.is_empty() {
+            format!("{}:{}", cp.pipeline_id, cp.table_name)
+        } else {
+            cp.id.clone()
+        };
+
         sqlx::query(
             "INSERT INTO sync_checkpoints (id, pipeline_id, run_id, table_name, last_processed_key, batch_number)
              VALUES (?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
+                run_id = excluded.run_id,
                 last_processed_key = excluded.last_processed_key,
                 batch_number = excluded.batch_number"
         )
-        .bind(&cp.id)
+        .bind(&checkpoint_id)
         .bind(&cp.pipeline_id)
         .bind(&cp.run_id)
         .bind(&cp.table_name)
@@ -1387,6 +1394,19 @@ impl Storage {
     pub async fn delete_sync_checkpoints(&self, pipeline_id: &str) -> AppResult<()> {
         sqlx::query("DELETE FROM sync_checkpoints WHERE pipeline_id = ?")
             .bind(pipeline_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_table_checkpoint(
+        &self,
+        pipeline_id: &str,
+        table_name: &str,
+    ) -> AppResult<()> {
+        sqlx::query("DELETE FROM sync_checkpoints WHERE pipeline_id = ? AND table_name = ?")
+            .bind(pipeline_id)
+            .bind(table_name)
             .execute(&self.pool)
             .await?;
         Ok(())

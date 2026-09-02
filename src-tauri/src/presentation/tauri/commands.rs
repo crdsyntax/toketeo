@@ -1326,7 +1326,7 @@ pub async fn restore_database_selected(
     file_path: String,
     tables: Vec<String>,
     state: State<'_, AppState>,
-) -> AppResult<()> {
+) -> AppResult<crate::models::RestoreReport> {
     ExplorerService::restore_database_selected(&state, &id, &file_path, &tables, &schema).await
 }
 
@@ -1714,6 +1714,14 @@ pub async fn get_checkpoint(
     state: State<'_, AppState>,
 ) -> AppResult<Option<SyncCheckpoint>> {
     state.storage.get_latest_checkpoint(&pipeline_id).await
+}
+
+#[tauri::command]
+pub async fn clear_sync_checkpoints(
+    pipeline_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.storage.delete_sync_checkpoints(&pipeline_id).await
 }
 
 #[tauri::command]

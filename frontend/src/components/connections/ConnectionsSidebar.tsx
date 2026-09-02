@@ -217,8 +217,13 @@ export function ConnectionsSidebar({ connections, activeConnection, onConnect, o
     const selectedTables = selection.tables
     if (selectedTables.length === 0) return
     try {
-      await schemaService.restoreSchemaSelected(tableSelection.conn.id, tableSelection.schema, tableSelection.filePath, selectedTables)
-      toast.success(`Schema "${tableSelection.schema}" restored successfully`)
+      const report = await schemaService.restoreSchemaSelected(tableSelection.conn.id, tableSelection.schema, tableSelection.filePath, selectedTables)
+      if (report.failed === 0) {
+        toast.success(`Schema "${tableSelection.schema}" restored successfully (${report.succeeded} executed, ${report.skipped} skipped)`)
+      } else {
+        toast.error(`Restore completed with ${report.failed} error(s)`)
+      }
+      return { restoreReport: report }
     } catch (e) {
       toast.error(`Restore failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }

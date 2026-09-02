@@ -4,7 +4,8 @@ use crate::application::sync::transformers;
 use crate::db::DataWriter;
 use crate::error::AppResult;
 use crate::models::sync::{
-    ColumnMapping, PipelineStatus, SyncBatch, SyncPipeline, SyncRowError, SyncRun, SyncTableConfig,
+    ColumnMapping, PipelineStatus, SyncBatch, SyncCheckpoint, SyncPipeline, SyncRowError, SyncRun,
+    SyncTableConfig,
 };
 use crate::state::{SyncControl, SyncController};
 use crate::storage::Storage;
@@ -21,6 +22,33 @@ const SCALE_UP_AGGRESSIVE_MS: u64 = 500;
 const SCALE_DOWN_THRESHOLD_MS: u64 = 5_000;
 
 const MYSQL_PLACEHOLDER_LIMIT: usize = 65_535;
+
+const MAX_NETWORK_RETRIES: u32 = 10;
+const INITIAL_RETRY_DELAY_MS: u64 = 1_000;
+const MAX_RETRY_DELAY_MS: u64 = 30_000;
+
+fn is_transient_network_error(err_str: &str) -> bool {
+    let lower = err_str.to_lowercase();
+    lower.contains("connection")
+        || lower.contains("network")
+        || lower.contains("broken pipe")
+        || lower.contains("reset by peer")
+        || lower.contains("timeout")
+        || lower.contains("timed out")
+        || lower.contains("socket")
+        || lower.contains("10053")
+        || lower.contains("10054")
+        || lower.contains("10060")
+        || lower.contains("10061")
+        || lower.contains("aborted")
+        || lower.contains("closed")
+        || lower.contains("eof")
+        || lower.contains("server closed the connection")
+        || lower.contains("connection refused")
+        || lower.contains("failed to connect")
+        || lower.contains("io error")
+        || lower.contains("os error")
+}
 
 pub struct FullSync;
 
@@ -77,12 +105,67 @@ impl SyncStrategy for FullSync {
             .map(|m| m.destination_column.clone())
             .collect();
 
-        let mut last_key: Option<serde_json::Value> = None;
-        let mut batch_number: u64 = 0;
-        let mut processed_rows: u64 = 0;
-        let mut error_count: u64 = 0;
         let run_id = Uuid::new_v4().to_string();
         let started_at = chrono::Utc::now().to_rfc3339();
+
+        let checkpoint = storage
+            .get_sync_checkpoint(&pipeline_id, &table_config.source_table)
+            .await
+            .ok()
+            .flatten();
+
+        if let Some(ref cp) = checkpoint {
+            if cp.last_processed_key.as_deref() == Some("__COMPLETED__") {
+                tracing::info!(
+                    "[full_sync] Table '{}' already marked as __COMPLETED__ in checkpoint — skipping",
+                    table_config.source_table
+                );
+                return Ok(StrategyOutput {
+                    run: SyncRun {
+                        id: run_id,
+                        pipeline_id,
+                        status: PipelineStatus::Completed,
+                        started_at: Some(started_at),
+                        completed_at: Some(chrono::Utc::now().to_rfc3339()),
+                        total_rows: 0,
+                        processed_rows: 0,
+                        error_count: 0,
+                        batch_count: cp.batch_number,
+                    },
+                    total_rows: 0,
+                    batch_count: cp.batch_number,
+                    error_count: 0,
+                });
+            }
+        }
+
+        let mut last_key: Option<serde_json::Value> = checkpoint
+            .as_ref()
+            .and_then(|c| c.last_processed_key.clone())
+            .and_then(|k| serde_json::from_str(&k).ok());
+
+        let mut batch_number: u64 = checkpoint.as_ref().map(|c| c.batch_number).unwrap_or(0);
+        let mut processed_rows: u64 = 0;
+        let mut error_count: u64 = 0;
+
+        if let Some(ref cp) = checkpoint {
+            tracing::info!(
+                "[full_sync] Resuming sync for '{}' from batch {} (last_key: {:?})",
+                table_config.source_table,
+                cp.batch_number,
+                last_key
+            );
+            if let Some(ref sender) = event_sender {
+                let _ = sender.send(SyncEvent::RowError {
+                    table: table_config.source_table.clone(),
+                    row_key: None,
+                    error: format!(
+                        "Resumiendo sincronización de '{}' desde lote {} (checkpoint activo)",
+                        table_config.source_table, cp.batch_number
+                    ),
+                });
+            }
+        }
 
         let source_schema = pipeline.source_schema.as_deref();
         let target_schema = pipeline.target_schema.as_deref();
@@ -142,17 +225,67 @@ impl SyncStrategy for FullSync {
             let batch_start = Instant::now();
             batch_number += 1;
 
-            let output = extractor
-                .extract(
-                    &table_config.source_table,
-                    source_schema,
-                    &columns,
-                    &pk,
-                    last_key,
-                    current_batch_size,
-                    batch_number,
-                )
-                .await?;
+            let mut extract_attempt = 0;
+            let output = loop {
+                extract_attempt += 1;
+                match extractor
+                    .extract(
+                        &table_config.source_table,
+                        source_schema,
+                        &columns,
+                        &pk,
+                        last_key.clone(),
+                        current_batch_size,
+                        batch_number,
+                    )
+                    .await
+                {
+                    Ok(out) => break out,
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if is_transient_network_error(&err_str)
+                            && extract_attempt <= MAX_NETWORK_RETRIES
+                        {
+                            let delay = std::time::Duration::from_millis(
+                                (INITIAL_RETRY_DELAY_MS * (2_u64.pow(extract_attempt.min(6) - 1)))
+                                    .min(MAX_RETRY_DELAY_MS),
+                            );
+                            tracing::warn!(
+                                "[full_sync] Table '{}' extract failed (attempt {}/{}): {} — retrying in {}ms",
+                                table_config.source_table,
+                                extract_attempt,
+                                MAX_NETWORK_RETRIES,
+                                err_str,
+                                delay.as_millis()
+                            );
+                            if let Some(ref sender) = event_sender {
+                                let _ = sender.send(SyncEvent::RowError {
+                                    table: table_config.source_table.clone(),
+                                    row_key: None,
+                                    error: format!(
+                                        "Intermitencia de red durante extracción (intento {}/{}). Reintentando en {}s...",
+                                        extract_attempt,
+                                        MAX_NETWORK_RETRIES,
+                                        delay.as_secs().max(1)
+                                    ),
+                                });
+                            }
+                            let sleep_end = Instant::now() + delay;
+                            while Instant::now() < sleep_end {
+                                if controller.get(&pipeline_id).await
+                                    == Some(SyncControl::Cancelled)
+                                {
+                                    return Err(e);
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                            }
+                            continue;
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
+            };
 
             if output.rows.is_empty() {
                 break;
@@ -184,257 +317,315 @@ impl SyncStrategy for FullSync {
                 transform_and_strip(output.rows, &mappings, &pk, &table_config.source_table)?;
 
             let mut abort_table = false;
-            let upsert_result = match writer
-                .upsert_rows(
-                    &table_config.target_table,
-                    target_schema,
-                    &dest_columns,
-                    table_config.primary_key.as_deref().unwrap_or(&[]),
-                    &transformed,
-                )
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    let err_str = e.to_string();
-                    let column_name = extract_unknown_column(&err_str);
-
-                    if let Some(ref col) = column_name {
-                        let col_type = infer_agnostic_type(&raw_rows, col);
-                        match writer
-                            .add_column(&table_config.target_table, target_schema, col, col_type)
-                            .await
+            let mut upsert_attempt = 0;
+            let upsert_result = loop {
+                upsert_attempt += 1;
+                match writer
+                    .upsert_rows(
+                        &table_config.target_table,
+                        target_schema,
+                        &dest_columns,
+                        table_config.primary_key.as_deref().unwrap_or(&[]),
+                        &transformed,
+                    )
+                    .await
+                {
+                    Ok(r) => break r,
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if is_transient_network_error(&err_str)
+                            && upsert_attempt <= MAX_NETWORK_RETRIES
                         {
-                            Ok(()) => {
-                                tracing::info!(
-                                    "[full_sync] Table '{}': created missing column '{}' on target ({}) — retrying batch",
-                                    table_config.source_table,
+                            let delay = std::time::Duration::from_millis(
+                                (INITIAL_RETRY_DELAY_MS * (2_u64.pow(upsert_attempt.min(6) - 1)))
+                                    .min(MAX_RETRY_DELAY_MS),
+                            );
+                            tracing::warn!(
+                                "[full_sync] Table '{}' upsert failed with network error (attempt {}/{}): {} — retrying in {}ms",
+                                table_config.source_table,
+                                upsert_attempt,
+                                MAX_NETWORK_RETRIES,
+                                err_str,
+                                delay.as_millis()
+                            );
+                            if let Some(ref sender) = event_sender {
+                                let _ = sender.send(SyncEvent::RowError {
+                                    table: table_config.source_table.clone(),
+                                    row_key: None,
+                                    error: format!(
+                                        "Intermitencia de red durante guardado (intento {}/{}). Reintentando en {}s...",
+                                        upsert_attempt,
+                                        MAX_NETWORK_RETRIES,
+                                        delay.as_secs().max(1)
+                                    ),
+                                });
+                            }
+                            let sleep_end = Instant::now() + delay;
+                            while Instant::now() < sleep_end {
+                                if controller.get(&pipeline_id).await
+                                    == Some(SyncControl::Cancelled)
+                                {
+                                    abort_table = true;
+                                    break;
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                            }
+                            if abort_table {
+                                break crate::db::UpsertResult::default();
+                            }
+                            continue;
+                        }
+
+                        let column_name = extract_unknown_column(&err_str);
+                        if let Some(ref col) = column_name {
+                            let col_type = infer_agnostic_type(&raw_rows, col);
+                            match writer
+                                .add_column(
+                                    &table_config.target_table,
+                                    target_schema,
                                     col,
                                     col_type,
-                                );
-                                let retry_transformed = transform_and_strip(
-                                    raw_rows,
-                                    &mappings,
-                                    &pk,
-                                    &table_config.source_table,
-                                )?;
-                                match writer
-                                    .upsert_rows(
-                                        &table_config.target_table,
-                                        target_schema,
-                                        &dest_columns,
-                                        table_config.primary_key.as_deref().unwrap_or(&[]),
-                                        &retry_transformed,
-                                    )
-                                    .await
-                                {
-                                    Ok(r) => r,
-                                    Err(retry_err) => {
-                                        tracing::error!(
-                                            "[full_sync] Table '{}': retry after creating column '{}' failed: {} — skipping batch (original error: {})",
-                                            table_config.source_table,
-                                            col,
-                                            retry_err,
-                                            err_str,
-                                        );
-                                        if let Some(ref sender) = event_sender {
-                                            let _ = sender.send(SyncEvent::RowError {
-                                                table: table_config.source_table.clone(),
-                                                row_key: None,
-                                                error: format!(
-                                                    "Batch {} failed; retry after creating '{}' also failed: {}",
-                                                    batch_number, col, retry_err
-                                                ),
-                                            });
+                                )
+                                .await
+                            {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        "[full_sync] Table '{}': created missing column '{}' on target ({}) — retrying batch",
+                                        table_config.source_table,
+                                        col,
+                                        col_type,
+                                    );
+                                    let retry_transformed = transform_and_strip(
+                                        raw_rows,
+                                        &mappings,
+                                        &pk,
+                                        &table_config.source_table,
+                                    )?;
+                                    match writer
+                                        .upsert_rows(
+                                            &table_config.target_table,
+                                            target_schema,
+                                            &dest_columns,
+                                            table_config.primary_key.as_deref().unwrap_or(&[]),
+                                            &retry_transformed,
+                                        )
+                                        .await
+                                    {
+                                        Ok(r) => break r,
+                                        Err(retry_err) => {
+                                            tracing::error!(
+                                                "[full_sync] Table '{}': retry after creating column '{}' failed: {} — skipping batch (original error: {})",
+                                                table_config.source_table,
+                                                col,
+                                                retry_err,
+                                                err_str,
+                                            );
+                                            if let Some(ref sender) = event_sender {
+                                                let _ = sender.send(SyncEvent::RowError {
+                                                    table: table_config.source_table.clone(),
+                                                    row_key: None,
+                                                    error: format!(
+                                                        "Batch {} failed; retry after creating '{}' also failed: {}",
+                                                        batch_number, col, retry_err
+                                                    ),
+                                                });
+                                            }
+                                            break crate::db::UpsertResult::default();
                                         }
-                                        crate::db::UpsertResult::default()
                                     }
                                 }
-                            }
-                            Err(add_err) => {
-                                tracing::warn!(
-                                    "[full_sync] Table '{}': could not create column '{}' on target: {} — falling back to removing it from sync",
-                                    table_config.source_table,
-                                    col,
-                                    add_err,
-                                );
-                                let new_dest: Vec<String> =
-                                    dest_columns.iter().filter(|c| c != &col).cloned().collect();
-                                let new_columns: Vec<String> = columns
-                                    .iter()
-                                    .zip(dest_columns.iter())
-                                    .filter(|(_, d)| d != &col)
-                                    .map(|(s, _)| s.clone())
-                                    .collect();
-                                let new_mappings: Vec<ColumnMapping> = mappings
-                                    .iter()
-                                    .filter(|m| m.destination_column != *col)
-                                    .cloned()
-                                    .collect();
+                                Err(add_err) => {
+                                    tracing::warn!(
+                                        "[full_sync] Table '{}': could not create column '{}' on target: {} — falling back to removing it from sync",
+                                        table_config.source_table,
+                                        col,
+                                        add_err,
+                                    );
+                                    let new_dest: Vec<String> = dest_columns
+                                        .iter()
+                                        .filter(|c| c != &col)
+                                        .cloned()
+                                        .collect();
+                                    let new_columns: Vec<String> = columns
+                                        .iter()
+                                        .zip(dest_columns.iter())
+                                        .filter(|(_, d)| d != &col)
+                                        .map(|(s, _)| s.clone())
+                                        .collect();
+                                    let new_mappings: Vec<ColumnMapping> = mappings
+                                        .iter()
+                                        .filter(|m| m.destination_column != *col)
+                                        .cloned()
+                                        .collect();
 
-                                let new_transformed = transform_and_strip(
-                                    raw_rows,
-                                    &new_mappings,
-                                    &pk,
-                                    &table_config.source_table,
-                                )?;
+                                    let new_transformed = transform_and_strip(
+                                        raw_rows,
+                                        &new_mappings,
+                                        &pk,
+                                        &table_config.source_table,
+                                    )?;
 
-                                match writer
-                                    .upsert_rows(
-                                        &table_config.target_table,
-                                        target_schema,
-                                        &new_dest,
-                                        table_config.primary_key.as_deref().unwrap_or(&[]),
-                                        &new_transformed,
-                                    )
-                                    .await
-                                {
-                                    Ok(r) => {
-                                        mappings.clone_from(&new_mappings);
-                                        columns.clone_from(&new_columns);
-                                        dest_columns.clone_from(&new_dest);
-                                        r
-                                    }
-                                    Err(retry_err) => {
-                                        tracing::error!(
-                                            "[full_sync] Table '{}': retry without '{}' also failed: {} — skipping batch (original error: {})",
-                                            table_config.source_table,
-                                            col,
-                                            retry_err,
-                                            err_str,
-                                        );
-                                        if let Some(ref sender) = event_sender {
-                                            let _ = sender.send(SyncEvent::RowError {
-                                                table: table_config.source_table.clone(),
-                                                row_key: None,
-                                                error: format!(
-                                                    "Batch {} failed; retry after removing '{}' also failed: {}",
-                                                    batch_number, col, retry_err
-                                                ),
-                                            });
+                                    match writer
+                                        .upsert_rows(
+                                            &table_config.target_table,
+                                            target_schema,
+                                            &new_dest,
+                                            table_config.primary_key.as_deref().unwrap_or(&[]),
+                                            &new_transformed,
+                                        )
+                                        .await
+                                    {
+                                        Ok(r) => {
+                                            mappings.clone_from(&new_mappings);
+                                            columns.clone_from(&new_columns);
+                                            dest_columns.clone_from(&new_dest);
+                                            break r;
                                         }
-                                        crate::db::UpsertResult::default()
-                                    }
-                                }
-                            }
-                        }
-                    } else if let Some(not_null_col) = extract_not_null_column(&err_str) {
-                        match writer
-                            .drop_not_null(&table_config.target_table, target_schema, &not_null_col)
-                            .await
-                        {
-                            Ok(()) => {
-                                tracing::info!(
-                                    "[full_sync] Table '{}': dropped NOT NULL on column '{}' — retrying batch",
-                                    table_config.source_table,
-                                    not_null_col,
-                                );
-                                let retry_transformed = transform_and_strip(
-                                    raw_rows,
-                                    &mappings,
-                                    &pk,
-                                    &table_config.source_table,
-                                )?;
-                                match writer
-                                    .upsert_rows(
-                                        &table_config.target_table,
-                                        target_schema,
-                                        &dest_columns,
-                                        table_config.primary_key.as_deref().unwrap_or(&[]),
-                                        &retry_transformed,
-                                    )
-                                    .await
-                                {
-                                    Ok(r) => r,
-                                    Err(retry_err) => {
-                                        tracing::error!(
-                                            "[full_sync] Table '{}': retry after dropping NOT NULL on '{}' failed: {} — skipping batch (original error: {})",
-                                            table_config.source_table,
-                                            not_null_col,
-                                            retry_err,
-                                            err_str,
-                                        );
-                                        if let Some(ref sender) = event_sender {
-                                            let _ = sender.send(SyncEvent::RowError {
-                                                table: table_config.source_table.clone(),
-                                                row_key: None,
-                                                error: format!(
-                                                    "Batch {} failed; retry after dropping NOT NULL on '{}' also failed: {}",
-                                                    batch_number, not_null_col, retry_err
-                                                ),
-                                            });
+                                        Err(retry_err) => {
+                                            tracing::error!(
+                                                "[full_sync] Table '{}': retry without '{}' also failed: {} — skipping batch (original error: {})",
+                                                table_config.source_table,
+                                                col,
+                                                retry_err,
+                                                err_str,
+                                            );
+                                            if let Some(ref sender) = event_sender {
+                                                let _ = sender.send(SyncEvent::RowError {
+                                                    table: table_config.source_table.clone(),
+                                                    row_key: None,
+                                                    error: format!(
+                                                        "Batch {} failed; retry after removing '{}' also failed: {}",
+                                                        batch_number, col, retry_err
+                                                    ),
+                                                });
+                                            }
+                                            break crate::db::UpsertResult::default();
                                         }
-                                        crate::db::UpsertResult::default()
                                     }
                                 }
                             }
-                            Err(drop_err) => {
-                                tracing::warn!(
-                                    "[full_sync] Table '{}': could not drop NOT NULL on column '{}' on target: {} — skipping batch",
-                                    table_config.source_table,
-                                    not_null_col,
-                                    drop_err,
-                                );
-                                if let Some(ref sender) = event_sender {
-                                    let _ = sender.send(SyncEvent::RowError {
-                                        table: table_config.source_table.clone(),
-                                        row_key: None,
-                                        error: format!(
-                                            "Batch {} failed with NOT NULL violation on '{}' and the constraint could not be relaxed: {}",
-                                            batch_number, not_null_col, drop_err
-                                        ),
-                                    });
+                        } else if let Some(not_null_col) = extract_not_null_column(&err_str) {
+                            match writer
+                                .drop_not_null(
+                                    &table_config.target_table,
+                                    target_schema,
+                                    &not_null_col,
+                                )
+                                .await
+                            {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        "[full_sync] Table '{}': dropped NOT NULL on column '{}' — retrying batch",
+                                        table_config.source_table,
+                                        not_null_col,
+                                    );
+                                    let retry_transformed = transform_and_strip(
+                                        raw_rows,
+                                        &mappings,
+                                        &pk,
+                                        &table_config.source_table,
+                                    )?;
+                                    match writer
+                                        .upsert_rows(
+                                            &table_config.target_table,
+                                            target_schema,
+                                            &dest_columns,
+                                            table_config.primary_key.as_deref().unwrap_or(&[]),
+                                            &retry_transformed,
+                                        )
+                                        .await
+                                    {
+                                        Ok(r) => break r,
+                                        Err(retry_err) => {
+                                            tracing::error!(
+                                                "[full_sync] Table '{}': retry after dropping NOT NULL on '{}' failed: {} — skipping batch (original error: {})",
+                                                table_config.source_table,
+                                                not_null_col,
+                                                retry_err,
+                                                err_str,
+                                            );
+                                            if let Some(ref sender) = event_sender {
+                                                let _ = sender.send(SyncEvent::RowError {
+                                                    table: table_config.source_table.clone(),
+                                                    row_key: None,
+                                                    error: format!(
+                                                        "Batch {} failed; retry after dropping NOT NULL on '{}' also failed: {}",
+                                                        batch_number, not_null_col, retry_err
+                                                    ),
+                                                });
+                                            }
+                                            break crate::db::UpsertResult::default();
+                                        }
+                                    }
                                 }
-                                crate::db::UpsertResult::default()
+                                Err(drop_err) => {
+                                    tracing::warn!(
+                                        "[full_sync] Table '{}': could not drop NOT NULL on column '{}' on target: {} — skipping batch",
+                                        table_config.source_table,
+                                        not_null_col,
+                                        drop_err,
+                                    );
+                                    if let Some(ref sender) = event_sender {
+                                        let _ = sender.send(SyncEvent::RowError {
+                                            table: table_config.source_table.clone(),
+                                            row_key: None,
+                                            error: format!(
+                                                "Batch {} failed with NOT NULL violation on '{}' and the constraint could not be relaxed: {}",
+                                                batch_number, not_null_col, drop_err
+                                            ),
+                                        });
+                                    }
+                                    break crate::db::UpsertResult::default();
+                                }
                             }
-                        }
-                    } else {
-                        tracing::error!(
-                            "[full_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
-                            table_config.source_table,
-                            batch_number,
-                            e,
-                        );
-                        if let Some(ref sender) = event_sender {
-                            let _ = sender.send(SyncEvent::RowError {
-                                table: table_config.source_table.clone(),
-                                row_key: None,
-                                error: format!("Batch {} upsert failed: {}", batch_number, e),
-                            });
-                        }
-
-                        let err_str_lower = err_str.to_lowercase();
-                        if (err_str_lower.contains("connection")
-                            || err_str_lower.contains("aborted")
-                            || err_str_lower.contains("10053")
-                            || err_str_lower.contains("broken pipe")
-                            || err_str_lower.contains("too many placeholders"))
-                            && current_batch_size > ADAPTIVE_BATCH_INITIAL
-                        {
-                            let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
-                            tracing::warn!(
-                                    "[full_sync] Table '{}': connection/placeholder error, reducing batch {} → {}",
-                                    table_config.source_table,
-                                    current_batch_size,
-                                    new_size,
-                                );
-                            current_batch_size = new_size;
-                            consecutive_fast_batches = 0;
-                            consecutive_slow_batches = 0;
-                        }
-
-                        if err_str.contains("doesn't exist")
-                            || err_str.contains("does not exist")
-                            || err_str.contains("no such table")
-                            || err_str.contains("Invalid object name")
-                        {
+                        } else {
                             tracing::error!(
-                                "[full_sync] Table '{}' does not exist on target — aborting remaining batches",
+                                "[full_sync] Table '{}' batch {} upsert failed: {} — skipping batch, continuing",
                                 table_config.source_table,
+                                batch_number,
+                                e,
                             );
-                            abort_table = true;
+                            if let Some(ref sender) = event_sender {
+                                let _ = sender.send(SyncEvent::RowError {
+                                    table: table_config.source_table.clone(),
+                                    row_key: None,
+                                    error: format!("Batch {} upsert failed: {}", batch_number, e),
+                                });
+                            }
+
+                            let err_str_lower = err_str.to_lowercase();
+                            if (err_str_lower.contains("connection")
+                                || err_str_lower.contains("aborted")
+                                || err_str_lower.contains("10053")
+                                || err_str_lower.contains("broken pipe")
+                                || err_str_lower.contains("too many placeholders"))
+                                && current_batch_size > ADAPTIVE_BATCH_INITIAL
+                            {
+                                let new_size = (current_batch_size / 2).max(ADAPTIVE_BATCH_INITIAL);
+                                tracing::warn!(
+                                        "[full_sync] Table '{}': connection/placeholder error, reducing batch {} → {}",
+                                        table_config.source_table,
+                                        current_batch_size,
+                                        new_size,
+                                    );
+                                current_batch_size = new_size;
+                                consecutive_fast_batches = 0;
+                                consecutive_slow_batches = 0;
+                            }
+
+                            if err_str.contains("doesn't exist")
+                                || err_str.contains("does not exist")
+                                || err_str.contains("no such table")
+                                || err_str.contains("Invalid object name")
+                            {
+                                tracing::error!(
+                                    "[full_sync] Table '{}' does not exist on target — aborting remaining batches",
+                                    table_config.source_table,
+                                );
+                                abort_table = true;
+                            }
+                            break crate::db::UpsertResult::default();
                         }
-                        crate::db::UpsertResult::default()
                     }
                 }
             };
@@ -450,6 +641,10 @@ impl SyncStrategy for FullSync {
                 .saturating_sub(upsert_result.skipped);
             error_count += batch_errors;
             let duration = batch_start.elapsed().as_millis() as u64;
+
+            let batch_fully_failed = upsert_result.affected == 0
+                && upsert_result.skipped == 0
+                && batch_errors == batch_size as u64;
 
             if batch_errors == 0 {
                 if duration < SCALE_UP_AGGRESSIVE_MS && current_batch_size < adaptive_max {
@@ -553,6 +748,8 @@ impl SyncStrategy for FullSync {
                 duration_ms: duration,
                 status: if batch_errors == 0 {
                     "completed".to_string()
+                } else if batch_fully_failed {
+                    "failed".to_string()
                 } else {
                     "completed_with_errors".to_string()
                 },
@@ -603,7 +800,42 @@ impl SyncStrategy for FullSync {
                 });
             }
 
+            if batch_fully_failed {
+                tracing::error!(
+                    "[full_sync] Table '{}' batch {} fully failed (0 rows written) — checkpoint NOT advanced so the batch is retried on the next run",
+                    table_config.source_table,
+                    batch_number,
+                );
+                return Err(crate::error::AppError::Internal(format!(
+                    "Table '{}' batch {} fully failed: 0 rows written — checkpoint preserved for resume",
+                    table_config.source_table, batch_number,
+                )));
+            }
+
+            if let Some(ref next) = output.next_key {
+                let cp = SyncCheckpoint {
+                    id: format!("{}:{}", pipeline_id, table_config.source_table),
+                    pipeline_id: pipeline_id.clone(),
+                    run_id: run_id.clone(),
+                    table_name: table_config.source_table.clone(),
+                    last_processed_key: Some(next.to_string()),
+                    batch_number,
+                };
+                if let Err(e) = storage.save_sync_checkpoint(&cp).await {
+                    tracing::error!("Failed to persist sync checkpoint: {e}");
+                }
+            }
+
             if !output.has_more {
+                let completion_cp = SyncCheckpoint {
+                    id: format!("{}:{}", pipeline_id, table_config.source_table),
+                    pipeline_id: pipeline_id.clone(),
+                    run_id: run_id.clone(),
+                    table_name: table_config.source_table.clone(),
+                    last_processed_key: Some("__COMPLETED__".to_string()),
+                    batch_number,
+                };
+                let _ = storage.save_sync_checkpoint(&completion_cp).await;
                 break;
             }
 
@@ -808,12 +1040,14 @@ mod tests {
     use super::*;
     use crate::application::sync::extractors::sql_extractor::SqlExtractor;
     use crate::db::{DataReader, DataWriter};
+    use crate::error::AppError;
     use crate::models::sync::{
         ColumnMapping, PipelineStatus, SyncMode, SyncPipeline, SyncTableConfig,
     };
     use crate::state::SyncController;
     use async_trait::async_trait;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -1418,5 +1652,262 @@ mod tests {
 
         let total = writer.total_rows_written().await;
         assert_eq!(total, (NUM_TABLES * ROWS_PER_TABLE) as u64);
+    }
+
+    struct CancelAfterFirstRead<'a> {
+        inner: &'a MockSourceReader,
+        controller: SyncController,
+        pipeline_id: String,
+        triggered: AtomicBool,
+    }
+
+    #[async_trait]
+    impl DataReader for CancelAfterFirstRead<'_> {
+        async fn fetch_rows(
+            &self,
+            table: &str,
+            schema: Option<&str>,
+            columns: &[String],
+            pk_column: &str,
+            last_key: Option<serde_json::Value>,
+            batch_size: usize,
+        ) -> crate::error::AppResult<Vec<serde_json::Value>> {
+            if !self.triggered.swap(true, Ordering::SeqCst) {
+                self.controller
+                    .set(&self.pipeline_id, SyncControl::Cancelled)
+                    .await;
+            }
+            self.inner
+                .fetch_rows(table, schema, columns, pk_column, last_key, batch_size)
+                .await
+        }
+
+        async fn count_rows(
+            &self,
+            table: &str,
+            schema: Option<&str>,
+        ) -> crate::error::AppResult<u64> {
+            self.inner.count_rows(table, schema).await
+        }
+    }
+
+    struct FailSecondUpsert {
+        inner: MockTargetWriter,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl DataWriter for FailSecondUpsert {
+        async fn upsert_rows(
+            &self,
+            table: &str,
+            schema: Option<&str>,
+            columns: &[String],
+            primary_keys: &[String],
+            rows: &[serde_json::Value],
+        ) -> crate::error::AppResult<crate::db::UpsertResult> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst);
+            if call == 1 {
+                return Err(AppError::Internal(
+                    "duplicate key value violates unique constraint \"table_00_pkey\"".into(),
+                ));
+            }
+            self.inner
+                .upsert_rows(table, schema, columns, primary_keys, rows)
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_full_sync_resumes_from_checkpoint_without_duplicates() {
+        let source = MockSourceReader::new();
+        let writer = MockTargetWriter::new();
+        let storage = create_test_storage().await;
+        let controller = SyncController::new();
+        let pipeline_id = "test-pipeline-001";
+        controller.set(pipeline_id, SyncControl::Running).await;
+
+        let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
+
+        // Run 1: cancel right after the first batch is extracted -> the loop stops and the
+        // checkpoint for batch 1 is persisted, simulating an interrupted run.
+        let cancel_reader = CancelAfterFirstRead {
+            inner: &source,
+            controller: controller.clone(),
+            pipeline_id: pipeline_id.to_string(),
+            triggered: AtomicBool::new(false),
+        };
+        let first = FullSync
+            .execute(
+                &pipeline,
+                &pipeline.tables[0],
+                &SqlExtractor::new(&cancel_reader),
+                &writer,
+                storage.clone(),
+                None,
+                &controller,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            first.total_rows, BATCH_SIZE as u64,
+            "Run 1 should only process the first batch"
+        );
+        assert_eq!(writer.rows_for_table("table_00").await, BATCH_SIZE);
+
+        let cp = storage
+            .get_sync_checkpoint(pipeline_id, "table_00")
+            .await
+            .unwrap()
+            .expect("checkpoint should be persisted after batch 1");
+        assert_eq!(cp.batch_number, 1);
+        assert_ne!(cp.last_processed_key.as_deref(), Some("__COMPLETED__"));
+
+        // Run 2: resumes from batch 1's last key, no duplicates on the target.
+        let controller2 = SyncController::new();
+        controller2.set(pipeline_id, SyncControl::Running).await;
+        let second = FullSync
+            .execute(
+                &pipeline,
+                &pipeline.tables[0],
+                &SqlExtractor::new(&source),
+                &writer,
+                storage.clone(),
+                None,
+                &controller2,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            second.total_rows,
+            (ROWS_PER_TABLE - BATCH_SIZE) as u64,
+            "Run 2 should only process the remaining rows"
+        );
+        assert_eq!(
+            writer.rows_for_table("table_00").await,
+            ROWS_PER_TABLE,
+            "Total rows on target must equal source rows (no duplicates)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_full_sync_failed_batch_does_not_advance_checkpoint() {
+        let source = MockSourceReader::new();
+        let writer = FailSecondUpsert {
+            inner: MockTargetWriter::new(),
+            calls: AtomicUsize::new(0),
+        };
+        let storage = create_test_storage().await;
+        let controller = SyncController::new();
+        let pipeline_id = "test-pipeline-001";
+        controller.set(pipeline_id, SyncControl::Running).await;
+
+        let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
+        let extractor = SqlExtractor::new(&source);
+
+        let result = FullSync
+            .execute(
+                &pipeline,
+                &pipeline.tables[0],
+                &extractor,
+                &writer,
+                storage.clone(),
+                None,
+                &controller,
+            )
+            .await;
+
+        assert!(
+            result.is_err(),
+            "A fully-failed batch must surface as an error so the pipeline is marked Failed"
+        );
+        assert_eq!(writer.inner.rows_for_table("table_00").await, BATCH_SIZE);
+
+        let cp = storage
+            .get_sync_checkpoint(pipeline_id, "table_00")
+            .await
+            .unwrap()
+            .expect("checkpoint from batch 1 must be preserved");
+        assert_eq!(
+            cp.batch_number, 1,
+            "Checkpoint must NOT advance past the failed batch"
+        );
+        assert_eq!(cp.last_processed_key.as_deref(), Some("49"));
+
+        // Re-run with the same writer (failure already consumed): resumes from the batch-1
+        // checkpoint and retries the previously failed batch.
+        let result2 = FullSync
+            .execute(
+                &pipeline,
+                &pipeline.tables[0],
+                &extractor,
+                &writer,
+                storage.clone(),
+                None,
+                &controller,
+            )
+            .await;
+
+        assert!(result2.is_ok(), "Resume should complete the table");
+        assert_eq!(
+            writer.inner.rows_for_table("table_00").await,
+            ROWS_PER_TABLE,
+            "Failed batch must be retried on resume (no lost rows)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_full_sync_completed_table_is_skipped_on_rerun() {
+        let source = MockSourceReader::new();
+        let writer = MockTargetWriter::new();
+        let storage = create_test_storage().await;
+        let controller = SyncController::new();
+        let pipeline_id = "test-pipeline-001";
+        controller.set(pipeline_id, SyncControl::Running).await;
+
+        let pipeline = make_pipeline(vec![make_table_config("table_00", "table_00")], BATCH_SIZE);
+        let extractor = SqlExtractor::new(&source);
+
+        let first = FullSync
+            .execute(
+                &pipeline,
+                &pipeline.tables[0],
+                &extractor,
+                &writer,
+                storage.clone(),
+                None,
+                &controller,
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.total_rows, ROWS_PER_TABLE as u64);
+
+        let cp = storage
+            .get_sync_checkpoint(pipeline_id, "table_00")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cp.last_processed_key.as_deref(), Some("__COMPLETED__"));
+
+        let second = FullSync
+            .execute(
+                &pipeline,
+                &pipeline.tables[0],
+                &extractor,
+                &writer,
+                storage.clone(),
+                None,
+                &controller,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            second.total_rows, 0,
+            "Completed table should be skipped on re-run"
+        );
+        assert_eq!(second.batch_count, cp.batch_number);
+        assert_eq!(writer.rows_for_table("table_00").await, ROWS_PER_TABLE);
     }
 }

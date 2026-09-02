@@ -74,11 +74,21 @@ export function SyncProgress({ run, progress, logs, onProgressChange, onLogsChan
           ...prev,
         ].slice(0, 10))
       } else if (e.RowError) {
-        onProgressChange((p) => ({ ...p, errors: p.errors + 1 }))
+        const isNotice =
+          e.RowError!.error.startsWith('Intermitencia') ||
+          e.RowError!.error.startsWith('Resumiendo');
+        if (!isNotice) {
+          onProgressChange((p) => ({ ...p, errors: p.errors + 1 }));
+        }
         onLogsChange((prev) => [
-          { type: 'error' as const, table: e.RowError!.table, message: e.RowError!.error, time: new Date() },
+          {
+            type: isNotice ? ('phase' as const) : ('error' as const),
+            table: e.RowError!.table,
+            message: e.RowError!.error,
+            time: new Date(),
+          },
           ...prev,
-        ].slice(0, 10))
+        ].slice(0, 15));
       } else if (e.PhaseCompleted) {
         onProgressChange((p) => ({ ...p, phase: 'done', currentTable: '', elapsedMs: Date.now() - startTime }))
         onLogsChange((prev) => [

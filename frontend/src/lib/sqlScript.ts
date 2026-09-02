@@ -1,55 +1,43 @@
 
-
-
 export function splitSqlStatements(sql: string): string[] {
   if (!sql.trim()) return []
 
   const statements: string[] = []
-  let current = ''
+  let stmtStart = 0
   let delimiter = ';'
   let i = 0
   let atLineStart = true
+  const len = sql.length
 
-  while (i < sql.length) {
+  while (i < len) {
     const c = sql[i]
 
-
     if (c === '-' && sql[i + 1] === '-') {
-      while (i < sql.length && sql[i] !== '\n') {
-        current += sql[i]
+      while (i < len && sql[i] !== '\n') {
         i++
       }
       continue
     }
-
 
     if (c === '/' && sql[i + 1] === '*') {
-      current += '/*'
       i += 2
-      while (i + 1 < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) {
-        current += sql[i]
+      while (i + 1 < len && !(sql[i] === '*' && sql[i + 1] === '/')) {
         i++
       }
-      if (i + 1 < sql.length) {
-        current += '*/'
+      if (i + 1 < len) {
         i += 2
       } else {
-        current += '*/'
-        i = sql.length
+        i = len
       }
       continue
     }
 
-
     if (c === "'") {
-      current += "'"
       i++
-      while (i < sql.length) {
-        current += sql[i]
+      while (i < len) {
         if (sql[i] === "'") {
           i++
           if (sql[i] === "'") {
-            current += "'"
             i++
             continue
           }
@@ -59,17 +47,14 @@ export function splitSqlStatements(sql: string): string[] {
       }
       continue
     }
-
 
     if (c === '"' || c === '`') {
-      current += c
+      const quote = c
       i++
-      while (i < sql.length) {
-        current += sql[i]
-        if (sql[i] === c) {
+      while (i < len) {
+        if (sql[i] === quote) {
           i++
-          if (sql[i] === c) {
-            current += c
+          if (sql[i] === quote) {
             i++
             continue
           }
@@ -80,36 +65,35 @@ export function splitSqlStatements(sql: string): string[] {
       continue
     }
 
-
     if (atLineStart) {
-      const newDelimiter = parseDelimiter(sql.slice(i))
+      const rest = sql.slice(i, Math.min(i + 64, len))
+      const newDelimiter = parseDelimiter(rest)
       if (newDelimiter !== null) {
-        if (containsSql(current)) {
-          statements.push(current)
-          current = ''
+        const chunk = sql.slice(stmtStart, i).trim()
+        if (containsSql(chunk)) {
+          statements.push(chunk)
         }
-        while (i < sql.length && sql[i] !== '\n') i++
-        if (i < sql.length) i++
+        while (i < len && sql[i] !== '\n') i++
+        if (i < len) i++
+        stmtStart = i
         delimiter = newDelimiter
         atLineStart = true
         continue
       }
     }
 
-
     if (sql.startsWith(delimiter, i)) {
-
-      if (delimiter === ';') current += delimiter
-      i += delimiter.length
-      if (containsSql(current)) {
-        statements.push(current)
-        current = ''
+      const end = delimiter === ';' ? i + 1 : i
+      const chunk = sql.slice(stmtStart, end).trim()
+      if (containsSql(chunk)) {
+        statements.push(chunk)
       }
+      i += delimiter.length
+      stmtStart = i
       atLineStart = false
       continue
     }
 
-    current += c
     if (c === '\n') {
       atLineStart = true
     } else if (!/\s/.test(c)) {
@@ -118,14 +102,15 @@ export function splitSqlStatements(sql: string): string[] {
     i++
   }
 
-
-  if (containsSql(current)) {
-    statements.push(current)
+  if (stmtStart < len) {
+    const chunk = sql.slice(stmtStart).trim()
+    if (containsSql(chunk)) {
+      statements.push(chunk)
+    }
   }
 
   return statements
 }
-
 
 
 function parseDelimiter(sqlRest: string): string | null {

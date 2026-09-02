@@ -195,15 +195,20 @@ export function ResultsPanel({
               <span className="text-xs italic">No data rows returned or empty dataset</span>
             </div>
           )}
-          {pendingEdit && (
-            <ReviewChangePanel
-              column={pendingEdit.column}
-              prevValue={pendingEdit.prevValue}
-              nextValue={pendingEdit.nextValue}
-              onConfirm={confirmPendingEdit}
-              onDiscard={discardPendingEdit}
-            />
-          )}
+          {pendingEdit && (() => {
+            const colIdx = activeTab?.results?.columns.indexOf(pendingEdit.column) ?? -1;
+            const colType = colIdx >= 0 ? (activeTab?.results?.columnTypes?.[colIdx] || activeTab?.results?.column_types?.[colIdx]) : undefined;
+            return (
+              <ReviewChangePanel
+                column={pendingEdit.column}
+                columnType={colType}
+                prevValue={pendingEdit.prevValue}
+                nextValue={pendingEdit.nextValue}
+                onConfirm={confirmPendingEdit}
+                onDiscard={discardPendingEdit}
+              />
+            );
+          })()}
         </div>
       )}
     </div>

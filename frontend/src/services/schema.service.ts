@@ -14,6 +14,7 @@ import type {
   IntegrityResult,
   TruncateTablesResult,
   DatabaseCredential,
+  RestoreReport,
 } from '@/types/database'
 import type { QueryHistoryEntry } from '@/store/useAppStore'
 
@@ -240,8 +241,8 @@ executeExplorer: async (payload: {
     return await tauriApi.invoke<{ filePath: string; tables: string[] } | null>('pick_and_parse_dump_file')
   },
 
-  restoreSchemaSelected: async (id: string, schema: string, filePath: string, tables: string[]): Promise<void> => {
-    return await tauriApi.invoke<void>('restore_database_selected', {
+  restoreSchemaSelected: async (id: string, schema: string, filePath: string, tables: string[]): Promise<RestoreReport> => {
+    return await tauriApi.invoke<RestoreReport>('restore_database_selected', {
       id,
       schema,
       filePath,

@@ -21,17 +21,24 @@ pub struct PostgresDriver {
     pool: PgPool,
 }
 
+use sqlx::ConnectOptions;
+use std::str::FromStr;
+
 impl PostgresDriver {
     pub async fn new(
         url: &str,
         transactional: bool,
         pool_config: Option<PoolConfig>,
     ) -> AppResult<Self> {
+        let connect_opts = sqlx::postgres::PgConnectOptions::from_str(url)
+            .map_err(|e| AppError::Connection(format!("Invalid PostgreSQL URL: {}", e)))?
+            .log_statements(tracing::log::LevelFilter::Off);
+
         let pool = if transactional {
             PgPoolOptions::new()
                 .max_connections(1)
                 .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
-                .connect(url)
+                .connect_with(connect_opts)
                 .await
         } else {
             let config = pool_config.unwrap_or_default();
@@ -45,7 +52,7 @@ impl PostgresDriver {
             if let Some(lifetime) = config.max_lifetime {
                 opts = opts.max_lifetime(lifetime);
             }
-            opts.connect(url).await
+            opts.connect_with(connect_opts).await
         }
         .map_err(|e| {
             let app_err: AppError = e.into();

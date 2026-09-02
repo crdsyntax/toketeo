@@ -130,7 +130,7 @@ Get-ChildItem $OutDir -File | Sort-Object Name | ForEach-Object {
         -H "content-type: application/octet-stream" `
         --data-binary "@$($_.FullName)" 2>&1
     if ($LASTEXITCODE -ne 0 -or $curlOut -match '"ok":false' -or $curlOut -match '"error"') {
-        Write-Host "FAIL $remoteName: $curlOut"
+        Write-Host "FAIL ${remoteName}: $curlOut"
         $uploadedOk = $false
     } else {
         Write-Host "OK   $remoteName ($([math]::Round($_.Length / 1MB, 2)) MB)"
@@ -142,7 +142,7 @@ if (-not $uploadedOk) { throw 'One or more files failed to upload.' }
 Write-Host "==> Verifying live latest.json ..."
 $check = & curl.exe -s "$BaseUrl/latest.json"
 if ($check -match '"version"\s*:\s*"' + [regex]::Escape($Version) + '"') {
-    Write-Host "OK   Update endpoint now serves v$Version."
+    Write-Host "OK   Update endpoint now serves v${Version}."
 } else {
     Write-Host "WARN Could not verify version on $BaseUrl/latest.json:"
     Write-Host $check

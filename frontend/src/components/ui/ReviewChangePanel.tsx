@@ -5,7 +5,7 @@ import type { ReviewChangePanelProps } from '@/types/ui'
 
 export type { ReviewChangePanelProps } from '@/types/ui'
 
-export function ReviewChangePanel({ column, prevValue, nextValue, onConfirm, onDiscard, position }: ReviewChangePanelProps) {
+export function ReviewChangePanel({ column, columnType, prevValue, nextValue, onConfirm, onDiscard, position }: ReviewChangePanelProps) {
   const centered = !position
 
   useEffect(() => {
@@ -43,11 +43,11 @@ export function ReviewChangePanel({ column, prevValue, nextValue, onConfirm, onD
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pt-2 border-t border-border/50">
           <div className="p-2 bg-destructive/10 text-destructive rounded overflow-x-auto whitespace-nowrap">
-            {formatCellValue(prevValue) || <span className="italic opacity-50">NULL</span>}
+            {formatCellValue(prevValue, columnType) || <span className="italic opacity-50">NULL</span>}
           </div>
           <ArrowRightLeft className="w-3 h-3 text-muted-foreground" />
           <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded overflow-x-auto whitespace-nowrap">
-            {formatCellValue(nextValue) || <span className="italic opacity-50">EMPTY</span>}
+            {formatCellValue(nextValue, columnType) || <span className="italic opacity-50">EMPTY</span>}
           </div>
         </div>
       </div>

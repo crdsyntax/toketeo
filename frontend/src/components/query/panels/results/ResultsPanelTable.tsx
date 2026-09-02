@@ -131,7 +131,7 @@ export function ResultsPanelTable({
             </th>
             {activeTab.results!.columns.map((col: string, colIdx: number) => {
               const isSorted = sortConfig?.key === col;
-              const colType = activeTab.results!.columnTypes?.[colIdx];
+              const colType = activeTab.results!.columnTypes?.[colIdx] || activeTab.results!.column_types?.[colIdx];
               return (
                 <th
                   key={col}
@@ -211,9 +211,10 @@ export function ResultsPanelTable({
                   </span>
                 </td>
 
-                {activeTab.results!.columns.map((col: string) => {
+                {activeTab.results!.columns.map((col: string, colIdx: number) => {
                   const isEditing = editingCell?.rowIndex === i && editingCell?.column === col;
                   const isNull = row[col] === null;
+                  const colType = activeTab.results!.columnTypes?.[colIdx] || activeTab.results!.column_types?.[colIdx];
 
                   return (
                     <td
@@ -229,12 +230,12 @@ export function ResultsPanelTable({
                       )}
                     >
                       {isEditing ? (
-                        isDateLikeValue(row[col]) ? (
+                        isDateLikeValue(row[col], colType) ? (
                           <input
                             autoFocus
                             type="datetime-local"
                             className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
-                            value={toDateTimeLocalInput(formatEditValue(editingCell.value))}
+                            value={toDateTimeLocalInput(formatEditValue(editingCell.value, colType))}
                             onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => {
@@ -254,7 +255,7 @@ export function ResultsPanelTable({
                           <input
                             autoFocus
                             className="absolute inset-0 w-full h-full bg-background border-2 border-primary outline-none px-2.5 z-20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"
-                            value={formatEditValue(editingCell.value)}
+                            value={formatEditValue(editingCell.value, colType)}
                             onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => {
@@ -278,7 +279,7 @@ export function ResultsPanelTable({
                               NULL
                             </span>
                           ) : (
-                            <span className="truncate flex-1 min-w-0">{formatCellValue(row[col])}</span>
+                            <span className="truncate flex-1 min-w-0">{formatCellValue(row[col], colType)}</span>
                           )}
                           {isSelected && (
                             <button

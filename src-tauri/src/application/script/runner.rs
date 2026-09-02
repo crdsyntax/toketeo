@@ -105,6 +105,8 @@ impl ScriptRunner {
 
         let mut skip_all = false;
         let mut cancelled = false;
+        let is_large_batch = statements.len() > 200;
+        let mut last_progress_emit = std::time::Instant::now();
 
         let _ = app.emit(
             "script:run-started",
@@ -116,15 +118,17 @@ impl ScriptRunner {
                 break;
             }
 
-            let _ = app.emit(
-                "script:statement",
-                serde_json::json!({
-                    "runId": run_id,
-                    "index": index,
-                    "sql": sql,
-                    "phase": "running",
-                }),
-            );
+            if !is_large_batch {
+                let _ = app.emit(
+                    "script:statement",
+                    serde_json::json!({
+                        "runId": run_id,
+                        "index": index,
+                        "sql": sql,
+                        "phase": "running",
+                    }),
+                );
+            }
 
             let outcome = if let Some(tx) = tx.as_mut() {
                 tx.execute_statement(sql).await
@@ -158,33 +162,43 @@ impl ScriptRunner {
             match outcome {
                 Ok(outcome) => {
                     report.ok += 1;
-                    report.results.push(StatementResult {
-                        index,
-                        sql: sql.clone(),
-                        ok: true,
-                        skipped: false,
-                        rows_affected: outcome.rows_affected,
-                        row_count: outcome.row_count,
-                        error: None,
-                    });
-                    let _ = app.emit(
-                        "script:statement",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "index": index,
-                            "sql": sql,
-                            "phase": "ok",
-                            "rowsAffected": outcome.rows_affected,
-                            "rowCount": outcome.row_count,
-                        }),
-                    );
-                    Self::emit_progress(app, &report, "running");
+                    if report.results.len() < 500 {
+                        report.results.push(StatementResult {
+                            index,
+                            sql: truncate_sql(sql, 500),
+                            ok: true,
+                            skipped: false,
+                            rows_affected: outcome.rows_affected,
+                            row_count: outcome.row_count,
+                            error: None,
+                        });
+                    }
+                    if !is_large_batch {
+                        let _ = app.emit(
+                            "script:statement",
+                            serde_json::json!({
+                                "runId": run_id,
+                                "index": index,
+                                "sql": sql,
+                                "phase": "ok",
+                                "rowsAffected": outcome.rows_affected,
+                                "rowCount": outcome.row_count,
+                            }),
+                        );
+                    }
+                    if !is_large_batch
+                        || last_progress_emit.elapsed() >= std::time::Duration::from_millis(100)
+                        || index == statements.len() - 1
+                    {
+                        Self::emit_progress(app, &report, "running");
+                        last_progress_emit = std::time::Instant::now();
+                    }
                 }
                 Err(err) => {
                     report.failed += 1;
                     report.results.push(StatementResult {
                         index,
-                        sql: sql.clone(),
+                        sql: truncate_sql(sql, 500),
                         ok: false,
                         skipped: false,
                         rows_affected: None,
@@ -196,12 +210,13 @@ impl ScriptRunner {
                         serde_json::json!({
                             "runId": run_id,
                             "index": index,
-                            "sql": sql,
+                            "sql": truncate_sql(sql, 500),
                             "phase": "failed",
                             "error": err.to_string(),
                         }),
                     );
                     Self::emit_progress(app, &report, "running");
+                    last_progress_emit = std::time::Instant::now();
 
                     if skip_all {
                         continue;
@@ -212,7 +227,7 @@ impl ScriptRunner {
                         serde_json::json!({
                             "runId": run_id,
                             "index": index,
-                            "sql": sql,
+                            "sql": truncate_sql(sql, 500),
                             "error": err.to_string(),
                         }),
                     );
@@ -243,9 +258,12 @@ impl ScriptRunner {
         if report.skipped > 0 {
             let executed = report.ok + report.failed;
             for (index, sql) in statements.iter().enumerate().skip(executed) {
+                if report.results.len() >= 500 {
+                    break;
+                }
                 report.results.push(StatementResult {
                     index,
-                    sql: sql.clone(),
+                    sql: truncate_sql(sql, 500),
                     ok: false,
                     skipped: true,
                     rows_affected: None,
@@ -328,5 +346,15 @@ impl ScriptPromptStore {
 
     pub async fn cancel(&self, run_id: &str) -> AppResult<()> {
         self.respond(run_id, ScriptDecision::Cancel).await
+    }
+}
+
+fn truncate_sql(sql: &str, max_len: usize) -> String {
+    if sql.len() <= max_len {
+        sql.to_string()
+    } else {
+        let mut truncated = sql.chars().take(max_len).collect::<String>();
+        truncated.push_str("... [truncated]");
+        truncated
     }
 }

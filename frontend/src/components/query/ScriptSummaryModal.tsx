@@ -18,6 +18,9 @@ function phaseOf(r: ScriptStatementResult): 'ok' | 'failed' | 'skipped' {
 
 export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps) {
   const [filter, setFilter] = useState<Filter>('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+
   if (!report) return null;
 
   const { ok, failed, skipped, total, rolledBack, pendingCommit, results } = report;
@@ -26,10 +29,18 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
     ? results
     : results.filter((r) => phaseOf(r) === filter);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleFilterChange = (f: Filter) => {
+    setFilter(f);
+    setPage(1);
+  };
+
   const chip = (key: Filter, value: number, label: string, cls: string) => (
     <button
       key={key}
-      onClick={() => setFilter(key)}
+      onClick={() => handleFilterChange(key)}
       className={`border rounded-md p-3 text-center transition-colors ${cls} ${
         filter === key ? 'ring-2 ring-offset-2' : ''
       }`}
@@ -68,7 +79,7 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
             </div>
           )}
           <div className="grid grid-cols-4 gap-3">
-            {chip('all', results.length, `All (${total} total)`, 'bg-muted/40 border-border hover:bg-muted/60 cursor-pointer')}
+            {chip('all', total, `All (${total} total)`, 'bg-muted/40 border-border hover:bg-muted/60 cursor-pointer')}
             {chip('ok', ok, 'OK', 'bg-green-500/10 border-green-500/30 text-green-500')}
             {chip('failed', failed, 'Failed', 'bg-red-500/10 border-red-500/30 text-red-500')}
             {chip('skipped', skipped, 'Skipped', 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500')}
@@ -78,12 +89,12 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
             {filter !== 'all' && ` — showing ${filtered.length} “${filter}”`}
           </p>
           <div className="border border-border rounded-md max-h-64 overflow-auto">
-            {filtered.length === 0 ? (
+            {paginated.length === 0 ? (
               <div className="px-4 py-6 text-center text-xs text-muted-foreground">
                 No “{filter}” statements
               </div>
             ) : (
-              filtered.map((r) => {
+              paginated.map((r) => {
                 const phase = phaseOf(r);
                 return (
                   <div key={r.index} className="flex items-start gap-2 px-3 py-2 border-b border-border last:border-b-0">
@@ -91,7 +102,7 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
                     {phase === 'failed' && <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />}
                     {phase === 'skipped' && <SkipForward className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />}
                     <div className="min-w-0 flex-1">
-                      <p className="font-mono text-xs text-foreground/90 whitespace-pre-wrap break-all">
+                      <p className="font-mono text-xs text-foreground/90 whitespace-pre-wrap break-all line-clamp-3 select-all">
                         {r.sql}
                       </p>
                       {r.error && (
@@ -108,6 +119,33 @@ export function ScriptSummaryModal({ report, onClose }: ScriptSummaryModalProps)
               })
             )}
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground">
+              <span>
+                Showing {Math.min((page - 1) * pageSize + 1, filtered.length)}–
+                {Math.min(page * pageSize, filtered.length)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-2 py-0.5 rounded border border-border bg-background disabled:opacity-40 hover:bg-muted"
+                >
+                  Previous
+                </button>
+                <span className="px-2 font-mono">{page} / {totalPages}</span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-2 py-0.5 rounded border border-border bg-background disabled:opacity-40 hover:bg-muted"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
             <button
               onClick={onClose}

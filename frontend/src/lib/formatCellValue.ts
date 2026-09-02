@@ -1,15 +1,57 @@
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import type { DbValue } from '@/types/database';
+import { parseInputValue } from '@/lib/sqlGenerator';
 
 dayjs.extend(utc);
 
 const DATE_DISPLAY_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 const DATE_ONLY_FORMAT = 'YYYY-MM-DD';
 
-
 const EPOCH_MS_MIN = 100_000_000_000;
 const EPOCH_MS_MAX = 4_100_000_000_000;
+
+export function isBooleanColumnType(columnType?: string): boolean {
+  if (!columnType) return false;
+  const t = columnType.toLowerCase().trim();
+  return (
+    t === 'boolean' ||
+    t === 'bool' ||
+    t.startsWith('tinyint(1)') ||
+    t === 'bit' ||
+    t === 'bit(1)'
+  );
+}
+
+export function isNumericColumnType(columnType?: string): boolean {
+  if (!columnType) return false;
+  if (isBooleanColumnType(columnType)) return false;
+  const t = columnType.toLowerCase().trim();
+  return (
+    t.includes('int') ||
+    t.includes('decimal') ||
+    t.includes('numeric') ||
+    t.includes('float') ||
+    t.includes('double') ||
+    t.includes('real') ||
+    t.includes('number') ||
+    t.includes('serial') ||
+    t.includes('dec') ||
+    t.includes('fixed') ||
+    t.includes('year') ||
+    t.includes('bit')
+  );
+}
+
+export function isDateTimeColumnType(columnType?: string): boolean {
+  if (!columnType) return false;
+  const t = columnType.toLowerCase().trim();
+  return (
+    t.includes('date') ||
+    t.includes('time') ||
+    t.includes('timestamp')
+  );
+}
 
 function formatEpochMillis(ms: number): string | null {
   if (!Number.isFinite(ms) || ms < EPOCH_MS_MIN || ms > EPOCH_MS_MAX) return null;
@@ -19,8 +61,11 @@ function formatEpochMillis(ms: number): string | null {
 
 function parseDatePayload(d: unknown): dayjs.Dayjs | null {
   if (typeof d === 'number') {
-    const parsed = dayjs.utc(d);
-    return parsed.isValid() ? parsed : null;
+    if (d >= EPOCH_MS_MIN && d <= EPOCH_MS_MAX) {
+      const parsed = dayjs.utc(d);
+      return parsed.isValid() ? parsed : null;
+    }
+    return null;
   }
   if (typeof d === 'string') {
     const s = d.trim();
@@ -28,8 +73,13 @@ function parseDatePayload(d: unknown): dayjs.Dayjs | null {
       const parsed = dayjs.utc(Number(s));
       return parsed.isValid() ? parsed : null;
     }
-    const parsed = dayjs.utc(s);
-    return parsed.isValid() ? parsed : null;
+    const isIsoOrSqlDate =
+      /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(s);
+    if (isIsoOrSqlDate) {
+      const parsed = dayjs.utc(s.replace(' ', 'T'));
+      return parsed.isValid() ? parsed : null;
+    }
+    return null;
   }
   if (d && typeof d === 'object') {
     const numLong = (d as Record<string, unknown>).$numberLong;
@@ -41,8 +91,12 @@ function parseDatePayload(d: unknown): dayjs.Dayjs | null {
   return null;
 }
 
+export function isDateLikeValue(value: DbValue, columnType?: string): boolean {
+  if (isBooleanColumnType(columnType)) return false;
+  if (isNumericColumnType(columnType)) return false;
+  if (isDateTimeColumnType(columnType)) return true;
+  if (typeof value === 'boolean') return false;
 
-export function isDateLikeValue(value: DbValue): boolean {
   if (typeof value === 'number') return formatEpochMillis(value) !== null;
   if (typeof value === 'object' && value !== null) {
     const obj = value as Record<string, unknown>;
@@ -60,14 +114,28 @@ export function isDateLikeValue(value: DbValue): boolean {
   return false;
 }
 
+export function coerceEditedDateValue(edited: string, original: DbValue, columnType?: string): DbValue {
+  if (isBooleanColumnType(columnType)) {
+    const lower = edited.trim().toLowerCase();
+    if (lower === 'true' || lower === '1') return true;
+    if (lower === 'false' || lower === '0') return false;
+    return parseInputValue(edited);
+  }
 
+  if (isNumericColumnType(columnType)) {
+    return parseInputValue(edited);
+  }
 
-export function coerceEditedDateValue(edited: string, original: DbValue): DbValue {
   const trimmed = edited.trim();
   if (trimmed === '') return null;
 
+  const parsedInput = parseInputValue(trimmed);
+  if (typeof original === 'number' && typeof parsedInput === 'number') {
+    return parsedInput;
+  }
+
   const parsed = parseDatePayload(trimmed);
-  if (!parsed) return edited;
+  if (!parsed) return parsedInput;
 
   const ms = parsed.valueOf();
   if (typeof original === 'number') return ms;
@@ -93,7 +161,6 @@ export function coerceEditedDateValue(edited: string, original: DbValue): DbValu
   return edited;
 }
 
-
 export function toDateTimeLocalInput(value: string): string {
   const trimmed = value.trim();
   if (trimmed === '') return '';
@@ -101,8 +168,31 @@ export function toDateTimeLocalInput(value: string): string {
   return parsed ? parsed.format('YYYY-MM-DDTHH:mm') : value;
 }
 
-export function formatCellValue(value: DbValue): string {
+export function formatCellValue(value: DbValue, columnType?: string): string {
   if (value === null || value === undefined) return '';
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  if (isBooleanColumnType(columnType)) {
+    if (typeof value === 'number') {
+      if (value === 1) return 'true';
+      if (value === 0) return 'false';
+      return String(value);
+    }
+    if (typeof value === 'string') {
+      const lower = value.trim().toLowerCase();
+      if (lower === 'true' || lower === '1') return 'true';
+      if (lower === 'false' || lower === '0') return 'false';
+      return value;
+    }
+  }
+
+  if (isNumericColumnType(columnType)) {
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
 
   if (typeof value === 'number') {
     const formatted = formatEpochMillis(value);
@@ -155,10 +245,24 @@ export function formatCellValue(value: DbValue): string {
   return strVal;
 }
 
-
-
-export function formatEditValue(value: DbValue): string {
+export function formatEditValue(value: DbValue, columnType?: string): string {
   if (value === null || value === undefined) return '';
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  if (isBooleanColumnType(columnType)) {
+    if (value === 1 || value === '1' || value === 'true') return 'true';
+    if (value === 0 || value === '0' || value === 'false') return 'false';
+    return String(value);
+  }
+
+  if (isNumericColumnType(columnType)) {
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
     if (obj.$oid) return String(obj.$oid);

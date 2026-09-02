@@ -74,6 +74,7 @@ export type DbRow = Record<string, DbValue>;
 export interface QueryResult {
   columns: string[];
   columnTypes?: string[];
+  column_types?: string[];
   rows: DbRow[];
   executionTime: number;
   affectedRows?: number;
@@ -249,6 +250,24 @@ export interface IntegrityResult {
   totalStatements: number
   expectedTables: number
   passed: boolean
+}
+
+export interface RestoreStatementResult {
+  index: number
+  sql: string
+  status: 'success' | 'skipped' | 'error'
+  rowsAffected?: number
+  error?: string
+  message?: string
+}
+
+export interface RestoreReport {
+  total: number
+  executed: number
+  succeeded: number
+  skipped: number
+  failed: number
+  statements: RestoreStatementResult[]
 }
 
 export interface DumpObjects {

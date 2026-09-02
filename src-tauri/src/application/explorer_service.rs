@@ -1783,7 +1783,7 @@ impl ExplorerService {
         file_path: &str,
         tables: &[String],
         schema: &str,
-    ) -> AppResult<()> {
+    ) -> AppResult<crate::models::RestoreReport> {
         let bytes = tokio::fs::read(file_path)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to read dump file: {}", e)))?;
@@ -1797,8 +1797,6 @@ impl ExplorerService {
         );
 
         let statements = split_sql_statements(&content);
-        let mut errors = Vec::new();
-
         let mut script = if is_mysql && !schema.is_empty() {
             match driver.begin_script(Some(schema)).await {
                 Ok(s) => Some(s),
@@ -1813,14 +1811,20 @@ impl ExplorerService {
             None
         };
 
-        for stmt in &statements {
+        let mut results = Vec::new();
+        let mut executed_count = 0;
+        let mut succeeded_count = 0;
+        let mut skipped_count = 0;
+        let mut failed_count = 0;
+
+        for (idx, stmt) in statements.iter().enumerate() {
             let trimmed = stmt.trim();
             if trimmed.is_empty() || trimmed.starts_with("--") || trimmed.starts_with("/*") {
                 continue;
             }
 
             let upper_stmt = trimmed.to_uppercase();
-            let should_execute = tables.is_empty()
+            let matches_table_filter = tables.is_empty()
                 || tables.iter().any(|t| {
                     let tu = t.to_uppercase();
                     upper_stmt.contains(&format!(" {}", tu))
@@ -1835,73 +1839,202 @@ impl ExplorerService {
                         || upper_stmt.starts_with(&format!("{}(", tu))
                 });
 
-            if should_execute {
-                if upper_stmt.starts_with("LOCK TABLES") || upper_stmt.starts_with("UNLOCK TABLES")
-                {
-                    continue;
+            if !matches_table_filter {
+                skipped_count += 1;
+                if results.len() < 500 {
+                    results.push(crate::models::RestoreStatementResult {
+                        index: idx + 1,
+                        sql: truncate_sql_preview(trimmed, 300),
+                        status: "skipped".to_string(),
+                        rows_affected: None,
+                        error: None,
+                        message: Some("Skipped by table selection filter".to_string()),
+                    });
                 }
+                continue;
+            }
 
-                if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
-                    if let Some(table_name) = extract_table_name_from_create(trimmed) {
-                        if tables.is_empty()
-                            || tables.iter().any(|t| t.eq_ignore_ascii_case(&table_name))
-                        {
-                            let drop_sql = format!(
-                                "DROP TABLE IF EXISTS \"{}\".\"{}\" CASCADE",
-                                schema.replace('"', "\"\""),
-                                table_name.replace('"', "\"\"")
-                            );
-                            let _ = driver.execute_with_schema(&drop_sql, schema).await;
-                        }
+            if upper_stmt.starts_with("LOCK TABLES") || upper_stmt.starts_with("UNLOCK TABLES") {
+                skipped_count += 1;
+                if results.len() < 500 {
+                    results.push(crate::models::RestoreStatementResult {
+                        index: idx + 1,
+                        sql: truncate_sql_preview(trimmed, 300),
+                        status: "skipped".to_string(),
+                        rows_affected: None,
+                        error: None,
+                        message: Some("Lock/Unlock table command skipped".to_string()),
+                    });
+                }
+                continue;
+            }
+
+            let final_sql = if is_mysql {
+                if upper_stmt.starts_with("CREATE TABLE") {
+                    make_create_table_if_not_exists(trimmed)
+                } else if upper_stmt.starts_with("INSERT ") {
+                    make_mysql_insert_ignore(trimmed)
+                } else {
+                    trimmed.to_string()
+                }
+            } else {
+                trimmed.to_string()
+            };
+
+            if is_postgres && upper_stmt.starts_with("CREATE TABLE") {
+                if let Some(table_name) = extract_table_name_from_create(trimmed) {
+                    if tables.is_empty()
+                        || tables.iter().any(|t| t.eq_ignore_ascii_case(&table_name))
+                    {
+                        let drop_sql = format!(
+                            "DROP TABLE IF EXISTS \"{}\".\"{}\" CASCADE",
+                            schema.replace('"', "\"\""),
+                            table_name.replace('"', "\"\"")
+                        );
+                        let _ = driver.execute_with_schema(&drop_sql, schema).await;
                     }
                 }
+            }
 
-                let exec_result = if let Some(script) = script.as_mut() {
-                    script.execute_statement(trimmed).await.map(|_| ())
-                } else if is_postgres {
-                    driver
-                        .execute_with_schema(trimmed, schema)
-                        .await
-                        .map(|_| ())
-                } else {
-                    driver.execute(trimmed).await.map(|_| ())
-                };
-                if let Err(e) = exec_result {
-                    errors.push(format!("Error executing statement: {}", e));
+            executed_count += 1;
+            let exec_result = if let Some(script) = script.as_mut() {
+                script
+                    .execute_statement(&final_sql)
+                    .await
+                    .map(|outcome| outcome.rows_affected)
+            } else if is_postgres {
+                driver
+                    .execute_with_schema(&final_sql, schema)
+                    .await
+                    .map(|qr| Some(qr.rows_affected))
+            } else {
+                driver
+                    .execute(&final_sql)
+                    .await
+                    .map(|qr| Some(qr.rows_affected))
+            };
+
+            match exec_result {
+                Ok(rows_affected) => {
+                    succeeded_count += 1;
+                    if results.len() < 500 {
+                        results.push(crate::models::RestoreStatementResult {
+                            index: idx + 1,
+                            sql: truncate_sql_preview(trimmed, 300),
+                            status: "success".to_string(),
+                            rows_affected,
+                            error: None,
+                            message: None,
+                        });
+                    }
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if is_already_exists_or_duplicate_error(&err_str) {
+                        skipped_count += 1;
+                        if results.len() < 500 {
+                            results.push(crate::models::RestoreStatementResult {
+                                index: idx + 1,
+                                sql: truncate_sql_preview(trimmed, 300),
+                                status: "skipped".to_string(),
+                                rows_affected: None,
+                                error: None,
+                                message: Some(format!(
+                                    "Skipped (already exists / duplicate key): {}",
+                                    err_str
+                                )),
+                            });
+                        }
+                    } else {
+                        failed_count += 1;
+                        // Always include failed statements up to a generous limit
+                        results.push(crate::models::RestoreStatementResult {
+                            index: idx + 1,
+                            sql: truncate_sql_preview(trimmed, 300),
+                            status: "error".to_string(),
+                            rows_affected: None,
+                            error: Some(err_str),
+                            message: None,
+                        });
+                    }
                 }
             }
-        }
-
-        if !errors.is_empty() {
-            if let Some(script) = script {
-                let _ = script.rollback().await;
-            }
-            return Err(AppError::Internal(format!(
-                "Restore completed with {} error(s). First error: {}",
-                errors.len(),
-                errors[0]
-            )));
         }
 
         if let Some(script) = script {
-            script.commit().await?;
+            let _ = script.commit().await;
         }
-        Ok(())
+
+        let total_statements = statements.len();
+        Ok(crate::models::RestoreReport {
+            total: total_statements,
+            executed: executed_count,
+            succeeded: succeeded_count,
+            skipped: skipped_count,
+            failed: failed_count,
+            statements: results,
+        })
+    }
+}
+
+fn truncate_sql_preview(sql: &str, max_len: usize) -> String {
+    if sql.len() <= max_len {
+        sql.to_string()
+    } else {
+        let mut truncated = sql.chars().take(max_len).collect::<String>();
+        truncated.push_str("... [truncated]");
+        truncated
+    }
+}
+
+fn is_already_exists_or_duplicate_error(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("already exists")
+        || lower.contains("duplicate entry")
+        || lower.contains("duplicate key")
+        || lower.contains("unique constraint failed")
+        || lower.contains("violation of primary key")
+        || lower.contains("violation of unique key")
+        || lower.contains("23505")
+        || lower.contains("42p07")
+        || lower.contains("1050")
+        || lower.contains("1062")
+}
+
+fn make_mysql_insert_ignore(sql: &str) -> String {
+    let trimmed = sql.trim();
+    let upper = trimmed.to_uppercase();
+    if upper.starts_with("INSERT INTO ") {
+        format!("INSERT IGNORE INTO {}", &trimmed[12..])
+    } else if upper.starts_with("INSERT ") && !upper.starts_with("INSERT IGNORE") {
+        format!("INSERT IGNORE {}", &trimmed[7..])
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn make_create_table_if_not_exists(sql: &str) -> String {
+    let trimmed = sql.trim();
+    let upper = trimmed.to_uppercase();
+    if upper.starts_with("CREATE TABLE ") && !upper.starts_with("CREATE TABLE IF NOT EXISTS") {
+        format!("CREATE TABLE IF NOT EXISTS {}", &trimmed[13..])
+    } else {
+        trimmed.to_string()
     }
 }
 
 fn split_sql_statements(content: &str) -> Vec<String> {
+    let bytes = content.as_bytes();
+    let len = bytes.len();
     let mut statements = Vec::new();
-    let mut current = String::new();
-    let chars: Vec<char> = content.chars().collect();
-    let len = chars.len();
+    let mut stmt_start = 0;
     let mut i = 0;
 
     let mut in_single_quote = false;
-    let mut in_dollar_tag: Option<String> = None;
+    let mut in_dollar_tag: Option<Vec<u8>> = None;
     let mut in_block_comment = false;
     let mut in_conditional_comment = false;
-    let mut delimiter = ";".to_string();
+    let mut delimiter: Vec<u8> = b";".to_vec();
 
     while i < len {
         if !in_single_quote
@@ -1909,13 +2042,13 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             && !in_block_comment
             && !in_conditional_comment
             && i + 1 < len
-            && chars[i] == '/'
-            && chars[i + 1] == '*'
+            && bytes[i] == b'/'
+            && bytes[i + 1] == b'*'
         {
-            if i + 2 < len && chars[i + 2] == '!' {
+            if i + 2 < len && bytes[i + 2] == b'!' {
                 in_conditional_comment = true;
                 i += 3;
-                while i < len && chars[i].is_ascii_digit() {
+                while i < len && bytes[i].is_ascii_digit() {
                     i += 1;
                 }
                 continue;
@@ -1926,7 +2059,7 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
         }
         if in_block_comment {
-            if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
+            if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
                 in_block_comment = false;
                 i += 2;
             } else {
@@ -1935,7 +2068,7 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
         if in_conditional_comment {
-            if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
+            if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
                 in_conditional_comment = false;
                 i += 2;
             } else {
@@ -1944,33 +2077,38 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             continue;
         }
 
-        if !in_single_quote && in_dollar_tag.is_none() && current.trim().is_empty() {
-            let mut j = i;
-            while j < len && chars[j].is_whitespace() {
-                j += 1;
-            }
-            if j + 9 < len {
-                let word: String = chars[j..j + 9].iter().collect();
-                if word.eq_ignore_ascii_case("DELIMITER") {
-                    let after = chars[j + 9];
-                    if after == ' ' || after == '\t' {
+        if !in_single_quote && in_dollar_tag.is_none() {
+            let prefix = content[stmt_start..i].trim();
+            if prefix.is_empty() {
+                let mut j = i;
+                while j < len
+                    && (bytes[j] == b' '
+                        || bytes[j] == b'\t'
+                        || bytes[j] == b'\r'
+                        || bytes[j] == b'\n')
+                {
+                    j += 1;
+                }
+                if j + 9 <= len && content[j..j + 9].eq_ignore_ascii_case("DELIMITER") {
+                    let after = if j + 9 < len { bytes[j + 9] } else { b' ' };
+                    if after == b' ' || after == b'\t' {
                         let mut k = j + 9;
-                        while k < len && (chars[k] == ' ' || chars[k] == '\t') {
+                        while k < len && (bytes[k] == b' ' || bytes[k] == b'\t') {
                             k += 1;
                         }
                         let start_tok = k;
-                        while k < len && chars[k] != '\n' && chars[k] != '\r' {
+                        while k < len && bytes[k] != b'\n' && bytes[k] != b'\r' {
                             k += 1;
                         }
-                        delimiter = chars[start_tok..k].iter().collect();
+                        delimiter = bytes[start_tok..k].to_vec();
                         i = k;
-                        if i < len && chars[i] == '\r' {
+                        if i < len && bytes[i] == b'\r' {
                             i += 1;
                         }
-                        if i < len && chars[i] == '\n' {
+                        if i < len && bytes[i] == b'\n' {
                             i += 1;
                         }
-                        current.clear();
+                        stmt_start = i;
                         continue;
                     }
                 }
@@ -1982,10 +2120,10 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             && !in_block_comment
             && !in_conditional_comment
             && i + 1 < len
-            && chars[i] == '-'
-            && chars[i + 1] == '-'
+            && bytes[i] == b'-'
+            && bytes[i + 1] == b'-'
         {
-            while i < len && chars[i] != '\n' {
+            while i < len && bytes[i] != b'\n' {
                 i += 1;
             }
             if i < len {
@@ -1998,15 +2136,11 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             && !in_block_comment
             && !in_conditional_comment
             && in_dollar_tag.is_none()
-            && chars[i] == '$'
+            && bytes[i] == b'$'
         {
-            if let Some(end) = find_dollar_tag_end(&chars, i, len) {
-                let tag: String = chars[i + 1..end].iter().collect();
+            if let Some(end) = find_dollar_tag_end_bytes(bytes, i, len) {
+                let tag = bytes[i + 1..end].to_vec();
                 in_dollar_tag = Some(tag);
-                current.push('$');
-                for &c in chars[i + 1..=end].iter() {
-                    current.push(c);
-                }
                 i = end + 2;
                 continue;
             }
@@ -2014,14 +2148,9 @@ fn split_sql_statements(content: &str) -> Vec<String> {
 
         if !in_single_quote && !in_block_comment && !in_conditional_comment {
             if let Some(ref tag) = in_dollar_tag {
-                if chars[i] == '$' {
-                    if let Some(end) = find_dollar_tag_end(&chars, i, len) {
-                        let end_tag: String = chars[i + 1..end].iter().collect();
-                        if &end_tag == tag {
-                            current.push('$');
-                            for &c in chars[i + 1..=end].iter() {
-                                current.push(c);
-                            }
+                if bytes[i] == b'$' {
+                    if let Some(end) = find_dollar_tag_end_bytes(bytes, i, len) {
+                        if &bytes[i + 1..end] == tag.as_slice() {
                             in_dollar_tag = None;
                             i = end + 2;
                             continue;
@@ -2031,58 +2160,59 @@ fn split_sql_statements(content: &str) -> Vec<String> {
             }
         }
 
-        if in_dollar_tag.is_none() && chars[i] == '\'' {
+        if in_dollar_tag.is_none() && bytes[i] == b'\'' {
             in_single_quote = !in_single_quote;
-            current.push(chars[i]);
             i += 1;
-            if in_single_quote && i < len && chars[i] == '\'' {
-                current.push(chars[i]);
+            if in_single_quote && i < len && bytes[i] == b'\'' {
                 i += 1;
             }
             continue;
         }
 
         if !in_single_quote && in_dollar_tag.is_none() {
-            let is_sep = if delimiter == ";" {
-                chars[i] == ';'
+            let is_sep = if delimiter == b";" {
+                bytes[i] == b';'
             } else {
-                let dchars: Vec<char> = delimiter.chars().collect();
-                let dlen = dchars.len();
-                i + dlen <= len && chars[i..i + dlen] == dchars[..]
+                let dlen = delimiter.len();
+                i + dlen <= len && &bytes[i..i + dlen] == delimiter.as_slice()
             };
             if is_sep {
-                let stmt = current.trim().to_string();
-                if !stmt.is_empty() {
-                    statements.push(stmt);
+                let chunk = content[stmt_start..i].trim();
+                if !chunk.is_empty() {
+                    statements.push(chunk.to_string());
                 }
-                current.clear();
-                if delimiter == ";" {
+                if delimiter == b";" {
                     i += 1;
                 } else {
-                    i += delimiter.chars().count();
+                    i += delimiter.len();
                 }
+                stmt_start = i;
                 continue;
             }
         }
 
-        current.push(chars[i]);
         i += 1;
     }
 
-    let remaining = current.trim().to_string();
-    if !remaining.is_empty() {
-        statements.push(remaining);
+    if stmt_start < len {
+        let remaining = content[stmt_start..].trim();
+        if !remaining.is_empty() {
+            statements.push(remaining.to_string());
+        }
     }
 
     statements
 }
 
-fn find_dollar_tag_end(chars: &[char], start: usize, len: usize) -> Option<usize> {
+fn find_dollar_tag_end_bytes(bytes: &[u8], start: usize, len: usize) -> Option<usize> {
     let mut j = start + 1;
-    while j < len && chars[j] != '$' {
+    while j < len && bytes[j] != b'$' {
+        if !bytes[j].is_ascii_alphanumeric() && bytes[j] != b'_' {
+            return None;
+        }
         j += 1;
     }
-    if j < len && j > start {
+    if j < len && j > start && bytes[j] == b'$' {
         Some(j - 1)
     } else {
         None

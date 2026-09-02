@@ -1,11 +1,11 @@
 {
-  "version": "0.5.5",
-  "notes": "v0.5.5: Improved context menu styling in ConnectionSidebar (solid backgrounds, higher z-index); SQL Schema Flow diagram with live query results.",
-  "pub_date": "2026-08-30T00:00:00Z",
-  "platforms": {
-    "windows-x86_64": {
-      "url": "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.5_x64_en-US.msi",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU5tOUNtYzZYVWdVTDdvMzFTZVllT0kwaHVwZi9WT3BsSTc3NHFHbnFzSFBFSXY4YW5GS2cxYW1lV2RYTEk4NVNhenE1bWJtdTYxOVZaaC93SUY1NXdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MTI2NjI1CWZpbGU6VG9rZXRlb18wLjUuNV94NjRfZW4tVVMubXNpCm9sbWhIQWVvTXlTYjBiWXNoeTQ2RWFNalNDdDJNZ2tmczM5MGsyT0xYbXlJRU1jY2c5elIzc0Uxak5MY01hd1hleUdsb1hRR0NlWXVoSkFmWnR4a0NBPT0K"
-    }
-  }
+    "version":  "0.5.7",
+    "notes":  "Cross-DB Sync: checkpoint por tabla con reanudacion exacta tras cortes de red. Un lote que falla por completo ya no avanza el checkpoint (las filas se reintentan en la siguiente ejecucion) y el pipeline se marca como Failed conservando los checkpoints. Incluye mejoras y fixes adicionales.",
+    "pub_date":  "2026-09-02T01:35:57Z",
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "url":  "https://toketeo-updates.crdsyntax.workers.dev/Toketeo_0.5.7_x64_en-US.msi",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTM3cxUVl0RjBWaU55ZmtwWkhJU3Vwalppb0JycHZ6L1N5QUJhY0MyYW1hZGU5bGNEMWZJQTYwUDI4eWoyTUtxRlJxZDFyNkRjbmtNajg3QVE4WC84UkpLRkpmNGJHelFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzEyOTU3CWZpbGU6VG9rZXRlb18wLjUuN194NjRfZW4tVVMubXNpCmJzaHRFS0F2Z3B5N0NRL2ExblcvYnVvYmx0OWVtbWdaU2U0MDRsb0tTOFg3MnZmN2VBR0FmOC9tOHluMmJHa0J6VDk5eVRpVTIvRW1qeDU1SkFTRENnPT0K"
+                                         }
+                  }
 }

@@ -92,4 +92,8 @@ export const syncService = {
   getCheckpoint: async (pipelineId: string): Promise<SyncCheckpoint | null> => {
     return await tauriApi.invoke<SyncCheckpoint | null>('get_checkpoint', { pipelineId });
   },
+
+  clearCheckpoints: async (pipelineId: string): Promise<void> => {
+    return await tauriApi.invoke<void>('clear_sync_checkpoints', { pipelineId });
+  },
 };

@@ -8,9 +8,9 @@ export type { ContextMenuItem, ContextMenuGroup, ContextMenuProps } from '@/type
 
 export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [openGroups, setOpenGroups] = useState<Set<number>>(new Set());
+  const [toggledGroups, setToggledGroups] = useState<Set<number>>(new Set());
   const toggleGroup = (gi: number) =>
-    setOpenGroups((prev) => {
+    setToggledGroups((prev) => {
       const next = new Set(prev);
       if (next.has(gi)) {
         next.delete(gi);
@@ -19,8 +19,11 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
       }
       return next;
     });
-  const isOpen = (gi: number) =>
-    groups[gi].initiallyOpen || openGroups.has(gi);
+  const isOpen = (gi: number) => {
+    const initiallyOpen = groups[gi]?.initiallyOpen ?? true;
+    const isToggled = toggledGroups.has(gi);
+    return initiallyOpen ? !isToggled : isToggled;
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -44,10 +47,11 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
   const viewportH = window.innerHeight;
   const estimatedW = 200;
   const estimatedH = groups.reduce((acc, g, gi) => {
+    const isCollapsible = g.collapsible || g.dropdown;
     if (!g.title) {
       return acc + g.items.length * 32 + 6;
     }
-    if (isOpen(gi)) {
+    if (!isCollapsible || isOpen(gi)) {
       return acc + 28 + g.items.length * 32 + 6;
     }
     return acc + 28 + 6;
@@ -59,106 +63,80 @@ export function ContextMenu({ x, y, groups, onDismiss }: ContextMenuProps) {
     <div
       ref={menuRef}
       role="menu"
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       className="fixed z-[300] min-w-[180px] max-w-[260px] bg-surface-elevated border border-border/60 rounded-xl shadow-2xl shadow-black/50 p-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-100 select-none"
       style={{ top: adjustedY, left: adjustedX }}
     >
-      {groups.map((group, gi) => (
-        <div key={gi}>
-          {gi > 0 && <hr className="border-border/50 my-1" />}
-          {group.title ? (
-            <>
-              <button
-                type="button"
-                onClick={() => toggleGroup(gi)}
-                className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider rounded-md hover:bg-accent-muted hover:text-accent transition-colors duration-100"
-                aria-expanded={isOpen(gi)}
-              >
-                <span className="truncate">{group.title}</span>
-                <ChevronRight
-                  className={cn('w-3 h-3 shrink-0 transition-transform duration-150', isOpen(gi) && 'rotate-90')}
-                />
-              </button>
-              {isOpen(gi) && (
-                <div className="space-y-0.5">
-                  {group.items.map((item, ii) => (
-                    <button
-                      key={ii}
-                      role="menuitem"
-                      disabled={item.disabled}
-                      onClick={() => {
-                        if (!item.disabled) {
-                          item.onClick();
-                          onDismiss();
-                        }
-                      }}
-                      className={cn(
-                        'w-full text-left px-2.5 py-1.5 text-xs rounded-md transition-colors duration-100 flex items-center justify-between gap-2 font-medium',
-                        item.disabled
-                          ? 'text-muted-foreground/50 cursor-not-allowed'
-                          : item.variant === 'destructive'
-                            ? 'text-destructive hover:bg-destructive/10'
-                            : 'text-foreground hover:bg-accent-muted hover:text-accent',
-                      )}
-                    >
-                      <span className="flex items-center gap-2 truncate">
-                        {item.icon && (
-                          <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                            {item.icon}
-                          </span>
-                        )}
-                        {item.label}
-                      </span>
-                      {item.shortcut && (
-                        <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono shrink-0">
-                          {item.shortcut}
+      {groups.map((group, gi) => {
+        const isCollapsible = group.collapsible || group.dropdown;
+        return (
+          <div key={gi}>
+            {gi > 0 && <hr className="border-border/50 my-1" />}
+            {group.title && (
+              isCollapsible ? (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(gi)}
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider rounded-md hover:bg-accent-muted hover:text-accent transition-colors duration-100"
+                  aria-expanded={isOpen(gi)}
+                >
+                  <span className="truncate">{group.title}</span>
+                  <ChevronRight
+                    className={cn('w-3 h-3 shrink-0 transition-transform duration-150', isOpen(gi) && 'rotate-90')}
+                  />
+                </button>
+              ) : (
+                <div className="px-2.5 py-1 text-[var(--ch-text-10)] font-semibold text-muted-foreground uppercase tracking-wider">
+                  {group.title}
+                </div>
+              )
+            )}
+            {(!isCollapsible || isOpen(gi)) && (
+              <div className="space-y-0.5">
+                {group.items.map((item, ii) => (
+                  <button
+                    key={ii}
+                    role="menuitem"
+                    disabled={item.disabled}
+                    onClick={() => {
+                      if (!item.disabled) {
+                        item.onClick();
+                        onDismiss();
+                      }
+                    }}
+                    className={cn(
+                      'w-full text-left px-2.5 py-1.5 text-xs rounded-md transition-colors duration-100 flex items-center justify-between gap-2 font-medium',
+                      item.disabled
+                        ? 'text-muted-foreground/50 cursor-not-allowed'
+                        : item.variant === 'destructive'
+                          ? 'text-destructive hover:bg-destructive/10'
+                          : 'text-foreground hover:bg-accent-muted hover:text-accent',
+                    )}
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      {item.icon && (
+                        <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                          {item.icon}
                         </span>
                       )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="space-y-0.5">
-              {group.items.map((item, ii) => (
-                <button
-                  key={ii}
-                  role="menuitem"
-                  disabled={item.disabled}
-                  onClick={() => {
-                    if (!item.disabled) {
-                      item.onClick();
-                      onDismiss();
-                    }
-                  }}
-                  className={cn(
-                    'w-full text-left px-2.5 py-1.5 text-xs rounded-md transition-colors duration-100 flex items-center justify-between gap-2 font-medium',
-                    item.disabled
-                      ? 'text-muted-foreground/50 cursor-not-allowed'
-                      : item.variant === 'destructive'
-                        ? 'text-destructive hover:bg-destructive/10'
-                        : 'text-foreground hover:bg-accent-muted hover:text-accent',
-                  )}
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    {item.icon && (
-                      <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                        {item.icon}
+                      {item.label}
+                    </span>
+                    {item.shortcut && (
+                      <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono shrink-0">
+                        {item.shortcut}
                       </span>
                     )}
-                    {item.label}
-                  </span>
-                  {item.shortcut && (
-                    <span className="text-[var(--ch-text-10)] text-muted-foreground font-mono shrink-0">
-                      {item.shortcut}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

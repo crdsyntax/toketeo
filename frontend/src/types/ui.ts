@@ -102,6 +102,8 @@ export interface ContextMenuItem {
 export interface ContextMenuGroup {
   title?: string;
   items: ContextMenuItem[];
+  collapsible?: boolean;
+  dropdown?: boolean;
   initiallyOpen?: boolean;
 }
 
@@ -126,6 +128,7 @@ export interface KeyboardShortcutsModalProps {
 
 export interface ReviewChangePanelProps {
   column: string;
+  columnType?: string;
   prevValue: DbValue;
   nextValue: DbValue;
   onConfirm: () => void;
