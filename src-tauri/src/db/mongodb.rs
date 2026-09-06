@@ -324,6 +324,200 @@ impl DbDriver for MongoDbDriver {
                 .and_then(|v| mongodb::bson::to_document(v).ok())
                 .unwrap_or_default();
 
+            let operation = obj
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .unwrap_or("find");
+
+            match operation {
+                "count" => {
+                    let count = coll
+                        .count_documents(filter)
+                        .await
+                        .map_err(|e| AppError::Database(format!("MongoDB count failed: {}", e)))?;
+                    return Ok(QueryResult {
+                        columns: vec!["count".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({ "count": count })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: 0,
+                        next_cursor: None,
+                    });
+                }
+                "insertOne" => {
+                    let document = obj
+                        .get("document")
+                        .and_then(|v| mongodb::bson::to_document(v).ok())
+                        .ok_or_else(|| {
+                            AppError::Validation("MongoDB insertOne requires a 'document'".into())
+                        })?;
+                    let result = coll.insert_one(document).await.map_err(|e| {
+                        AppError::Database(format!("MongoDB insertOne failed: {}", e))
+                    })?;
+                    return Ok(QueryResult {
+                        columns: vec!["inserted".to_string(), "inserted_id".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({
+                            "inserted": 1,
+                            "inserted_id": bson_to_json(&result.inserted_id),
+                        })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: 1,
+                        next_cursor: None,
+                    });
+                }
+                "insertMany" => {
+                    let documents: Vec<Document> = obj
+                        .get("documents")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|d| mongodb::bson::to_document(d).ok())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if documents.is_empty() {
+                        return Err(AppError::Validation(
+                            "MongoDB insertMany requires a non-empty 'documents' array".into(),
+                        ));
+                    }
+                    let result = coll.insert_many(documents).await.map_err(|e| {
+                        AppError::Database(format!("MongoDB insertMany failed: {}", e))
+                    })?;
+                    return Ok(QueryResult {
+                        columns: vec!["inserted".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({ "inserted": result.inserted_ids.len() })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: result.inserted_ids.len() as u64,
+                        next_cursor: None,
+                    });
+                }
+                "updateOne" | "updateMany" => {
+                    let update = obj
+                        .get("update")
+                        .and_then(|v| mongodb::bson::to_document(v).ok())
+                        .ok_or_else(|| {
+                            AppError::Validation(
+                                "MongoDB update requires an 'update' document".into(),
+                            )
+                        })?;
+                    let result = if operation == "updateOne" {
+                        coll.update_one(filter.clone(), update).await
+                    } else {
+                        coll.update_many(filter, update).await
+                    }
+                    .map_err(|e| {
+                        AppError::Database(format!("MongoDB {} failed: {}", operation, e))
+                    })?;
+                    return Ok(QueryResult {
+                        columns: vec!["matched".to_string(), "modified".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({
+                            "matched": result.matched_count,
+                            "modified": result.modified_count,
+                        })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: result.modified_count,
+                        next_cursor: None,
+                    });
+                }
+                "deleteOne" | "deleteMany" => {
+                    let result = if operation == "deleteOne" {
+                        coll.delete_one(filter).await
+                    } else {
+                        coll.delete_many(filter).await
+                    }
+                    .map_err(|e| {
+                        AppError::Database(format!("MongoDB {} failed: {}", operation, e))
+                    })?;
+                    return Ok(QueryResult {
+                        columns: vec!["deleted".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({ "deleted": result.deleted_count })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: result.deleted_count,
+                        next_cursor: None,
+                    });
+                }
+                "drop" => {
+                    coll.drop()
+                        .await
+                        .map_err(|e| AppError::Database(format!("MongoDB drop failed: {}", e)))?;
+                    return Ok(QueryResult {
+                        columns: vec!["dropped".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({ "dropped": true })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: 0,
+                        next_cursor: None,
+                    });
+                }
+                "aggregate" => {
+                    let pipeline: Vec<Document> = obj
+                        .get("pipeline")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|d| mongodb::bson::to_document(d).ok())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let mut cursor = coll.aggregate(pipeline).await.map_err(|e| {
+                        AppError::Database(format!("MongoDB aggregate failed: {}", e))
+                    })?;
+                    let mut rows = Vec::new();
+                    let mut columns_set = std::collections::HashSet::new();
+                    while let Some(result) = cursor.next().await {
+                        let doc = result.map_err(|e| {
+                            AppError::Database(format!("Error fetching document: {}", e))
+                        })?;
+                        let json_val = bson_to_json(&Bson::Document(doc));
+                        if let Some(obj) = json_val.as_object() {
+                            for key in obj.keys() {
+                                columns_set.insert(key.clone());
+                            }
+                        }
+                        rows.push(json_val);
+                    }
+                    let mut columns: Vec<String> = columns_set.into_iter().collect();
+                    columns.sort();
+                    return Ok(QueryResult {
+                        columns,
+                        column_types: None,
+                        rows,
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: None,
+                        rows_affected: 0,
+                        next_cursor: None,
+                    });
+                }
+                "distinct" => {
+                    let field = obj.get("field").and_then(|v| v.as_str()).unwrap_or("");
+                    let values = coll.distinct(field, filter).await.map_err(|e| {
+                        AppError::Database(format!("MongoDB distinct failed: {}", e))
+                    })?;
+                    let json_values: Vec<serde_json::Value> =
+                        values.into_iter().map(|v| bson_to_json(&v)).collect();
+                    return Ok(QueryResult {
+                        columns: vec!["distinct".to_string()],
+                        column_types: None,
+                        rows: vec![serde_json::json!({ "distinct": json_values })],
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        primary_keys: Some(vec!["_id".to_string()]),
+                        rows_affected: 0,
+                        next_cursor: None,
+                    });
+                }
+                _ => {}
+            }
+
             let limit = obj.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
             let skip = obj.get("skip").and_then(|v| v.as_i64()).unwrap_or(0);
 
@@ -419,38 +613,24 @@ impl DbDriver for MongoDbDriver {
             .and_then(|v| v.as_str())
             .map(String::from);
         let db = self.get_db(db_name.clone())?;
-        tracing::info!(
-            "[MongoDB Execute] generic command: db={:?}, raw_query={}",
-            db_name,
-            json_query
-        );
 
         let mut cmd_obj = json_query.clone();
         if let Some(map) = cmd_obj.as_object_mut() {
             map.remove("database");
             map.remove("collection");
         }
-        tracing::info!("[MongoDB Execute] stripped command: {}", cmd_obj);
 
         let command = serde_json::from_value::<Document>(cmd_obj)
             .map_err(|e| AppError::Validation(format!("Invalid BSON document: {}", e)))?;
 
-        tracing::info!(
-            "[MongoDB Execute] run_command on db {:?}: {:?}",
-            db_name,
-            command
-        );
+        tracing::debug!("[MongoDB Execute] run_command on db {:?}", db_name);
 
         let result = db
             .run_command(command)
             .await
             .map_err(|e| AppError::Database(format!("MongoDB command failed: {}", e)))?;
 
-        tracing::info!("[MongoDB Execute] command result: {:?}", result);
-
         let json_result = bson_to_json(&Bson::Document(result));
-
-        tracing::info!("[MongoDB Execute] path=command, raw_result={}", json_result);
 
         if let Some(cursor) = json_result.get("cursor").and_then(|v| v.as_object()) {
             if let Some(batch) = cursor

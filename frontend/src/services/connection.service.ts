@@ -1,6 +1,30 @@
 import { tauriApi } from '@/lib/api'
 import type { Connection, CreateConnectionDto } from '@/types/database'
 
+const CONNECT_TIMEOUT_MS = 30_000
+
+function withConnectTimeout<T>(promise: Promise<T>, action: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `${action} timed out after ${CONNECT_TIMEOUT_MS / 1000}s. Check your internet connection or server availability.`,
+        ),
+      )
+    }, CONNECT_TIMEOUT_MS)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 export const connectionService = {
 
 
@@ -39,7 +63,10 @@ export const connectionService = {
 
 
   connect: async (config: CreateConnectionDto): Promise<string> => {
-    return await tauriApi.invoke<string>('connect', { config })
+    return await withConnectTimeout(
+      tauriApi.invoke<string>('connect', { config }),
+      'Connection',
+    )
   },
 
   disconnect: async (id: string): Promise<void> => {
@@ -71,11 +98,17 @@ export const connectionService = {
   },
 
   reconnect: async (id: string): Promise<string> => {
-    return await tauriApi.invoke<string>('reconnect_connection', { id })
+    return await withConnectTimeout(
+      tauriApi.invoke<string>('reconnect_connection', { id }),
+      'Reconnection',
+    )
   },
 
   test: async (config: CreateConnectionDto): Promise<string> => {
-    return await tauriApi.invoke<string>('connect', { config })
+    return await withConnectTimeout(
+      tauriApi.invoke<string>('connect', { config }),
+      'Connection test',
+    )
   },
 
 

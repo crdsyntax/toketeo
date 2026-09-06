@@ -1,0 +1,16 @@
+{
+  "toketeo-governance": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run runtime/hosts/antigravity.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

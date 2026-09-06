@@ -7,9 +7,9 @@ import { tauriApi } from '@/lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { connectionService } from '@/services/connection.service'
 import { toast } from 'react-hot-toast'
-import type { DbValue, DbRow, Connection } from '@/types/database'
+import type { DbValue, DbRow, Connection, QueryResult } from '@/types/database'
 import { ExecutionStatus, Environment, DatabaseType } from '@/types/database'
-import { isMongoShellSyntax, parseMongoShell } from '@/lib/mongoShellParser'
+import { isMongoShellSyntax, parseMongoShell, splitMongoStatements } from '@/lib/mongoShellParser'
 import { useGamificationStore } from '@/store/gamificationStore'
 import { usePerformanceStore } from '@/store/performanceStore'
 import { calculateQueryXp, hashQuery } from '@/lib/gamification'
@@ -552,6 +552,77 @@ export function useQueryEditor() {
       let sql = raw;
 
       if (isMongo) {
+        const mongoStatements = splitMongoStatements(sql);
+        if (mongoStatements.length > 1) {
+          const mongoSchema = targetConnection.database || activeConnection?.database;
+          updateTabResults(activeTab.id, {
+            status: ExecutionStatus.EXECUTING,
+            error: null,
+            results: null,
+          });
+          const summaryRows: DbRow[] = [];
+          let failedCount = 0;
+          const mongoStartTime = Date.now();
+          for (let i = 0; i < mongoStatements.length; i++) {
+            const stmt = mongoStatements[i].trim();
+            const label = stmt.length > 70 ? `${stmt.slice(0, 67)}...` : stmt;
+            let mongoJson: string;
+            try {
+              mongoJson = buildMongoJsonQuery(stmt, undefined, activeTab.editorMode);
+            } catch (err) {
+              failedCount++;
+              summaryRows.push({
+                '#': i + 1,
+                Command: label,
+                Status: 'ERROR',
+                Detail: err instanceof Error ? err.message : String(err),
+              });
+              continue;
+            }
+            try {
+              const result = await queryService.execute(
+                targetConnection.id,
+                mongoJson,
+                mongoSchema,
+                undefined,
+                1,
+                undefined,
+              );
+              const detail = result.rows && result.rows.length > 0 ? JSON.stringify(result.rows[0]) : 'OK';
+              summaryRows.push({ '#': i + 1, Command: label, Status: 'OK', Detail: detail });
+            } catch (err) {
+              failedCount++;
+              summaryRows.push({
+                '#': i + 1,
+                Command: label,
+                Status: 'ERROR',
+                Detail: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          const summaryResult: QueryResult = {
+            columns: ['#', 'Command', 'Status', 'Detail'],
+            column_types: undefined,
+            rows: summaryRows,
+            executionTime: Date.now() - mongoStartTime,
+            primary_keys: undefined,
+            affectedRows: 0,
+            nextCursor: undefined,
+          };
+          updateTabResults(activeTab.id, {
+            status: failedCount > 0 ? ExecutionStatus.ERROR : ExecutionStatus.SUCCESS,
+            error: failedCount > 0
+              ? `Mongo script: ${mongoStatements.length - failedCount} ok, ${failedCount} failed.`
+              : null,
+            results: summaryResult,
+          });
+          if (failedCount > 0) {
+            toast.error(`Mongo script completed with ${failedCount} error(s)`);
+          } else {
+            toast.success(`Mongo script completed: ${mongoStatements.length} statements`);
+          }
+          return;
+        }
         sql = buildMongoJsonQuery(sql, activeTab.mongoFilter, activeTab.editorMode);
       } else {
         const statements = splitSqlStatements(sql);

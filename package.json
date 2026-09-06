@@ -1,6 +1,6 @@
 {
   "name": "toketeo",
-  "version": "0.5.8",
+  "version": "0.5.81",
   "description": "Toketeo Database Client and Administration Panel",
   "author": "crdsyntax <crdsyntax@example.com>",
   "private": true,
@@ -12,7 +12,10 @@
     "frontend:build": "cd frontend && bun run build",
     "format": "prettier --write \"src-tauri/**/*.rs\" \"frontend/src/**/*.{ts,tsx}\"",
     "lint": "cd frontend && bun run lint",
-    "docs:agents": "node scripts/generate-agent-docs.js"
+    "docs:agents": "node scripts/generate-agent-docs.js",
+    "agents:audit": "bun scripts/audit-agent-runtime.js",
+    "agents:evaluate": "bun scripts/evaluate-agent-runtime.js",
+    "agents:enforce": "bun scripts/verify-host-enforcement.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",

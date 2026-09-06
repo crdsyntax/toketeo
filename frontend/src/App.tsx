@@ -15,6 +15,7 @@ import { AssistantPage } from '@/pages/AssistantPage'
 import { ThemeProvider } from '@/components/gamification/ThemeProvider'
 import { AppBootstrap } from '@/components/layout/AppBootstrap'
 import { UpdateModal } from '@/components/update/UpdateModal'
+import { UpdateAvailableButton } from '@/components/update/UpdateAvailableButton'
 import { Toaster } from 'react-hot-toast'
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
       <ThemeProvider>
         <Toaster position="bottom-right" />
         <UpdateModal />
+        <UpdateAvailableButton />
         <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<Connections />} />

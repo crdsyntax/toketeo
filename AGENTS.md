@@ -6,24 +6,16 @@ Always load:
 
 Profiles:
 
-Backend:
-- agents/backend/tech-leader.md
-- agents/backend/architect.md
+Orchestrator:
+- agents/orchestrator.md
+
+Specialists:
 - agents/backend/engineer.md
-- agents/backend/database.md
-
-Frontend:
-- agents/frontend/tech-leader.md
-- agents/frontend/architect.md
 - agents/frontend/engineer.md
-- agents/frontend/frontend.md
-- agents/frontend/component-architecture.md
-
-QA:
+- agents/database/engineer.md
 - agents/qa/tester.md
-
-Review:
 - agents/reviews/review.md
+- agents/security/devops.md
 
 Process:
 1 Analyze

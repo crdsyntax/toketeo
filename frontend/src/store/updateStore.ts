@@ -16,6 +16,7 @@ interface UpdateState {
   progress: DownloadProgress | null
   error: string | null
   checkNow: (force?: boolean) => Promise<void>
+  openModal: () => void
   dismiss: () => void
   installNow: () => Promise<void>
   clearError: () => void
@@ -63,6 +64,8 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     }
     set({ modalOpen: false })
   },
+
+  openModal: () => set({ modalOpen: true }),
 
   installNow: async () => {
     const { downloading } = get()

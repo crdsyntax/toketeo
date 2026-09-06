@@ -364,6 +364,10 @@ function splitStatements(src: string): string[] {
 
 
 
+export function splitMongoStatements(src: string): string[] {
+  return splitStatements(src);
+}
+
 export function parseMongoShell(query: string): MongoParseResult {
   if (!isMongoShellSyntax(query)) {
     return { success: false, error: 'Not MongoDB shell syntax' };
